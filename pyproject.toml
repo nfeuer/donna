@@ -1,0 +1,95 @@
+[project]
+name = "donna"
+version = "0.1.0"
+description = "AI Personal Assistant — active task management, scheduling, and autonomous sub-agents"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+
+dependencies = [
+    # Core async
+    "aiosqlite>=0.20.0",
+    "aiohttp>=3.9.0",
+
+    # LLM providers
+    "anthropic>=0.40.0",
+
+    # Discord bot
+    "discord.py>=2.3.0",
+
+    # Google APIs
+    "google-api-python-client>=2.100.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-auth-httplib2>=0.2.0",
+
+    # Database & migrations
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
+
+    # Structured logging
+    "structlog>=24.1.0",
+
+    # Task deduplication
+    "rapidfuzz>=3.5.0",
+
+    # Configuration
+    "pyyaml>=6.0.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+
+    # MCP server (LLM-facing tools)
+    "fastmcp>=3.0.0",
+
+    # Supabase sync
+    "supabase>=2.0.0",
+
+    # Twilio (SMS/Voice)
+    "twilio>=9.0.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "tenacity>=8.2.0",
+    "uuid6>=2024.1.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "aioresponses>=0.7.6",
+    "ruff>=0.4.0",
+    "mypy>=1.8.0",
+]
+
+[project.scripts]
+donna = "donna.cli:main"
+
+[build-system]
+requires = ["setuptools>=69.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (may use real SQLite)",
+    "llm: Tests that call LLM APIs (costs money)",
+    "slow: Slow tests (skip in CI by default)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true

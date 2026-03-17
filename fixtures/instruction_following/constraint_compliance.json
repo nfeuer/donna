@@ -1,0 +1,48 @@
+{
+  "dimension": "instruction_following",
+  "subset": "constraint_compliance",
+  "description": "Tests whether the model applies all specified constraints without silently dropping any.",
+  "cases": [
+    {
+      "id": "if-001",
+      "instruction": "Classify this task. Rules: (1) If the task mentions a vehicle, domain is always 'personal'. (2) If the task mentions a deadline within 48 hours, priority is minimum 4. (3) If the task mentions a child or baby, domain is 'family'. Apply ALL rules that match.",
+      "input": "Take the baby to the pediatrician tomorrow at 2pm and then get the car washed",
+      "expected": {
+        "domain": "family",
+        "priority": 4
+      },
+      "constraints_to_check": ["child → family domain", "tomorrow → 48hr deadline → priority 4+"],
+      "notes": "Both rules apply. Model must not drop the priority rule when applying the family domain rule."
+    },
+    {
+      "id": "if-002",
+      "instruction": "Parse this task. Output JSON with exactly these fields: title, domain, priority, deadline. Do NOT include any other fields. Do NOT include explanations or markdown.",
+      "input": "Fix the login bug before standup tomorrow",
+      "expected_format": "JSON with exactly 4 fields, no extras",
+      "constraints_to_check": ["exact field set", "no extra fields", "no markdown wrapping"]
+    },
+    {
+      "id": "if-003",
+      "instruction": "Classify priority using ONLY these criteria: (1) Has the word 'urgent' or 'critical' → priority 5. (2) Has a deadline this week → priority 3. (3) Everything else → priority 2. Do NOT use any other criteria.",
+      "input": "Refactor the entire authentication module — this is a huge project that could take weeks",
+      "expected": {
+        "priority": 2
+      },
+      "notes": "Despite sounding important, no urgency keyword and no this-week deadline. Must follow rules literally."
+    },
+    {
+      "id": "if-004",
+      "instruction": "Given this task, respond with exactly 'ESCALATE' if it requires web search, code analysis, or multi-step reasoning. Respond with exactly 'HANDLE' otherwise. One word only, no explanation.",
+      "input": "Buy groceries",
+      "expected_output": "HANDLE",
+      "constraints_to_check": ["single word response", "no explanation"]
+    },
+    {
+      "id": "if-005",
+      "instruction": "Given this task, respond with exactly 'ESCALATE' if it requires web search, code analysis, or multi-step reasoning. Respond with exactly 'HANDLE' otherwise. One word only, no explanation.",
+      "input": "Research the best approach for implementing OAuth2 with PKCE flow in our React app, considering we also need to support refresh tokens and have a Python backend",
+      "expected_output": "ESCALATE",
+      "constraints_to_check": ["single word response", "no explanation"]
+    }
+  ]
+}

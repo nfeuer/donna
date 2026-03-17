@@ -1,0 +1,38 @@
+# Donna Core Services
+# Orchestrator, integration layer, notification service, Discord bot
+
+services:
+  donna-orchestrator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.orchestrator
+    container_name: donna-orchestrator
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ${DONNA_DB_PATH}:/donna/db
+      - ${DONNA_WORKSPACE_PATH}:/donna/workspace
+      - ${DONNA_BACKUP_PATH}:/donna/backups
+      - ${DONNA_LOG_PATH}:/donna/logs
+      - ../config:/donna/config:ro
+      - ../prompts:/donna/prompts:ro
+      - ../schemas:/donna/schemas:ro
+    ports:
+      - "8100:8100"    # Health endpoint
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - homelab
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+networks:
+  homelab:
+    external: true

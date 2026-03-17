@@ -1,0 +1,49 @@
+{
+  "dimension": "escalation_awareness",
+  "subset": "should_handle",
+  "description": "Tasks the local model should handle confidently. Checks for over-escalation (false positives).",
+  "cases": [
+    {
+      "id": "handle-001",
+      "input": "Buy milk",
+      "should_escalate": false,
+      "reason": "Simple, unambiguous task. No tool use, no inference needed."
+    },
+    {
+      "id": "handle-002",
+      "input": "Schedule dentist appointment for next week",
+      "should_escalate": false,
+      "reason": "Standard task parse with implicit deadline"
+    },
+    {
+      "id": "handle-003",
+      "input": "Pay the electric bill by Friday",
+      "should_escalate": false,
+      "reason": "Simple task with explicit deadline"
+    },
+    {
+      "id": "handle-004",
+      "input": "Remind me to call mom at 5pm",
+      "should_escalate": false,
+      "reason": "Simple reminder with explicit time"
+    },
+    {
+      "id": "handle-005",
+      "input": "Pick up diapers on the way home",
+      "should_escalate": false,
+      "reason": "Simple task, clear domain (family)"
+    },
+    {
+      "id": "handle-006",
+      "input": "Send the invoice to client",
+      "should_escalate": false,
+      "reason": "Simple work task, standard parse"
+    },
+    {
+      "id": "handle-007",
+      "input": "Get oil change for the car before end of month",
+      "should_escalate": false,
+      "reason": "Standard parse with soft deadline inference"
+    }
+  ]
+}

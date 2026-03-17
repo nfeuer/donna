@@ -1,0 +1,57 @@
+# Task type registry
+# See docs/task-system.md for full documentation
+#
+# Each task type specifies:
+#   - prompt_template: path to externalized prompt (Jinja2 or markdown)
+#   - output_schema: JSON schema for structured LLM output
+#   - model: model alias from donna_models.yaml
+#   - tools: list of tools the model may request for this task type
+#   - shadow: (optional) secondary model for production monitoring
+
+task_types:
+  parse_task:
+    description: "Extract structured task fields from natural language"
+    model: parser
+    prompt_template: prompts/parse_task.md
+    output_schema: schemas/task_parse_output.json
+    tools: []
+
+  classify_priority:
+    description: "Assign priority 1-5 based on content and context"
+    model: parser
+    prompt_template: prompts/classify_priority.md
+    output_schema: schemas/priority_output.json
+    tools: [task_db_read]
+
+  generate_digest:
+    description: "Generate morning digest in Donna persona"
+    model: parser
+    shadow: reasoner
+    prompt_template: prompts/morning_digest.md
+    output_schema: schemas/digest_output.json
+    tools: [calendar_read, task_db_read, cost_summary]
+
+  prep_research:
+    description: "Research and compile prep materials for a flagged task"
+    model: reasoner
+    prompt_template: prompts/prep_research.md
+    output_schema: schemas/prep_output.json
+    tools: [web_search, email_read, notes_read, fs_read]
+
+  dedup_check:
+    description: "Determine if two tasks are the same, related, or different"
+    model: parser
+    prompt_template: prompts/dedup_check.md
+    output_schema: schemas/dedup_output.json
+    tools: []
+
+  task_decompose:
+    description: "Break a complex task into subtasks with dependencies"
+    model: reasoner
+    prompt_template: prompts/task_decompose.md
+    output_schema: schemas/decompose_output.json
+    tools: [task_db_read]
+
+# Schema versioning: output schemas use semantic versioning
+# e.g., task_parse_output_v2.json
+# Orchestrator handles both old and new formats during transitions

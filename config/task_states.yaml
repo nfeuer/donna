@@ -1,0 +1,115 @@
+# Task lifecycle state machine
+# See docs/task-system.md for full documentation
+#
+# Orchestrator loads this at startup and rejects invalid transitions.
+# Each transition specifies the trigger and side effects.
+
+states:
+  - backlog
+  - scheduled
+  - in_progress
+  - blocked
+  - waiting_input
+  - done
+  - cancelled
+
+initial_state: backlog
+
+transitions:
+  - from: backlog
+    to: scheduled
+    trigger: scheduler_assigns_slot
+    side_effects:
+      - create_calendar_event
+      - set_donna_managed_true
+
+  - from: scheduled
+    to: in_progress
+    trigger: user_acknowledges_start_or_time_arrives
+    side_effects:
+      - set_actual_start
+
+  - from: scheduled
+    to: backlog
+    trigger: user_cancels_scheduled_time
+    side_effects:
+      - delete_calendar_event
+      - increment_reschedule_count
+
+  - from: in_progress
+    to: done
+    trigger: user_or_agent_reports_completion
+    side_effects:
+      - set_completed_at
+      - update_velocity_metrics
+
+  - from: in_progress
+    to: blocked
+    trigger: user_or_agent_reports_blocker
+    side_effects:
+      - update_dependencies
+      - log_blocking_reason
+      - notify_dependent_tasks
+
+  - from: in_progress
+    to: scheduled
+    trigger: user_requests_reschedule
+    side_effects:
+      - assign_new_slot
+      - increment_reschedule_count
+      - update_calendar_event
+
+  - from: blocked
+    to: scheduled
+    trigger: blocker_resolved
+    side_effects:
+      - find_next_available_slot
+
+  - from: blocked
+    to: cancelled
+    trigger: user_abandons
+    side_effects:
+      - flag_dependent_tasks
+
+  - from: waiting_input
+    to: scheduled
+    trigger: user_provides_info
+    side_effects:
+      - pm_agent_updates_task
+      - scheduler_assigns_slot
+
+  - from: waiting_input
+    to: cancelled
+    trigger: timeout_no_response
+    timeout_days: 7
+    side_effects:
+      - notify_user
+      - archive_task
+
+  - from: "*"  # any state
+    to: cancelled
+    trigger: user_explicitly_cancels
+    side_effects:
+      - flag_dependent_tasks
+      - delete_calendar_event_if_exists
+
+  - from: done
+    to: in_progress
+    trigger: user_reopens
+    side_effects:
+      - clear_completed_at
+
+# Invalid transitions (enforced — these will be rejected)
+invalid_transitions:
+  - from: backlog
+    to: done
+    reason: "Cannot complete without scheduling. Must go scheduled → in_progress → done."
+
+  - from: cancelled
+    to: "*"
+    except: [backlog]
+    reason: "Must be re-opened to backlog first."
+
+  - from: done
+    to: scheduled
+    reason: "Must go through in_progress first for reopening."

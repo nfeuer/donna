@@ -1,0 +1,45 @@
+# Model routing configuration
+# See docs/model-layer.md for full documentation
+
+models:
+  parser:
+    provider: anthropic            # ollama once 3090 available
+    model: claude-sonnet-4-20250514
+  reasoner:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+  fallback:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+
+routing:
+  task_parse:
+    model: parser
+    fallback: reasoner
+    confidence_threshold: 0.7
+  priority_classify:
+    model: parser
+    fallback: reasoner
+    confidence_threshold: 0.7
+  prep_research:
+    model: reasoner
+  code_generation:
+    model: reasoner
+  morning_digest:
+    model: parser
+    shadow: reasoner              # production monitoring: secondary model runs, output logged only
+
+# Cost tracking
+cost:
+  monthly_budget_usd: 100.00
+  daily_pause_threshold_usd: 20.00
+  task_approval_threshold_usd: 5.00
+  monthly_warning_pct: 0.90
+
+# Quality monitoring (disabled Phase 1, enable Phase 3)
+quality_monitoring:
+  spot_check_rate: 0.05
+  judge_model: reasoner
+  judge_batch_schedule: weekly
+  flag_threshold: 0.7
+  enabled: false

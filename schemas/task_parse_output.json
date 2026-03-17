@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TaskParseOutput",
+  "description": "Structured output from natural language task parsing",
+  "type": "object",
+  "required": ["title", "domain", "priority", "deadline_type", "estimated_duration", "confidence"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Short task title extracted from input",
+      "maxLength": 500
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "Detailed description if input contains more context"
+    },
+    "domain": {
+      "type": "string",
+      "enum": ["personal", "work", "family"],
+      "description": "Inferred task domain"
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Priority level: 1=lowest, 5=critical"
+    },
+    "deadline": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO 8601 deadline if mentioned"
+    },
+    "deadline_type": {
+      "type": "string",
+      "enum": ["hard", "soft", "none"]
+    },
+    "estimated_duration": {
+      "type": "integer",
+      "minimum": 5,
+      "description": "Estimated duration in minutes"
+    },
+    "recurrence": {
+      "type": ["string", "null"],
+      "description": "Cron expression or RRULE if recurring"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "prep_work_flag": {
+      "type": "boolean",
+      "default": false
+    },
+    "agent_eligible": {
+      "type": "boolean",
+      "default": false
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Model's confidence in the parse"
+    }
+  }
+}

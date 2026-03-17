@@ -1,0 +1,52 @@
+{
+  "tier": 1,
+  "name": "baseline",
+  "description": "Simple priority classification cases. 90%+ to pass.",
+  "pass_gate": 0.90,
+  "cases": [
+    {
+      "id": "p1-001",
+      "input": {"title": "Buy milk", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected_priority": 1
+    },
+    {
+      "id": "p1-002",
+      "input": {"title": "Pay electric bill", "domain": "personal", "deadline": "2026-03-21T23:59:00", "deadline_type": "hard", "reschedule_count": 0},
+      "expected_priority": 3,
+      "notes": "Hard deadline this week"
+    },
+    {
+      "id": "p1-003",
+      "input": {"title": "Server is down", "domain": "work", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected_priority": 5,
+      "notes": "Production outage = critical regardless of deadline"
+    },
+    {
+      "id": "p1-004",
+      "input": {"title": "Clean garage", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected_priority": 1
+    },
+    {
+      "id": "p1-005",
+      "input": {"title": "Pick up baby from daycare", "domain": "family", "deadline": "2026-03-17T17:30:00", "deadline_type": "hard", "reschedule_count": 0},
+      "expected_priority": 5,
+      "notes": "Child-related + hard deadline = critical"
+    },
+    {
+      "id": "p1-006",
+      "input": {"title": "Update resume", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected_priority": 1
+    },
+    {
+      "id": "p1-007",
+      "input": {"title": "Submit quarterly report", "domain": "work", "deadline": "2026-03-18T09:00:00", "deadline_type": "hard", "reschedule_count": 2},
+      "expected_priority": 4,
+      "notes": "Hard deadline tomorrow + rescheduled twice = urgent"
+    },
+    {
+      "id": "p1-008",
+      "input": {"title": "Water the plants", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected_priority": 2
+    }
+  ]
+}

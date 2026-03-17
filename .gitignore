@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+docker/.env
+
+# Database files (local development)
+*.db
+*.db-wal
+*.db-shm
+
+# Credentials
+google_credentials.json
+*.key
+*.pem
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Backups (managed by system, not version controlled)
+backups/
+
+# Ollama model cache
+models/
+
+# Agent workspace outputs
+workspace/

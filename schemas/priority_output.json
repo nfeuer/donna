@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PriorityOutput",
+  "description": "Structured output from priority classification",
+  "type": "object",
+  "required": ["priority", "reasoning"],
+  "properties": {
+    "priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "Brief explanation of priority decision"
+    },
+    "escalation_factors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    }
+  }
+}

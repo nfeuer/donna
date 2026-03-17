@@ -1,0 +1,154 @@
+{
+  "tier": 2,
+  "name": "nuance",
+  "description": "Inputs requiring inference: implicit deadlines, domain ambiguity, priority signals. 80%+ to pass.",
+  "pass_gate": 0.80,
+  "cases": [
+    {
+      "id": "t2-001",
+      "input": "Need to get the car inspected before the holidays",
+      "expected": {
+        "title": "Get car inspected",
+        "domain": "personal",
+        "deadline_type": "soft"
+      },
+      "notes": "Should infer a soft deadline around the holiday season"
+    },
+    {
+      "id": "t2-002",
+      "input": "This is urgent — the server is throwing 500 errors",
+      "expected": {
+        "domain": "work",
+        "priority": 5
+      },
+      "notes": "Urgency keyword + server context = work, critical"
+    },
+    {
+      "id": "t2-003",
+      "input": "Whenever you get a chance, clean out the garage",
+      "expected": {
+        "domain": "personal",
+        "priority": 1,
+        "deadline_type": "none"
+      },
+      "notes": "'Whenever you get a chance' = low priority, no deadline"
+    },
+    {
+      "id": "t2-004",
+      "input": "Fix the leak under the kitchen sink",
+      "expected": {
+        "title": "Fix kitchen sink leak",
+        "domain": "personal",
+        "priority": 3
+      },
+      "notes": "Home maintenance, moderate urgency (water damage risk)"
+    },
+    {
+      "id": "t2-005",
+      "input": "Prep for the standup tomorrow morning",
+      "expected": {
+        "domain": "work",
+        "deadline_type": "hard",
+        "prep_work_flag": true
+      },
+      "notes": "Should infer deadline = tomorrow morning, prep flag appropriate"
+    },
+    {
+      "id": "t2-006",
+      "input": "Start thinking about birthday party ideas for Lily, her birthday is April 15th",
+      "expected": {
+        "domain": "family",
+        "priority": 2,
+        "deadline_type": "soft"
+      },
+      "notes": "Family domain (child), soft deadline well in advance"
+    },
+    {
+      "id": "t2-007",
+      "input": "I really should update my resume at some point",
+      "expected": {
+        "domain": "personal",
+        "priority": 1,
+        "deadline_type": "none"
+      },
+      "notes": "'At some point' = lowest priority, no deadline"
+    },
+    {
+      "id": "t2-008",
+      "input": "Review the PR that Jake submitted yesterday",
+      "expected": {
+        "domain": "work",
+        "priority": 3,
+        "estimated_duration": 30
+      },
+      "notes": "Work context, time-sensitive (don't block teammate)"
+    },
+    {
+      "id": "t2-009",
+      "input": "Renew my passport, it expires next month",
+      "expected": {
+        "domain": "personal",
+        "priority": 4,
+        "deadline_type": "hard"
+      },
+      "notes": "Expiring next month = urgent, hard deadline"
+    },
+    {
+      "id": "t2-010",
+      "input": "Set up the baby monitor in the nursery",
+      "expected": {
+        "domain": "family",
+        "priority": 3
+      },
+      "notes": "Baby/nursery context = family domain"
+    },
+    {
+      "id": "t2-011",
+      "input": "Research restaurants near the venue for the team dinner",
+      "expected": {
+        "domain": "work",
+        "priority": 2,
+        "agent_eligible": true
+      },
+      "notes": "Research task, team context = work, agent-eligible"
+    },
+    {
+      "id": "t2-012",
+      "input": "Water the plants every Monday and Thursday",
+      "expected": {
+        "domain": "personal",
+        "priority": 2
+      },
+      "notes": "Should extract recurrence pattern"
+    },
+    {
+      "id": "t2-013",
+      "input": "I need to figure out what's wrong with the CI pipeline before the release next week",
+      "expected": {
+        "domain": "work",
+        "priority": 4,
+        "deadline_type": "hard"
+      },
+      "notes": "Blocking release = urgent, hard deadline next week"
+    },
+    {
+      "id": "t2-014",
+      "input": "Maybe look into refinancing the mortgage when rates drop",
+      "expected": {
+        "domain": "personal",
+        "priority": 1,
+        "deadline_type": "none"
+      },
+      "notes": "'Maybe' + conditional = very low priority"
+    },
+    {
+      "id": "t2-015",
+      "input": "Get back to Sarah about the project timeline",
+      "expected": {
+        "domain": "work",
+        "priority": 3
+      },
+      "notes": "Responding to someone = moderate urgency, work context"
+    }
+  ]
+}

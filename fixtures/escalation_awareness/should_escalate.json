@@ -1,0 +1,37 @@
+{
+  "dimension": "escalation_awareness",
+  "subset": "should_escalate",
+  "description": "Tasks the local model should recognize as beyond its capability and escalate to Claude.",
+  "cases": [
+    {
+      "id": "esc-001",
+      "input": "Research the pros and cons of three different CRM platforms for a 50-person sales team, considering our current Salesforce integration, budget of $500/month, and need for Twilio integration",
+      "should_escalate": true,
+      "reason": "Multi-step research requiring web search, comparison, and synthesis"
+    },
+    {
+      "id": "esc-002",
+      "input": "Review the authentication module refactor PR — it touches 15 files across 3 services and changes the token refresh flow",
+      "should_escalate": true,
+      "reason": "Complex code review requiring full codebase understanding"
+    },
+    {
+      "id": "esc-003",
+      "input": "I need to figure out if we should use PostgreSQL or MongoDB for the new analytics pipeline. The data is semi-structured, we expect 10M rows/day, and we need sub-second aggregation queries",
+      "should_escalate": true,
+      "reason": "Architectural decision requiring deep technical reasoning"
+    },
+    {
+      "id": "esc-004",
+      "input": "Draft an email to the VP explaining why we need to delay the launch by two weeks. Be diplomatic but firm about the technical risks",
+      "should_escalate": true,
+      "reason": "Sensitive communication requiring nuance and judgment"
+    },
+    {
+      "id": "esc-005",
+      "input": "My manager said something weird in our 1:1 and I'm not sure if I should be worried. Can you help me think through what they might have meant?",
+      "should_escalate": true,
+      "reason": "Interpersonal interpretation requiring empathy and judgment"
+    }
+  ]
+}

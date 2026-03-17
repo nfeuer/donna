@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PrepOutput",
+  "description": "Structured output from prep work research",
+  "type": "object",
+  "required": ["summary", "sections"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "2-3 sentence executive summary"
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["heading", "content"],
+        "properties": {
+          "heading": { "type": "string" },
+          "content": { "type": "string" },
+          "sources": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "action_items": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tools_used": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "time_spent_minutes": {
+      "type": "number"
+    }
+  }
+}

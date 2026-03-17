@@ -1,0 +1,22 @@
+# Learned user preferences
+# See docs/preferences.md for full documentation
+#
+# This file starts empty. Rules are extracted from the correction_log
+# by the weekly rule extraction batch job (Phase 3).
+# All rules here are transparent, editable, and reversible.
+#
+# Format:
+# rules:
+#   - id: <uuid>
+#     rule_type: domain_override | priority_adjustment | scheduling_preference | notification_preference
+#     rule_text: "Human-readable description"
+#     confidence: 0.9
+#     condition:
+#       keywords: ["car", "oil change", "tire"]
+#     action:
+#       field: domain
+#       value: personal
+#     enabled: true
+#     supporting_corrections: ["uuid1", "uuid3"]
+
+rules: []

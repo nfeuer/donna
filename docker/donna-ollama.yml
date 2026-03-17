@@ -1,0 +1,36 @@
+# Donna Local LLM Stack
+# DEFERRED until RTX 3090 is acquired
+# Ollama with dedicated GPU for local inference
+
+services:
+  donna-ollama:
+    image: ollama/ollama:latest
+    container_name: donna-ollama
+    restart: unless-stopped
+    volumes:
+      - ${DONNA_DATA_PATH}/models:/root/.ollama
+    ports:
+      - "11434:11434"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${DONNA_OLLAMA_GPU_ID}"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - homelab
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  homelab:
+    external: true

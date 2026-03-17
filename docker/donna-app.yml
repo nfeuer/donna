@@ -1,0 +1,31 @@
+# Donna App Backend
+# FastAPI REST API for Flutter Web/Mobile app (Phase 4)
+
+services:
+  donna-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: donna-api
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ${DONNA_DB_PATH}:/donna/db:ro
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8200/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - homelab
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  homelab:
+    external: true

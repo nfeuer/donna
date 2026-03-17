@@ -1,0 +1,110 @@
+{
+  "tier": 1,
+  "name": "baseline",
+  "description": "Simple, unambiguous task inputs. Any reasonable model should handle these. 90%+ to pass.",
+  "pass_gate": 0.90,
+  "cases": [
+    {
+      "id": "t1-001",
+      "input": "Buy milk",
+      "expected": {
+        "title": "Buy milk",
+        "domain": "personal",
+        "priority": 1,
+        "deadline_type": "none",
+        "estimated_duration": 15
+      }
+    },
+    {
+      "id": "t1-002",
+      "input": "Pay electric bill by Friday",
+      "expected": {
+        "title": "Pay electric bill",
+        "domain": "personal",
+        "priority": 3,
+        "deadline_type": "hard"
+      },
+      "notes": "Deadline should resolve to the upcoming Friday"
+    },
+    {
+      "id": "t1-003",
+      "input": "Schedule dentist appointment",
+      "expected": {
+        "title": "Schedule dentist appointment",
+        "domain": "personal",
+        "priority": 2,
+        "deadline_type": "none",
+        "estimated_duration": 15
+      }
+    },
+    {
+      "id": "t1-004",
+      "input": "Send invoice to client",
+      "expected": {
+        "title": "Send invoice to client",
+        "domain": "work",
+        "priority": 3
+      }
+    },
+    {
+      "id": "t1-005",
+      "input": "Pick up diapers on the way home",
+      "expected": {
+        "title": "Pick up diapers",
+        "domain": "family",
+        "priority": 3,
+        "estimated_duration": 15
+      }
+    },
+    {
+      "id": "t1-006",
+      "input": "Get oil change for the car",
+      "expected": {
+        "title": "Get oil change",
+        "domain": "personal",
+        "priority": 2,
+        "estimated_duration": 60
+      }
+    },
+    {
+      "id": "t1-007",
+      "input": "Finish the quarterly report",
+      "expected": {
+        "title": "Finish quarterly report",
+        "domain": "work",
+        "priority": 3
+      }
+    },
+    {
+      "id": "t1-008",
+      "input": "Call mom",
+      "expected": {
+        "title": "Call mom",
+        "domain": "family",
+        "priority": 2,
+        "estimated_duration": 20
+      }
+    },
+    {
+      "id": "t1-009",
+      "input": "Take out the trash",
+      "expected": {
+        "title": "Take out the trash",
+        "domain": "personal",
+        "priority": 2,
+        "estimated_duration": 5
+      }
+    },
+    {
+      "id": "t1-010",
+      "input": "Book flight to Denver for March 20",
+      "expected": {
+        "title": "Book flight to Denver",
+        "domain": "personal",
+        "priority": 3,
+        "deadline_type": "hard"
+      },
+      "notes": "Deadline should resolve to March 20"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "tier": 1,
+  "name": "baseline",
+  "description": "Deduplication accuracy: exact dupes, reformulations, and related-but-distinct pairs.",
+  "cases": [
+    {
+      "id": "d-001",
+      "task_a": {"title": "Get oil change", "domain": "personal"},
+      "task_b": {"title": "Oil change needed", "domain": "personal"},
+      "expected_verdict": "same",
+      "notes": "Simple reformulation of the same task"
+    },
+    {
+      "id": "d-002",
+      "task_a": {"title": "Oil change for car", "domain": "personal"},
+      "task_b": {"title": "Oil change for lawn mower", "domain": "personal"},
+      "expected_verdict": "different",
+      "notes": "Same action, different objects — must NOT merge"
+    },
+    {
+      "id": "d-003",
+      "task_a": {"title": "Send the invoice", "domain": "work"},
+      "task_b": {"title": "Email that invoice to the client", "domain": "work"},
+      "expected_verdict": "same",
+      "notes": "Same task, different wording"
+    },
+    {
+      "id": "d-004",
+      "task_a": {"title": "Buy groceries", "domain": "personal"},
+      "task_b": {"title": "Pick up milk", "domain": "personal"},
+      "expected_verdict": "related",
+      "notes": "Milk is a subset of groceries — related but possibly distinct"
+    },
+    {
+      "id": "d-005",
+      "task_a": {"title": "Fix the bug in auth module", "domain": "work"},
+      "task_b": {"title": "Refactor the auth module", "domain": "work"},
+      "expected_verdict": "related",
+      "notes": "Same module, different actions — related but distinct"
+    },
+    {
+      "id": "d-006",
+      "task_a": {"title": "Call dentist to schedule appointment", "domain": "personal"},
+      "task_b": {"title": "Schedule dentist appointment", "domain": "personal"},
+      "expected_verdict": "same",
+      "notes": "Identical intent, different phrasing"
+    },
+    {
+      "id": "d-007",
+      "task_a": {"title": "Book flight to Denver", "domain": "personal"},
+      "task_b": {"title": "Reserve hotel in Denver", "domain": "personal"},
+      "expected_verdict": "related",
+      "notes": "Same trip, different tasks — should link, not merge"
+    },
+    {
+      "id": "d-008",
+      "task_a": {"title": "Update the README", "domain": "work"},
+      "task_b": {"title": "Write documentation for the API", "domain": "work"},
+      "expected_verdict": "different",
+      "notes": "Both are documentation but different scope and target"
+    },
+    {
+      "id": "d-009",
+      "task_a": {"title": "Pay electric bill", "domain": "personal"},
+      "task_b": {"title": "Pay water bill", "domain": "personal"},
+      "expected_verdict": "different",
+      "notes": "Same action type, different bills — distinct tasks"
+    },
+    {
+      "id": "d-010",
+      "task_a": {"title": "Review Jake's PR", "domain": "work"},
+      "task_b": {"title": "Code review for Jake's pull request", "domain": "work"},
+      "expected_verdict": "same",
+      "notes": "PR = pull request, identical task"
+    }
+  ]
+}
