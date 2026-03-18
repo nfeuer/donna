@@ -144,3 +144,15 @@ models:
 ```
 
 Never show local inference as "free" — enables genuine cost-per-quality comparison.
+
+## Cost Tracking Scope
+
+Cost tracking and budget limits apply exclusively to **LLM API costs** (Claude API and local model cost approximations). External service costs (Twilio, Firebase, Supabase, Gmail API) have their own billing dashboards and are not tracked by Donna's cost system.
+
+All LLM API costs are tracked via the `invocation_log` table. Budget limits are configurable in `config/donna_models.yaml` under the `cost` section:
+
+- **Monthly budget:** Hard cap on total LLM spend.
+- **Daily pause threshold:** Pauses autonomous agent work when reached.
+- **Per-task approval threshold:** Requires user approval before executing expensive tasks.
+- **Monthly warning percentage:** Alerts at configurable percentage of monthly budget.
+- **Per-model-alias limits (optional):** Cap spend on specific model aliases (e.g., limit `reasoner` separately from `parser`) to control expensive task type spend independently.

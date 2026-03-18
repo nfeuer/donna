@@ -46,8 +46,9 @@ Agent opens a Discord thread on the original task message. User replies in-threa
 | responses_received | JSON | Responses received |
 | status | Enum | active \| expired \| completed |
 | created_at | DateTime | Start |
-| expires_at | DateTime | Default: 24 hours from creation |
-| last_activity | DateTime | Last message sent/received |
+| expires_at | DateTime | Sliding: 24h from last activity. Hard cap: 72h from creation. Day-boundary reset applies. |
+| hard_expires_at | DateTime | Absolute: 72 hours from creation. Never extended. |
+| last_activity | DateTime | Last message sent/received. Used for sliding TTL and day-boundary reset. |
 
 ### SMS Routing Logic
 
@@ -56,7 +57,16 @@ Agent opens a Discord thread on the original task message. User replies in-threa
 3. Multiple active contexts (rare) → disambiguate: "Which task: (1) [A] or (2) [B]?"
 4. No active context → treat as new task input (normal parsing pipeline)
 
-Contexts expire after 24 hours of inactivity. On expiration, agent re-prompts with fresh TTL.
+### Context Expiry Strategy
+
+Since tasks are managed in day blocks, context expiry uses a hybrid TTL strategy with day-boundary awareness:
+
+- **Sliding TTL:** 24 hours from last activity (keeps active conversations alive).
+- **Hard cap:** 72 hours absolute from creation (nothing lives forever, prevents zombie contexts).
+- **Day-boundary reset:** If a context crosses midnight with no activity, reduce remaining TTL to 8 hours. This covers the morning window for the user to respond, then expires naturally if ignored.
+- **On expiry:** If the associated task is still open, the agent re-prompts with a fresh context and new TTL.
+
+This gives the "tasks in day blocks" mental model — contexts naturally die at morning boundaries if abandoned — while still keeping active conversations flowing.
 
 For email: use `In-Reply-To` headers for threading.
 

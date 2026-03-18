@@ -1,0 +1,74 @@
+{
+  "tier": 1,
+  "name": "baseline",
+  "description": "Morning digest generation with quality rubrics for subjective evaluation. Tests persona consistency, content completeness, and formatting.",
+  "pass_gate": 0.90,
+  "cases": [
+    {
+      "id": "dg-001",
+      "input": {
+        "date": "2026-03-18",
+        "calendar_events": [
+          {"title": "Team standup", "start": "09:00", "end": "09:30", "calendar": "work"},
+          {"title": "Lunch", "start": "12:00", "end": "13:00", "calendar": "personal"},
+          {"title": "1:1 with Dave", "start": "14:00", "end": "14:30", "calendar": "work"}
+        ],
+        "tasks_due_today": [
+          {"title": "Submit quarterly report", "priority": 4, "domain": "work", "deadline": "2026-03-18T17:00:00"},
+          {"title": "Pick up diapers", "priority": 3, "domain": "family"}
+        ],
+        "carryovers": [
+          {"title": "Update resume", "rescheduled_count": 2, "original_date": "2026-03-16"}
+        ],
+        "agent_activity": [],
+        "system_health": {"status": "healthy"},
+        "daily_cost_usd": 0.00,
+        "monthly_cost_usd": 12.50
+      },
+      "rubric": {
+        "persona_voice": "Direct, confident, efficient. Donna Paulsen style. Not sycophantic. Not robotic.",
+        "content_required": ["calendar events for the day", "tasks due today with priorities", "carryover tasks with reschedule context", "system health status"],
+        "content_optional": ["cost summary", "weather", "motivational comment"],
+        "formatting": "Concise bullet points or structured sections. No walls of text.",
+        "max_length_chars": 2000
+      },
+      "notes": "Standard weekday morning. Two meetings, two tasks, one carryover. Healthy system. Should be a clean, concise digest."
+    },
+    {
+      "id": "dg-002",
+      "input": {
+        "date": "2026-03-18",
+        "calendar_events": [
+          {"title": "Team standup", "start": "09:00", "end": "09:30", "calendar": "work"},
+          {"title": "Sprint planning", "start": "10:00", "end": "11:30", "calendar": "work"},
+          {"title": "Lunch with Sarah", "start": "12:00", "end": "13:00", "calendar": "personal"},
+          {"title": "Client call", "start": "14:00", "end": "15:00", "calendar": "work"},
+          {"title": "1:1 with Dave", "start": "15:30", "end": "16:00", "calendar": "work"},
+          {"title": "Baby time", "start": "17:00", "end": "19:00", "calendar": "family"}
+        ],
+        "tasks_due_today": [
+          {"title": "Finish API refactor", "priority": 4, "domain": "work", "deadline": "2026-03-18T17:00:00"},
+          {"title": "Review Jake's PR", "priority": 3, "domain": "work"},
+          {"title": "Submit expense report", "priority": 2, "domain": "work"}
+        ],
+        "carryovers": [
+          {"title": "Oil change", "rescheduled_count": 3, "original_date": "2026-03-10"},
+          {"title": "Update resume", "rescheduled_count": 4, "original_date": "2026-03-12"}
+        ],
+        "agent_activity": [
+          {"agent": "Research", "task": "Board meeting prep", "status": "complete", "cost_usd": 0.45}
+        ],
+        "system_health": {"status": "healthy"},
+        "daily_cost_usd": 0.45,
+        "monthly_cost_usd": 18.30
+      },
+      "rubric": {
+        "persona_voice": "Should acknowledge the heavy day. Donna would flag the overloaded schedule and the chronic carryovers with characteristic directness.",
+        "content_required": ["calendar events", "tasks due today", "carryovers with escalating concern", "agent completion summary with cost", "budget status"],
+        "formatting": "Structured sections. Calendar events in chronological order. Carryovers flagged prominently.",
+        "max_length_chars": 2000
+      },
+      "notes": "Heavy day with 6 calendar events, 3 tasks, and 2 chronic carryovers. Digest should flag overcommitment and nag about oil change (3 reschedules)."
+    }
+  ]
+}

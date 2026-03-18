@@ -1,0 +1,56 @@
+{
+  "tier": 2,
+  "name": "nuance",
+  "description": "Priority classification requiring inference from context, implicit urgency signals, and domain-specific reasoning. 80%+ to pass.",
+  "pass_gate": 0.80,
+  "cases": [
+    {
+      "id": "p2-001",
+      "input": {"title": "Get car inspected", "description": "Inspection sticker expires next month", "domain": "personal", "deadline": "2026-04-30T23:59:00", "deadline_type": "soft", "reschedule_count": 0},
+      "expected": {"priority": 2},
+      "notes": "Soft deadline over a month away, no urgency yet"
+    },
+    {
+      "id": "p2-002",
+      "input": {"title": "Get car inspected", "description": "Inspection sticker expires this week", "domain": "personal", "deadline": "2026-03-21T23:59:00", "deadline_type": "soft", "reschedule_count": 3},
+      "expected": {"priority": 4},
+      "notes": "Same task but deadline proximity + 3 reschedules (+1.5) escalates priority significantly"
+    },
+    {
+      "id": "p2-003",
+      "input": {"title": "Fix CI pipeline", "description": "CI is broken, blocking release next week", "domain": "work", "deadline": "2026-03-25T09:00:00", "deadline_type": "hard", "reschedule_count": 0},
+      "expected": {"priority": 4},
+      "notes": "Blocking other work + hard deadline next week = urgent"
+    },
+    {
+      "id": "p2-004",
+      "input": {"title": "Research birthday party venues", "description": "Lily's birthday is April 15th", "domain": "family", "deadline": "2026-04-15T00:00:00", "deadline_type": "soft", "reschedule_count": 0},
+      "expected": {"priority": 2},
+      "notes": "Family task but soft deadline well in advance, research phase"
+    },
+    {
+      "id": "p2-005",
+      "input": {"title": "Renew passport", "description": "Passport expires next month, have a trip planned", "domain": "personal", "deadline": "2026-04-15T00:00:00", "deadline_type": "hard", "reschedule_count": 1},
+      "expected": {"priority": 4},
+      "notes": "Passport renewal has long processing time, hard deadline + already rescheduled once"
+    },
+    {
+      "id": "p2-006",
+      "input": {"title": "Maybe look into refinancing", "description": "Check mortgage rates when they drop", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected": {"priority": 1},
+      "notes": "Conditional, speculative, no deadline — lowest priority"
+    },
+    {
+      "id": "p2-007",
+      "input": {"title": "Deploy hotfix to production", "description": "Customer-facing bug affecting checkout flow", "domain": "work", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected": {"priority": 5},
+      "notes": "Customer-facing production issue = critical even without explicit deadline"
+    },
+    {
+      "id": "p2-008",
+      "input": {"title": "Schedule pediatrician appointment", "description": "Baby's 6-month checkup is overdue", "domain": "family", "deadline": null, "deadline_type": "none", "reschedule_count": 2},
+      "expected": {"priority": 4},
+      "notes": "Child health + overdue + rescheduled twice = urgent despite no explicit deadline"
+    }
+  ]
+}

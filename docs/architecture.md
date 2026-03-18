@@ -12,7 +12,7 @@ Central orchestrator manages all task routing, scheduling, and agent coordinatio
 |-----------|----------|---------|
 | Orchestrator Service | Linux Server (Docker) | Central brain. Task queue, scheduling engine, agent dispatch, cost monitoring. Runs 24/7. |
 | Claude API | Cloud (Anthropic) | Primary LLM for all reasoning. Sole provider until local LLM hardware available. |
-| Local LLM (Ollama) | Linux Server (Docker) — RTX 3090 | **DEFERRED.** Task classification, priority inference, routing, simple NLU. Dedicated GPU. |
+| Local LLM (Ollama) | Linux Server (Docker) — RTX 3090 | Task classification, priority inference, routing, simple NLU. Dedicated GPU (24GB VRAM). |
 | Integration Layer | Linux Server (Docker) | Internal Python API wrapping all external services. Centralized auth, rate limiting, audit logging. |
 | FastMCP Server | Linux Server (Docker) | Dynamic tools for agents via MCP Streamable HTTP. Python (FastMCP 3.x). CodeMode enabled. |
 | Task Database | SQLite on NVMe | Primary task storage. Sub-ms reads. WAL mode. |
@@ -21,7 +21,7 @@ Central orchestrator manages all task routing, scheduling, and agent coordinatio
 | Observability Dashboard | Grafana + Loki (Docker) | Real-time log search, filtering, metrics, alerting. Phase 1 deliverable. |
 | Notification Service | Linux Server (Docker) | Outbound: email, SMS, phone (TTS), push, Discord. |
 | Agent Worker Pool | Linux Server (Docker) | Sandboxed agent execution. Each agent type isolated with defined tool access. |
-| Web/Mobile App | Firebase Hosting + Flutter | Dashboard UI and chat interface. Phase 4. |
+| Web/Mobile App | Firebase Hosting + Flutter | Dashboard UI and chat interface. Phase 4. See [App Architecture](#app-architecture-phase-4) below. |
 
 ## Data Flow
 
@@ -98,6 +98,40 @@ No VRAM contention. No GPU sharing between workloads.
 - Orchestrator dispatches; workers pull and execute independently
 - Workers access shared state through orchestrator's internal API only
 - Each agent worker is a separate Docker container/process with its own tool access scope
+
+## App Architecture (Phase 4)
+
+The Flutter Web + Android app uses a hybrid approach: Firebase for hosting and authentication, self-hosted FastAPI for all data access. This keeps Firebase's role minimal (CDN + auth) and avoids introducing a second data layer that would compete with the SQLite → Supabase pipeline.
+
+### Responsibilities
+
+| Layer | Technology | Role |
+|-------|-----------|------|
+| Static hosting | Firebase Hosting | Serves compiled Flutter web app. CDN for fast global delivery. Free tier. |
+| User authentication | Firebase Auth | Login, session management, JWT tokens. Handles OAuth flows. Free tier for single-user. |
+| Data API | FastAPI (self-hosted, `donna-app.yml`) | REST API between Flutter app and orchestrator. All task, calendar, agent, and cost data flows through here. |
+| Data storage | SQLite (primary) → Supabase (replica) | Flutter app reads from Supabase for cross-device access. Writes go through FastAPI → orchestrator → SQLite → Supabase sync. |
+| Push notifications | FCM (Firebase Cloud Messaging) | Android push notifications. Free tier. |
+
+### What Firebase Does NOT Do
+
+- **No Firestore.** Task data lives in SQLite → Supabase. Adding Firestore would create a third data store and require a Supabase ↔ Firestore sync strategy — unnecessary complexity.
+- **No Firebase Functions.** All server-side logic runs in the self-hosted orchestrator and FastAPI backend.
+- **No Firebase Realtime Database.** Supabase Postgres handles cross-device data access.
+
+### Auth Flow
+
+1. Flutter app authenticates user via Firebase Auth (email/password or Google OAuth).
+2. Firebase issues a JWT token.
+3. Flutter sends JWT with every request to FastAPI backend.
+4. FastAPI validates the JWT against Firebase's public keys (no Firebase SDK needed server-side — just JWT verification).
+5. FastAPI maps the Firebase UID to Donna's `user_id` for all downstream operations.
+
+### Impact on Phases 1–3
+
+**Zero.** Firebase Hosting and Auth are Phase 4 concerns. The FastAPI backend (`donna-app.yml`) is already in the Docker compose structure. Phases 1–3 build the orchestrator, integrations, and agents — all of which expose their functionality through the orchestrator's internal API. The FastAPI backend wraps that internal API for external consumption. No Firebase SDK or dependency is needed in the orchestrator, integration layer, or agent code.
+
+The only pre-Phase-4 consideration: ensure FastAPI endpoints return clean JSON that Flutter can consume. This happens naturally if the API is well-designed REST.
 
 ## Schema Migration
 

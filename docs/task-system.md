@@ -115,6 +115,17 @@ Priority is not static. Re-evaluated daily:
 - **User override:** Manual priority locks it from auto-adjustment.
 - **Learned preferences:** Preference engine may apply adjustments (see `docs/preferences.md`).
 
+#### Priority Cap at 5
+
+Priority has an absolute ceiling of 5. When an escalation action (deadline proximity, reschedule count, dependency chain) would push a task's computed priority above 5:
+
+1. Priority remains at 5.
+2. Check whether the user has been notified about this task hitting the cap **today**.
+3. If **not notified today** → trigger an immediate notification: "Priority for '[task]' has hit maximum. [reason for escalation]."
+4. If **already notified today** → log the cap-hit event, skip notification (prevent spam).
+
+The notification dedup resets daily at midnight. This ensures the user knows when tasks are critically stacking up without being overwhelmed by repeated alerts for the same task.
+
 ### Task Complexity Assessment
 
 | Complexity | Criteria | Action |

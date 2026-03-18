@@ -18,7 +18,18 @@ Every Claude API call goes through a resilience wrapper.
 
 - **Morning digest:** Template-based using raw calendar + task list from SQLite. No LLM, no persona. "Today's schedule: [list]. Tasks due: [list]. Note: AI digest unavailable."
 - **Reminders:** Static template: "Reminder: [task title] starts at [time]." Personality lost — acceptable.
-- **Task parsing:** Accept raw text as-is, title = raw input, all fields defaulted, flagged for re-parsing on recovery. **Never lose a capture.**
+- **Task parsing:** Accept raw text as-is with the following field defaults. Flagged `needs_reparse: true` for re-processing on recovery. **Never lose a capture.**
+
+| Field | Default Value |
+|-------|--------------|
+| title | Raw input text (truncated to 200 chars) |
+| description | Full raw input text |
+| priority | 3 (middle of scale) |
+| deadline | null (no assumed urgency) |
+| domain | personal (safest default) |
+| deadline_type | none |
+| estimated_duration | null |
+| agent_eligible | false |
 
 ### Circuit Breaker
 
@@ -48,6 +59,16 @@ Separate lightweight process **outside Docker**. Every 5 min checks `docker insp
 ### Layer 3: Daily Self-Diagnostic
 
 Part of morning digest generation. Before generating: DB integrity (`PRAGMA integrity_check`), NVMe space, last calendar sync, last Supabase sync, pending migrations, budget status. Issues prepended to morning digest.
+
+### Crash Handler & Error Logging
+
+Unhandled exceptions must never fail silently. The orchestrator registers crash handlers at startup:
+
+- **`sys.excepthook`:** Catches unhandled synchronous exceptions. Logs full traceback to `structlog` → `donna_logs.db` → Loki.
+- **`asyncio` exception handler:** Catches unhandled async exceptions via `loop.set_exception_handler()`. Same logging pipeline.
+- **On crash:** Log the full traceback at CRITICAL level, trigger Layer 2 alerting (external watchdog detects container restart), and ensure the Docker healthcheck transitions to unhealthy.
+- **Periodic health checks:** The orchestrator's `/health` endpoint runs checks every 30 seconds (Docker healthcheck interval). On each check: SQLite reachable, Discord bot connected, scheduler loop running, last API health-check response < 10 min. Any failure returns HTTP 503 with JSON listing failures.
+- **All errors logged to `donna_logs.db`** with event types from the hierarchical scheme (e.g., `system.crash`, `api.call.failed`, `agent.timeout`). Grafana alert rules trigger on CRITICAL-level log entries.
 
 ## Backup Strategy
 

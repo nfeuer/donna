@@ -1,0 +1,36 @@
+{
+  "dimension": "instruction_following",
+  "subset": "claude_decomposition",
+  "description": "Tests whether the local model can execute subtasks as specified by Claude-generated directives. Measures ability to operate as a subordinate in a multi-model chain.",
+  "cases": [
+    {
+      "id": "cd-001",
+      "instruction": "Claude has decomposed the task 'Set up CI/CD pipeline' into the following subtask for you. Execute ONLY this subtask:\n\nSubtask: Create a GitHub Actions workflow file at .github/workflows/ci.yml that runs pytest on push to any branch. Use Python 3.12. Install dependencies from requirements.txt. Do NOT add deployment steps — that is a separate subtask.",
+      "expected_behavior": "Produces a GitHub Actions YAML for CI only. No deployment. Python 3.12. requirements.txt install. pytest run.",
+      "constraints_to_check": ["correct file path", "pytest only (no deploy)", "Python 3.12 specified", "requirements.txt install step"],
+      "notes": "Model must resist adding deployment steps even if it 'knows' a CI/CD pipeline should include them."
+    },
+    {
+      "id": "cd-002",
+      "instruction": "Claude has decomposed the task 'Write API documentation' into subtasks. Your subtask:\n\nSubtask: Document the GET /api/tasks endpoint. Include: URL, method, query parameters (status: optional filter, limit: optional int default 50), response format (JSON array of task objects), and one example response with 2 tasks. Use markdown format. Do NOT document other endpoints.",
+      "expected_behavior": "Markdown documentation for exactly one endpoint with all specified fields and example.",
+      "constraints_to_check": ["single endpoint only", "all query params documented", "example response included", "markdown format"],
+      "notes": "Tests scoping — model should document only the specified endpoint, not invent others."
+    },
+    {
+      "id": "cd-003",
+      "instruction": "Claude has analyzed user corrections and generated this directive:\n\nWhen parsing task input, apply these rules in order:\n1. Check for child/baby keywords → set domain to 'family'\n2. Check for vehicle/car keywords → set domain to 'personal'\n3. If both child AND vehicle keywords present → 'family' takes precedence\n4. Default domain is 'work' if no keywords match\n\nParse the following input: 'Install the car seat for the baby'",
+      "expected": {
+        "domain": "family"
+      },
+      "constraints_to_check": ["rule 3 applied (both child + vehicle → family)", "correct precedence"],
+      "notes": "Tests multi-rule application with precedence. Both 'car' and 'baby' are present."
+    },
+    {
+      "id": "cd-004",
+      "instruction": "You are processing subtask 3 of 5 for the task 'Prepare board meeting materials'. Claude's instructions:\n\nSubtask 3: Generate exactly 3 talking points for the Q1 revenue miss. Each talking point must:\n- Be 1-2 sentences\n- Start with a verb\n- Include a specific metric or number (use placeholder [X%] if unknown)\n- Frame the miss constructively (what we learned, not excuses)\n\nDo NOT generate the full presentation. Only the 3 talking points.",
+      "expected_format": "Exactly 3 talking points, each 1-2 sentences, verb-leading, with metrics, constructive framing",
+      "constraints_to_check": ["exactly 3 points", "verb-leading", "metrics included", "constructive framing", "no full presentation"]
+    }
+  ]
+}

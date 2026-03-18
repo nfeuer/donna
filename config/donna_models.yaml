@@ -3,7 +3,7 @@
 
 models:
   parser:
-    provider: anthropic            # ollama once 3090 available
+    provider: anthropic            # switch to ollama after local model validated (3090 available)
     model: claude-sonnet-4-20250514
   reasoner:
     provider: anthropic
@@ -13,21 +13,26 @@ models:
     model: claude-sonnet-4-20250514
 
 routing:
-  task_parse:
+  # Keys match task_types.yaml entries exactly
+  parse_task:
     model: parser
     fallback: reasoner
     confidence_threshold: 0.7
-  priority_classify:
+  classify_priority:
     model: parser
     fallback: reasoner
     confidence_threshold: 0.7
-  prep_research:
-    model: reasoner
-  code_generation:
-    model: reasoner
-  morning_digest:
+  generate_digest:
     model: parser
     shadow: reasoner              # production monitoring: secondary model runs, output logged only
+  prep_research:
+    model: reasoner
+  dedup_check:
+    model: parser
+    fallback: reasoner
+    confidence_threshold: 0.7
+  task_decompose:
+    model: reasoner
 
 # Cost tracking
 cost:

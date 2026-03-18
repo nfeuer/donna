@@ -10,26 +10,36 @@
       "expected": {
         "title": "Get car inspected",
         "domain": "personal",
-        "deadline_type": "soft"
+        "priority": 2,
+        "deadline_type": "soft",
+        "estimated_duration": 60,
+        "agent_eligible": false
       },
-      "notes": "Should infer a soft deadline around the holiday season"
+      "notes": "Should infer a soft deadline around the holiday season. Vehicle context = personal domain."
     },
     {
       "id": "t2-002",
       "input": "This is urgent — the server is throwing 500 errors",
       "expected": {
+        "title": "Fix server 500 errors",
         "domain": "work",
-        "priority": 5
+        "priority": 5,
+        "deadline": null,
+        "deadline_type": "none",
+        "agent_eligible": false
       },
-      "notes": "Urgency keyword + server context = work, critical"
+      "notes": "Urgency keyword + server/production context = work, critical. No explicit deadline but immediate action implied."
     },
     {
       "id": "t2-003",
       "input": "Whenever you get a chance, clean out the garage",
       "expected": {
+        "title": "Clean out the garage",
         "domain": "personal",
         "priority": 1,
-        "deadline_type": "none"
+        "deadline": null,
+        "deadline_type": "none",
+        "agent_eligible": false
       },
       "notes": "'Whenever you get a chance' = low priority, no deadline"
     },
@@ -39,116 +49,158 @@
       "expected": {
         "title": "Fix kitchen sink leak",
         "domain": "personal",
-        "priority": 3
+        "priority": 3,
+        "deadline": null,
+        "deadline_type": "none",
+        "estimated_duration": 60,
+        "agent_eligible": false
       },
-      "notes": "Home maintenance, moderate urgency (water damage risk)"
+      "notes": "Home maintenance, moderate urgency (water damage risk). No explicit deadline but should be soon."
     },
     {
       "id": "t2-005",
       "input": "Prep for the standup tomorrow morning",
       "expected": {
+        "title": "Prep for standup",
         "domain": "work",
+        "priority": 3,
         "deadline_type": "hard",
-        "prep_work_flag": true
+        "prep_work_flag": true,
+        "estimated_duration": 15,
+        "agent_eligible": false
       },
-      "notes": "Should infer deadline = tomorrow morning, prep flag appropriate"
+      "notes": "Should infer deadline = tomorrow morning. Prep flag appropriate — user explicitly said 'prep'."
     },
     {
       "id": "t2-006",
       "input": "Start thinking about birthday party ideas for Lily, her birthday is April 15th",
       "expected": {
+        "title": "Plan birthday party for Lily",
         "domain": "family",
         "priority": 2,
-        "deadline_type": "soft"
+        "deadline_type": "soft",
+        "agent_eligible": true
       },
-      "notes": "Family domain (child), soft deadline well in advance"
+      "notes": "Family domain (child's birthday). Soft deadline well in advance. Research/planning = agent-eligible."
     },
     {
       "id": "t2-007",
       "input": "I really should update my resume at some point",
       "expected": {
+        "title": "Update resume",
         "domain": "personal",
         "priority": 1,
-        "deadline_type": "none"
+        "deadline": null,
+        "deadline_type": "none",
+        "agent_eligible": false
       },
-      "notes": "'At some point' = lowest priority, no deadline"
+      "notes": "'At some point' = lowest priority, no deadline. Hedging language signals low commitment."
     },
     {
       "id": "t2-008",
       "input": "Review the PR that Jake submitted yesterday",
       "expected": {
+        "title": "Review Jake's PR",
         "domain": "work",
         "priority": 3,
-        "estimated_duration": 30
+        "deadline": null,
+        "deadline_type": "none",
+        "estimated_duration": 30,
+        "agent_eligible": false
       },
-      "notes": "Work context, time-sensitive (don't block teammate)"
+      "notes": "Work context, implicit time-sensitivity (don't block teammate). Not agent-eligible — requires human judgment."
     },
     {
       "id": "t2-009",
       "input": "Renew my passport, it expires next month",
       "expected": {
+        "title": "Renew passport",
         "domain": "personal",
         "priority": 4,
-        "deadline_type": "hard"
+        "deadline_type": "hard",
+        "agent_eligible": false
       },
-      "notes": "Expiring next month = urgent, hard deadline"
+      "notes": "Passport renewal has long processing time, so 'next month' = urgent despite seeming like a month away."
     },
     {
       "id": "t2-010",
       "input": "Set up the baby monitor in the nursery",
       "expected": {
+        "title": "Set up baby monitor",
         "domain": "family",
-        "priority": 3
+        "priority": 3,
+        "deadline": null,
+        "deadline_type": "none",
+        "estimated_duration": 30,
+        "agent_eligible": false
       },
-      "notes": "Baby/nursery context = family domain"
+      "notes": "Baby/nursery context = family domain. Physical task, not agent-eligible."
     },
     {
       "id": "t2-011",
       "input": "Research restaurants near the venue for the team dinner",
       "expected": {
+        "title": "Research restaurants for team dinner",
         "domain": "work",
         "priority": 2,
-        "agent_eligible": true
+        "deadline": null,
+        "deadline_type": "none",
+        "agent_eligible": true,
+        "prep_work_flag": true
       },
-      "notes": "Research task, team context = work, agent-eligible"
+      "notes": "Research task = agent-eligible. Team context = work. Should flag for prep work."
     },
     {
       "id": "t2-012",
       "input": "Water the plants every Monday and Thursday",
       "expected": {
+        "title": "Water the plants",
         "domain": "personal",
-        "priority": 2
+        "priority": 2,
+        "deadline": null,
+        "deadline_type": "none",
+        "agent_eligible": false
       },
-      "notes": "Should extract recurrence pattern"
+      "notes": "Should extract recurrence pattern (Monday and Thursday). Physical task."
     },
     {
       "id": "t2-013",
       "input": "I need to figure out what's wrong with the CI pipeline before the release next week",
       "expected": {
+        "title": "Fix CI pipeline",
         "domain": "work",
         "priority": 4,
-        "deadline_type": "hard"
+        "deadline_type": "hard",
+        "agent_eligible": true
       },
-      "notes": "Blocking release = urgent, hard deadline next week"
+      "notes": "Blocking release = urgent, hard deadline next week. Technical investigation = agent-eligible."
     },
     {
       "id": "t2-014",
       "input": "Maybe look into refinancing the mortgage when rates drop",
       "expected": {
+        "title": "Research mortgage refinancing",
         "domain": "personal",
         "priority": 1,
-        "deadline_type": "none"
+        "deadline": null,
+        "deadline_type": "none",
+        "agent_eligible": false
       },
-      "notes": "'Maybe' + conditional = very low priority"
+      "notes": "'Maybe' + conditional ('when rates drop') = very low priority, no actionable deadline."
     },
     {
       "id": "t2-015",
       "input": "Get back to Sarah about the project timeline",
       "expected": {
+        "title": "Respond to Sarah about project timeline",
         "domain": "work",
-        "priority": 3
+        "priority": 3,
+        "deadline": null,
+        "deadline_type": "none",
+        "estimated_duration": 15,
+        "agent_eligible": false
       },
-      "notes": "Responding to someone = moderate urgency, work context"
+      "notes": "Responding to someone = moderate urgency from social obligation. Work context."
     }
   ]
 }

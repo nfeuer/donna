@@ -1,0 +1,56 @@
+{
+  "tier": 4,
+  "name": "adversarial",
+  "description": "Edge cases: ambiguous inputs, contradictions, non-tasks that look like tasks, buried tasks in long messages. No pass gate — diagnostic only.",
+  "pass_gate": null,
+  "cases": [
+    {
+      "id": "t4-001",
+      "input": "I was talking to Sarah at lunch and she mentioned that the new hire starts Monday and we should probably get the onboarding docs updated before then, oh and also I need to pick up diapers on the way home",
+      "expected": {
+        "tasks": [
+          {"title": "Update onboarding docs", "domain": "work", "deadline_type": "hard"},
+          {"title": "Pick up diapers", "domain": "family"}
+        ]
+      },
+      "notes": "Two tasks buried in conversational context. Must extract both without treating the entire message as one task."
+    },
+    {
+      "id": "t4-002",
+      "input": "Cancel the dentist appointment",
+      "expected": {
+        "is_task": false,
+        "action": "cancel_existing_task"
+      },
+      "notes": "Not a new task — this is a command to cancel an existing task. Parser should recognize the intent difference."
+    },
+    {
+      "id": "t4-003",
+      "input": "I finished the quarterly report",
+      "expected": {
+        "is_task": false,
+        "action": "mark_complete"
+      },
+      "notes": "Not a new task — this is a completion report for an existing task."
+    },
+    {
+      "id": "t4-004",
+      "input": "The meeting went well! Sarah loved the proposal. We celebrated with coffee afterward.",
+      "expected": {
+        "is_task": false,
+        "action": "none"
+      },
+      "notes": "Pure status update with no actionable task. Should not create a task from this."
+    },
+    {
+      "id": "t4-005",
+      "input": "Fix the urgent bug by Friday but don't worry about it, it's not really that important, whenever you get to it is fine",
+      "expected": {
+        "title": "Fix bug",
+        "priority": 2,
+        "deadline_type": "soft"
+      },
+      "notes": "Contradictory signals: 'urgent' + 'by Friday' vs 'not important' + 'whenever'. Later qualifications should override initial framing. Soft deadline, moderate-low priority."
+    }
+  ]
+}
