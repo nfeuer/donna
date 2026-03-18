@@ -43,7 +43,7 @@ Enforced at the **system level**, not reliant on agent prompting:
 
 ## Local LLM Tool Use Progression (Phase 3+)
 
-After RTX 3090 acquired and local model validated on basic parsing.
+RTX 3090 is available. Local model validation on basic parsing is the prerequisite for each stage.
 
 ### Stage 1: Read-Only Tools, Single Call (Month 1)
 

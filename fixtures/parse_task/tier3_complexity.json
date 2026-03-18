@@ -1,0 +1,111 @@
+{
+  "tier": 3,
+  "name": "complexity",
+  "description": "Multi-part tasks, dependency implications, tasks benefiting from decomposition. 60%+ to pass.",
+  "pass_gate": 0.60,
+  "cases": [
+    {
+      "id": "t3-001",
+      "input": "Refactor the auth module before the API launch next month",
+      "expected": {
+        "title": "Refactor auth module",
+        "domain": "work",
+        "priority": 4,
+        "deadline_type": "hard",
+        "agent_eligible": true,
+        "estimated_duration": 240
+      },
+      "notes": "Multi-step work task with implicit deadline dependency on API launch. Should flag as complex (2+ hours)."
+    },
+    {
+      "id": "t3-002",
+      "input": "Plan the family vacation — we need flights, hotel, and activities for the week of April 20th. Budget is around $3000.",
+      "expected": {
+        "title": "Plan family vacation",
+        "domain": "family",
+        "priority": 3,
+        "deadline_type": "soft",
+        "agent_eligible": true,
+        "prep_work_flag": true
+      },
+      "notes": "Multi-part task requiring decomposition into subtasks (flights, hotel, activities). Should be routed to PM agent."
+    },
+    {
+      "id": "t3-003",
+      "input": "Set up the new development environment — install Docker, clone the repos, configure the database, and make sure the test suite passes before onboarding the new hire on Monday",
+      "expected": {
+        "title": "Set up development environment",
+        "domain": "work",
+        "priority": 4,
+        "deadline_type": "hard",
+        "agent_eligible": true,
+        "estimated_duration": 180
+      },
+      "notes": "Sequential dependencies (Docker before repos, repos before DB, DB before tests). Hard deadline (Monday)."
+    },
+    {
+      "id": "t3-004",
+      "input": "I need to move the nursery to the bigger bedroom. That means painting the room, moving the furniture, setting up the crib, and baby-proofing everything. Lily's due date is in 6 weeks.",
+      "expected": {
+        "title": "Move nursery to bigger bedroom",
+        "domain": "family",
+        "priority": 4,
+        "deadline_type": "soft",
+        "estimated_duration": 480
+      },
+      "notes": "Multi-day project with sequential subtasks and a soft deadline. Family domain with child context."
+    },
+    {
+      "id": "t3-005",
+      "input": "Migrate the payment service from Stripe v2 to v3 API. Need to update the webhook handlers, test with sandbox, update the error handling, and coordinate with the frontend team for the checkout flow changes. Can't break anything in production.",
+      "expected": {
+        "title": "Migrate payment service to Stripe v3",
+        "domain": "work",
+        "priority": 5,
+        "deadline_type": "none",
+        "agent_eligible": true,
+        "estimated_duration": 480
+      },
+      "notes": "Complex technical migration with production risk. Multiple coordinated changes. High priority due to production sensitivity even without explicit deadline."
+    },
+    {
+      "id": "t3-006",
+      "input": "Research and compare three local daycares for next fall. Check reviews, visit each one, compare costs and curriculum, then apply to the top two before the April 1st deadline.",
+      "expected": {
+        "title": "Research and compare daycares",
+        "domain": "family",
+        "priority": 3,
+        "deadline_type": "hard",
+        "agent_eligible": true,
+        "prep_work_flag": true
+      },
+      "notes": "Multi-step research with a final hard deadline. Research phase is agent-eligible, visits are not."
+    },
+    {
+      "id": "t3-007",
+      "input": "Before the board meeting on Thursday, I need the financial summary reviewed, the slide deck updated with Q1 actuals, and talking points for the revenue miss. Also need to review Jake's analysis first since it feeds into the deck.",
+      "expected": {
+        "title": "Prepare for board meeting",
+        "domain": "work",
+        "priority": 5,
+        "deadline_type": "hard",
+        "prep_work_flag": true,
+        "estimated_duration": 240
+      },
+      "notes": "High-stakes deadline with dependency chain (Jake's analysis → deck → talking points). Multiple subtasks."
+    },
+    {
+      "id": "t3-008",
+      "input": "Set up monitoring for the Donna project. Need Grafana, Loki, and Promtail in Docker. Configure dashboards for system health, cost tracking, and error exploration. Wire up alerting to Discord.",
+      "expected": {
+        "title": "Set up Donna monitoring stack",
+        "domain": "work",
+        "priority": 3,
+        "deadline_type": "none",
+        "agent_eligible": true,
+        "estimated_duration": 360
+      },
+      "notes": "Infrastructure task with multiple components. Agent-eligible for research and scaffolding."
+    }
+  ]
+}

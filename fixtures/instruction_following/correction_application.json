@@ -1,0 +1,55 @@
+{
+  "dimension": "instruction_following",
+  "subset": "correction_application",
+  "description": "Tests whether the model correctly applies learned correction rules to new inputs, and ignores rules when they are not relevant.",
+  "cases": [
+    {
+      "id": "ca-001",
+      "rule": {"rule": "Tasks mentioning vehicle/car/automotive → domain: personal", "condition": {"keywords": ["car", "oil change", "tire", "vehicle", "automotive"]}, "action": {"field": "domain", "value": "personal"}},
+      "input": "Get the tire rotated on the truck",
+      "expected": {"domain": "personal"},
+      "rule_should_apply": true,
+      "notes": "Rule should fire — 'tire' is in the keyword list, 'truck' is automotive context."
+    },
+    {
+      "id": "ca-002",
+      "rule": {"rule": "Tasks mentioning vehicle/car/automotive → domain: personal", "condition": {"keywords": ["car", "oil change", "tire", "vehicle", "automotive"]}, "action": {"field": "domain", "value": "personal"}},
+      "input": "Review the car insurance API integration for the client portal",
+      "expected": {"domain": "work"},
+      "rule_should_apply": false,
+      "notes": "Rule should NOT fire. 'Car' appears but in a work context (API integration for client). The rule is about personal vehicle tasks, not any mention of 'car'."
+    },
+    {
+      "id": "ca-003",
+      "rule": {"rule": "Tasks from [boss name] are always priority 4 minimum", "condition": {"source_contains": "from Dave", "field": "priority", "minimum": 4}, "action": {"field": "priority", "value": 4, "operator": "minimum"}},
+      "input": "Dave asked if I could update the team wiki page whenever I get a chance",
+      "expected": {"priority": 4},
+      "rule_should_apply": true,
+      "notes": "Rule fires — from Dave, so priority floor is 4 even though 'whenever I get a chance' suggests low priority."
+    },
+    {
+      "id": "ca-004",
+      "rule": {"rule": "Tasks from [boss name] are always priority 4 minimum", "condition": {"source_contains": "from Dave", "field": "priority", "minimum": 4}, "action": {"field": "priority", "value": 4, "operator": "minimum"}},
+      "input": "Pick up Dave's birthday cake from the bakery",
+      "expected": {"priority": 2},
+      "rule_should_apply": false,
+      "notes": "Rule should NOT fire. 'Dave' appears but this is not a task FROM Dave — it's a task about Dave's birthday. Personal domain, normal priority."
+    },
+    {
+      "id": "ca-005",
+      "rule": {"rule": "Never schedule personal tasks before 10am", "condition": {"domain": "personal"}, "action": {"field": "scheduling_constraint", "value": "not_before_10am"}},
+      "input": "Schedule time to clean out the closet",
+      "expected": {"scheduling_constraint": "not_before_10am", "domain": "personal"},
+      "rule_should_apply": true,
+      "notes": "Rule fires — personal domain task, scheduling constraint applied."
+    },
+    {
+      "id": "ca-006",
+      "rule": {"rule": "Never schedule personal tasks before 10am", "condition": {"domain": "personal"}, "action": {"field": "scheduling_constraint", "value": "not_before_10am"}},
+      "input": "Deploy the hotfix to staging at 8am",
+      "expected": {"domain": "work"},
+      "rule_should_apply": false,
+      "notes": "Rule should NOT fire — work domain task. The 8am time is fine for work tasks."
+    }
+  ]
+}

@@ -1,52 +1,68 @@
 {
   "tier": 1,
   "name": "baseline",
-  "description": "Simple priority classification cases. 90%+ to pass.",
+  "description": "Simple priority classification cases. Unambiguous inputs where priority should be clear from context, deadline, and domain. 90%+ to pass.",
   "pass_gate": 0.90,
   "cases": [
     {
       "id": "p1-001",
-      "input": {"title": "Buy milk", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
-      "expected_priority": 1
+      "input": {"title": "Buy milk", "description": "Pick up milk from the store", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected": {"priority": 1},
+      "notes": "No deadline, no urgency, routine errand"
     },
     {
       "id": "p1-002",
-      "input": {"title": "Pay electric bill", "domain": "personal", "deadline": "2026-03-21T23:59:00", "deadline_type": "hard", "reschedule_count": 0},
-      "expected_priority": 3,
-      "notes": "Hard deadline this week"
+      "input": {"title": "Pay electric bill", "description": "Electric bill due this week", "domain": "personal", "deadline": "2026-03-21T23:59:00", "deadline_type": "hard", "reschedule_count": 0},
+      "expected": {"priority": 3},
+      "notes": "Hard deadline this week, financial obligation"
     },
     {
       "id": "p1-003",
-      "input": {"title": "Server is down", "domain": "work", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
-      "expected_priority": 5,
+      "input": {"title": "Server is down", "description": "Production server returning 500 errors", "domain": "work", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected": {"priority": 5},
       "notes": "Production outage = critical regardless of deadline"
     },
     {
       "id": "p1-004",
-      "input": {"title": "Clean garage", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
-      "expected_priority": 1
+      "input": {"title": "Clean garage", "description": "Organize and clean the garage", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected": {"priority": 1},
+      "notes": "No deadline, no urgency, household chore"
     },
     {
       "id": "p1-005",
-      "input": {"title": "Pick up baby from daycare", "domain": "family", "deadline": "2026-03-17T17:30:00", "deadline_type": "hard", "reschedule_count": 0},
-      "expected_priority": 5,
-      "notes": "Child-related + hard deadline = critical"
+      "input": {"title": "Pick up baby from daycare", "description": "Daycare closes at 5:30pm", "domain": "family", "deadline": "2026-03-17T17:30:00", "deadline_type": "hard", "reschedule_count": 0},
+      "expected": {"priority": 5},
+      "notes": "Child-related + hard deadline = critical. Family domain tasks involving children are never deprioritized."
     },
     {
       "id": "p1-006",
-      "input": {"title": "Update resume", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
-      "expected_priority": 1
+      "input": {"title": "Update resume", "description": "Refresh resume with recent experience", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected": {"priority": 1},
+      "notes": "No deadline, no external pressure"
     },
     {
       "id": "p1-007",
-      "input": {"title": "Submit quarterly report", "domain": "work", "deadline": "2026-03-18T09:00:00", "deadline_type": "hard", "reschedule_count": 2},
-      "expected_priority": 4,
-      "notes": "Hard deadline tomorrow + rescheduled twice = urgent"
+      "input": {"title": "Submit quarterly report", "description": "Q1 quarterly report for management review", "domain": "work", "deadline": "2026-03-18T09:00:00", "deadline_type": "hard", "reschedule_count": 2},
+      "expected": {"priority": 4},
+      "notes": "Hard deadline tomorrow + rescheduled twice (+1.0 from reschedules) = urgent"
     },
     {
       "id": "p1-008",
-      "input": {"title": "Water the plants", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
-      "expected_priority": 2
+      "input": {"title": "Water the plants", "description": "Water indoor plants", "domain": "personal", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected": {"priority": 2},
+      "notes": "No deadline but has natural urgency (plants need water regularly)"
+    },
+    {
+      "id": "p1-009",
+      "input": {"title": "Respond to client email", "description": "Client asked about project timeline", "domain": "work", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected": {"priority": 3},
+      "notes": "Work communication, implicit urgency from social obligation"
+    },
+    {
+      "id": "p1-010",
+      "input": {"title": "Feed the baby", "description": "Baby's next feeding time", "domain": "family", "deadline": null, "deadline_type": "none", "reschedule_count": 0},
+      "expected": {"priority": 4},
+      "notes": "Child-related tasks default high priority even without explicit deadline"
     }
   ]
 }

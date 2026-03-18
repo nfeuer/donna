@@ -12,7 +12,7 @@ Central orchestrator manages all task routing, scheduling, and agent coordinatio
 |-----------|----------|---------|
 | Orchestrator Service | Linux Server (Docker) | Central brain. Task queue, scheduling engine, agent dispatch, cost monitoring. Runs 24/7. |
 | Claude API | Cloud (Anthropic) | Primary LLM for all reasoning. Sole provider until local LLM hardware available. |
-| Local LLM (Ollama) | Linux Server (Docker) — RTX 3090 | **DEFERRED.** Task classification, priority inference, routing, simple NLU. Dedicated GPU. |
+| Local LLM (Ollama) | Linux Server (Docker) — RTX 3090 | Task classification, priority inference, routing, simple NLU. Dedicated GPU (24GB VRAM). |
 | Integration Layer | Linux Server (Docker) | Internal Python API wrapping all external services. Centralized auth, rate limiting, audit logging. |
 | FastMCP Server | Linux Server (Docker) | Dynamic tools for agents via MCP Streamable HTTP. Python (FastMCP 3.x). CodeMode enabled. |
 | Task Database | SQLite on NVMe | Primary task storage. Sub-ms reads. WAL mode. |

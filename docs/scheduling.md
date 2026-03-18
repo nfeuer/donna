@@ -54,8 +54,44 @@ Invisible to user in Calendar UI, readable by API. Distinguishes Donna events fr
 | Food | Per calendar blocks | Protected; no tasks scheduled |
 | Emergency Work | 10:00 PM – 12:00 AM (user-activated) | Only high-priority tasks user explicitly opens |
 | Weekends | 6:00 AM – 8:00 PM | Personal and family tasks |
-| **Blackout** | **12:00 AM – 6:00 AM (always)** | **No scheduling, no notifications, no contact** |
-| **Quiet Hours** | **8:00 PM – 6:00 AM (default)** | **No new scheduling. Urgent (priority 5) only.** |
+| **Blackout** | **12:00 AM – 6:00 AM (always)** | **No scheduling, no notifications, no contact. No exceptions.** |
+| **Quiet Hours** | **8:00 PM – 12:00 AM (default)** | **No new scheduling. Urgent (priority 5) only.** |
+
+### Precedence: Blackout Overrides Quiet Hours
+
+Blackout (12am–6am) and Quiet Hours (8pm–12am) overlap conceptually but have strict precedence:
+
+- **Blackout is absolute.** During blackout hours, nothing goes out — not even priority 5. No scheduling, no notifications, no contact of any kind. Enforced at the notification service level as a hard block.
+- **Quiet Hours are soft.** During quiet hours (8pm–12am), only priority 5 urgent notifications break through. New scheduling is suppressed.
+- **During the overlap (12am–6am), blackout wins.** If a priority 5 event triggers at 2am, it queues and fires at 6:00 AM when blackout ends. The notification service holds the message until the blackout window closes.
+
+## Conflict Resolution Strategy
+
+### Calendar Conflicts
+
+| Conflict Type | Resolution | Notification |
+|--------------|------------|-------------|
+| New meeting overlaps scheduled task | Auto-shift task to next slot | None unless priority 4–5 |
+| Two meeting invitations at same time | Flag user immediately | SMS or app notification with options |
+| High-priority vs low-priority in same slot | Auto-replace, reschedule lower | Include in daily digest |
+| Task runs over estimated time | Auto-extend, cascade-shift subsequent | Notify if impacts hard-deadline task |
+| User cannot complete task | Accept reschedule or auto-find next slot | Confirm new time via same channel |
+
+### Data Conflicts (Supabase Sync)
+
+- **SQLite is always the source of truth.** On sync conflict, local wins and remote is overwritten.
+- Every conflict is logged to `donna_logs.db` with event type `sync.conflict` for audit.
+- On Supabase recovery after downtime, a full reconciliation sync runs from SQLite → Supabase.
+
+### State Machine Conflicts (Concurrent Transitions)
+
+- **Phase 1–2 (single-threaded asyncio):** Task state transitions are atomic — read → validate → write in a single async function with a SQLite transaction. No interleaving possible.
+- **Phase 3+ (worker pool):** Optimistic locking on task state. Workers read current state + version → validate transition → write with version check → retry on version mismatch. The orchestrator serializes conflicting writes.
+
+### Agent Conflicts
+
+- **One agent per task at a time.** The orchestrator enforces this constraint. If agent B needs a task currently locked by agent A, agent B's request is queued until agent A completes or times out.
+- Agent outputs are written to the task record only through the orchestrator's internal API, never directly.
 
 ## Scheduling Algorithm
 
