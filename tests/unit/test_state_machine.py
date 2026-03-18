@@ -28,6 +28,7 @@ def config() -> StateMachineConfig:
             TransitionEntry(**{"from": "waiting_input", "to": "cancelled", "trigger": "timeout", "side_effects": ["notify_user"]}),
             TransitionEntry(**{"from": "*", "to": "cancelled", "trigger": "user_explicitly_cancels", "side_effects": ["flag_dependent_tasks"]}),
             TransitionEntry(**{"from": "done", "to": "in_progress", "trigger": "user_reopens", "side_effects": ["clear_completed_at"]}),
+            TransitionEntry(**{"from": "cancelled", "to": "backlog", "trigger": "user_reopens_cancelled", "side_effects": ["clear_cancelled_at"]}),
         ],
         invalid_transitions=[
             InvalidTransitionEntry(**{"from": "backlog", "to": "done", "reason": "Cannot complete without scheduling."}),

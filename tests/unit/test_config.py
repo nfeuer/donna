@@ -33,9 +33,9 @@ class TestLoadModelsConfig:
 
     def test_has_routing_entries(self) -> None:
         config = load_models_config(CONFIG_DIR)
-        assert "task_parse" in config.routing
-        assert "priority_classify" in config.routing
-        assert "morning_digest" in config.routing
+        assert "parse_task" in config.routing
+        assert "classify_priority" in config.routing
+        assert "generate_digest" in config.routing
 
     def test_cost_thresholds(self) -> None:
         config = load_models_config(CONFIG_DIR)
@@ -44,7 +44,7 @@ class TestLoadModelsConfig:
 
     def test_shadow_config(self) -> None:
         config = load_models_config(CONFIG_DIR)
-        digest = config.routing.get("morning_digest")
+        digest = config.routing.get("generate_digest")
         assert digest is not None
         assert digest.shadow == "reasoner"
 
