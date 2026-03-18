@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 
 
@@ -38,6 +39,12 @@ def main() -> None:
         "--dev",
         action="store_true",
         help="Enable development mode (human-readable logs)",
+    )
+    run_parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Port to listen on (default: DONNA_PORT env var or 8100)",
     )
 
     # donna eval
@@ -89,6 +96,7 @@ def main() -> None:
 async def _run_orchestrator(args: argparse.Namespace) -> None:
     """Start the Donna orchestrator."""
     from donna.logging.setup import setup_logging
+    from donna.server import run_server
 
     setup_logging(log_level=args.log_level, json_output=not args.dev)
 
@@ -96,8 +104,8 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     logger = structlog.get_logger()
     logger.info("donna_starting", config_dir=args.config_dir, log_level=args.log_level)
 
-    # TODO: Initialize orchestrator with config, start event loop
-    logger.info("donna_orchestrator_not_yet_implemented")
+    port: int = args.port or int(os.environ.get("DONNA_PORT", "8100"))
+    await run_server(port=port)
 
 
 async def _run_eval(args: argparse.Namespace) -> None:

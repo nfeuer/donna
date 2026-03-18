@@ -99,6 +99,12 @@ transitions:
     side_effects:
       - clear_completed_at
 
+  - from: cancelled
+    to: backlog
+    trigger: user_reopens_cancelled
+    side_effects:
+      - clear_cancelled_at
+
 # Invalid transitions (enforced — these will be rejected)
 invalid_transitions:
   - from: backlog
