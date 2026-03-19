@@ -46,8 +46,8 @@ htmlcov/
 # Backups (managed by system, not version controlled)
 backups/
 
-# Ollama model cache
-models/
+# Ollama model cache (top-level only, not src/donna/models/)
+/models/
 
 # Agent workspace outputs
 workspace/
