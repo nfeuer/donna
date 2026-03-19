@@ -31,6 +31,9 @@ dependencies = [
     # Task deduplication
     "rapidfuzz>=3.5.0",
 
+    # Schema validation
+    "jsonschema>=4.20.0",
+
     # Configuration
     "pyyaml>=6.0.0",
     "pydantic>=2.5.0",
