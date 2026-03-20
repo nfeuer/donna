@@ -26,6 +26,10 @@ from donna.models.router import ModelRouter
 from donna.notifications.service import CHANNEL_DIGEST, NOTIF_DIGEST, NotificationService
 from donna.tasks.database import Database
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from donna.integrations.gmail import GmailClient
+
 logger = structlog.get_logger()
 
 DIGEST_HOUR = 6
@@ -52,6 +56,8 @@ class MorningDigest:
         calendar_id: str,
         user_id: str,
         project_root: Path,
+        gmail: GmailClient | None = None,
+        user_email: str = "",
     ) -> None:
         self._db = db
         self._service = service
@@ -60,6 +66,8 @@ class MorningDigest:
         self._calendar_id = calendar_id
         self._user_id = user_id
         self._project_root = project_root
+        self._gmail = gmail
+        self._user_email = user_email
 
     async def run(self) -> None:
         """Sleep until the next 6:30 AM, fire digest, repeat."""
@@ -115,6 +123,7 @@ class MorningDigest:
                 embed=embed,
             )
             logger.info("morning_digest_sent_llm")
+            email_body = digest_text
         else:
             # Degraded mode: plain text from raw data.
             fallback_text = self._render_degraded(data)
@@ -125,6 +134,17 @@ class MorningDigest:
                 priority=5,
             )
             logger.info("morning_digest_sent_degraded")
+            email_body = fallback_text
+
+        # Also create an email draft if Gmail is configured.
+        if self._gmail is not None and self._user_email:
+            subject = f"Morning Digest — {data['day_of_week']}, {data['current_date']}"
+            await self._service.dispatch_email(
+                to=self._user_email,
+                subject=subject,
+                body=email_body,
+                priority=5,
+            )
 
     async def _assemble_data(self, now: datetime) -> dict[str, Any]:
         """Collect all data needed for the digest template."""

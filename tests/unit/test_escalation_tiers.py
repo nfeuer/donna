@@ -150,14 +150,17 @@ class TestAdvanceTier:
         )
         await db_conn.commit()
 
-        # Advance: tier 3 is deferred, so should mark completed.
+        # Advance from tier 2 → tier 3 (email escalation, now active in Slice 8).
+        # Tier 3 sends an email and stays pending for Tier 4.
         await manager._advance_due()
 
         cursor = await db_conn.execute(
-            "SELECT status FROM escalation_state WHERE task_id = ?", ("task-1",)
+            "SELECT status, current_tier FROM escalation_state WHERE task_id = ?", ("task-1",)
         )
         row = await cursor.fetchone()
-        assert row[0] == "completed"
+        # Tier 3 is now active: escalation stays pending at tier 3.
+        assert row[0] == "pending"
+        assert row[1] == 3
 
 
 class TestAcknowledge:

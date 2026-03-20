@@ -14,6 +14,7 @@ See docs/notifications.md and slices/slice_03_discord.md.
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Callable, Awaitable
 from datetime import datetime
@@ -23,6 +24,7 @@ import discord
 import structlog
 
 from donna.orchestrator.input_parser import DuplicateDetectedError, InputParser
+from donna.preferences.correction_logger import log_correction
 from donna.tasks.database import Database, TaskRow
 from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain
 
@@ -224,6 +226,12 @@ class DonnaBot(discord.Client):
             await self._handle_dedup_reply(message, user_id, log)
             return
 
+        # Detect and handle field-update commands ("change priority to 3", "move to work domain").
+        field_update = _detect_field_update(raw_text)
+        if field_update is not None:
+            await self._handle_field_update(message, user_id, raw_text, field_update, log)
+            return
+
         log.info("discord_message_received", raw_text=raw_text[:200])
 
         try:
@@ -382,3 +390,129 @@ class DonnaBot(discord.Client):
             await message.channel.send(
                 "I didn't catch that. Reply with **merge**, **keep both**, or **update existing**."
             )
+
+    async def _handle_field_update(
+        self,
+        message: discord.Message,
+        user_id: str,
+        raw_text: str,
+        field_update: tuple[str, str],
+        log: Any,
+    ) -> None:
+        """Apply a field-update command and log the correction.
+
+        Finds the user's most recent non-done, non-cancelled task and applies
+        the detected field change (priority or domain). Logs the before/after
+        values to correction_log for preference learning.
+
+        Args:
+            message: The incoming Discord message.
+            user_id: The Discord user ID string.
+            raw_text: Original message text.
+            field_update: (field_name, new_value) pair from _detect_field_update.
+            log: Bound structlog logger.
+        """
+        field, new_value = field_update
+
+        # Find the most recent active task for this user.
+        all_tasks = await self._database.list_tasks(user_id=user_id)
+        active_tasks = [
+            t for t in all_tasks
+            if t.status not in ("done", "cancelled")
+        ]
+        if not active_tasks:
+            await message.channel.send(
+                "No active tasks to update. Create a task first."
+            )
+            return
+
+        # Most recent first (list_tasks returns newest last; take the last).
+        task = active_tasks[-1]
+
+        # Capture original value before update.
+        original_value = str(getattr(task, field, "") or "")
+
+        # Apply the update.
+        try:
+            if field == "priority":
+                await self._database.update_task(task.id, priority=int(new_value))
+            elif field == "domain":
+                domain_enum = TaskDomain(new_value.upper())
+                await self._database.update_task(task.id, domain=domain_enum)
+            else:
+                log.warning("field_update_unsupported_field", field=field)
+                return
+        except (ValueError, Exception):
+            log.exception("field_update_apply_failed", field=field, new_value=new_value)
+            await message.channel.send(
+                f"Couldn't update {field} to '{new_value}'. Check the value and try again."
+            )
+            return
+
+        # Log the correction.
+        try:
+            await log_correction(
+                db=self._database,
+                user_id=user_id,
+                task_id=task.id,
+                task_type="discord_command",
+                field=field,
+                original=original_value,
+                corrected=new_value,
+                input_text=raw_text,
+            )
+        except Exception:
+            log.exception("correction_log_failed", field=field)
+
+        log.info(
+            "field_update_applied",
+            task_id=task.id,
+            field=field,
+            original=original_value,
+            corrected=new_value,
+        )
+        await message.channel.send(
+            f"Updated '{task.title}': {field} changed from {original_value} to {new_value}."
+        )
+
+
+# ------------------------------------------------------------------
+# Field-update command detection
+# ------------------------------------------------------------------
+
+# Regex patterns for detecting field-update commands.
+_PRIORITY_RE = re.compile(
+    r"(?:change|set|update)\s+priority\s+to\s+([1-5])"
+    r"|priority\s+([1-5])",
+    re.IGNORECASE,
+)
+_DOMAIN_RE = re.compile(
+    r"(?:change|set|move\s+to|update)\s+(?:domain\s+to\s+|to\s+)?(?:the\s+)?"
+    r"(personal|work|family)\s*(?:domain)?",
+    re.IGNORECASE,
+)
+
+
+def _detect_field_update(text: str) -> tuple[str, str] | None:
+    """Detect a field-update command in a Discord message.
+
+    Recognised patterns:
+      - "change priority to 3" / "set priority to 4" / "priority 2"
+      - "move to work domain" / "change domain to personal" / "set domain to family"
+
+    Args:
+        text: Raw message content.
+
+    Returns:
+        (field_name, new_value) tuple if detected, else None.
+    """
+    m = _PRIORITY_RE.search(text)
+    if m:
+        new_val = m.group(1) or m.group(2)
+        return ("priority", new_val)
+
+    m = _DOMAIN_RE.search(text)
+    if m:
+        return ("domain", m.group(1).upper())
+
+    return None

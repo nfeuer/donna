@@ -24,6 +24,7 @@ from donna.config import CalendarConfig
 
 if TYPE_CHECKING:
     from donna.integrations.discord_bot import DonnaBot
+    from donna.integrations.gmail import GmailClient
     from donna.integrations.twilio_sms import TwilioSMS
 
 logger = structlog.get_logger()
@@ -54,11 +55,13 @@ class NotificationService:
         calendar_config: CalendarConfig,
         user_id: str,
         sms: TwilioSMS | None = None,
+        gmail: GmailClient | None = None,
     ) -> None:
         self._bot = bot
         self._tw = calendar_config.time_windows
         self._user_id = user_id
         self._sms = sms
+        self._gmail = gmail
         # Queue of async callables to replay after blackout ends.
         self._queue: deque[Callable[[], Awaitable[None]]] = deque()
 
@@ -193,6 +196,54 @@ class NotificationService:
             return False
 
         return await self._sms.send(to=to, body=body)
+
+    async def dispatch_email(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        priority: int = 2,
+    ) -> bool:
+        """Create an outbound email draft, respecting blackout and quiet hours.
+
+        Drafts are created via GmailClient.create_draft() — never sent directly.
+        The user must approve sending separately (or send_enabled must be True).
+
+        Args:
+            to: Recipient email address.
+            subject: Email subject line.
+            body: Plain-text email body.
+            priority: 1–5; priority < 5 is blocked during quiet hours.
+
+        Returns:
+            True if the draft was created, False if blocked or Gmail not configured.
+        """
+        if self._gmail is None:
+            logger.warning("email_dispatch_skipped_no_client", user_id=self._user_id)
+            return False
+
+        now = datetime.now(tz=timezone.utc)
+
+        if self._is_blackout(now):
+            logger.info("email_blocked_blackout", user_id=self._user_id)
+            return False
+
+        if self._is_quiet(now) and priority < 5:
+            logger.info("email_blocked_quiet_hours", user_id=self._user_id)
+            return False
+
+        try:
+            await self._gmail.create_draft(to=to, subject=subject, body=body)
+            logger.info(
+                "email_draft_created",
+                to=to,
+                subject=subject,
+                user_id=self._user_id,
+            )
+            return True
+        except Exception:
+            logger.exception("email_draft_failed", to=to, user_id=self._user_id)
+            return False
 
     async def _send(
         self,

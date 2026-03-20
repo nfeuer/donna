@@ -27,6 +27,7 @@ from donna.config import SmsConfig
 from donna.notifications.service import CHANNEL_TASKS, NOTIF_OVERDUE, NotificationService
 
 if TYPE_CHECKING:
+    from donna.integrations.gmail import GmailClient
     from donna.integrations.twilio_sms import TwilioSMS
     from donna.tasks.database import Database
 
@@ -73,6 +74,8 @@ class EscalationManager:
         sms_config: SmsConfig,
         user_id: str,
         user_phone: str,
+        gmail: GmailClient | None = None,
+        user_email: str = "",
     ) -> None:
         self._db = db
         self._service = service
@@ -80,6 +83,8 @@ class EscalationManager:
         self._config = sms_config
         self._user_id = user_id
         self._user_phone = user_phone
+        self._gmail = gmail
+        self._user_email = user_email
 
     # ------------------------------------------------------------------
     # Public API
@@ -252,8 +257,22 @@ class EscalationManager:
                 to_tier=next_tier,
                 user_id=self._user_id,
             )
+        elif next_tier == 3:
+            # Tier 3: Email with "ACTION REQUIRED" subject
+            nudge = f"Still waiting on '{state.task_title}'. Please respond."
+            await self._send_email_escalation(state.task_title, nudge)
+            wait = timedelta(minutes=self._config.escalation.tier3_wait_minutes)
+            next_at = now + wait
+            await self._update_state(state.id, next_tier, STATUS_PENDING, next_at, now)
+            logger.info(
+                "escalation_advanced",
+                task_id=state.task_id,
+                from_tier=state.current_tier,
+                to_tier=next_tier,
+                user_id=self._user_id,
+            )
         else:
-            # Tier 3+ deferred (email/phone); stop escalating.
+            # Tier 4+ (phone TTS) deferred; stop escalating.
             await self._update_state(state.id, state.current_tier, STATUS_COMPLETED, now, now)
             logger.info(
                 "escalation_max_tier_reached",
@@ -269,6 +288,31 @@ class EscalationManager:
         if not sent:
             logger.warning(
                 "escalation_sms_not_sent",
+                task_title=task_title,
+                user_id=self._user_id,
+            )
+
+    async def _send_email_escalation(self, task_title: str, nudge_text: str) -> None:
+        """Send Tier 3 email escalation draft with ACTION REQUIRED subject."""
+        if not self._user_email:
+            logger.warning(
+                "escalation_email_skipped_no_address",
+                task_title=task_title,
+                user_id=self._user_id,
+            )
+            return
+
+        subject = f"ACTION REQUIRED: {task_title}"
+        body = f"[Donna]\n\n{nudge_text}\n\nPlease acknowledge or reschedule this task."
+        sent = await self._service.dispatch_email(
+            to=self._user_email,
+            subject=subject,
+            body=body,
+            priority=5,  # Escalation emails bypass quiet hours.
+        )
+        if not sent:
+            logger.warning(
+                "escalation_email_not_sent",
                 task_title=task_title,
                 user_id=self._user_id,
             )

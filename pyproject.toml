@@ -9,45 +9,33 @@ dependencies = [
     # Core async
     "aiosqlite>=0.20.0",
     "aiohttp>=3.9.0",
-
     # LLM providers
     "anthropic>=0.40.0",
-
     # Discord bot
     "discord.py>=2.3.0",
-
     # Google APIs
     "google-api-python-client>=2.100.0",
     "google-auth-oauthlib>=1.2.0",
     "google-auth-httplib2>=0.2.0",
-
     # Database & migrations
     "sqlalchemy>=2.0.0",
     "alembic>=1.13.0",
-
     # Structured logging
     "structlog>=24.1.0",
-
     # Task deduplication
     "rapidfuzz>=3.5.0",
-
     # Schema validation
     "jsonschema>=4.20.0",
-
     # Configuration
     "pyyaml>=6.0.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
-
     # MCP server (LLM-facing tools)
     "fastmcp>=3.0.0",
-
     # Supabase sync
     "supabase>=2.0.0",
-
     # Twilio (SMS/Voice)
     "twilio>=9.0.0",
-
     # Utilities
     "python-dotenv>=1.0.0",
     "tenacity>=8.2.0",

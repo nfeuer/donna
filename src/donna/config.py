@@ -216,6 +216,7 @@ class SmsEscalationConfig(BaseModel):
 
     tier1_wait_minutes: int = 30
     tier2_wait_minutes: int = 60
+    tier3_wait_minutes: int = 120
     busy_backoff_hours: int = 2
 
 
@@ -248,3 +249,45 @@ def load_sms_config(config_dir: Path) -> SmsConfig:
     """Load SMS integration configuration."""
     data = load_yaml(config_dir / "sms.yaml")
     return SmsConfig(**data)
+
+
+# === Email / Gmail Config ===
+
+
+class EmailCredentialsConfig(BaseModel):
+    """OAuth2 credential file paths and scopes for Gmail."""
+
+    client_secrets_path: str = "credentials_gmail.json"
+    token_path: str = "token_gmail.json"
+    scopes: list[str] = Field(
+        default_factory=lambda: [
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.compose",
+        ]
+    )
+
+
+class EmailDigestConfig(BaseModel):
+    """Digest schedule settings for email."""
+
+    morning_hour: int = 6
+    morning_minute: int = 30
+    eod_hour: int = 17
+    eod_minute: int = 30
+    eod_weekdays_only: bool = True
+
+
+class EmailConfig(BaseModel):
+    """Top-level email integration configuration."""
+
+    send_enabled: bool = False
+    monitor_alias: str = ""
+    user_email: str = ""
+    credentials: EmailCredentialsConfig = Field(default_factory=EmailCredentialsConfig)
+    digest: EmailDigestConfig = Field(default_factory=EmailDigestConfig)
+
+
+def load_email_config(config_dir: Path) -> EmailConfig:
+    """Load email integration configuration."""
+    data = load_yaml(config_dir / "email.yaml")
+    return EmailConfig(**data)
