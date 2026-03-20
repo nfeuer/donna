@@ -1,0 +1,59 @@
+# Google Calendar integration configuration
+# See docs/scheduling.md and slices/slice_04_calendar.md
+#
+# Calendar IDs can be overridden via environment variables:
+#   GCAL_PERSONAL_ID, GCAL_WORK_ID, GCAL_FAMILY_ID
+
+calendars:
+  personal:
+    calendar_id: "primary"    # "primary" resolves to the authenticated user's main calendar
+    access: "read_write"
+  work:
+    calendar_id: ""           # set via GCAL_WORK_ID env var
+    access: "read_only"
+  family:
+    calendar_id: ""           # set via GCAL_FAMILY_ID env var
+    access: "read_only"
+
+sync:
+  poll_interval_seconds: 300  # 5 minutes; change here, not in code
+  lookahead_days: 7
+  lookbehind_days: 1
+
+scheduling:
+  slot_step_minutes: 15        # search granularity
+  default_duration_minutes: 60 # fallback when task has no estimated_duration
+  search_horizon_days: 14      # give up if no slot found within this window
+
+# Time windows define when each domain's tasks may be scheduled.
+# Blackout (12am–6am) is absolute — no exceptions, not even priority 5.
+# Quiet hours (8pm–12am) block new scheduling except for priority 5.
+# All hours are local time (UTC offset from user preferences, Phase 2+).
+time_windows:
+  blackout:
+    start_hour: 0     # 12:00 AM
+    end_hour: 6       # 6:00 AM — absolute, no scheduling, no notifications
+    days: [0, 1, 2, 3, 4, 5, 6]
+  quiet_hours:
+    start_hour: 20    # 8:00 PM
+    end_hour: 24      # midnight — soft block; priority 5 may still fire
+    days: [0, 1, 2, 3, 4, 5, 6]
+  work:
+    start_hour: 8     # 8:00 AM
+    end_hour: 17      # 5:00 PM
+    days: [0, 1, 2, 3, 4]  # Monday–Friday
+  personal:
+    start_hour: 17    # 5:00 PM
+    end_hour: 20      # 8:00 PM
+    days: [0, 1, 2, 3, 4, 5, 6]  # any day
+  weekend:
+    start_hour: 6     # 6:00 AM
+    end_hour: 20      # 8:00 PM
+    days: [5, 6]      # Saturday–Sunday
+
+credentials:
+  client_secrets_path: "credentials.json"   # OAuth2 client credentials file
+  token_path: "token.json"                   # persisted token (created on first auth)
+  scopes:
+    - "https://www.googleapis.com/auth/calendar"
+    - "https://www.googleapis.com/auth/calendar.readonly"

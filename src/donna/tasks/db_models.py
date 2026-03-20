@@ -199,6 +199,29 @@ class LearnedPreference(Base):
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class CalendarMirror(Base):
+    """Local SQLite mirror of Google Calendar events.
+
+    Used by CalendarSync to detect changes between poll cycles.
+    One row per calendar event. Updated on every sync pass.
+    See docs/scheduling.md.
+    """
+
+    __tablename__ = "calendar_mirror"
+
+    event_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    calendar_id: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    summary: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    end_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    donna_managed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    donna_task_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    etag: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    last_synced: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+
 class ConversationContext(Base):
     """Tracks multi-turn interactions on channels without threads. See docs/notifications.md."""
 

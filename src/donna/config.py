@@ -132,3 +132,71 @@ def load_state_machine_config(config_dir: Path) -> StateMachineConfig:
     """Load task lifecycle state machine."""
     data = load_yaml(config_dir / "task_states.yaml")
     return StateMachineConfig(**data)
+
+
+# === Calendar / Scheduling Config ===
+
+
+class TimeWindowConfig(BaseModel):
+    """A single scheduling time window (start/end hour + allowed weekdays)."""
+
+    start_hour: int
+    end_hour: int
+    days: list[int] = Field(default_factory=list)
+
+
+class TimeWindowsConfig(BaseModel):
+    """All named scheduling windows from calendar.yaml."""
+
+    blackout: TimeWindowConfig
+    quiet_hours: TimeWindowConfig
+    work: TimeWindowConfig
+    personal: TimeWindowConfig
+    weekend: TimeWindowConfig
+
+
+class CalendarEntryConfig(BaseModel):
+    """Config for one Google Calendar (ID + access level)."""
+
+    calendar_id: str
+    access: str  # "read_write" or "read_only"
+
+
+class SyncConfig(BaseModel):
+    """Polling and sync window settings."""
+
+    poll_interval_seconds: int = 300
+    lookahead_days: int = 7
+    lookbehind_days: int = 1
+
+
+class SchedulingConfig(BaseModel):
+    """Slot-search parameters."""
+
+    slot_step_minutes: int = 15
+    default_duration_minutes: int = 60
+    search_horizon_days: int = 14
+
+
+class CredentialsConfig(BaseModel):
+    """OAuth2 credential file paths and scopes."""
+
+    client_secrets_path: str = "credentials.json"
+    token_path: str = "token.json"
+    scopes: list[str]
+
+
+class CalendarConfig(BaseModel):
+    """Top-level calendar integration configuration."""
+
+    calendars: dict[str, CalendarEntryConfig]
+    sync: SyncConfig = Field(default_factory=SyncConfig)
+    scheduling: SchedulingConfig = Field(default_factory=SchedulingConfig)
+    time_windows: TimeWindowsConfig
+    credentials: CredentialsConfig
+
+
+def load_calendar_config(config_dir: Path) -> CalendarConfig:
+    """Load calendar integration and scheduling configuration."""
+    data = load_yaml(config_dir / "calendar.yaml")
+    return CalendarConfig(**data)
