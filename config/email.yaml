@@ -1,0 +1,28 @@
+# Email integration configuration for Donna.
+# Gmail is used for read, draft, and (optionally) send operations.
+# Send is disabled by default — all outbound messages are drafted only.
+
+# Feature flags
+send_enabled: false  # Set to true to allow Donna to send emails directly.
+
+# Email address Donna monitors for forwarded messages to turn into tasks.
+monitor_alias: "donna-tasks@example.com"
+
+# The user's email address for sending digests and escalation drafts.
+user_email: "nick@example.com"
+
+# OAuth2 credentials (same pattern as calendar.yaml).
+credentials:
+  client_secrets_path: "credentials_gmail.json"
+  token_path: "token_gmail.json"
+  scopes:
+    - "https://www.googleapis.com/auth/gmail.readonly"
+    - "https://www.googleapis.com/auth/gmail.compose"
+
+# Digest schedule.
+digest:
+  morning_hour: 6
+  morning_minute: 30
+  eod_hour: 17
+  eod_minute: 30
+  eod_weekdays_only: true  # End-of-day digest only on Mon–Fri.
