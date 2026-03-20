@@ -1,0 +1,23 @@
+# Twilio SMS integration configuration
+# See docs/notifications.md and slices/slice_07_sms_escalation.md
+#
+# Credentials are sourced from environment variables only:
+#   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, TWILIO_WEBHOOK_URL
+# User's phone number:
+#   DONNA_USER_PHONE
+
+rate_limit:
+  max_per_day: 10            # hard cap on outbound SMS per day
+
+escalation:
+  tier1_wait_minutes: 30     # Discord → SMS after this many minutes unanswered
+  tier2_wait_minutes: 60     # SMS → Email (deferred to Slice 8)
+  busy_backoff_hours: 2      # "busy" reply backs off escalation by this many hours
+
+blackout:
+  start_hour: 0              # 12:00 AM — SMS blocked during blackout
+  end_hour: 6                # 6:00 AM
+
+conversation_context:
+  sliding_ttl_hours: 24      # expires_at slides on every activity update
+  hard_cap_hours: 72         # hard_expires_at from creation — never renewed

@@ -27,6 +27,11 @@ from donna.scheduling.scheduler import Scheduler
 from donna.tasks.database import Database
 from donna.tasks.db_models import TaskStatus
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from donna.notifications.escalation import EscalationManager
+
 logger = structlog.get_logger()
 
 OVERDUE_BUFFER_MINUTES = 30
@@ -51,6 +56,7 @@ class OverdueDetector:
         scheduler: Scheduler,
         calendar_id: str,
         user_id: str,
+        escalation_manager: EscalationManager | None = None,
     ) -> None:
         self._db = db
         self._service = service
@@ -58,6 +64,7 @@ class OverdueDetector:
         self._scheduler = scheduler
         self._calendar_id = calendar_id
         self._user_id = user_id
+        self._escalation_manager = escalation_manager
         # task_id set: only nudge once per day (reset at midnight).
         self._nudged: set[str] = set()
         self._nudged_date: str = ""
@@ -112,15 +119,23 @@ class OverdueDetector:
                     " Did you finish it or should I find time tomorrow?"
                 )
 
-                # Send via service (respects blackout/quiet hours).
-                # For overdue nudges we bypass the thread path and let service
-                # do a plain channel send; the bot then creates the thread.
-                sent = await self._service.dispatch(
-                    notification_type=NOTIF_OVERDUE,
-                    content=nudge_text,
-                    channel=CHANNEL_TASKS,
-                    priority=task.priority or 2,
-                )
+                if self._escalation_manager is not None:
+                    # Route through escalation tiers (Discord → SMS → ...).
+                    await self._escalation_manager.escalate(
+                        task_id=task.id,
+                        task_title=task.title,
+                        nudge_text=nudge_text,
+                        priority=task.priority or 2,
+                    )
+                    sent = True
+                else:
+                    # Fallback: Discord-only (no escalation configured).
+                    sent = await self._service.dispatch(
+                        notification_type=NOTIF_OVERDUE,
+                        content=nudge_text,
+                        channel=CHANNEL_TASKS,
+                        priority=task.priority or 2,
+                    )
 
                 if sent:
                     # Create thread so user can reply in context.
@@ -152,9 +167,17 @@ class OverdueDetector:
             return
 
         if reply.startswith("done"):
+            if self._escalation_manager is not None:
+                await self._escalation_manager.acknowledge(task_id)
             await self._mark_done(task_id, task)
         elif reply.startswith("reschedule"):
+            if self._escalation_manager is not None:
+                await self._escalation_manager.acknowledge(task_id)
             await self._reschedule(task_id, task)
+        elif reply.startswith("busy"):
+            if self._escalation_manager is not None:
+                await self._escalation_manager.backoff(task_id)
+            logger.info("overdue_reply_busy", task_id=task_id)
         else:
             logger.info("overdue_reply_unrecognised", task_id=task_id, reply=reply[:50])
 
