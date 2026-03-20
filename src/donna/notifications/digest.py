@@ -29,6 +29,7 @@ from donna.tasks.database import Database
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from donna.integrations.gmail import GmailClient
+    from donna.resilience.health_check import SelfDiagnostic
 
 logger = structlog.get_logger()
 
@@ -58,6 +59,7 @@ class MorningDigest:
         project_root: Path,
         gmail: GmailClient | None = None,
         user_email: str = "",
+        self_diagnostic: SelfDiagnostic | None = None,
     ) -> None:
         self._db = db
         self._service = service
@@ -68,6 +70,7 @@ class MorningDigest:
         self._project_root = project_root
         self._gmail = gmail
         self._user_email = user_email
+        self._self_diagnostic = self_diagnostic
 
     async def run(self) -> None:
         """Sleep until the next 6:30 AM, fire digest, repeat."""
@@ -97,6 +100,17 @@ class MorningDigest:
     async def _fire(self, now: datetime) -> None:
         """Assemble data, render template, post digest."""
         data = await self._assemble_data(now)
+
+        # Layer 3: prepend self-diagnostic warnings to system_status.
+        if self._self_diagnostic is not None:
+            try:
+                issues = await self._self_diagnostic.run()
+                if issues:
+                    data["system_status"] = "\n".join(
+                        [":warning: System warnings:"] + [f"  • {w}" for w in issues]
+                    )
+            except Exception:
+                logger.exception("morning_digest_self_diagnostic_failed")
 
         template_text = (self._project_root / "prompts" / "morning_digest.md").read_text()
 

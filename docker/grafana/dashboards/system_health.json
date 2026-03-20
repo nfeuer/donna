@@ -1,0 +1,86 @@
+{
+  "title": "System Health",
+  "uid": "donna-system-health",
+  "version": 1,
+  "schemaVersion": 36,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "tags": ["donna", "system"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Service Status",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "count_over_time({container_name=\"donna-orchestrator\"} |= \"donna_server_started\" [5m])",
+          "legendFormat": "Orchestrator"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Circuit Breaker State",
+      "type": "logs",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{container_name=\"donna-orchestrator\"} |= \"circuit_breaker\"",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Last Successful Operations",
+      "type": "logs",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{container_name=\"donna-orchestrator\"} | json | event_type=~\"system\\.backup\\.completed|scheduler\\.daily_recalc|sync\\.supabase\\.push\"",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Error Rate (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 10 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum(rate({container_name=\"donna-orchestrator\"} | json | level=\"error\" [5m]))",
+          "legendFormat": "errors/s"
+        },
+        {
+          "datasource": "Loki",
+          "expr": "sum(rate({container_name=\"donna-orchestrator\"} | json | level=\"critical\" [5m]))",
+          "legendFormat": "critical/s"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Health Check Events",
+      "type": "logs",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 10 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{container_name=\"donna-orchestrator\"} | json | event_type=\"system.health_check\"",
+          "legendFormat": ""
+        }
+      ]
+    }
+  ]
+}

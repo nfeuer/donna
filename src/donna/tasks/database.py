@@ -28,6 +28,10 @@ from donna.tasks.db_models import (
 )
 from donna.tasks.state_machine import StateMachine
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from donna.integrations.supabase_sync import SupabaseSync
+
 logger = structlog.get_logger()
 
 
@@ -158,11 +162,13 @@ class Database:
         db_path: str | Path,
         state_machine: StateMachine,
         alembic_config_path: str | Path | None = None,
+        supabase_sync: SupabaseSync | None = None,
     ) -> None:
         self._db_path = Path(db_path)
         self._state_machine = state_machine
         self._alembic_config_path = alembic_config_path
         self._conn: aiosqlite.Connection | None = None
+        self._supabase_sync = supabase_sync
 
     async def connect(self) -> None:
         """Open the aiosqlite connection and enable WAL mode."""
@@ -262,7 +268,11 @@ class Database:
         await conn.commit()
 
         logger.info("task_created", task_id=task_id, title=title, user_id=user_id)
-        return await self.get_task(task_id)  # type: ignore[return-value]
+        task_row = await self.get_task(task_id)
+        if self._supabase_sync is not None and task_row is not None:
+            import dataclasses
+            await self._supabase_sync.push_task(dataclasses.asdict(task_row))
+        return task_row  # type: ignore[return-value]
 
     async def get_task(self, task_id: str) -> TaskRow | None:
         """Retrieve a single task by ID. Returns None if not found."""
@@ -311,7 +321,11 @@ class Database:
         if cursor.rowcount == 0:
             return None
 
-        return await self.get_task(task_id)
+        task_row = await self.get_task(task_id)
+        if self._supabase_sync is not None and task_row is not None:
+            import dataclasses
+            await self._supabase_sync.push_task(dataclasses.asdict(task_row))
+        return task_row
 
     async def list_tasks(
         self,

@@ -7,6 +7,14 @@ is pure infrastructure.
 Notification background tasks (ReminderScheduler, OverdueDetector,
 MorningDigest) are accepted via NotificationTasks and started as
 asyncio tasks when run_server() is called.
+
+The /health endpoint (Layer 1 of the 3-layer health monitoring) checks:
+  - SQLite reachable
+  - Discord bot connected
+  - Scheduler heartbeat recent
+  - Last API health-check < 10 min
+
+See docs/resilience.md — Health Monitoring.
 """
 
 from __future__ import annotations
@@ -16,8 +24,10 @@ import dataclasses
 import os
 import signal
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
+import aiosqlite
 import structlog
 from aiohttp import web
 
@@ -28,6 +38,9 @@ if TYPE_CHECKING:
     from donna.notifications.escalation import EscalationManager
     from donna.notifications.overdue import OverdueDetector
     from donna.notifications.reminders import ReminderScheduler
+
+_API_FRESHNESS_SECONDS = 600  # 10 minutes
+_SQLITE_CHECK_TIMEOUT = 2.0   # seconds
 
 
 @dataclasses.dataclass
@@ -40,14 +53,85 @@ class NotificationTasks:
     escalation_manager: EscalationManager | None = None
 
 
+async def _check_sqlite(db_path: str | None) -> dict[str, Any]:
+    """Check that the SQLite database is reachable."""
+    if not db_path:
+        return {"ok": True, "detail": "no db_path configured"}
+    try:
+        async with asyncio.timeout(_SQLITE_CHECK_TIMEOUT):
+            async with aiosqlite.connect(db_path) as conn:
+                await conn.execute("SELECT 1")
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "detail": str(exc)}
+
+
+def _check_discord(app: web.Application) -> dict[str, Any]:
+    """Check that the Discord bot has marked itself ready."""
+    ready: bool = app.get("discord_ready", False)
+    return {"ok": ready, "detail": None if ready else "discord_ready flag not set"}
+
+
+def _check_scheduler(app: web.Application) -> dict[str, Any]:
+    """Check that the scheduler heartbeat is recent (< 10 min)."""
+    heartbeat: datetime | None = app.get("scheduler_last_heartbeat")
+    if heartbeat is None:
+        # Scheduler not wired in — not a failure in all deployments.
+        return {"ok": True, "detail": "no heartbeat wired"}
+    age_s = (datetime.now(UTC) - heartbeat).total_seconds()
+    if age_s > _API_FRESHNESS_SECONDS:
+        return {"ok": False, "detail": f"scheduler heartbeat stale ({int(age_s)}s ago)"}
+    return {"ok": True}
+
+
+def _check_api_freshness(app: web.Application) -> dict[str, Any]:
+    """Check that the last API call timestamp is < 10 min old."""
+    last_ts: datetime | None = app.get("last_api_ts")
+    if last_ts is None:
+        # Not yet set — acceptable at startup.
+        return {"ok": True, "detail": "no api calls recorded yet"}
+    age_s = (datetime.now(UTC) - last_ts).total_seconds()
+    if age_s > _API_FRESHNESS_SECONDS:
+        return {"ok": False, "detail": f"last API call was {int(age_s)}s ago"}
+    return {"ok": True}
+
+
 async def health_handler(request: web.Request) -> web.Response:
-    """GET /health — liveness probe used by Docker healthcheck."""
+    """GET /health — liveness probe used by Docker healthcheck.
+
+    Returns 200 when all components healthy, 503 when any check fails.
+    Response body is JSON with per-component check results.
+    """
+    app = request.app
+    db_path: str | None = app.get("db_path")
+
+    checks: dict[str, dict[str, Any]] = {
+        "sqlite": await _check_sqlite(db_path),
+        "discord": _check_discord(app),
+        "scheduler": _check_scheduler(app),
+        "api_freshness": _check_api_freshness(app),
+    }
+
+    healthy = all(v["ok"] for v in checks.values())
+    status = "healthy" if healthy else "degraded"
+    http_status = 200 if healthy else 503
+
+    logger = structlog.get_logger()
+    logger.info(
+        "health_check",
+        event_type="system.health_check",
+        status=status,
+        checks={k: v["ok"] for k, v in checks.items()},
+    )
+
     return web.json_response(
         {
-            "status": "healthy",
+            "status": status,
             "service": "donna-orchestrator",
             "timestamp": datetime.now(UTC).isoformat(),
-        }
+            "checks": checks,
+        },
+        status=http_status,
     )
 
 
@@ -93,9 +177,12 @@ def make_sms_inbound_handler(
 def create_app(
     twilio_sms: TwilioSMS | None = None,
     sms_router: SmsRouter | None = None,
+    db_path: str | Path | None = None,
 ) -> web.Application:
     """Create and configure the aiohttp application."""
     app = web.Application()
+    if db_path is not None:
+        app["db_path"] = str(db_path)
     app.router.add_get("/health", health_handler)
 
     if twilio_sms is not None and sms_router is not None:
@@ -114,6 +201,7 @@ async def run_server(
     notification_tasks: NotificationTasks | None = None,
     twilio_sms: TwilioSMS | None = None,
     sms_router: SmsRouter | None = None,
+    db_path: str | Path | None = None,
 ) -> None:
     """Start the aiohttp server and block until shutdown signal received.
 
@@ -122,7 +210,7 @@ async def run_server(
     """
     logger = structlog.get_logger()
 
-    app = create_app(twilio_sms=twilio_sms, sms_router=sms_router)
+    app = create_app(twilio_sms=twilio_sms, sms_router=sms_router, db_path=db_path)
     runner = web.AppRunner(app)
     await runner.setup()
 

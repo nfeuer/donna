@@ -1,0 +1,109 @@
+{
+  "title": "Task Pipeline",
+  "uid": "donna-task-pipeline",
+  "version": 1,
+  "schemaVersion": 36,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "tags": ["donna", "tasks"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Tasks Created Today",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "count_over_time({container_name=\"donna-orchestrator\"} | json | event_type=\"task.created\" [24h])",
+          "legendFormat": "Created"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["sum"] }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Tasks Completed Today",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "count_over_time({container_name=\"donna-orchestrator\"} | json | event_type=\"task.state_changed\" | json | to=\"done\" [24h])",
+          "legendFormat": "Completed"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["sum"] }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Dedup Hit Rate",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "count_over_time({container_name=\"donna-orchestrator\"} | json | event_type=\"task.dedup_detected\" [24h])",
+          "legendFormat": "Dedup Hits"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["sum"] }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Reschedule Events",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "count_over_time({container_name=\"donna-orchestrator\"} | json | event_type=\"scheduler.slot_assigned\" [24h])",
+          "legendFormat": "Reschedules"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["sum"] }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Task Creation Rate by Channel",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (channel) (rate({container_name=\"donna-orchestrator\"} | json | event_type=\"task.created\" [1h]))",
+          "legendFormat": "{{channel}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Task State Changes",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{container_name=\"donna-orchestrator\"} | json | event_type=\"task.state_changed\"",
+          "legendFormat": ""
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "title": "Error Exploration",
+  "uid": "donna-error-exploration",
+  "version": 1,
+  "schemaVersion": 36,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "tags": ["donna", "errors"],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "label": "Service",
+        "datasource": "Loki",
+        "query": "label_values(service)",
+        "current": { "text": "All", "value": "" },
+        "includeAll": true,
+        "allValue": ".*"
+      },
+      {
+        "name": "event_type",
+        "type": "query",
+        "label": "Event Type",
+        "datasource": "Loki",
+        "query": "label_values(event_type)",
+        "current": { "text": "All", "value": "" },
+        "includeAll": true,
+        "allValue": ".*"
+      },
+      {
+        "name": "level",
+        "type": "custom",
+        "label": "Level",
+        "options": [
+          { "text": "All", "value": ".*", "selected": true },
+          { "text": "WARNING", "value": "warning" },
+          { "text": "ERROR", "value": "error" },
+          { "text": "CRITICAL", "value": "critical" }
+        ],
+        "current": { "text": "All", "value": ".*" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Error Frequency Timeline",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (level) (rate({container_name=\"donna-orchestrator\"} | json | level=~\"error|critical|warning\" [5m]))",
+          "legendFormat": "{{level}}"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "critical" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] },
+          { "matcher": { "id": "byName", "options": "error" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "warning" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "title": "Error Log Table",
+      "type": "logs",
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{container_name=\"donna-orchestrator\"} | json | level=~\"$level\" | service=~\"$service\" | event_type=~\"$event_type\"",
+          "legendFormat": ""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
+    }
+  ]
+}
