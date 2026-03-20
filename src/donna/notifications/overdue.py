@@ -1,0 +1,232 @@
+"""Overdue task detection — nudge the user when tasks run past their end time.
+
+Background async task that runs every 15 minutes. For every scheduled or
+in-progress task whose estimated end time + 30-minute buffer has passed,
+it creates a Discord thread in #donna-tasks with an overdue nudge.
+
+User replies in the thread:
+  "done"       → transitions task to in_progress → done (sets completed_at)
+  "reschedule" → transitions task to in_progress → scheduled, finds next slot
+
+Respects blackout/quiet hours via NotificationService — nudges are queued
+during blackout (12 AM–6 AM) and replayed at 6 AM.
+
+See slices/slice_05_reminders_digest.md and docs/notifications.md.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import UTC, datetime, timedelta, timezone
+
+import structlog
+
+from donna.integrations.discord_bot import DonnaBot
+from donna.notifications.service import CHANNEL_TASKS, NOTIF_OVERDUE, NotificationService
+from donna.scheduling.scheduler import Scheduler
+from donna.tasks.database import Database
+from donna.tasks.db_models import TaskStatus
+
+logger = structlog.get_logger()
+
+OVERDUE_BUFFER_MINUTES = 30
+CHECK_INTERVAL_SECONDS = 900  # 15 minutes
+
+
+class OverdueDetector:
+    """Detects overdue tasks and sends nudges via Discord threads.
+
+    Usage:
+        detector = OverdueDetector(db, service, bot, scheduler, client, calendar_id, user_id)
+        # Register the reply handler before starting the bot loop:
+        bot = DonnaBot(..., overdue_reply_handler=detector.handle_reply)
+        asyncio.create_task(detector.run())
+    """
+
+    def __init__(
+        self,
+        db: Database,
+        service: NotificationService,
+        bot: DonnaBot,
+        scheduler: Scheduler,
+        calendar_id: str,
+        user_id: str,
+    ) -> None:
+        self._db = db
+        self._service = service
+        self._bot = bot
+        self._scheduler = scheduler
+        self._calendar_id = calendar_id
+        self._user_id = user_id
+        # task_id set: only nudge once per day (reset at midnight).
+        self._nudged: set[str] = set()
+        self._nudged_date: str = ""
+
+    async def run(self) -> None:
+        """Loop forever, checking for overdue tasks every 15 minutes."""
+        logger.info(
+            "overdue_detector_started",
+            buffer_minutes=OVERDUE_BUFFER_MINUTES,
+            interval_seconds=CHECK_INTERVAL_SECONDS,
+        )
+
+        while True:
+            now = datetime.now(tz=timezone.utc)
+            today_str = now.date().isoformat()
+
+            # Reset nudge set daily.
+            if self._nudged_date != today_str:
+                self._nudged.clear()
+                self._nudged_date = today_str
+
+            try:
+                await self._check_and_nudge(now)
+            except Exception:
+                logger.exception("overdue_check_failed")
+
+            await asyncio.sleep(CHECK_INTERVAL_SECONDS)
+
+    async def _check_and_nudge(self, now: datetime) -> None:
+        """Query scheduled/in-progress tasks and send nudges for overdue ones."""
+        for status in (TaskStatus.SCHEDULED, TaskStatus.IN_PROGRESS):
+            tasks = await self._db.list_tasks(user_id=self._user_id, status=status)
+            for task in tasks:
+                if task.id in self._nudged:
+                    continue
+                if not task.scheduled_start:
+                    continue
+
+                start = _parse_dt(task.scheduled_start)
+                if start is None:
+                    continue
+
+                duration_min = task.estimated_duration or 0
+                overdue_at = start + timedelta(minutes=duration_min + OVERDUE_BUFFER_MINUTES)
+
+                if now <= overdue_at:
+                    continue
+
+                time_str = now.strftime("%I:%M %p")
+                nudge_text = (
+                    f"It's {time_str} and you haven't touched '{task.title}'."
+                    " Did you finish it or should I find time tomorrow?"
+                )
+
+                # Send via service (respects blackout/quiet hours).
+                # For overdue nudges we bypass the thread path and let service
+                # do a plain channel send; the bot then creates the thread.
+                sent = await self._service.dispatch(
+                    notification_type=NOTIF_OVERDUE,
+                    content=nudge_text,
+                    channel=CHANNEL_TASKS,
+                    priority=task.priority or 2,
+                )
+
+                if sent:
+                    # Create thread so user can reply in context.
+                    await self._bot.create_overdue_thread(
+                        task_id=task.id,
+                        task_title=task.title,
+                        nudge_text=nudge_text,
+                    )
+
+                self._nudged.add(task.id)
+                logger.info(
+                    "overdue_nudge_dispatched",
+                    task_id=task.id,
+                    title=task.title,
+                    overdue_at=overdue_at.isoformat(),
+                    sent_immediately=sent,
+                )
+
+    async def handle_reply(self, task_id: str, reply: str) -> None:
+        """Handle user reply in an overdue thread.
+
+        Args:
+            task_id: The task that was nudged.
+            reply: Normalised (lower-case stripped) user reply text.
+        """
+        task = await self._db.get_task(task_id)
+        if task is None:
+            logger.warning("overdue_reply_task_not_found", task_id=task_id)
+            return
+
+        if reply.startswith("done"):
+            await self._mark_done(task_id, task)
+        elif reply.startswith("reschedule"):
+            await self._reschedule(task_id, task)
+        else:
+            logger.info("overdue_reply_unrecognised", task_id=task_id, reply=reply[:50])
+
+    async def _mark_done(self, task_id: str, task: object) -> None:  # noqa: ANN001
+        """Transition task → in_progress → done and set completed_at."""
+        from donna.tasks.db_models import TaskStatus as TS
+
+        current_status = getattr(task, "status", "")
+        if current_status != TS.IN_PROGRESS.value:
+            try:
+                await self._db.transition_task_state(task_id, TS.IN_PROGRESS)
+            except Exception:
+                logger.exception("overdue_mark_done_transition_to_in_progress_failed", task_id=task_id)
+                return
+
+        try:
+            await self._db.transition_task_state(task_id, TS.DONE)
+            await self._db.update_task(task_id, completed_at=datetime.now(UTC))
+            logger.info("overdue_task_marked_done", task_id=task_id)
+        except Exception:
+            logger.exception("overdue_mark_done_failed", task_id=task_id)
+
+    async def _reschedule(self, task_id: str, task: object) -> None:  # noqa: ANN001
+        """Transition task → in_progress → scheduled and find next slot."""
+        from donna.integrations.calendar import GoogleCalendarClient
+        from donna.tasks.db_models import TaskStatus as TS
+
+        current_status = getattr(task, "status", "")
+        if current_status != TS.IN_PROGRESS.value:
+            try:
+                await self._db.transition_task_state(task_id, TS.IN_PROGRESS)
+            except Exception:
+                logger.exception("overdue_reschedule_transition_in_progress_failed", task_id=task_id)
+                return
+
+        try:
+            # Transition to scheduled before scheduler assigns a new slot.
+            await self._db.transition_task_state(task_id, TS.SCHEDULED)
+        except Exception:
+            logger.exception("overdue_reschedule_transition_scheduled_failed", task_id=task_id)
+            return
+
+        try:
+            refreshed = await self._db.get_task(task_id)
+            if refreshed is None:
+                return
+            # Use the calendar client from the scheduler's perspective.
+            # The client attribute is set during wiring in server.py.
+            client: GoogleCalendarClient | None = getattr(self._scheduler, "_client", None)
+            if client is None:
+                logger.warning("overdue_reschedule_no_calendar_client", task_id=task_id)
+                return
+            await self._scheduler.schedule_task(
+                task=refreshed,
+                db=self._db,
+                client=client,
+                calendar_id=self._calendar_id,
+                force_reschedule=True,
+            )
+            logger.info("overdue_task_rescheduled", task_id=task_id)
+        except Exception:
+            logger.exception("overdue_reschedule_schedule_failed", task_id=task_id)
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    """Parse an ISO datetime string into a UTC-aware datetime, or None."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
