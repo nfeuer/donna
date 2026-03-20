@@ -341,7 +341,7 @@ class TestAlembicMigrations:
         cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
 
         command.upgrade(cfg, "head")
-        command.downgrade(cfg, "-1")
+        command.downgrade(cfg, "base")
 
         conn = sqlite3.connect(str(db_path))
         tables = [
