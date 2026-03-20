@@ -95,17 +95,89 @@ def main() -> None:
 
 async def _run_orchestrator(args: argparse.Namespace) -> None:
     """Start the Donna orchestrator."""
+    from pathlib import Path
+
+    from donna.config import (
+        load_models_config,
+        load_state_machine_config,
+        load_task_types_config,
+    )
+    from donna.logging.invocation_logger import InvocationLogger
     from donna.logging.setup import setup_logging
+    from donna.models.router import ModelRouter
+    from donna.orchestrator.input_parser import InputParser
     from donna.server import run_server
+    from donna.tasks.database import Database
+    from donna.tasks.state_machine import StateMachine
 
     setup_logging(log_level=args.log_level, json_output=not args.dev)
 
     import structlog
-    logger = structlog.get_logger()
-    logger.info("donna_starting", config_dir=args.config_dir, log_level=args.log_level)
+    log = structlog.get_logger()
+    log.info("donna_starting", config_dir=args.config_dir, log_level=args.log_level)
+
+    config_dir = Path(args.config_dir)
+    project_root = Path(__file__).resolve().parents[2]
+
+    # Load configuration
+    models_config = load_models_config(config_dir)
+    task_types_config = load_task_types_config(config_dir)
+    state_machine_config = load_state_machine_config(config_dir)
+
+    # Initialise state machine and database
+    state_machine = StateMachine(state_machine_config)
+    db_path = os.environ.get("DONNA_DB_PATH", "donna_tasks.db")
+    db = Database(db_path, state_machine)
+    await db.connect()
+    await db.run_migrations()
+
+    # Initialise model layer and input parser
+    router = ModelRouter(models_config, task_types_config, project_root)
+    invocation_logger = InvocationLogger(db.connection)
+    input_parser = InputParser(router, invocation_logger, project_root)
 
     port: int = args.port or int(os.environ.get("DONNA_PORT", "8100"))
-    await run_server(port=port)
+
+    tasks: list[asyncio.Task[None]] = [
+        asyncio.create_task(run_server(port=port))
+    ]
+
+    # Wire up Discord bot if credentials are present
+    discord_token = os.environ.get("DISCORD_BOT_TOKEN")
+    tasks_channel_id_str = os.environ.get("DISCORD_TASKS_CHANNEL_ID")
+    debug_channel_id_str = os.environ.get("DISCORD_DEBUG_CHANNEL_ID")
+
+    if discord_token and tasks_channel_id_str:
+        from donna.integrations.discord_bot import DonnaBot
+
+        bot = DonnaBot(
+            input_parser=input_parser,
+            database=db,
+            tasks_channel_id=int(tasks_channel_id_str),
+            debug_channel_id=int(debug_channel_id_str) if debug_channel_id_str else None,
+        )
+        tasks.append(asyncio.create_task(bot.start(discord_token)))
+        log.info("discord_bot_enabled", tasks_channel_id=tasks_channel_id_str)
+    else:
+        log.warning(
+            "discord_bot_disabled",
+            reason="DISCORD_BOT_TOKEN or DISCORD_TASKS_CHANNEL_ID not set",
+        )
+
+    try:
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        # Surface any exception from the completed task
+        for task in done:
+            if task.exception() is not None:
+                log.error("orchestrator_task_failed", exc_info=task.exception())
+    finally:
+        await db.close()
 
 
 async def _run_eval(args: argparse.Namespace) -> None:
