@@ -200,3 +200,51 @@ def load_calendar_config(config_dir: Path) -> CalendarConfig:
     """Load calendar integration and scheduling configuration."""
     data = load_yaml(config_dir / "calendar.yaml")
     return CalendarConfig(**data)
+
+
+# === SMS / Twilio Config ===
+
+
+class SmsRateLimitConfig(BaseModel):
+    """Outbound SMS rate limit settings."""
+
+    max_per_day: int = 10
+
+
+class SmsEscalationConfig(BaseModel):
+    """Escalation tier wait times."""
+
+    tier1_wait_minutes: int = 30
+    tier2_wait_minutes: int = 60
+    busy_backoff_hours: int = 2
+
+
+class SmsBlackoutConfig(BaseModel):
+    """Hours during which SMS is completely blocked."""
+
+    start_hour: int = 0
+    end_hour: int = 6
+
+
+class SmsConversationContextConfig(BaseModel):
+    """TTL settings for SMS conversation contexts."""
+
+    sliding_ttl_hours: int = 24
+    hard_cap_hours: int = 72
+
+
+class SmsConfig(BaseModel):
+    """Top-level SMS integration configuration."""
+
+    rate_limit: SmsRateLimitConfig = Field(default_factory=SmsRateLimitConfig)
+    escalation: SmsEscalationConfig = Field(default_factory=SmsEscalationConfig)
+    blackout: SmsBlackoutConfig = Field(default_factory=SmsBlackoutConfig)
+    conversation_context: SmsConversationContextConfig = Field(
+        default_factory=SmsConversationContextConfig
+    )
+
+
+def load_sms_config(config_dir: Path) -> SmsConfig:
+    """Load SMS integration configuration."""
+    data = load_yaml(config_dir / "sms.yaml")
+    return SmsConfig(**data)

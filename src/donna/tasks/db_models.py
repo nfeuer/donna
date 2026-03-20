@@ -241,6 +241,27 @@ class ConversationContext(Base):
         DateTime, nullable=False, default=datetime.utcnow
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    hard_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_activity: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+
+
+class EscalationState(Base):
+    """Tracks per-task notification escalation tier state. See docs/notifications.md."""
+
+    __tablename__ = "escalation_state"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    task_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    task_title: Mapped[str] = mapped_column(String(500), nullable=False)
+    current_tier: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    next_escalation_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )

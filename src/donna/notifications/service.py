@@ -24,6 +24,7 @@ from donna.config import CalendarConfig
 
 if TYPE_CHECKING:
     from donna.integrations.discord_bot import DonnaBot
+    from donna.integrations.twilio_sms import TwilioSMS
 
 logger = structlog.get_logger()
 
@@ -52,10 +53,12 @@ class NotificationService:
         bot: DonnaBot,
         calendar_config: CalendarConfig,
         user_id: str,
+        sms: TwilioSMS | None = None,
     ) -> None:
         self._bot = bot
         self._tw = calendar_config.time_windows
         self._user_id = user_id
+        self._sms = sms
         # Queue of async callables to replay after blackout ends.
         self._queue: deque[Callable[[], Awaitable[None]]] = deque()
 
@@ -158,6 +161,38 @@ class NotificationService:
         if flushed:
             logger.info("notification_queue_flushed", count=flushed)
         return flushed
+
+    async def dispatch_sms(
+        self,
+        body: str,
+        to: str,
+        priority: int = 2,
+    ) -> bool:
+        """Dispatch an outbound SMS, respecting blackout and quiet hours.
+
+        Args:
+            body: SMS message body.
+            to: Destination E.164 phone number.
+            priority: 1–5; priority < 5 is blocked during quiet hours.
+
+        Returns:
+            True if SMS was sent, False if blocked or SMS not configured.
+        """
+        if self._sms is None:
+            logger.warning("sms_dispatch_skipped_no_client", user_id=self._user_id)
+            return False
+
+        now = datetime.now(tz=timezone.utc)
+
+        if self._is_blackout(now):
+            logger.info("sms_blocked_blackout", user_id=self._user_id)
+            return False
+
+        if self._is_quiet(now) and priority < 5:
+            logger.info("sms_blocked_quiet_hours", user_id=self._user_id)
+            return False
+
+        return await self._sms.send(to=to, body=body)
 
     async def _send(
         self,
