@@ -19,6 +19,7 @@ from donna.logging.invocation_logger import InvocationLogger, InvocationMetadata
 from donna.models.router import ModelRouter
 from donna.models.types import CompletionMetadata
 from donna.models.validation import validate_output
+from donna.tasks.dedup import Deduplicator, DuplicateDetectedError  # noqa: F401 — re-exported
 
 logger = structlog.get_logger()
 
@@ -88,10 +89,12 @@ class InputParser:
         router: ModelRouter,
         invocation_logger: InvocationLogger,
         project_root: Path,
+        deduplicator: Deduplicator | None = None,
     ) -> None:
         self._router = router
         self._invocation_logger = invocation_logger
         self._project_root = project_root
+        self._deduplicator = deduplicator
 
     async def parse(
         self,
@@ -140,8 +143,17 @@ class InputParser:
             )
         )
 
-        # 5. Convert and return
+        # 5. Convert to result
         result = _to_parse_result(validated)
+
+        # 6. Deduplication check — raises DuplicateDetectedError if duplicate found
+        if self._deduplicator is not None:
+            await self._deduplicator.check(
+                new_title=result.title,
+                new_description=result.description,
+                new_domain=result.domain,
+                user_id=user_id,
+            )
 
         logger.info(
             "task_parsed",
