@@ -1,0 +1,93 @@
+{
+  "title": "LLM & Cost",
+  "uid": "donna-llm-cost",
+  "version": 1,
+  "schemaVersion": 36,
+  "refresh": "5m",
+  "time": { "from": "now-24h", "to": "now" },
+  "tags": ["donna", "llm", "cost"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Calls Today",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "count_over_time({container_name=\"donna-orchestrator\"} | json | event_type=\"api.call.completed\" [24h])",
+          "legendFormat": "Total Calls"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["sum"] }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Failed API Calls",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "count_over_time({container_name=\"donna-orchestrator\"} | json | event_type=\"api.call.failed\" [24h])",
+          "legendFormat": "Failed"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["sum"] },
+        "thresholds": {
+          "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 5 },
+            { "color": "red", "value": 10 }
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "API Call Rate by Task Type",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (task_type) (rate({container_name=\"donna-orchestrator\"} | json | event_type=\"api.call.completed\" [1h]))",
+          "legendFormat": "{{task_type}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "API Retries",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum(rate({container_name=\"donna-orchestrator\"} | json | event_type=\"api.call.retried\" [1h]))",
+          "legendFormat": "retries/h"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "LLM Invocation Log",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{container_name=\"donna-orchestrator\"} | json | event_type=~\"api\\.call\\.(completed|failed)\"",
+          "legendFormat": ""
+        }
+      ]
+    }
+  ]
+}

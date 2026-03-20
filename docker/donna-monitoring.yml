@@ -8,6 +8,7 @@ services:
     restart: unless-stopped
     volumes:
       - donna-loki-data:/loki
+      - ./loki/local-config.yaml:/etc/loki/local-config.yaml:ro
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
@@ -26,8 +27,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      # Mount custom promtail config if needed:
-      # - ./promtail-config.yml:/etc/promtail/config.yml
+      - ./promtail/config.yml:/etc/promtail/config.yml:ro
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - donna-loki
@@ -48,9 +48,8 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - donna-grafana-data:/var/lib/grafana
-      # Mount provisioning dashboards:
-      # - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
-      # - ./grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
     ports:
       - "3000:3000"
     depends_on:
