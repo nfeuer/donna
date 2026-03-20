@@ -22,8 +22,8 @@ from typing import Any
 import discord
 import structlog
 
-from donna.orchestrator.input_parser import InputParser
-from donna.tasks.database import Database
+from donna.orchestrator.input_parser import DuplicateDetectedError, InputParser
+from donna.tasks.database import Database, TaskRow
 from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain
 
 logger = structlog.get_logger()
@@ -67,6 +67,9 @@ class DonnaBot(discord.Client):
         self._overdue_reply_handler = overdue_reply_handler
         # Maps Discord thread ID → task ID for overdue nudge reply routing.
         self.overdue_threads: dict[int, str] = {}
+        # Maps user_id → (new_parse_result_title, new_description, new_domain, existing_task)
+        # for pending dedup decisions awaiting user reply.
+        self._dedup_pending: dict[str, tuple[str, str | None, str, TaskRow]] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -215,6 +218,12 @@ class DonnaBot(discord.Client):
             user_id=user_id,
             channel="discord",
         )
+
+        # Route pending dedup decisions: user is replying to a duplicate prompt.
+        if user_id in self._dedup_pending:
+            await self._handle_dedup_reply(message, user_id, log)
+            return
+
         log.info("discord_message_received", raw_text=raw_text[:200])
 
         try:
@@ -272,6 +281,28 @@ class DonnaBot(discord.Client):
                 " Scheduled: pending."
             )
 
+        except DuplicateDetectedError as dup:
+            # Dedup triggered: store pending context and prompt user.
+            self._dedup_pending[user_id] = (
+                dup.new_title,
+                None,
+                "",
+                dup.existing_task,
+            )
+            log.info(
+                "dedup_duplicate_detected",
+                new_title=dup.new_title,
+                existing_task_id=dup.existing_task.id,
+                verdict=dup.verdict,
+                fuzzy_score=dup.fuzzy_score,
+            )
+            created_at = dup.existing_task.created_at[:10] if dup.existing_task.created_at else "unknown date"
+            await message.channel.send(
+                f"This looks like a duplicate of **'{dup.existing_task.title}'** "
+                f"(created {created_at}). "
+                f"Reply with **merge**, **keep both**, or **update existing**."
+            )
+
         except Exception:
             log.exception("discord_message_capture_failed", raw_text=raw_text[:200])
 
@@ -290,4 +321,64 @@ class DonnaBot(discord.Client):
             await message.channel.send(
                 "Captured your message. I'll parse it properly when my brain"
                 " comes back online."
+            )
+
+    async def _handle_dedup_reply(
+        self,
+        message: discord.Message,
+        user_id: str,
+        log: Any,
+    ) -> None:
+        """Handle a user's merge/keep/update reply to a duplicate prompt."""
+        new_title, new_description, new_domain, existing_task = self._dedup_pending.pop(user_id)
+        reply = message.content.strip().lower()
+
+        log.info("dedup_user_reply", reply=reply[:50], existing_task_id=existing_task.id)
+
+        if "merge" in reply:
+            # Combine new title info into existing task notes.
+            import json as _json
+            existing_notes: list[str] = []
+            if existing_task.notes:
+                try:
+                    existing_notes = _json.loads(existing_task.notes)
+                except Exception:
+                    pass
+            merged_notes = existing_notes + [f"[merged from: {new_title}]"]
+            await self._database.update_task(existing_task.id, notes=merged_notes)
+            log.info("dedup_merged", existing_task_id=existing_task.id, new_title=new_title)
+            await message.channel.send(
+                f"Merged. '{new_title}' folded into '{existing_task.title}'."
+            )
+
+        elif "keep" in reply:
+            # Create the new task linked to the existing one.
+            await self._database.create_task(
+                user_id=user_id,
+                title=new_title,
+                description=new_description,
+                parent_task=existing_task.id,
+                created_via=InputChannel.DISCORD,
+            )
+            log.info("dedup_kept_both", existing_task_id=existing_task.id, new_title=new_title)
+            await message.channel.send(
+                f"Kept both. '{new_title}' created and linked to '{existing_task.title}'."
+            )
+
+        elif "update" in reply:
+            # Update the existing task title/description with the new input.
+            updates: dict[str, Any] = {"title": new_title}
+            if new_description:
+                updates["description"] = new_description
+            await self._database.update_task(existing_task.id, **updates)
+            log.info("dedup_updated_existing", existing_task_id=existing_task.id)
+            await message.channel.send(
+                f"Updated '{existing_task.title}' with the new details."
+            )
+
+        else:
+            # Unrecognised reply: re-queue and re-prompt.
+            self._dedup_pending[user_id] = (new_title, new_description, new_domain, existing_task)
+            await message.channel.send(
+                "I didn't catch that. Reply with **merge**, **keep both**, or **update existing**."
             )
