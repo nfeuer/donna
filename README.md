@@ -102,11 +102,11 @@ $100/month hard cap on Claude API. $20/day pause threshold for autonomous agent 
 
 ## TODO
 
-### Phase 1 — Foundation (in progress)
+### Phase 1 — Foundation (complete)
 
-- [ ] Wire `donna health` CLI command → `src/donna/resilience/health_check.py`
-- [ ] Wire `donna backup` CLI command → `src/donna/resilience/backup.py`
-- [ ] Implement evaluation harness body in `donna eval` → load fixtures from `fixtures/`, run model, compare output (`src/donna/cli.py:198`)
+- [x] Wire `donna health` CLI command → `src/donna/resilience/health_check.py`
+- [x] Wire `donna backup` CLI command → `src/donna/resilience/backup.py`
+- [x] Implement evaluation harness body in `donna eval` → load fixtures from `fixtures/`, run model, compare output (`src/donna/cli.py`)
 
 ### Phase 2 — Intelligence
 
