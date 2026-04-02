@@ -50,6 +50,14 @@ class QualityMonitoringConfig(BaseModel):
     enabled: bool = False
 
 
+class OllamaConfig(BaseModel):
+    """Connection settings for the local Ollama LLM server."""
+
+    base_url: str = "http://localhost:11434"
+    timeout_s: int = 120
+    keepalive: str = "5m"
+
+
 class ModelsConfig(BaseModel):
     """Top-level models configuration."""
 
@@ -59,6 +67,7 @@ class ModelsConfig(BaseModel):
     quality_monitoring: QualityMonitoringConfig = Field(
         default_factory=QualityMonitoringConfig
     )
+    ollama: OllamaConfig = Field(default_factory=OllamaConfig)
 
 
 class TaskTypeEntry(BaseModel):
@@ -250,6 +259,9 @@ class SmsEscalationConfig(BaseModel):
     tier2_wait_minutes: int = 60
     tier3_wait_minutes: int = 120
     busy_backoff_hours: int = 2
+    tier4_enabled: bool = False
+    tier4_priority_threshold: int = 5
+    tier4_max_per_day: int = 1
 
 
 class SmsBlackoutConfig(BaseModel):

@@ -29,6 +29,7 @@ from donna.notifications.service import CHANNEL_TASKS, NOTIF_OVERDUE, Notificati
 if TYPE_CHECKING:
     from donna.integrations.gmail import GmailClient
     from donna.integrations.twilio_sms import TwilioSMS
+    from donna.integrations.twilio_voice import TwilioVoice
     from donna.tasks.database import Database
 
 logger = structlog.get_logger()
@@ -76,6 +77,8 @@ class EscalationManager:
         user_phone: str,
         gmail: GmailClient | None = None,
         user_email: str = "",
+        voice: TwilioVoice | None = None,
+        tier4_enabled: bool = False,
     ) -> None:
         self._db = db
         self._service = service
@@ -85,6 +88,8 @@ class EscalationManager:
         self._user_phone = user_phone
         self._gmail = gmail
         self._user_email = user_email
+        self._voice = voice
+        self._tier4_enabled = tier4_enabled
 
     # ------------------------------------------------------------------
     # Public API
@@ -271,8 +276,37 @@ class EscalationManager:
                 to_tier=next_tier,
                 user_id=self._user_id,
             )
+        elif next_tier == 4:
+            # Tier 4: TTS phone call (priority 5 / budget emergencies only)
+            if self._tier4_enabled and self._voice is not None:
+                nudge = f"Urgent from Donna: {state.task_title} requires your attention."
+                called = await self._voice.call(to=self._user_phone, message=nudge)
+                if called:
+                    logger.info(
+                        "escalation_advanced",
+                        task_id=state.task_id,
+                        from_tier=state.current_tier,
+                        to_tier=next_tier,
+                        user_id=self._user_id,
+                    )
+                else:
+                    logger.warning(
+                        "escalation_voice_call_failed",
+                        task_id=state.task_id,
+                        user_id=self._user_id,
+                    )
+            else:
+                logger.info(
+                    "escalation_tier4_disabled",
+                    task_id=state.task_id,
+                    tier4_enabled=self._tier4_enabled,
+                    voice_configured=self._voice is not None,
+                    user_id=self._user_id,
+                )
+            # Tier 4 is the final tier — mark completed regardless.
+            await self._update_state(state.id, next_tier, STATUS_COMPLETED, now, now)
         else:
-            # Tier 4+ (phone TTS) deferred; stop escalating.
+            # Beyond Tier 4 — stop escalating.
             await self._update_state(state.id, state.current_tier, STATUS_COMPLETED, now, now)
             logger.info(
                 "escalation_max_tier_reached",

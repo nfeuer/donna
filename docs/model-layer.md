@@ -119,14 +119,14 @@ donna eval --task-type task_parse --model ollama/llama3.1:8b-q4
 
 ## Spot-Check Quality Monitoring
 
-Active in Phase 3+ (local LLM handling traffic). Disabled in Phase 1.
+Active when local LLM is handling traffic (`quality_monitoring.enabled: true` in config). Implemented in `src/donna/models/quality.py`.
 
 - `spot_check_rate: 0.05` (5% sampled, higher during early deployment)
 - Batch job sends sampled outputs to Claude-as-judge
 - Scores below `flag_threshold: 0.7` create a Donna task for user review
 - Corrections flow into correction log (see `docs/preferences.md`)
 
-## Confidence Scoring (Phase 3+)
+## Confidence Scoring
 
 - **Self-assessed (default):** Include `confidence` field (0.0–1.0) in output schema.
 - **Logprob-based (optional):** Examine average token logprobs from Ollama API.

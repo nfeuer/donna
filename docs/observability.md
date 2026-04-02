@@ -102,7 +102,7 @@ Nightly cron prunes expired logs. Weekly VACUUM reclaims disk space.
 - Daily/weekly/monthly spend, burn rate, projected monthly, budget remaining
 - Latency p50/p95/p99 by task type
 - Error rate, retries, circuit breaker activations
-- Shadow mode comparison (Phase 3+)
+- Shadow mode comparison (when `shadow` key is set in routing config)
 
 ### Agent Activity
 - Active agents: task, elapsed vs timeout

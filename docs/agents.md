@@ -41,7 +41,7 @@ Enforced at the **system level**, not reliant on agent prompting:
 
 **Principle:** All agents start minimal. Constraints relaxed only after reviewing logged performance and explicitly updating config.
 
-## Local LLM Tool Use Progression (Phase 3+)
+## Local LLM Tool Use Progression
 
 RTX 3090 is available. Local model validation on basic parsing is the prerequisite for each stage.
 

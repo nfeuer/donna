@@ -180,6 +180,23 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         await db.close()
 
 
+def _parse_model_arg(model_str: str) -> tuple[str, str]:
+    """Parse a 'provider/model' string into (provider_name, model_id).
+
+    Examples:
+        "ollama/qwen2.5:32b-instruct-q6_K" → ("ollama", "qwen2.5:32b-instruct-q6_K")
+        "anthropic/claude-sonnet-4-20250514" → ("anthropic", "claude-sonnet-4-20250514")
+
+    Raises ValueError if the format is invalid.
+    """
+    provider, _, model_id = model_str.partition("/")
+    if not model_id:
+        raise ValueError(
+            f"Model must be in 'provider/model' format, got: {model_str!r}"
+        )
+    return provider, model_id
+
+
 async def _run_eval(args: argparse.Namespace) -> None:
     """Run the offline evaluation harness."""
     import json
@@ -187,6 +204,7 @@ async def _run_eval(args: argparse.Namespace) -> None:
 
     from donna.config import load_models_config, load_task_types_config
     from donna.logging.setup import setup_logging
+    from donna.models.providers.anthropic import AnthropicProvider
     from donna.models.router import ModelRouter
     from donna.models.validation import validate_output
 
@@ -206,6 +224,23 @@ async def _run_eval(args: argparse.Namespace) -> None:
 
     template = router.get_prompt_template(args.task_type)
     schema = router.get_output_schema(args.task_type)
+
+    # Parse --model arg to instantiate the target provider directly.
+    # This bypasses routing so eval can test any provider/model combo.
+    provider_name, model_id = _parse_model_arg(args.model)
+
+    if provider_name == "ollama":
+        from donna.models.providers.ollama import OllamaProvider
+
+        provider = OllamaProvider(
+            base_url=models_config.ollama.base_url,
+            timeout_s=models_config.ollama.timeout_s,
+        )
+    elif provider_name == "anthropic":
+        provider = AnthropicProvider()
+    else:
+        print(f"Unknown provider: {provider_name!r}")
+        sys.exit(1)
 
     task_fixtures_dir = fixtures_dir / args.task_type
     if not task_fixtures_dir.exists():
@@ -240,7 +275,7 @@ async def _run_eval(args: argparse.Namespace) -> None:
             prompt = _render_eval_prompt(template, case["input"])
 
             try:
-                result, _ = await router.complete(prompt, args.task_type)
+                result, _ = await provider.complete(prompt, model_id)
                 validate_output(result, schema)
                 mismatches = _compare_fields(expected, result)
                 if not mismatches:

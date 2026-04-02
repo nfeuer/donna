@@ -9,7 +9,7 @@ The user forgets to capture tasks, rarely checks task lists, and doesn't schedul
 ## Tech Stack
 - **Language:** Python 3.12+ / asyncio
 - **Cloud LLM:** Claude API (claude-sonnet-4-20250514) — sole provider until local LLM hardware available
-- **Local LLM:** Ollama (deferred until RTX 3090 acquired)
+- **Local LLM:** Ollama on RTX 3090 (`qwen2.5:32b-instruct-q6_K`)
 - **Database:** SQLite on NVMe (WAL mode) — `donna_tasks.db` + `donna_logs.db`
 - **Cloud Replica:** Supabase Postgres (free tier, async write-through sync)
 - **Schema Migration:** Alembic (SQLAlchemy models)

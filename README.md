@@ -11,7 +11,7 @@ You forget to capture tasks, rarely check task lists, and don't schedule time to
 Hub-and-spoke architecture: a central orchestrator manages task routing, scheduling, and agent coordination. All services run as Docker containers on a homelab Linux server.
 
 - **Cloud LLM:** Claude API (Sonnet) for reasoning, parsing, and agent work
-- **Local LLM:** Ollama (deferred until RTX 3090 acquired) for classification and routing
+- **Local LLM:** Ollama on RTX 3090 (`qwen2.5:32b-instruct-q6_K`) for classification and routing
 - **Database:** SQLite on NVMe (WAL mode) + Supabase Postgres replica
 - **Interaction:** Discord bot (primary), Twilio SMS/voice, Gmail
 - **Observability:** Grafana + Loki (self-hosted)
@@ -120,9 +120,14 @@ $100/month hard cap on Claude API. $20/day pause threshold for autonomous agent 
 
 ### Phase 3 — Agents & Local LLM
 
-- [ ] Agent framework — implement agent hierarchy, tool progression, and safety constraints (`src/donna/agents/`)
-- [ ] Ollama provider — wire local LLM provider; config entries exist in `config/donna_models.yaml` (deferred until RTX 3090)
-- [ ] Tier 4 escalation — TTS phone call via Twilio Voice (tiers 1–3 complete)
+- [x] Provider abstraction — `ModelProvider` Protocol, config-driven provider factory (`src/donna/models/providers/`)
+- [x] Ollama provider — local LLM on RTX 3090 via `OllamaProvider` (`src/donna/models/providers/ollama.py`)
+- [x] Shadow mode — secondary model runs in parallel for production monitoring (`src/donna/models/router.py`)
+- [x] Eval harness enhancement — `donna eval --model ollama/qwen2.5:32b-instruct-q6_K` (`src/donna/cli.py`)
+- [x] Quality monitoring — spot-check sampling + Claude-as-judge (`src/donna/models/quality.py`)
+- [x] Agent framework — base types, tool registry, PM Agent, Scheduler Agent (`src/donna/agents/`)
+- [x] Agent dispatcher — PM assessment → execution agent routing (`src/donna/orchestrator/dispatcher.py`)
+- [x] Tier 4 escalation — TTS phone call via Twilio Voice (`src/donna/integrations/twilio_voice.py`)
 
 ### Phase 4 — UI & Multi-User
 
