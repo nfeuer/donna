@@ -62,6 +62,7 @@ class SelfDiagnostic:
         warnings.extend(self._check_disk_space())
         warnings.extend(self._check_supabase_sync())
         warnings.extend(await self._check_budget())
+        warnings.extend(await self._check_ollama())
 
         if warnings:
             logger.warning(
@@ -127,6 +128,41 @@ class SelfDiagnostic:
                 return [f"[supabase] Last sync was {age_min} minutes ago (threshold: 60 min)"]
         except OSError:
             pass
+        return []
+
+    async def _check_ollama(self) -> list[str]:
+        """Check Ollama connectivity and required model availability.
+
+        Only runs when DONNA_OLLAMA_URL is set (indicating local LLM is expected).
+        """
+        ollama_url = os.environ.get("DONNA_OLLAMA_URL")
+        if not ollama_url:
+            return []
+
+        try:
+            from donna.models.providers.ollama import OllamaProvider
+
+            provider = OllamaProvider(base_url=ollama_url, timeout_s=10)
+            try:
+                healthy = await provider.health()
+                if not healthy:
+                    return [f"[ollama] Server at {ollama_url} is not responding"]
+
+                required_model = os.environ.get("DONNA_OLLAMA_MODEL")
+                if required_model:
+                    models = await provider.list_models()
+                    if required_model not in models:
+                        return [
+                            f"[ollama] Required model {required_model!r} not found. "
+                            f"Available: {', '.join(models) or 'none'}"
+                        ]
+            finally:
+                await provider.close()
+        except ImportError:
+            return ["[ollama] OllamaProvider not available (missing aiohttp?)"]
+        except Exception as exc:
+            return [f"[ollama] Health check error: {exc}"]
+
         return []
 
     async def _check_budget(self) -> list[str]:

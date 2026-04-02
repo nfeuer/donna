@@ -7,13 +7,15 @@ through the resilience layer. See docs/model-layer.md.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import structlog
 
 from donna.config import ModelsConfig, TaskTypesConfig
+from donna.models.providers import ModelProvider
 from donna.models.providers.anthropic import AnthropicProvider
 from donna.models.types import CompletionMetadata
 from donna.resilience.retry import CircuitBreaker, TaskCategory, resilient_call
@@ -32,6 +34,20 @@ class RoutingError(Exception):
     """Raised when a task type or model alias cannot be resolved."""
 
 
+# Registry of known provider names → constructor callables.
+# OllamaProvider is registered lazily to avoid import errors when
+# aiohttp is not available (e.g. lightweight test environments).
+_PROVIDER_REGISTRY: dict[str, type] = {
+    "anthropic": AnthropicProvider,
+}
+
+try:
+    from donna.models.providers.ollama import OllamaProvider
+    _PROVIDER_REGISTRY["ollama"] = OllamaProvider
+except ImportError:
+    pass
+
+
 class ModelRouter:
     """Config-driven model router.
 
@@ -45,23 +61,48 @@ class ModelRouter:
         task_types_config: TaskTypesConfig,
         project_root: Path,
         budget_guard: BudgetGuard | None = None,
+        on_shadow_complete: Callable[
+            [str, dict[str, Any], CompletionMetadata], Awaitable[None]
+        ]
+        | None = None,
     ) -> None:
         self._models_config = models_config
         self._task_types_config = task_types_config
         self._project_root = project_root
         self._budget_guard = budget_guard
+        self._on_shadow_complete = on_shadow_complete
         self._circuit_breaker = CircuitBreaker()
 
-        # Instantiate providers. Only anthropic for Phase 1.
-        self._providers: dict[str, AnthropicProvider] = {
-            "anthropic": AnthropicProvider(),
-        }
+        # Instantiate one provider instance per unique provider name in config.
+        self._providers: dict[str, ModelProvider] = {}
+        seen_providers: set[str] = set()
+        for alias, mc in models_config.models.items():
+            if mc.provider not in seen_providers:
+                seen_providers.add(mc.provider)
+                cls = _PROVIDER_REGISTRY.get(mc.provider)
+                if cls is None:
+                    raise RoutingError(
+                        f"Unknown provider {mc.provider!r} "
+                        f"(referenced by model alias {alias!r})"
+                    )
+                if mc.provider == "ollama":
+                    self._providers[mc.provider] = cls(
+                        base_url=models_config.ollama.base_url,
+                        timeout_s=models_config.ollama.timeout_s,
+                        estimated_cost_per_1k_tokens=(
+                            mc.estimated_cost_per_1k_tokens or 0.0001
+                        ),
+                    )
+                elif mc.provider == "anthropic":
+                    self._providers[mc.provider] = cls()
+                else:
+                    self._providers[mc.provider] = cls()
 
         # Cache for loaded prompt templates and schemas.
         self._prompt_cache: dict[str, str] = {}
         self._schema_cache: dict[str, dict[str, Any]] = {}
 
-    def _resolve_route(self, task_type: str) -> tuple[AnthropicProvider, str, str]:
+    def _resolve_route(self, task_type: str) -> tuple[ModelProvider, str, str]:
         """Resolve task_type → (provider instance, model ID, model alias).
 
         Raises RoutingError if the task type or alias is unknown.
@@ -129,7 +170,51 @@ class ModelRouter:
             circuit_breaker=self._circuit_breaker,
         )
 
+        # Shadow mode: fire secondary model in parallel if configured.
+        routing = self._models_config.routing.get(task_type)
+        if routing and routing.shadow and self._on_shadow_complete:
+            asyncio.create_task(
+                self._run_shadow(prompt, task_type, routing.shadow)
+            )
+
         return result, metadata
+
+    async def _run_shadow(
+        self, prompt: str, task_type: str, shadow_alias: str
+    ) -> None:
+        """Run a shadow model call (fire-and-forget, never blocks primary)."""
+        try:
+            model_config = self._models_config.models.get(shadow_alias)
+            if model_config is None:
+                logger.warning("shadow_alias_not_found", alias=shadow_alias)
+                return
+
+            provider = self._providers.get(model_config.provider)
+            if provider is None:
+                logger.warning("shadow_provider_not_found", provider=model_config.provider)
+                return
+
+            result, metadata = await provider.complete(prompt, model_config.model)
+            shadow_metadata = CompletionMetadata(
+                latency_ms=metadata.latency_ms,
+                tokens_in=metadata.tokens_in,
+                tokens_out=metadata.tokens_out,
+                cost_usd=metadata.cost_usd,
+                model_actual=metadata.model_actual,
+                is_shadow=True,
+            )
+
+            if self._on_shadow_complete:
+                await self._on_shadow_complete(task_type, result, shadow_metadata)
+
+            logger.info(
+                "shadow_completion",
+                task_type=task_type,
+                shadow_alias=shadow_alias,
+                latency_ms=shadow_metadata.latency_ms,
+            )
+        except Exception:
+            logger.exception("shadow_completion_failed", task_type=task_type)
 
     def get_prompt_template(self, task_type: str) -> str:
         """Load and cache the prompt template for a task type."""

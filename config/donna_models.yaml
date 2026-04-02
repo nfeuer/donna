@@ -3,7 +3,7 @@
 
 models:
   parser:
-    provider: anthropic            # switch to ollama after local model validated (3090 available)
+    provider: anthropic
     model: claude-sonnet-4-20250514
   reasoner:
     provider: anthropic
@@ -11,6 +11,16 @@ models:
   fallback:
     provider: anthropic
     model: claude-sonnet-4-20250514
+  local_parser:
+    provider: ollama
+    model: qwen2.5:32b-instruct-q6_K
+    estimated_cost_per_1k_tokens: 0.0001  # hardware amortization
+
+# Ollama local LLM connection settings (RTX 3090)
+ollama:
+  base_url: http://localhost:11434
+  timeout_s: 120
+  keepalive: 5m
 
 routing:
   # Keys match task_types.yaml entries exactly
@@ -35,6 +45,9 @@ routing:
     model: reasoner
   extract_preferences:
     model: reasoner
+  # Local model eval routing — use with: donna eval --task-type parse_task_local
+  parse_task_local:
+    model: local_parser
 
 # Cost tracking
 cost:
@@ -43,7 +56,7 @@ cost:
   task_approval_threshold_usd: 5.00
   monthly_warning_pct: 0.90
 
-# Quality monitoring (disabled Phase 1, enable Phase 3)
+# Quality monitoring (disabled Phase 1–2, enable when local model handles traffic)
 quality_monitoring:
   spot_check_rate: 0.05
   judge_model: reasoner

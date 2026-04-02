@@ -7,13 +7,13 @@ See docs/model-layer.md for the model interface specification.
 from __future__ import annotations
 
 import json
-import re
 import time
 from typing import Any
 
 import anthropic
 import structlog
 
+from donna.models.providers._parsing import parse_json_response
 from donna.models.types import CompletionMetadata
 
 logger = structlog.get_logger()
@@ -21,18 +21,6 @@ logger = structlog.get_logger()
 # Claude Sonnet pricing (per million tokens) as of 2025-05.
 _SONNET_INPUT_COST_PER_MTOK = 3.0
 _SONNET_OUTPUT_COST_PER_MTOK = 15.0
-
-# Regex to strip markdown code fences from LLM output.
-_JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?\s*```$", re.DOTALL)
-
-
-def _parse_json_response(text: str) -> dict[str, Any]:
-    """Extract JSON from LLM text response, stripping markdown fences if present."""
-    stripped = text.strip()
-    match = _JSON_FENCE_RE.match(stripped)
-    if match:
-        stripped = match.group(1).strip()
-    return json.loads(stripped)
 
 
 def _compute_cost(tokens_in: int, tokens_out: int) -> float:
@@ -84,7 +72,7 @@ class AnthropicProvider:
         tokens_out = response.usage.output_tokens
 
         raw_text = response.content[0].text
-        parsed = _parse_json_response(raw_text)
+        parsed = parse_json_response(raw_text)
 
         metadata = CompletionMetadata(
             latency_ms=elapsed_ms,

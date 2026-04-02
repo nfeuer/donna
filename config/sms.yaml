@@ -1,4 +1,4 @@
-# Twilio SMS integration configuration
+# Twilio SMS and Voice integration configuration
 # See docs/notifications.md and slices/slice_07_sms_escalation.md
 #
 # Credentials are sourced from environment variables only:
@@ -11,8 +11,14 @@ rate_limit:
 
 escalation:
   tier1_wait_minutes: 30     # Discord → SMS after this many minutes unanswered
-  tier2_wait_minutes: 60     # SMS → Email (deferred to Slice 8)
+  tier2_wait_minutes: 60     # SMS → Email after this many minutes unanswered
+  tier3_wait_minutes: 120    # Email → Phone after this many minutes unanswered
   busy_backoff_hours: 2      # "busy" reply backs off escalation by this many hours
+
+  # Tier 4: TTS phone call via Twilio Voice (Phase 3)
+  tier4_enabled: false                # safety: disabled by default
+  tier4_priority_threshold: 5         # only for priority 5 tasks or budget emergencies
+  tier4_max_per_day: 1                # max 1 phone call per day
 
 blackout:
   start_hour: 0              # 12:00 AM — SMS blocked during blackout

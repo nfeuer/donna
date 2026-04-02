@@ -1,6 +1,5 @@
 # Donna Local LLM Stack
-# DEFERRED until RTX 3090 is acquired
-# Ollama with dedicated GPU for local inference
+# Ollama with dedicated RTX 3090 GPU for local inference
 
 services:
   donna-ollama:
