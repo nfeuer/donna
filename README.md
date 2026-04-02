@@ -11,7 +11,7 @@ You forget to capture tasks, rarely check task lists, and don't schedule time to
 Hub-and-spoke architecture: a central orchestrator manages task routing, scheduling, and agent coordination. All services run as Docker containers on a homelab Linux server.
 
 - **Cloud LLM:** Claude API (Sonnet) for reasoning, parsing, and agent work
-- **Local LLM:** Ollama (deferred until RTX 3090 acquired) for classification and routing
+- **Local LLM:** Ollama on RTX 3090 (`qwen2.5:32b-instruct-q6_K`) for classification and routing
 - **Database:** SQLite on NVMe (WAL mode) + Supabase Postgres replica
 - **Interaction:** Discord bot (primary), Twilio SMS/voice, Gmail
 - **Observability:** Grafana + Loki (self-hosted)

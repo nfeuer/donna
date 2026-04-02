@@ -86,7 +86,7 @@ Blackout (12am–6am) and Quiet Hours (8pm–12am) overlap conceptually but have
 ### State Machine Conflicts (Concurrent Transitions)
 
 - **Phase 1–2 (single-threaded asyncio):** Task state transitions are atomic — read → validate → write in a single async function with a SQLite transaction. No interleaving possible.
-- **Phase 3+ (worker pool):** Optimistic locking on task state. Workers read current state + version → validate transition → write with version check → retry on version mismatch. The orchestrator serializes conflicting writes.
+- **Worker pool (agent dispatcher):** Optimistic locking on task state. Workers read current state + version → validate transition → write with version check → retry on version mismatch. The orchestrator serializes conflicting writes. See `src/donna/orchestrator/dispatcher.py`.
 
 ### Agent Conflicts
 

@@ -26,7 +26,7 @@ Central orchestrator manages all task routing, scheduling, and agent coordinatio
 ## Data Flow
 
 1. All inputs (SMS, Discord, email forwarding) → normalized into task schema by **Input Parser**.
-2. Phase 1–2: parsing on Claude API. Phase 3+: high-frequency parsing shifts to local LLM with Claude fallback.
+2. Parsing routes through the `ModelRouter`: primary provider (Claude API or local Ollama LLM per config) with optional fallback and shadow mode. See `docs/model-layer.md`.
 3. Orchestrator evaluates each task → scheduling engine → routing decision.
 4. Agent outputs → stored → reviewed → surfaced via notification service.
 
@@ -79,7 +79,7 @@ No VRAM contention. No GPU sharing between workloads.
 │   └── preferences.yaml
 ├── prompts/               ← Externalized prompt templates
 ├── fixtures/              ← Evaluation test fixtures (version-controlled)
-└── models/                ← Ollama model cache (Phase 3+)
+└── models/                ← Ollama local LLM model cache
 ```
 
 ## Concurrency Model
@@ -92,7 +92,7 @@ No VRAM contention. No GPU sharing between workloads.
 - Calendar writes serialized through async queue (prevents double-booking)
 - Task state transitions are atomic: read → validate → write → side effects in single async function with SQLite transaction
 
-### Phase 3+: Task Queue with Worker Pool
+### Task Queue with Worker Pool
 
 - `asyncio.Queue` or lightweight broker (arq/Redis)
 - Orchestrator dispatches; workers pull and execute independently
