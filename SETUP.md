@@ -24,10 +24,12 @@ This guide covers everything needed to get Donna running, from a fresh machine t
 8. [Running Locally (Dev Mode)](#8-running-locally-dev-mode)
 9. [Docker Deployment](#9-docker-deployment)
 10. [Monitoring Stack](#10-monitoring-stack)
-11. [Verification Checklist](#11-verification-checklist)
-12. [Running Tests](#12-running-tests)
-13. [CLI Reference](#13-cli-reference)
-14. [Troubleshooting](#14-troubleshooting)
+11. [Local LLM Stack (Phase 3+)](#11-local-llm-stack-phase-3)
+12. [Switching to Hybrid Model Routing (Phase 3+)](#12-switching-to-hybrid-model-routing-phase-3)
+13. [Verification Checklist](#13-verification-checklist)
+14. [Running Tests](#14-running-tests)
+15. [CLI Reference](#15-cli-reference)
+16. [Troubleshooting](#16-troubleshooting)
 
 ---
 
@@ -370,14 +372,60 @@ Grafana is accessible at `http://localhost:3000` when the monitoring stack is ru
 
 ### 5.8 GPU (Phase 3+ only)
 
-Skip this section until you have an RTX 3090 for Ollama. The vars are:
+Complete these steps when you have the RTX 3090 installed and dedicated to Donna.
+
+**Step 1 — Verify the NVIDIA driver is installed:**
+
+```bash
+nvidia-smi
+```
+
+Expected: a table listing both GPUs with their VRAM, driver version, and CUDA version. If this command fails, install the NVIDIA driver:
+
+```bash
+sudo apt update
+sudo apt install -y nvidia-driver-535   # or latest recommended for your GPU
+sudo reboot
+```
+
+Re-run `nvidia-smi` after reboot to confirm.
+
+**Step 2 — Install NVIDIA Container Toolkit** (required for Docker GPU passthrough):
+
+```bash
+# Add the NVIDIA Container Toolkit repository
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+  | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+  | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+sudo apt update && sudo apt install -y nvidia-container-toolkit
+
+# Configure Docker runtime and restart
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+**Step 3 — Confirm Docker can see the GPU:**
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
+```
+
+Expected: same output as Step 1. If this fails, verify the toolkit install completed without errors and that Docker was restarted.
+
+**Step 4 — Set the GPU assignment env vars:**
 
 ```env
 IMMICH_ML_GPU_ID=0     # GTX 1080 — dedicated to Immich/media (if applicable)
 DONNA_OLLAMA_GPU_ID=1  # RTX 3090 — dedicated to Donna local LLM
 ```
 
-GPU assignment prevents VRAM contention between workloads.
+GPU assignment prevents VRAM contention between workloads. The `donna-ollama.yml` compose file pins the Ollama container to device index `DONNA_OLLAMA_GPU_ID`.
+
+After completing these steps, continue to [Section 11 — Local LLM Stack](#11-local-llm-stack-phase-3) to start Ollama and pull the model.
 
 ---
 
@@ -442,7 +490,7 @@ cost:
   monthly_warning_pct: 0.90
 ```
 
-No edits needed for Phase 1. Phase 3+: swap `parser` to `provider: ollama` once Ollama is validated.
+No edits needed for Phase 1. For Phase 3+ hybrid routing, see [Section 12 — Switching to Hybrid Model Routing](#12-switching-to-hybrid-model-routing-phase-3) for the full sequence (eval → shadow → switch).
 
 ### `config/task_types.yaml`
 
@@ -579,7 +627,220 @@ Loki datasource is auto-configured from `docker/grafana/datasources/loki.yaml`.
 
 ---
 
-## 11. Verification Checklist
+## 11. Local LLM Stack (Phase 3+)
+
+Before starting this section, complete [Section 5.8](#58-gpu-phase-3-only) — the NVIDIA driver and Container Toolkit must be installed and verified.
+
+### Model Selection
+
+The RTX 3090 has 24 GB VRAM. The recommended model is:
+
+| Model | VRAM Usage | Notes |
+|-------|-----------|-------|
+| `qwen2.5:32b-instruct-q4_K_M` | ~19–20 GB | **Recommended.** Fits entirely in VRAM with headroom for KV cache. Strong instruction following. |
+| `llama3.3:70b-instruct-q4_K_M` | ~40 GB total | Higher quality; requires ~16 GB RAM offload. Slower due to PCIe bandwidth on offloaded layers. Only use if you have at least 20 GB RAM free after OS + Immich. |
+
+The `qwen2.5:32b` model is the right choice for Donna's workload (task parsing, priority classification, digest generation). The 70B option is available if you want to prioritise output quality over inference speed and have the RAM headroom.
+
+### Step 1 — Start the Ollama container
+
+```bash
+docker compose -f docker/donna-ollama.yml --env-file docker/.env up -d
+```
+
+This starts `donna-ollama` on the `homelab` network with GPU device index `DONNA_OLLAMA_GPU_ID` (set to `1` in your `.env`).
+
+**Verify the container started and can see the GPU:**
+
+```bash
+docker ps                                   # donna-ollama should be Up
+docker exec donna-ollama nvidia-smi         # should show the RTX 3090
+```
+
+### Step 2 — Pull the model
+
+```bash
+# Recommended: 32B at Q4_K_M (~19–20 GB VRAM, downloads ~19 GB)
+docker exec donna-ollama ollama pull qwen2.5:32b-instruct-q4_K_M
+
+# Alternative: 70B at Q4_K_M (downloads ~40 GB, needs RAM offload)
+# docker exec donna-ollama ollama pull llama3.3:70b-instruct-q4_K_M
+```
+
+The model files are stored at `/donna/models/` (mounted from `DONNA_DATA_PATH/models` in your `.env`). The download takes several minutes depending on your connection.
+
+**Check the download completed:**
+
+```bash
+docker exec donna-ollama ollama list
+```
+
+Expected output lists the model name, size, and modification time.
+
+### Step 3 — Smoke test
+
+Send a quick prompt to confirm the model loads and responds:
+
+```bash
+docker exec -it donna-ollama ollama run qwen2.5:32b-instruct-q4_K_M \
+  "You are a task assistant. Extract the task from: 'remind me to call the dentist Thursday'. Reply with JSON only: {\"task\": \"\", \"due\": \"\"}"
+```
+
+Expected: a JSON response with `task` and `due` populated. If the model doesn't load, check `docker logs donna-ollama` for OOM or CUDA errors.
+
+### Step 4 — Confirm the Ollama API is reachable
+
+The orchestrator calls Ollama via its REST API on port `11434`:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+Expected: JSON listing the pulled model(s). If this returns a connection error, check that `donna-ollama` is running and that port `11434` is not blocked by a firewall rule.
+
+### Step 5 — Verify VRAM usage
+
+After loading the model, confirm VRAM is within budget:
+
+```bash
+docker exec donna-ollama nvidia-smi --query-gpu=memory.used,memory.free --format=csv
+```
+
+For `qwen2.5:32b-instruct-q4_K_M` you should see roughly 19–20 GB used and 4–5 GB free. The free headroom is used for the KV cache during inference.
+
+---
+
+## 12. Switching to Hybrid Model Routing (Phase 3+)
+
+The hybrid setup routes high-frequency, lower-complexity tasks (parsing, classification) to the local model and keeps complex reasoning on Claude. The transition is controlled entirely by `config/donna_models.yaml` — no code changes required.
+
+**Recommended sequence:** evaluate → shadow → switch → monitor → (revert if needed).
+
+### Step 1 — Run the evaluation harness
+
+Do not change production routing until the model passes the eval gates. Run the harness against each task type you plan to migrate:
+
+```bash
+donna eval --task-type task_parse --model ollama/qwen2.5:32b-instruct-q4_K_M
+donna eval --task-type classify_priority --model ollama/qwen2.5:32b-instruct-q4_K_M
+donna eval --task-type generate_digest --model ollama/qwen2.5:32b-instruct-q4_K_M
+```
+
+Pass gates (from `docs/model-layer.md`):
+
+| Tier | Cases | Gate |
+|------|-------|------|
+| 1 — Baseline | ~10 | ≥ 90% to continue |
+| 2 — Nuance | ~15 | ≥ 80% to continue |
+| 3 — Complexity | ~10 | ≥ 60% to continue |
+| 4 — Adversarial | ~5 | No gate — diagnostic only |
+
+If a task type fails Tier 1 or Tier 2, do not migrate it. Keep it on Claude until the model improves or you find a better quantisation.
+
+To run a single tier only (useful for quick re-checks):
+
+```bash
+donna eval --task-type task_parse --model ollama/qwen2.5:32b-instruct-q4_K_M --tier 1
+```
+
+### Step 2 — Enable shadow mode before switching
+
+Shadow mode runs the local model in parallel alongside Claude, logs both outputs, but uses only Claude's output for actual responses. This gives you a real-traffic quality signal with zero risk.
+
+Edit `config/donna_models.yaml`:
+
+```yaml
+models:
+  parser:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+    shadow:
+      provider: ollama
+      model: qwen2.5:32b-instruct-q4_K_M
+  reasoner:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+  fallback:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+
+cost:
+  monthly_budget_usd: 100.00
+  daily_pause_threshold_usd: 20.00
+  task_approval_threshold_usd: 5.00
+  monthly_warning_pct: 0.90
+```
+
+Shadow runs are logged in `invocation_log` with `is_shadow = true`. Query them to compare quality:
+
+```bash
+sqlite3 /donna/db/donna_tasks.db \
+  "SELECT model_actual, AVG(quality_score), COUNT(*) FROM invocation_log
+   WHERE is_shadow = 1 AND task_type = 'task_parse'
+   GROUP BY model_actual;"
+```
+
+Run shadow mode for at least one week (two is better) before switching.
+
+### Step 3 — Switch to hybrid routing
+
+Once shadow scores are acceptable, update `config/donna_models.yaml` to route `parser` and `classify_priority` to Ollama. Keep `reasoner` and `fallback` on Claude for complex work:
+
+```yaml
+models:
+  parser:
+    provider: ollama
+    model: qwen2.5:32b-instruct-q4_K_M
+    estimated_cost_per_1k_tokens: 0.0001   # hardware amortisation — not free
+  classifier:
+    provider: ollama
+    model: qwen2.5:32b-instruct-q4_K_M
+    estimated_cost_per_1k_tokens: 0.0001
+  reasoner:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+  fallback:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+
+cost:
+  monthly_budget_usd: 100.00
+  daily_pause_threshold_usd: 20.00
+  task_approval_threshold_usd: 5.00
+  monthly_warning_pct: 0.90
+```
+
+Config changes take effect on the next orchestrator restart (or hot-reload if enabled). No code changes or container rebuilds are needed.
+
+> The `estimated_cost_per_1k_tokens` field ensures local model calls are still tracked in the `invocation_log` cost column, enabling genuine cost-per-quality comparisons. Never leave it at zero.
+
+### Step 4 — Enable spot-check quality monitoring
+
+Once local models handle live traffic, spot-checking is active (5% of outputs are sent to Claude-as-judge). This is configured in `config/donna_models.yaml`:
+
+```yaml
+quality:
+  spot_check_rate: 0.05          # 5% sample rate; raise to 0.15 during initial rollout
+  flag_threshold: 0.7            # scores below this create a Donna task for review
+```
+
+Outputs flagged below the threshold appear as tasks in your Discord tasks channel. Correct them there — corrections feed the preference log in `docs/preferences.md`.
+
+### Step 5 — Reverting
+
+If quality degrades, reverting is a single config change. In `config/donna_models.yaml`, set the affected alias back to Anthropic:
+
+```yaml
+  parser:
+    provider: anthropic
+    model: claude-sonnet-4-20250514
+```
+
+Restart the orchestrator to apply. The local model container keeps running — you're not tearing anything down, just changing the routing table.
+
+---
+
+## 13. Verification Checklist
 
 Work through these after setup to confirm everything is wired correctly.
 
@@ -596,7 +857,7 @@ Work through these after setup to confirm everything is wired correctly.
 
 ---
 
-## 12. Running Tests
+## 14. Running Tests
 
 ```bash
 # Unit tests only — no external dependencies, fast
@@ -637,7 +898,7 @@ mypy src/                    # type checker (strict mode)
 
 ---
 
-## 13. CLI Reference
+## 15. CLI Reference
 
 ```
 donna run      Start the orchestrator (web server + Discord bot)
@@ -666,7 +927,7 @@ donna eval     Run the evaluation harness (Phase 3+)
 
 ---
 
-## 14. Troubleshooting
+## 16. Troubleshooting
 
 ### Discord bot doesn't start
 
@@ -739,3 +1000,59 @@ kill -9 <PID>
 # Or run Donna on a different port
 donna run --dev --port 8200
 ```
+
+### Ollama container can't see the GPU
+
+```bash
+docker exec donna-ollama nvidia-smi
+```
+
+If this fails with "no devices found":
+- Confirm `nvidia-container-toolkit` is installed: `dpkg -l | grep nvidia-container-toolkit`
+- Confirm Docker was restarted after toolkit install: `sudo systemctl restart docker`
+- Confirm `DONNA_OLLAMA_GPU_ID` in `docker/.env` matches the device index shown by `nvidia-smi` on the host
+- Check that the Ollama compose file passes `--gpus "device=${DONNA_OLLAMA_GPU_ID}"` — if missing, it means the compose file needs updating
+
+### Ollama model pull fails or is interrupted
+
+If the pull stops mid-way, re-run the same command — Ollama resumes partial downloads:
+
+```bash
+docker exec donna-ollama ollama pull qwen2.5:32b-instruct-q4_K_M
+```
+
+If the pull fails with a disk space error, check available space on the volume mounted to `/donna/models`:
+
+```bash
+df -h /donna/models
+```
+
+The 32B Q4_K_M model requires approximately 20 GB free.
+
+### Ollama model loads but responses are slow
+
+Slow responses (> 10 s for short prompts) indicate layers are being offloaded to RAM rather than staying in VRAM. Check VRAM usage:
+
+```bash
+docker exec donna-ollama nvidia-smi --query-gpu=memory.used,memory.free --format=csv
+```
+
+If VRAM is near capacity and another process is competing (e.g. Immich ML on the same GPU), confirm `IMMICH_ML_GPU_ID` and `DONNA_OLLAMA_GPU_ID` are set to different device indices.
+
+### Eval harness fails Tier 1
+
+If `donna eval` fails Tier 1 (< 90%):
+- Do not switch production routing — keep all aliases on Anthropic
+- Check whether the model was fully downloaded: `docker exec donna-ollama ollama list` should show the model with the correct size
+- Try running the eval with `--tier 1` only and review the structured output for patterns (wrong date parsing, missing fields, etc.)
+- Consider whether the prompt template in `config/task_types.yaml` needs adjustment for this model's instruction format
+- As an alternative, evaluate `llama3.3:70b-instruct-q4_K_M` if you have sufficient RAM for offloading
+
+### Local model quality degrades after switching
+
+If spot-check scores drop below the `flag_threshold` after switching to hybrid routing, revert immediately:
+
+1. Set the affected alias back to `provider: anthropic` in `config/donna_models.yaml`
+2. Restart the orchestrator
+3. Investigate the flagged outputs in `invocation_log` to identify the failure pattern
+4. Re-run the eval harness before attempting migration again
