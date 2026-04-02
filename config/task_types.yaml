@@ -52,6 +52,13 @@ task_types:
     output_schema: schemas/decompose_output.json
     tools: [task_db_read]
 
+  extract_preferences:
+    description: "Extract learned preference rules from correction history"
+    model: reasoner
+    prompt_template: prompts/extract_preferences.md
+    output_schema: schemas/extract_preferences_output.json
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions

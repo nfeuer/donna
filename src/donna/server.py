@@ -32,12 +32,16 @@ import structlog
 from aiohttp import web
 
 if TYPE_CHECKING:
+    from donna.agents.prep_agent import PrepAgent
     from donna.integrations.sms_router import SmsRouter
     from donna.integrations.twilio_sms import TwilioSMS
     from donna.notifications.digest import MorningDigest
     from donna.notifications.escalation import EscalationManager
     from donna.notifications.overdue import OverdueDetector
     from donna.notifications.reminders import ReminderScheduler
+    from donna.preferences.rule_extractor import PreferenceRuleExtractor
+    from donna.scheduling.priority_recalculator import PriorityRecalculator
+    from donna.scheduling.weekly_planner import WeeklyPlanner
 
 _API_FRESHNESS_SECONDS = 600  # 10 minutes
 _SQLITE_CHECK_TIMEOUT = 2.0   # seconds
@@ -45,12 +49,17 @@ _SQLITE_CHECK_TIMEOUT = 2.0   # seconds
 
 @dataclasses.dataclass
 class NotificationTasks:
-    """Container for Slice-5 and Slice-7 background task runners."""
+    """Container for Phase 1 and Phase 2 background task runners."""
 
     reminder_scheduler: ReminderScheduler
     overdue_detector: OverdueDetector
     morning_digest: MorningDigest
     escalation_manager: EscalationManager | None = None
+    # Phase 2 additions:
+    prep_agent: PrepAgent | None = None
+    priority_recalculator: PriorityRecalculator | None = None
+    weekly_planner: WeeklyPlanner | None = None
+    rule_extractor: PreferenceRuleExtractor | None = None
 
 
 async def _check_sqlite(db_path: str | None) -> dict[str, Any]:
@@ -245,6 +254,34 @@ async def run_server(
                 asyncio.create_task(
                     notification_tasks.escalation_manager.check_and_advance(),
                     name="escalation_manager",
+                )
+            )
+        if notification_tasks.prep_agent is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.prep_agent.run(),
+                    name="prep_agent",
+                )
+            )
+        if notification_tasks.priority_recalculator is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.priority_recalculator.run(),
+                    name="priority_recalculator",
+                )
+            )
+        if notification_tasks.weekly_planner is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.weekly_planner.run(),
+                    name="weekly_planner",
+                )
+            )
+        if notification_tasks.rule_extractor is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.rule_extractor.run_weekly(),
+                    name="rule_extractor",
                 )
             )
         logger.info("notification_background_tasks_started", count=len(bg_tasks))

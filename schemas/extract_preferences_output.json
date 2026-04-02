@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExtractPreferencesOutput",
+  "description": "Output from the preference rule extraction LLM call.",
+  "type": "object",
+  "required": ["rules"],
+  "additionalProperties": false,
+  "properties": {
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule_type", "rule_text", "confidence", "condition", "action", "supporting_correction_ids"],
+        "additionalProperties": false,
+        "properties": {
+          "rule_type": {
+            "type": "string",
+            "enum": ["domain_override", "priority_adjustment", "scheduling_preference", "notification_preference"]
+          },
+          "rule_text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "condition": {
+            "type": "object",
+            "properties": {
+              "keywords": {
+                "type": "array",
+                "items": {"type": "string"}
+              },
+              "domain": {"type": "string"},
+              "task_type": {"type": "string"}
+            },
+            "additionalProperties": false
+          },
+          "action": {
+            "type": "object",
+            "required": ["field", "value"],
+            "properties": {
+              "field": {"type": "string"},
+              "value": {}
+            },
+            "additionalProperties": false
+          },
+          "supporting_correction_ids": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}

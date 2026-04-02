@@ -178,6 +178,15 @@ class SchedulingConfig(BaseModel):
     search_horizon_days: int = 14
 
 
+class PriorityConfig(BaseModel):
+    """Priority escalation thresholds for daily recalculation."""
+
+    deadline_warning_days: int = 3
+    deadline_critical_days: int = 1
+    workload_threshold_per_day: int = 5
+    escalation_after_reschedules: int = 1
+
+
 class CredentialsConfig(BaseModel):
     """OAuth2 credential file paths and scopes."""
 
@@ -194,6 +203,29 @@ class CalendarConfig(BaseModel):
     scheduling: SchedulingConfig = Field(default_factory=SchedulingConfig)
     time_windows: TimeWindowsConfig
     credentials: CredentialsConfig
+    priority: PriorityConfig = Field(default_factory=PriorityConfig)
+
+
+class PreferenceScheduleConfig(BaseModel):
+    """Schedule and thresholds for the preference rule extraction batch job."""
+
+    extract_interval_days: int = 7
+    min_corrections_to_extract: int = 3
+    min_confidence: float = 0.7
+    max_corrections_per_batch: int = 50
+
+
+class PreferencesConfig(BaseModel):
+    """Top-level preferences configuration."""
+
+    schedule: PreferenceScheduleConfig = Field(default_factory=PreferenceScheduleConfig)
+    rules: list[dict] = Field(default_factory=list)
+
+
+def load_preferences_config(config_dir: Path) -> PreferencesConfig:
+    """Load preferences configuration."""
+    data = load_yaml(config_dir / "preferences.yaml")
+    return PreferencesConfig(**data)
 
 
 def load_calendar_config(config_dir: Path) -> CalendarConfig:
