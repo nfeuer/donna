@@ -99,3 +99,33 @@ $100/month hard cap on Claude API. $20/day pause threshold for autonomous agent 
 | `docs/notifications.md` | Channels, escalation, conversation context |
 | `docs/preferences.md` | Correction logging, rule extraction, transparency |
 | `docs/resilience.md` | Retries, circuit breaker, backup, security |
+
+## TODO
+
+### Phase 1 — Foundation (complete)
+
+- [x] Wire `donna health` CLI command → `src/donna/resilience/health_check.py`
+- [x] Wire `donna backup` CLI command → `src/donna/resilience/backup.py`
+- [x] Implement evaluation harness body in `donna eval` → load fixtures from `fixtures/`, run model, compare output (`src/donna/cli.py`)
+
+### Phase 2 — Intelligence
+
+- [ ] Preference rule extraction — extract learned rules from `correction_log` table (`src/donna/preferences/correction_logger.py`)
+- [ ] Rule application — apply learned preferences to future task parsing
+- [ ] Weekly planning session — agent assembles and proposes the week's schedule
+- [ ] Daily priority recalculation — dynamic priority escalation based on deadlines and workload
+- [ ] Dependency chain scheduling — schedule tasks that block other tasks in order
+- [ ] Task prep work agent — execute `prep_work_instructions` before scheduled task start
+- [ ] Task decomposition service — break large tasks into subtasks (`schemas/decompose_output.json`, `prompts/task_decompose.md`)
+
+### Phase 3 — Agents & Local LLM
+
+- [ ] Agent framework — implement agent hierarchy, tool progression, and safety constraints (`src/donna/agents/`)
+- [ ] Ollama provider — wire local LLM provider; config entries exist in `config/donna_models.yaml` (deferred until RTX 3090)
+- [ ] Tier 4 escalation — TTS phone call via Twilio Voice (tiers 1–3 complete)
+
+### Phase 4 — UI & Multi-User
+
+- [ ] Multi-user orchestration — routing and auth (`user_id` exists on all DB tables)
+- [ ] Flutter UI — web + Android app
+- [ ] Firebase hosting setup

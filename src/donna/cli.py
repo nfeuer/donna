@@ -182,33 +182,170 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
 
 async def _run_eval(args: argparse.Namespace) -> None:
     """Run the offline evaluation harness."""
+    import json
+    from pathlib import Path
+
+    from donna.config import load_models_config, load_task_types_config
     from donna.logging.setup import setup_logging
+    from donna.models.router import ModelRouter
+    from donna.models.validation import validate_output
 
     setup_logging(log_level="INFO", json_output=False)
 
     import structlog
     logger = structlog.get_logger()
-    logger.info(
-        "eval_starting",
-        task_type=args.task_type,
-        model=args.model,
-        tier=args.tier,
-    )
+    logger.info("eval_starting", task_type=args.task_type, model=args.model, tier=args.tier)
 
-    # TODO: Load fixtures, run evaluation, save model session
-    logger.info("evaluation_harness_not_yet_implemented")
+    project_root = Path(__file__).resolve().parents[2]
+    config_dir = project_root / "config"
+    fixtures_dir = Path(args.fixtures_dir)
+
+    models_config = load_models_config(config_dir)
+    task_types_config = load_task_types_config(config_dir)
+    router = ModelRouter(models_config, task_types_config, project_root)
+
+    template = router.get_prompt_template(args.task_type)
+    schema = router.get_output_schema(args.task_type)
+
+    task_fixtures_dir = fixtures_dir / args.task_type
+    if not task_fixtures_dir.exists():
+        print(f"No fixtures found for task type {args.task_type!r} at {task_fixtures_dir}")
+        sys.exit(1)
+
+    fixture_files = sorted(task_fixtures_dir.glob("tier*.json"))
+    if args.tier is not None:
+        fixture_files = [f for f in fixture_files if f.name.startswith(f"tier{args.tier}")]
+
+    if not fixture_files:
+        print(f"No fixture files found for task type {args.task_type!r} (tier={args.tier})")
+        sys.exit(1)
+
+    overall_pass = True
+    for fixture_path in fixture_files:
+        with open(fixture_path) as fh:
+            fixture = json.load(fh)
+
+        tier = fixture["tier"]
+        name = fixture["name"]
+        pass_gate: float = fixture["pass_gate"]
+        cases: list[dict] = fixture["cases"]
+
+        passed = 0
+        print(f"\nTier {tier} — {name}  ({len(cases)} cases, gate: {pass_gate:.0%})")
+        print("-" * 60)
+
+        for case in cases:
+            case_id = case["id"]
+            expected: dict = case["expected"]
+            prompt = _render_eval_prompt(template, case["input"])
+
+            try:
+                result, _ = await router.complete(prompt, args.task_type)
+                validate_output(result, schema)
+                mismatches = _compare_fields(expected, result)
+                if not mismatches:
+                    passed += 1
+                    print(f"  PASS  {case_id}")
+                else:
+                    print(f"  FAIL  {case_id}  — {'; '.join(mismatches)}")
+            except Exception as exc:
+                print(f"  ERROR {case_id}  — {exc}")
+
+        pass_rate = passed / len(cases)
+        tier_pass = pass_rate >= pass_gate
+        status = "PASS" if tier_pass else "FAIL"
+        print(f"\n  {status}  {passed}/{len(cases)}  ({pass_rate:.0%} vs gate {pass_gate:.0%})")
+        if not tier_pass:
+            overall_pass = False
+
+    print("\n" + "=" * 60)
+    print(f"Overall: {'PASS' if overall_pass else 'FAIL'}")
+    if not overall_pass:
+        sys.exit(1)
+
+
+def _render_eval_prompt(template: str, case_input: str | dict) -> str:
+    """Render a prompt template with fixture case input."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    result = template
+    result = result.replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
+    result = result.replace("{{ current_time }}", now.strftime("%H:%M %Z"))
+
+    if isinstance(case_input, str):
+        result = result.replace("{{ user_input }}", case_input)
+    else:
+        for key, value in case_input.items():
+            result = result.replace(f"{{{{ {key} }}}}", str(value) if value is not None else "")
+
+    return result
+
+
+def _compare_fields(expected: dict, actual: dict) -> list[str]:
+    """Return mismatch descriptions for fields declared in expected."""
+    mismatches: list[str] = []
+    for key, exp_val in expected.items():
+        act_val = actual.get(key)
+        if exp_val is None:
+            if act_val is not None:
+                mismatches.append(f"{key}: expected null, got {act_val!r}")
+        elif isinstance(exp_val, str):
+            if str(act_val).lower().strip() != exp_val.lower().strip():
+                mismatches.append(f"{key}: expected {exp_val!r}, got {act_val!r}")
+        else:
+            if act_val != exp_val:
+                mismatches.append(f"{key}: expected {exp_val!r}, got {act_val!r}")
+    return mismatches
 
 
 async def _health_check() -> None:
-    """Run a health check."""
-    # TODO: Check SQLite, Discord, calendar, API
-    print("Health check not yet implemented.")
+    """Run a self-diagnostic health check."""
+    from pathlib import Path
+
+    from donna.logging.setup import setup_logging
+    from donna.resilience.health_check import SelfDiagnostic
+
+    setup_logging(log_level="WARNING", json_output=False)
+
+    tasks_db = Path(os.environ.get("DONNA_DB_PATH", "donna_tasks.db"))
+    logs_db = Path(os.environ.get("DONNA_LOGS_DB_PATH", "donna_logs.db"))
+
+    diagnostic = SelfDiagnostic(tasks_db_path=tasks_db, logs_db_path=logs_db)
+    warnings = await diagnostic.run()
+
+    if warnings:
+        print(f"{len(warnings)} issue(s) found:")
+        for w in warnings:
+            print(f"  {w}")
+        sys.exit(1)
+    else:
+        print("All checks passed.")
 
 
 async def _backup() -> None:
-    """Trigger a manual backup."""
-    # TODO: Run SQLite .backup API
-    print("Manual backup not yet implemented.")
+    """Trigger a manual SQLite backup."""
+    from pathlib import Path
+
+    from donna.logging.setup import setup_logging
+    from donna.resilience.backup import BackupManager
+
+    setup_logging(log_level="INFO", json_output=False)
+
+    db_path = Path(os.environ.get("DONNA_DB_PATH", "donna_tasks.db"))
+    db_dir = db_path.parent if db_path.parent != Path(".") else Path.cwd()
+    backup_dir = Path(os.environ.get("DONNA_BACKUP_DIR", "/donna/backups"))
+
+    manager = BackupManager(db_dir=db_dir, backup_dir=backup_dir)
+    paths = await manager.backup_all(label="manual")
+    manager.rotate_backups()
+
+    if paths:
+        print(f"Backed up {len(paths)} database(s):")
+        for p in paths:
+            print(f"  {p}")
+    else:
+        print("No databases found to back up.")
 
 
 if __name__ == "__main__":
