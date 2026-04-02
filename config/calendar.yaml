@@ -51,6 +51,12 @@ time_windows:
     end_hour: 20      # 8:00 PM
     days: [5, 6]      # Saturday–Sunday
 
+priority:
+  deadline_warning_days: 3        # hard deadline within N days → floor priority to 4
+  deadline_critical_days: 1       # hard deadline within N days → floor priority to 5
+  workload_threshold_per_day: 5   # if more than N tasks same day, apply pressure
+  escalation_after_reschedules: 1 # bump priority after this many reschedules under pressure
+
 credentials:
   client_secrets_path: "credentials.json"   # OAuth2 client credentials file
   token_path: "token.json"                   # persisted token (created on first auth)

@@ -21,6 +21,7 @@ import structlog
 
 from donna.config import CalendarConfig, TimeWindowConfig
 from donna.integrations.calendar import CalendarEvent, GoogleCalendarClient
+from donna.scheduling.dependency_resolver import topological_sort
 from donna.tasks.database import Database
 from donna.tasks.db_models import TaskDomain, TaskStatus
 from donna.tasks.database import TaskRow
@@ -284,6 +285,104 @@ class Scheduler:
         )
 
         return slot
+
+
+    async def schedule_dependency_chain(
+        self,
+        tasks: list[TaskRow],
+        db: Database,
+        client: GoogleCalendarClient,
+        calendar_id: str,
+    ) -> list[ScheduledSlot]:
+        """Schedule a list of tasks respecting their dependency order.
+
+        Tasks are sorted topologically (blockers first). Each dependent task
+        is scheduled to start no earlier than the end of its most recently
+        scheduled direct blocker, ensuring sequential execution.
+
+        Args:
+            tasks: Tasks to schedule (may be in any order).
+            db: Database instance.
+            client: Authenticated GoogleCalendarClient.
+            calendar_id: Target Google Calendar ID.
+
+        Returns:
+            List of ScheduledSlots in the order tasks were scheduled.
+        """
+        ordered = topological_sort(tasks)
+
+        # Fetch all existing calendar events once.
+        cfg = self._config.scheduling
+        now = datetime.now(tz=timezone.utc)
+        time_max = now + timedelta(days=cfg.search_horizon_days)
+
+        try:
+            existing_events = await client.list_events(calendar_id, now, time_max)
+        except Exception:
+            logger.exception("scheduler_chain_list_events_failed")
+            existing_events = []
+
+        # Track slot end times per task ID for dependency enforcement.
+        slot_ends: dict[str, datetime] = {}
+        booked_slots: list[ScheduledSlot] = []
+
+        from donna.scheduling.dependency_resolver import _parse_deps
+
+        for task in ordered:
+            # Determine the earliest start based on direct blockers.
+            dep_ids = _parse_deps(task.dependencies)
+            after_dt = now
+            for dep_id in dep_ids:
+                if dep_id in slot_ends:
+                    after_dt = max(after_dt, slot_ends[dep_id])
+
+            slot = self.find_next_slot(task, existing_events, now=after_dt)
+
+            # Create calendar event.
+            event = await client.create_event(
+                calendar_id=calendar_id,
+                summary=task.title,
+                start=slot.start,
+                end=slot.end,
+                task_id=task.id,
+            )
+
+            # Transition state and update DB.
+            from donna.tasks.db_models import TaskStatus as TS
+            if task.status == TS.BACKLOG.value:
+                await db.transition_task_state(task.id, TS.SCHEDULED)
+
+            await db.update_task(
+                task.id,
+                scheduled_start=slot.start,
+                calendar_event_id=event.event_id,
+                donna_managed=True,
+            )
+
+            # Register this slot's end so dependents can use it.
+            slot_ends[task.id] = slot.end
+
+            # Add the new event to the list so subsequent tasks see it.
+            existing_events.append(
+                CalendarEvent(
+                    event_id=event.event_id,
+                    summary=task.title,
+                    start=slot.start,
+                    end=slot.end,
+                    donna_managed=True,
+                    task_id=task.id,
+                )
+            )
+
+            booked_slots.append(slot)
+            logger.info(
+                "chain_task_scheduled",
+                task_id=task.id,
+                slot_start=slot.start.isoformat(),
+                slot_end=slot.end.isoformat(),
+            )
+
+        return booked_slots
 
 
 # ------------------------------------------------------------------

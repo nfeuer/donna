@@ -21,6 +21,10 @@ from donna.models.types import CompletionMetadata
 from donna.models.validation import validate_output
 from donna.tasks.dedup import Deduplicator, DuplicateDetectedError  # noqa: F401 — re-exported
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from donna.preferences.rule_applier import PreferenceApplier
+
 logger = structlog.get_logger()
 
 TASK_TYPE = "parse_task"
@@ -90,11 +94,13 @@ class InputParser:
         invocation_logger: InvocationLogger,
         project_root: Path,
         deduplicator: Deduplicator | None = None,
+        preference_applier: PreferenceApplier | None = None,
     ) -> None:
         self._router = router
         self._invocation_logger = invocation_logger
         self._project_root = project_root
         self._deduplicator = deduplicator
+        self._preference_applier = preference_applier
 
     async def parse(
         self,
@@ -145,6 +151,10 @@ class InputParser:
 
         # 5. Convert to result
         result = _to_parse_result(validated)
+
+        # 5b. Apply learned preferences (post-parse, pre-database)
+        if self._preference_applier is not None:
+            result = await self._preference_applier.apply_for_user(result, user_id)
 
         # 6. Deduplication check — raises DuplicateDetectedError if duplicate found
         if self._deduplicator is not None:

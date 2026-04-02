@@ -108,15 +108,15 @@ $100/month hard cap on Claude API. $20/day pause threshold for autonomous agent 
 - [x] Wire `donna backup` CLI command → `src/donna/resilience/backup.py`
 - [x] Implement evaluation harness body in `donna eval` → load fixtures from `fixtures/`, run model, compare output (`src/donna/cli.py`)
 
-### Phase 2 — Intelligence
+### Phase 2 — Intelligence (complete)
 
-- [ ] Preference rule extraction — extract learned rules from `correction_log` table (`src/donna/preferences/correction_logger.py`)
-- [ ] Rule application — apply learned preferences to future task parsing
-- [ ] Weekly planning session — agent assembles and proposes the week's schedule
-- [ ] Daily priority recalculation — dynamic priority escalation based on deadlines and workload
-- [ ] Dependency chain scheduling — schedule tasks that block other tasks in order
-- [ ] Task prep work agent — execute `prep_work_instructions` before scheduled task start
-- [ ] Task decomposition service — break large tasks into subtasks (`schemas/decompose_output.json`, `prompts/task_decompose.md`)
+- [x] Preference rule extraction — extract learned rules from `correction_log` table (`src/donna/preferences/rule_extractor.py`)
+- [x] Rule application — apply learned preferences to future task parsing (`src/donna/preferences/rule_applier.py`)
+- [x] Weekly planning session — agent assembles and proposes the week's schedule (`src/donna/scheduling/weekly_planner.py`)
+- [x] Daily priority recalculation — dynamic priority escalation based on deadlines and workload (`src/donna/scheduling/priority_engine.py`, `src/donna/scheduling/priority_recalculator.py`)
+- [x] Dependency chain scheduling — schedule tasks that block other tasks in order (`src/donna/scheduling/dependency_resolver.py`)
+- [x] Task prep work agent — execute `prep_work_instructions` before scheduled task start (`src/donna/agents/prep_agent.py`)
+- [x] Task decomposition service — break large tasks into subtasks (`src/donna/agents/decomposition.py`)
 
 ### Phase 3 — Agents & Local LLM
 

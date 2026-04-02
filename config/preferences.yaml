@@ -19,4 +19,10 @@
 #     enabled: true
 #     supporting_corrections: ["uuid1", "uuid3"]
 
+schedule:
+  extract_interval_days: 7         # run rule extraction once per week
+  min_corrections_to_extract: 3    # minimum corrections per field before extracting
+  min_confidence: 0.7              # discard rules below this confidence
+  max_corrections_per_batch: 50    # cap per extraction run to control cost
+
 rules: []
