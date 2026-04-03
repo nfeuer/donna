@@ -1,0 +1,31 @@
+# Donna REST API — FastAPI backend for Flutter Web + Android app (Phase 4).
+# Exposes port 8200. Connects to the SQLite task DB via a read-only volume mount.
+# See docker/donna-app.yml for the compose service definition.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install only what's needed for the API; keep the image small.
+COPY pyproject.toml ./
+COPY src/ ./src/
+COPY config/ ./config/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./
+
+RUN pip install --no-cache-dir -e "." \
+    && pip install --no-cache-dir uvicorn[standard]
+
+# Non-root user for security.
+RUN useradd --create-home --shell /bin/bash donna
+USER donna
+
+EXPOSE 8200
+
+# DONNA_AUTH_DISABLED=false in production — set to true only in local dev.
+ENV DONNA_AUTH_DISABLED=false \
+    DONNA_DEFAULT_USER_ID=nick \
+    DONNA_DB_PATH=/donna/db/donna_tasks.db \
+    DONNA_CONFIG_DIR=/app/config
+
+CMD ["uvicorn", "donna.api:app", "--host", "0.0.0.0", "--port", "8200", "--workers", "1"]

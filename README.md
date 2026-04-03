@@ -131,6 +131,9 @@ $100/month hard cap on Claude API. $20/day pause threshold for autonomous agent 
 
 ### Phase 4 — UI & Multi-User
 
-- [ ] Multi-user orchestration — routing and auth (`user_id` exists on all DB tables)
-- [ ] Flutter UI — web + Android app
-- [ ] Firebase hosting setup
+- [x] Multi-user orchestration — Firebase JWT auth middleware maps Firebase UID → `user_id`; all DB queries user-scoped (`src/donna/api/auth.py`)
+- [x] FastAPI REST backend — task CRUD, schedule, agent activity, and cost endpoints for Flutter app (`src/donna/api/`)
+- [x] `CalendarMirror` multi-user migration — `user_id` column added to the one table that was missing it (`alembic/versions/add_calendar_mirror_user_id.py`)
+- [x] Docker API service — `Dockerfile.api` builds the FastAPI container; `donna-app.yml` runs it on port 8200
+- [ ] Flutter UI — web + Android app (`donna-app` repo — separate Flutter project; see `slices/slice_11_flutter_ui.md`)
+- [ ] Firebase Hosting + FCM setup — static hosting and Android push notifications (infrastructure; see `slices/slice_11_flutter_ui.md`)

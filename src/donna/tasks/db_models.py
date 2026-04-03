@@ -210,6 +210,7 @@ class CalendarMirror(Base):
     __tablename__ = "calendar_mirror"
 
     event_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     calendar_id: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     summary: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
