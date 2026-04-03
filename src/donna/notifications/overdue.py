@@ -30,6 +30,7 @@ from donna.tasks.db_models import TaskStatus
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from donna.models.router import ModelRouter
     from donna.notifications.escalation import EscalationManager
 
 logger = structlog.get_logger()
@@ -57,6 +58,7 @@ class OverdueDetector:
         calendar_id: str,
         user_id: str,
         escalation_manager: EscalationManager | None = None,
+        router: ModelRouter | None = None,
     ) -> None:
         self._db = db
         self._service = service
@@ -65,6 +67,7 @@ class OverdueDetector:
         self._calendar_id = calendar_id
         self._user_id = user_id
         self._escalation_manager = escalation_manager
+        self._router = router
         # task_id set: only nudge once per day (reset at midnight).
         self._nudged: set[str] = set()
         self._nudged_date: str = ""
@@ -113,10 +116,11 @@ class OverdueDetector:
                 if now <= overdue_at:
                     continue
 
-                time_str = now.strftime("%I:%M %p")
-                nudge_text = (
-                    f"It's {time_str} and you haven't touched '{task.title}'."
-                    " Did you finish it or should I find time tomorrow?"
+                overdue_minutes = int((now - overdue_at).total_seconds() / 60)
+                nudge_text, llm_generated = await self._generate_nudge(
+                    task=task,
+                    now=now,
+                    overdue_minutes=overdue_minutes,
                 )
 
                 if self._escalation_manager is not None:
@@ -146,13 +150,71 @@ class OverdueDetector:
                     )
 
                 self._nudged.add(task.id)
+
+                # Persist nudge event and increment counter.
+                await self._db.increment_nudge_count(task.id)
+                await self._db.record_nudge_event(
+                    user_id=self._user_id,
+                    task_id=task.id,
+                    nudge_type="overdue",
+                    channel="discord",
+                    message_text=nudge_text,
+                    llm_generated=llm_generated,
+                )
+
                 logger.info(
                     "overdue_nudge_dispatched",
                     task_id=task.id,
                     title=task.title,
                     overdue_at=overdue_at.isoformat(),
                     sent_immediately=sent,
+                    llm_generated=llm_generated,
                 )
+
+    async def _generate_nudge(
+        self,
+        task: object,
+        now: datetime,
+        overdue_minutes: int,
+    ) -> tuple[str, bool]:
+        """Generate a nudge message via local LLM, falling back to a template.
+
+        Returns (nudge_text, llm_generated).
+        """
+        time_str = now.strftime("%I:%M %p")
+        fallback = (
+            f"It's {time_str} and you haven't touched '{getattr(task, 'title', '')}'."
+            " Did you finish it or should I find time tomorrow?"
+        )
+
+        if self._router is None:
+            return fallback, False
+
+        try:
+            prompt = (
+                f"Task: {getattr(task, 'title', '')}\n"
+                f"Domain: {getattr(task, 'domain', 'personal')}\n"
+                f"Priority: {getattr(task, 'priority', 2)}\n"
+                f"Scheduled start: {getattr(task, 'scheduled_start', 'unknown')}\n"
+                f"Time overdue: {overdue_minutes} minutes\n"
+                f"Nudge count: {getattr(task, 'nudge_count', 0)}\n"
+                f"Reschedule count: {getattr(task, 'reschedule_count', 0)}\n"
+                f"Current time: {time_str}\n"
+            )
+            result, _meta = await self._router.complete(
+                prompt=prompt,
+                task_type="generate_nudge",
+                task_id=getattr(task, "id", None),
+                user_id=self._user_id,
+            )
+            nudge_text = result.get("nudge_text", "").strip()
+            if nudge_text:
+                return nudge_text, True
+            logger.warning("nudge_llm_empty_response", task_id=getattr(task, "id", None))
+        except Exception:
+            logger.exception("nudge_llm_failed", task_id=getattr(task, "id", None))
+
+        return fallback, False
 
     async def handle_reply(self, task_id: str, reply: str) -> None:
         """Handle user reply in an overdue thread.

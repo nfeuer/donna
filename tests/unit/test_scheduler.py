@@ -108,6 +108,8 @@ def _make_task(
         estimated_cost=None,
         calendar_event_id=None,
         donna_managed=False,
+        nudge_count=0,
+        quality_score=None,
     )
 
 

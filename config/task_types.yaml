@@ -59,6 +59,34 @@ task_types:
     output_schema: schemas/extract_preferences_output.json
     tools: []
 
+  generate_nudge:
+    description: "Generate a contextual nudge message in Donna persona"
+    model: local_parser
+    prompt_template: prompts/generate_nudge.md
+    output_schema: schemas/nudge_output.json
+    tools: []
+
+  generate_reminder:
+    description: "Generate a pre-task reminder message in Donna persona"
+    model: local_parser
+    prompt_template: prompts/generate_reminder.md
+    output_schema: schemas/reminder_output.json
+    tools: []
+
+  challenge_task:
+    description: "Evaluate task quality and generate follow-up questions"
+    model: local_parser
+    prompt_template: prompts/challenge_task.md
+    output_schema: schemas/challenge_output.json
+    tools: []
+
+  generate_weekly_digest:
+    description: "Generate weekly efficiency report in Donna persona"
+    model: local_parser
+    prompt_template: prompts/weekly_digest.md
+    output_schema: schemas/weekly_digest_output.json
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions

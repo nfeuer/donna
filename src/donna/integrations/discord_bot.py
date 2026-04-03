@@ -26,7 +26,12 @@ import structlog
 from donna.orchestrator.input_parser import DuplicateDetectedError, InputParser
 from donna.preferences.correction_logger import log_correction
 from donna.tasks.database import Database, TaskRow
-from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain
+from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain, TaskStatus
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from donna.orchestrator.dispatcher import AgentDispatcher
 
 logger = structlog.get_logger()
 
@@ -57,6 +62,7 @@ class DonnaBot(discord.Client):
         debug_channel_id: int | None = None,
         digest_channel_id: int | None = None,
         overdue_reply_handler: Callable[[str, str], Awaitable[None]] | None = None,
+        dispatcher: AgentDispatcher | None = None,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -67,8 +73,11 @@ class DonnaBot(discord.Client):
         self._debug_channel_id = debug_channel_id
         self._digest_channel_id = digest_channel_id
         self._overdue_reply_handler = overdue_reply_handler
+        self._dispatcher = dispatcher
         # Maps Discord thread ID → task ID for overdue nudge reply routing.
         self.overdue_threads: dict[int, str] = {}
+        # Maps Discord thread ID → task ID for challenger follow-up routing.
+        self._challenger_threads: dict[int, str] = {}
         # Maps user_id → (new_parse_result_title, new_description, new_domain, existing_task)
         # for pending dedup decisions awaiting user reply.
         self._dedup_pending: dict[str, tuple[str, str | None, str, TaskRow]] = {}
@@ -207,6 +216,13 @@ class DonnaBot(discord.Client):
                 logger.exception("overdue_reply_handler_failed", task_id=task_id)
             return
 
+        # Route challenger-thread replies: append answers to task and re-dispatch.
+        if message.channel.id in self._challenger_threads:
+            task_id = self._challenger_threads[message.channel.id]
+            reply = message.content.strip()
+            await self._handle_challenger_reply(message, task_id, reply)
+            return
+
         # Ignore messages outside the designated tasks channel
         if message.channel.id != self._tasks_channel_id:
             return
@@ -288,6 +304,10 @@ class DonnaBot(discord.Client):
                 f"Got it. '{task.title}' — {task.domain}, priority {task.priority}."
                 " Scheduled: pending."
             )
+
+            # Run challenger agent to probe task quality (if dispatcher is wired).
+            if self._dispatcher is not None:
+                await self._run_challenger(message, task, user_id, log)
 
         except DuplicateDetectedError as dup:
             # Dedup triggered: store pending context and prompt user.
@@ -474,6 +494,75 @@ class DonnaBot(discord.Client):
         await message.channel.send(
             f"Updated '{task.title}': {field} changed from {original_value} to {new_value}."
         )
+
+    # ------------------------------------------------------------------
+    # Challenger agent integration
+    # ------------------------------------------------------------------
+
+    async def _run_challenger(
+        self,
+        message: discord.Message,
+        task: TaskRow,
+        user_id: str,
+        log: Any,
+    ) -> None:
+        """Dispatch task through the challenger agent; open a thread if questions arise."""
+        if self._dispatcher is None:
+            return
+
+        try:
+            result = await self._dispatcher.dispatch(task, user_id=user_id)
+        except Exception:
+            log.exception("challenger_dispatch_failed", task_id=task.id)
+            return
+
+        if result.status == "needs_input" and result.questions:
+            try:
+                thread = await message.create_thread(
+                    name=f"Details: {task.title[:80]}",
+                )
+                self._challenger_threads[thread.id] = task.id
+                for q in result.questions:
+                    await thread.send(q)
+                log.info(
+                    "challenger_thread_created",
+                    task_id=task.id,
+                    thread_id=thread.id,
+                    question_count=len(result.questions),
+                )
+            except Exception:
+                log.exception("challenger_thread_create_failed", task_id=task.id)
+
+    async def _handle_challenger_reply(
+        self,
+        message: discord.Message,
+        task_id: str,
+        reply: str,
+    ) -> None:
+        """Append user's challenger reply to task notes and re-dispatch."""
+        log = logger.bind(task_id=task_id, channel="discord")
+
+        task = await self._database.get_task(task_id)
+        if task is None:
+            log.warning("challenger_reply_task_not_found")
+            return
+
+        # Append the reply to the task's notes.
+        import json as _json
+
+        existing_notes: list[str] = _json.loads(task.notes) if task.notes else []
+        existing_notes.append(f"Challenger follow-up: {reply}")
+        await self._database.update_task(task_id, notes=existing_notes)
+
+        # Append to description for richer context.
+        new_desc = (task.description or "") + f"\n\nAdditional context: {reply}"
+        await self._database.update_task(task_id, description=new_desc.strip())
+
+        log.info("challenger_reply_applied", reply=reply[:200])
+        await message.channel.send("Got it, added to the task.")
+
+        # Clean up thread tracking — one round of follow-up is enough.
+        self._challenger_threads.pop(message.channel.id, None)
 
 
 # ------------------------------------------------------------------

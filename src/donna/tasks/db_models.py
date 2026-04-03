@@ -132,6 +132,32 @@ class Task(Base):
     estimated_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
     calendar_event_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     donna_managed: Mapped[bool] = mapped_column(Boolean, default=False)
+    nudge_count: Mapped[int] = mapped_column(Integer, default=0)
+    quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class NudgeEvent(Base):
+    """Persistent log of every nudge sent to the user. Supports stats tracking."""
+
+    __tablename__ = "nudge_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    task_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tasks.id"), nullable=False, index=True
+    )
+    nudge_type: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # "overdue", "reminder", "escalation"
+    channel: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # "discord", "sms", "email"
+    escalation_tier: Mapped[int] = mapped_column(Integer, default=1)
+    message_text: Mapped[str] = mapped_column(Text, nullable=False)
+    llm_generated: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
 
 
 class InvocationLog(Base):

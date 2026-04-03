@@ -98,6 +98,20 @@ class AgentDispatcher:
             logger.error("dispatcher_pm_failed", task_id=task.id, error=pm_result.error)
             return pm_result
 
+        # Step 1.5: Challenger assessment (if enabled)
+        challenger = self._agents.get("challenger")
+        if challenger is not None:
+            logger.info("dispatcher_challenger_assessment", task_id=task.id)
+            challenger_result = await self._run_with_timeout(challenger, task, context)
+
+            if challenger_result.status == "needs_input":
+                logger.info(
+                    "dispatcher_challenger_needs_input",
+                    task_id=task.id,
+                    questions=challenger_result.questions,
+                )
+                return challenger_result
+
         # Step 2: Dispatch to execution agent
         recommended = pm_result.output.get("recommended_agent", "scheduler")
         agent = self._agents.get(recommended)

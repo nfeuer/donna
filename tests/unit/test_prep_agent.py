@@ -44,6 +44,8 @@ def _make_task(**kwargs) -> TaskRow:
         estimated_cost=None,
         calendar_event_id=None,
         donna_managed=False,
+        nudge_count=0,
+        quality_score=None,
     )
     defaults.update(kwargs)
     return TaskRow(**defaults)

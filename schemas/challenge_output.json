@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "needs_clarification": {
+      "type": "boolean",
+      "description": "Whether the task needs follow-up questions"
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Follow-up questions to ask the user (1-3 items)"
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "Brief explanation of the assessment"
+    }
+  },
+  "required": ["needs_clarification"]
+}
