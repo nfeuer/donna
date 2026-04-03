@@ -38,6 +38,12 @@ if TYPE_CHECKING:
     from donna.notifications.digest import MorningDigest
     from donna.notifications.escalation import EscalationManager
     from donna.notifications.overdue import OverdueDetector
+    from donna.notifications.proactive_prompts import (
+        AfternoonInactivityCheck,
+        EveningCheckin,
+        PostMeetingCapture,
+        StaleTaskDetector,
+    )
     from donna.notifications.reminders import ReminderScheduler
     from donna.preferences.rule_extractor import PreferenceRuleExtractor
     from donna.scheduling.priority_recalculator import PriorityRecalculator
@@ -60,6 +66,11 @@ class NotificationTasks:
     priority_recalculator: PriorityRecalculator | None = None
     weekly_planner: WeeklyPlanner | None = None
     rule_extractor: PreferenceRuleExtractor | None = None
+    # Proactive prompt additions:
+    post_meeting_capture: PostMeetingCapture | None = None
+    evening_checkin: EveningCheckin | None = None
+    stale_detector: StaleTaskDetector | None = None
+    afternoon_inactivity: AfternoonInactivityCheck | None = None
 
 
 async def _check_sqlite(db_path: str | None) -> dict[str, Any]:
@@ -282,6 +293,34 @@ async def run_server(
                 asyncio.create_task(
                     notification_tasks.rule_extractor.run_weekly(),
                     name="rule_extractor",
+                )
+            )
+        if notification_tasks.post_meeting_capture is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.post_meeting_capture.run(),
+                    name="post_meeting_capture",
+                )
+            )
+        if notification_tasks.evening_checkin is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.evening_checkin.run(),
+                    name="evening_checkin",
+                )
+            )
+        if notification_tasks.stale_detector is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.stale_detector.run(),
+                    name="stale_detector",
+                )
+            )
+        if notification_tasks.afternoon_inactivity is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.afternoon_inactivity.run(),
+                    name="afternoon_inactivity",
                 )
             )
         logger.info("notification_background_tasks_started", count=len(bg_tasks))

@@ -21,6 +21,7 @@ from datetime import datetime
 from typing import Any
 
 import discord
+from discord import app_commands
 import structlog
 
 from donna.orchestrator.input_parser import DuplicateDetectedError, InputParser
@@ -61,6 +62,8 @@ class DonnaBot(discord.Client):
         tasks_channel_id: int,
         debug_channel_id: int | None = None,
         digest_channel_id: int | None = None,
+        agents_channel_id: int | None = None,
+        guild_id: int | None = None,
         overdue_reply_handler: Callable[[str, str], Awaitable[None]] | None = None,
         dispatcher: AgentDispatcher | None = None,
     ) -> None:
@@ -72,8 +75,15 @@ class DonnaBot(discord.Client):
         self._tasks_channel_id = tasks_channel_id
         self._debug_channel_id = debug_channel_id
         self._digest_channel_id = digest_channel_id
+        self._agents_channel_id = agents_channel_id
+        self._guild_id = guild_id
         self._overdue_reply_handler = overdue_reply_handler
         self._dispatcher = dispatcher
+        # Command tree for slash commands (may fail if Client not fully initialized).
+        try:
+            self.tree = app_commands.CommandTree(self)
+        except AttributeError:
+            self.tree = None  # type: ignore[assignment]
         # Maps Discord thread ID → task ID for overdue nudge reply routing.
         self.overdue_threads: dict[int, str] = {}
         # Maps Discord thread ID → task ID for challenger follow-up routing.
@@ -87,8 +97,18 @@ class DonnaBot(discord.Client):
     # ------------------------------------------------------------------
 
     async def on_ready(self) -> None:
-        """Log bot online status and announce in #donna-debug if configured."""
+        """Log bot online status, sync commands, and announce in #donna-debug."""
         logger.info("discord_bot_ready", user=str(self.user))
+
+        # Sync slash commands to guild for instant registration.
+        if self._guild_id is not None and self.tree is not None:
+            try:
+                guild = discord.Object(id=self._guild_id)
+                synced = await self.tree.sync(guild=guild)
+                logger.info("command_tree_synced", count=len(synced), guild_id=self._guild_id)
+            except Exception:
+                logger.exception("command_tree_sync_failed")
+
         if self._debug_channel_id is not None:
             channel = self.get_channel(self._debug_channel_id)
             if channel is not None and hasattr(channel, "send"):
@@ -104,6 +124,7 @@ class DonnaBot(discord.Client):
             "tasks": self._tasks_channel_id,
             "debug": self._debug_channel_id,
             "digest": self._digest_channel_id,
+            "agents": self._agents_channel_id,
         }
         channel_id = mapping.get(channel_name)
         if channel_id is None:
@@ -135,6 +156,24 @@ class DonnaBot(discord.Client):
             logger.warning("send_embed_channel_unavailable", channel_name=channel_name)
             return None
         msg: discord.Message = await channel.send(embed=embed)  # type: ignore[union-attr]
+        return msg
+
+    async def send_message_with_view(
+        self,
+        channel_name: str,
+        text: str,
+        view: discord.ui.View,
+        embed: discord.Embed | None = None,
+    ) -> discord.Message | None:
+        """Send a message with an interactive View to a named channel."""
+        channel = self._resolve_channel(channel_name)
+        if channel is None:
+            logger.warning("send_message_with_view_channel_unavailable", channel_name=channel_name)
+            return None
+        kwargs: dict[str, Any] = {"content": text, "view": view}
+        if embed is not None:
+            kwargs["embed"] = embed
+        msg: discord.Message = await channel.send(**kwargs)  # type: ignore[union-attr]
         return msg
 
     async def send_to_thread(self, thread_id: int, text: str) -> None:
@@ -300,9 +339,15 @@ class DonnaBot(discord.Client):
 
             log.info("task_created_via_discord", task_id=task.id, title=task.title)
 
+            from donna.integrations.discord_views import TaskConfirmationView
+
+            confirmation_view = TaskConfirmationView(
+                task_id=task.id, db=self._database
+            )
             await message.channel.send(
                 f"Got it. '{task.title}' — {task.domain}, priority {task.priority}."
-                " Scheduled: pending."
+                " Scheduled: pending.",
+                view=confirmation_view,
             )
 
             # Run challenger agent to probe task quality (if dispatcher is wired).

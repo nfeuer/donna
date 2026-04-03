@@ -335,3 +335,76 @@ def load_email_config(config_dir: Path) -> EmailConfig:
     """Load email integration configuration."""
     data = load_yaml(config_dir / "email.yaml")
     return EmailConfig(**data)
+
+
+# === Discord Config ===
+
+
+class DiscordCommandsConfig(BaseModel):
+    """Slash command settings."""
+
+    enabled: bool = True
+    sync_on_ready: bool = True
+
+
+class EveningCheckinConfig(BaseModel):
+    """Evening check-in prompt schedule."""
+
+    enabled: bool = True
+    hour: int = 19
+    minute: int = 0
+
+
+class StaleDetectionConfig(BaseModel):
+    """Stale task detection settings."""
+
+    enabled: bool = True
+    stale_days: int = 7
+    check_interval_hours: int = 24
+
+
+class PostMeetingConfig(BaseModel):
+    """Post-meeting capture prompt settings."""
+
+    enabled: bool = True
+    delay_minutes: int = 5
+
+
+class AfternoonInactivityConfig(BaseModel):
+    """Afternoon inactivity check settings."""
+
+    enabled: bool = True
+    hour: int = 14
+    minute: int = 0
+
+
+class ProactivePromptsConfig(BaseModel):
+    """All proactive prompt schedules."""
+
+    evening_checkin: EveningCheckinConfig = Field(
+        default_factory=EveningCheckinConfig
+    )
+    stale_detection: StaleDetectionConfig = Field(
+        default_factory=StaleDetectionConfig
+    )
+    post_meeting_capture: PostMeetingConfig = Field(
+        default_factory=PostMeetingConfig
+    )
+    afternoon_inactivity: AfternoonInactivityConfig = Field(
+        default_factory=AfternoonInactivityConfig
+    )
+
+
+class DiscordConfig(BaseModel):
+    """Top-level Discord integration configuration."""
+
+    commands: DiscordCommandsConfig = Field(default_factory=DiscordCommandsConfig)
+    proactive_prompts: ProactivePromptsConfig = Field(
+        default_factory=ProactivePromptsConfig
+    )
+
+
+def load_discord_config(config_dir: Path) -> DiscordConfig:
+    """Load Discord integration configuration."""
+    data = load_yaml(config_dir / "discord.yaml")
+    return DiscordConfig(**data.get("discord", {}))

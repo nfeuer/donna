@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import structlog
 
@@ -19,6 +19,23 @@ from donna.models.router import ModelRouter
 from donna.tasks.database import Database, TaskRow
 
 logger = structlog.get_logger()
+
+
+@runtime_checkable
+class AgentActivityListener(Protocol):
+    """Protocol for receiving agent lifecycle events."""
+
+    async def on_agent_start(
+        self, task_id: str, agent_name: str, task_title: str
+    ) -> None: ...
+
+    async def on_agent_complete(
+        self, task_id: str, agent_name: str, result: AgentResult, cost_usd: float
+    ) -> None: ...
+
+    async def on_agent_failure(
+        self, task_id: str, agent_name: str, error: str
+    ) -> None: ...
 
 
 class AgentDispatcher:
@@ -36,12 +53,14 @@ class AgentDispatcher:
         router: ModelRouter,
         db: Database,
         project_root: Any = None,
+        activity_listener: AgentActivityListener | None = None,
     ) -> None:
         self._agents = agents
         self._tool_registry = tool_registry
         self._router = router
         self._db = db
         self._project_root = project_root
+        self._activity_listener = activity_listener
 
     async def dispatch(
         self,
@@ -73,10 +92,26 @@ class AgentDispatcher:
             tool_registry=self._tool_registry,
         )
 
+        # Notify listener of agent start.
+        if self._activity_listener is not None:
+            try:
+                await self._activity_listener.on_agent_start(
+                    task_id=task.id, agent_name="pm", task_title=task.title
+                )
+            except Exception:
+                logger.exception("activity_listener_start_failed")
+
         # Step 1: PM assessment
         pm = self._agents.get("pm")
         if pm is None:
             logger.warning("pm_agent_not_available")
+            if self._activity_listener is not None:
+                try:
+                    await self._activity_listener.on_agent_failure(
+                        task_id=task.id, agent_name="pm", error="PM agent not configured"
+                    )
+                except Exception:
+                    logger.exception("activity_listener_failure_failed")
             return AgentResult(
                 status="failed",
                 output={},
@@ -146,6 +181,25 @@ class AgentDispatcher:
             status=exec_result.status,
             duration_ms=exec_result.duration_ms,
         )
+
+        # Notify listener of completion or failure.
+        if self._activity_listener is not None:
+            try:
+                if exec_result.status == "failed":
+                    await self._activity_listener.on_agent_failure(
+                        task_id=task.id,
+                        agent_name=agent.name,
+                        error=exec_result.error or "Unknown error",
+                    )
+                else:
+                    await self._activity_listener.on_agent_complete(
+                        task_id=task.id,
+                        agent_name=agent.name,
+                        result=exec_result,
+                        cost_usd=0.0,
+                    )
+            except Exception:
+                logger.exception("activity_listener_complete_failed")
 
         return exec_result
 
