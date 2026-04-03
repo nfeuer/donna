@@ -80,6 +80,40 @@ class SupabaseSync:
         for task in pending:
             await self._push_with_retry(task, queue_on_failure=False)
 
+    async def keep_alive(self, interval_hours: float = 6.0) -> None:
+        """Periodically ping Supabase to prevent free-tier pause.
+
+        Runs forever — designed to be launched as a background asyncio task.
+        Sends a lightweight HEAD request to the REST API every *interval_hours*.
+        """
+        if not self.configured:
+            return
+
+        import aiohttp
+
+        interval_seconds = interval_hours * 3600
+        while True:
+            try:
+                headers = {
+                    "apikey": self._key,
+                    "Authorization": f"Bearer {self._key}",
+                }
+                url = f"{self._url}/rest/v1/"
+                async with aiohttp.ClientSession() as session:
+                    async with session.head(url, headers=headers) as resp:
+                        logger.info(
+                            "supabase_keepalive",
+                            event_type="sync.supabase.keepalive",
+                            status=resp.status,
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "supabase_keepalive_failed",
+                    event_type="sync.supabase.keepalive_failed",
+                    error=str(exc),
+                )
+            await asyncio.sleep(interval_seconds)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
