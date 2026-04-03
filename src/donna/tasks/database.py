@@ -68,6 +68,8 @@ class TaskRow:
     estimated_cost: float | None
     calendar_event_id: str | None
     donna_managed: bool
+    nudge_count: int
+    quality_score: float | None
 
 
 # Columns that can be updated via update_task().
@@ -97,6 +99,8 @@ _UPDATABLE_COLUMNS: set[str] = {
     "estimated_cost",
     "calendar_event_id",
     "donna_managed",
+    "nudge_count",
+    "quality_score",
 }
 
 # Column order for SELECT — must match TaskRow field order.
@@ -130,6 +134,8 @@ _TASK_COLUMNS = (
     "estimated_cost",
     "calendar_event_id",
     "donna_managed",
+    "nudge_count",
+    "quality_score",
 )
 
 _SELECT_COLUMNS = ", ".join(_TASK_COLUMNS)
@@ -263,6 +269,8 @@ class Database:
                 estimated_cost,
                 None,  # calendar_event_id
                 False,  # donna_managed
+                0,  # nudge_count
+                None,  # quality_score
             ),
         )
         await conn.commit()
@@ -393,3 +401,150 @@ class Database:
         )
 
         return side_effects
+
+    async def increment_nudge_count(self, task_id: str) -> None:
+        """Atomically increment nudge_count on a task."""
+        conn = self.connection
+        await conn.execute(
+            "UPDATE tasks SET nudge_count = nudge_count + 1 WHERE id = ?",
+            (task_id,),
+        )
+        await conn.commit()
+
+    async def record_nudge_event(
+        self,
+        *,
+        user_id: str,
+        task_id: str,
+        nudge_type: str,
+        channel: str,
+        message_text: str,
+        llm_generated: bool = False,
+        escalation_tier: int = 1,
+    ) -> str:
+        """Insert a nudge event and return its ID."""
+        import uuid6
+
+        conn = self.connection
+        event_id = str(uuid6.uuid7())
+        now = datetime.utcnow().isoformat()
+        await conn.execute(
+            """INSERT INTO nudge_events
+               (id, user_id, task_id, nudge_type, channel, escalation_tier,
+                message_text, llm_generated, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                event_id,
+                user_id,
+                task_id,
+                nudge_type,
+                channel,
+                escalation_tier,
+                message_text,
+                llm_generated,
+                now,
+            ),
+        )
+        await conn.commit()
+        logger.info("nudge_event_recorded", event_id=event_id, task_id=task_id, nudge_type=nudge_type)
+        return event_id
+
+    async def get_weekly_stats(self, user_id: str, since: datetime) -> dict[str, Any]:
+        """Aggregate task and nudge stats for the weekly digest.
+
+        Returns a dict with completion counts, nudge stats, and domain breakdown.
+        """
+        conn = self.connection
+        since_iso = since.isoformat()
+
+        # Tasks completed this period
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND completed_at >= ?",
+            (user_id, since_iso),
+        )
+        tasks_completed = (await cursor.fetchone())[0]
+
+        # Tasks created this period
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND created_at >= ?",
+            (user_id, since_iso),
+        )
+        tasks_created = (await cursor.fetchone())[0]
+
+        # Average time to complete (hours) for tasks completed this period
+        cursor = await conn.execute(
+            """SELECT AVG(
+                 (julianday(completed_at) - julianday(created_at)) * 24
+               ) FROM tasks
+               WHERE user_id = ? AND completed_at >= ? AND completed_at IS NOT NULL""",
+            (user_id, since_iso),
+        )
+        avg_hours_to_complete = (await cursor.fetchone())[0]
+
+        # Most nudged tasks (top 5)
+        cursor = await conn.execute(
+            """SELECT id, title, nudge_count, reschedule_count, domain
+               FROM tasks WHERE user_id = ? AND nudge_count > 0
+               ORDER BY nudge_count DESC LIMIT 5""",
+            (user_id,),
+        )
+        most_nudged = [
+            {"id": r[0], "title": r[1], "nudge_count": r[2], "reschedule_count": r[3], "domain": r[4]}
+            for r in await cursor.fetchall()
+        ]
+
+        # Most rescheduled tasks (top 5)
+        cursor = await conn.execute(
+            """SELECT id, title, reschedule_count, nudge_count, domain
+               FROM tasks WHERE user_id = ? AND reschedule_count > 0
+               ORDER BY reschedule_count DESC LIMIT 5""",
+            (user_id,),
+        )
+        most_rescheduled = [
+            {"id": r[0], "title": r[1], "reschedule_count": r[2], "nudge_count": r[3], "domain": r[4]}
+            for r in await cursor.fetchall()
+        ]
+
+        # Domain breakdown
+        cursor = await conn.execute(
+            """SELECT domain,
+                      COUNT(*) FILTER (WHERE completed_at >= ?) as completed,
+                      COUNT(*) FILTER (WHERE status IN ('backlog','scheduled','in_progress','blocked','waiting_input')) as open_count,
+                      AVG(nudge_count) as avg_nudges
+               FROM tasks WHERE user_id = ?
+               GROUP BY domain""",
+            (since_iso, user_id),
+        )
+        domain_breakdown = {}
+        for r in await cursor.fetchall():
+            domain_breakdown[r[0]] = {
+                "completed": r[1],
+                "open": r[2],
+                "avg_nudges": round(r[3] or 0, 1),
+            }
+
+        # Total nudges this period
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM nudge_events WHERE user_id = ? AND created_at >= ?",
+            (user_id, since_iso),
+        )
+        total_nudges = (await cursor.fetchone())[0]
+
+        # LLM cost this period (from invocation_log)
+        cursor = await conn.execute(
+            "SELECT COALESCE(SUM(cost_usd), 0) FROM invocation_log WHERE user_id = ? AND timestamp >= ?",
+            (user_id, since_iso),
+        )
+        weekly_cost = round((await cursor.fetchone())[0], 2)
+
+        return {
+            "tasks_completed": tasks_completed,
+            "tasks_created": tasks_created,
+            "avg_hours_to_complete": round(avg_hours_to_complete, 1) if avg_hours_to_complete else None,
+            "most_nudged": most_nudged,
+            "most_rescheduled": most_rescheduled,
+            "domain_breakdown": domain_breakdown,
+            "total_nudges": total_nudges,
+            "weekly_cost": weekly_cost,
+            "completion_rate": round(tasks_completed / tasks_created * 100, 1) if tasks_created > 0 else 0,
+        }

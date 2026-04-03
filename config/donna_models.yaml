@@ -49,6 +49,22 @@ routing:
   parse_task_local:
     model: local_parser
 
+  # Local LLM agents — zero marginal cost
+  generate_nudge:
+    model: local_parser
+    fallback: parser
+    confidence_threshold: 0.5
+  generate_reminder:
+    model: local_parser
+    fallback: parser
+    confidence_threshold: 0.5
+  challenge_task:
+    model: local_parser
+    fallback: parser
+  generate_weekly_digest:
+    model: local_parser
+    fallback: parser
+
 # Cost tracking
 cost:
   monthly_budget_usd: 100.00

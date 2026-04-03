@@ -40,6 +40,13 @@ agents:
       - github_read
       - github_write
 
+  challenger:
+    enabled: true
+    timeout_seconds: 120       # 2 minutes
+    autonomy: medium           # probes task quality, returns questions to user
+    allowed_tools:
+      - task_db_read
+
   communication:
     enabled: false             # Phase 4 — always drafts, never sends
     timeout_seconds: 300       # 5 minutes

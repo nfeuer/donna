@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "nudge_text": {
+      "type": "string",
+      "description": "The nudge message to send to the user"
+    },
+    "tone": {
+      "type": "string",
+      "enum": ["friendly", "firm", "assertive"],
+      "description": "Tone of the nudge based on nudge count and urgency"
+    }
+  },
+  "required": ["nudge_text"]
+}

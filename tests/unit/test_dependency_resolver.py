@@ -44,6 +44,8 @@ def _task(task_id: str, deps: list[str] | None = None, status: str = "backlog") 
         estimated_cost=None,
         calendar_event_id=None,
         donna_managed=False,
+        nudge_count=0,
+        quality_score=None,
     )
 
 

@@ -25,6 +25,11 @@ from donna.notifications.service import CHANNEL_TASKS, NOTIF_REMINDER, Notificat
 from donna.tasks.database import Database, TaskRow
 from donna.tasks.db_models import TaskStatus
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from donna.models.router import ModelRouter
+
 logger = structlog.get_logger()
 
 REMINDER_LEAD_MINUTES = 15
@@ -44,10 +49,12 @@ class ReminderScheduler:
         db: Database,
         service: NotificationService,
         user_id: str,
+        router: ModelRouter | None = None,
     ) -> None:
         self._db = db
         self._service = service
         self._user_id = user_id
+        self._router = router
         # task_id → date the reminder was sent (reset daily for reschedules)
         self._sent: dict[str, str] = {}
 
@@ -102,19 +109,24 @@ class ReminderScheduler:
             if sent_date == today_str:
                 continue
 
-            duration_str = (
-                f"{task.estimated_duration} min" if task.estimated_duration else "unknown"
-            )
-            content = (
-                f"\u23f0 '{task.title}' starts in {REMINDER_LEAD_MINUTES} minutes."
-                f" Duration: {duration_str}."
-            )
+            content, llm_generated = await self._generate_reminder(task)
 
             sent = await self._service.dispatch(
                 notification_type=NOTIF_REMINDER,
                 content=content,
                 channel=CHANNEL_TASKS,
                 priority=task.priority or 2,
+            )
+
+            # Persist nudge event and increment counter.
+            await self._db.increment_nudge_count(task.id)
+            await self._db.record_nudge_event(
+                user_id=self._user_id,
+                task_id=task.id,
+                nudge_type="reminder",
+                channel="discord",
+                message_text=content,
+                llm_generated=llm_generated,
             )
 
             # Record as sent regardless (queued = still sent eventually).
@@ -125,7 +137,50 @@ class ReminderScheduler:
                 title=task.title,
                 scheduled_start=task.scheduled_start,
                 sent_immediately=sent,
+                llm_generated=llm_generated,
             )
+
+
+    async def _generate_reminder(self, task: TaskRow) -> tuple[str, bool]:
+        """Generate a reminder via local LLM, falling back to a template.
+
+        Returns (reminder_text, llm_generated).
+        """
+        duration_str = (
+            f"{task.estimated_duration} min" if task.estimated_duration else "unknown"
+        )
+        fallback = (
+            f"\u23f0 '{task.title}' starts in {REMINDER_LEAD_MINUTES} minutes."
+            f" Duration: {duration_str}."
+        )
+
+        if self._router is None:
+            return fallback, False
+
+        try:
+            prompt = (
+                f"Task: {task.title}\n"
+                f"Domain: {task.domain}\n"
+                f"Priority: {task.priority}\n"
+                f"Scheduled start: {task.scheduled_start}\n"
+                f"Estimated duration: {duration_str}\n"
+                f"Description: {task.description or 'none'}\n"
+                f"This is a pre-task reminder (task starts in {REMINDER_LEAD_MINUTES} minutes).\n"
+            )
+            result, _meta = await self._router.complete(
+                prompt=prompt,
+                task_type="generate_reminder",
+                task_id=task.id,
+                user_id=self._user_id,
+            )
+            text = result.get("reminder_text", "").strip()
+            if text:
+                return text, True
+            logger.warning("reminder_llm_empty_response", task_id=task.id)
+        except Exception:
+            logger.exception("reminder_llm_failed", task_id=task.id)
+
+        return fallback, False
 
 
 def _parse_dt(value: str | None) -> datetime | None:

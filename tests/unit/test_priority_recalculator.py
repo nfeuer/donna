@@ -25,6 +25,7 @@ def _task(task_id="t1", priority=2, status="backlog", deadline=None, deadline_ty
         tags=None, notes=None, reschedule_count=0,
         created_at="2026-04-01T00:00:00", created_via="discord",
         estimated_cost=None, calendar_event_id=None, donna_managed=False,
+        nudge_count=0, quality_score=None,
     )
 
 
