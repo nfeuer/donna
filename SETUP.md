@@ -902,8 +902,8 @@ mypy src/                    # type checker (strict mode)
 
 ```
 donna run      Start the orchestrator (web server + Discord bot)
-donna health   Check system health (placeholder — Phase 2)
-donna backup   Trigger a manual backup (placeholder — Phase 2)
+donna health   Check system health
+donna backup   Trigger a manual backup
 donna eval     Run the evaluation harness (Phase 3+)
 ```
 
