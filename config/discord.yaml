@@ -1,0 +1,20 @@
+discord:
+  commands:
+    enabled: true
+    sync_on_ready: true
+  proactive_prompts:
+    evening_checkin:
+      enabled: true
+      hour: 19
+      minute: 0
+    stale_detection:
+      enabled: true
+      stale_days: 7
+      check_interval_hours: 24
+    post_meeting_capture:
+      enabled: true
+      delay_minutes: 5
+    afternoon_inactivity:
+      enabled: true
+      hour: 14
+      minute: 0

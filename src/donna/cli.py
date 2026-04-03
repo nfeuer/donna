@@ -146,6 +146,9 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     discord_token = os.environ.get("DISCORD_BOT_TOKEN")
     tasks_channel_id_str = os.environ.get("DISCORD_TASKS_CHANNEL_ID")
     debug_channel_id_str = os.environ.get("DISCORD_DEBUG_CHANNEL_ID")
+    agents_channel_id_str = os.environ.get("DISCORD_AGENTS_CHANNEL_ID")
+    guild_id_str = os.environ.get("DISCORD_GUILD_ID")
+    user_id = os.environ.get("DONNA_USER_ID", "nick")
 
     if discord_token and tasks_channel_id_str:
         from donna.integrations.discord_bot import DonnaBot
@@ -155,7 +158,56 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
             database=db,
             tasks_channel_id=int(tasks_channel_id_str),
             debug_channel_id=int(debug_channel_id_str) if debug_channel_id_str else None,
+            agents_channel_id=int(agents_channel_id_str) if agents_channel_id_str else None,
+            guild_id=int(guild_id_str) if guild_id_str else None,
         )
+
+        # Load Discord config and register slash commands if enabled.
+        try:
+            from donna.config import load_discord_config
+            from donna.integrations.discord_commands import register_commands
+
+            discord_config = load_discord_config(config_dir)
+            if discord_config.commands.enabled:
+                register_commands(bot, db, user_id)
+                log.info("discord_slash_commands_registered")
+
+            # Wire agent activity feed if agents channel is configured.
+            if agents_channel_id_str:
+                from donna.integrations.discord_agent_feed import AgentActivityFeed
+
+                agent_feed = AgentActivityFeed(bot)
+                log.info("discord_agent_feed_enabled")
+
+            # Start proactive prompt background tasks.
+            prompts_cfg = discord_config.proactive_prompts
+
+            # NotificationService is needed for proactive prompts — lazy import.
+            try:
+                from donna.notifications.proactive_prompts import (
+                    AfternoonInactivityCheck,
+                    EveningCheckin,
+                    PostMeetingCapture,
+                    StaleTaskDetector,
+                )
+
+                # Proactive prompts need NotificationService. If it's not yet
+                # wired (e.g., no calendar config), skip gracefully.
+                # For now, log that proactive prompts are configured but will
+                # be started once the full notification stack is wired in server.py.
+                log.info(
+                    "discord_proactive_prompts_configured",
+                    evening_checkin=prompts_cfg.evening_checkin.enabled,
+                    stale_detection=prompts_cfg.stale_detection.enabled,
+                    post_meeting=prompts_cfg.post_meeting_capture.enabled,
+                    afternoon_inactivity=prompts_cfg.afternoon_inactivity.enabled,
+                )
+            except Exception:
+                log.exception("discord_proactive_prompts_load_failed")
+
+        except Exception:
+            log.exception("discord_config_load_failed")
+
         tasks.append(asyncio.create_task(bot.start(discord_token)))
         log.info("discord_bot_enabled", tasks_channel_id=tasks_channel_id_str)
     else:
