@@ -109,7 +109,7 @@ The Flutter Web + Android app uses a hybrid approach: Firebase for hosting and a
 |-------|-----------|------|
 | Static hosting | Firebase Hosting | Serves compiled Flutter web app. CDN for fast global delivery. Free tier. |
 | User authentication | Firebase Auth | Login, session management, JWT tokens. Handles OAuth flows. Free tier for single-user. |
-| Data API | FastAPI (self-hosted, `donna-app.yml`) | REST API between Flutter app and orchestrator. All task, calendar, agent, and cost data flows through here. |
+| Data API | FastAPI (self-hosted, `donna-app.yml`) | REST API between Flutter app and orchestrator. All task, calendar, agent, and cost data flows through here. **Implemented — `src/donna/api/`.** |
 | Data storage | SQLite (primary) → Supabase (replica) | Flutter app reads from Supabase for cross-device access. Writes go through FastAPI → orchestrator → SQLite → Supabase sync. |
 | Push notifications | FCM (Firebase Cloud Messaging) | Android push notifications. Free tier. |
 
@@ -124,14 +124,37 @@ The Flutter Web + Android app uses a hybrid approach: Firebase for hosting and a
 1. Flutter app authenticates user via Firebase Auth (email/password or Google OAuth).
 2. Firebase issues a JWT token.
 3. Flutter sends JWT with every request to FastAPI backend.
-4. FastAPI validates the JWT against Firebase's public keys (no Firebase SDK needed server-side — just JWT verification).
-5. FastAPI maps the Firebase UID to Donna's `user_id` for all downstream operations.
+4. FastAPI validates the JWT against Firebase's public keys (no Firebase SDK needed server-side — just JWT verification via `PyJWT` + Google JWKS endpoint).
+5. FastAPI maps the Firebase UID to Donna's `user_id` via `DONNA_USER_MAP` env var for all downstream operations.
 
-### Impact on Phases 1–3
+**Implementation:** `src/donna/api/auth.py` — `get_current_user_id` FastAPI dependency. JWKS cached in-process for 1 hour. Dev bypass via `DONNA_AUTH_DISABLED=true`.
 
-**Zero.** Firebase Hosting and Auth are Phase 4 concerns. The FastAPI backend (`donna-app.yml`) is already in the Docker compose structure. Phases 1–3 build the orchestrator, integrations, and agents — all of which expose their functionality through the orchestrator's internal API. The FastAPI backend wraps that internal API for external consumption. No Firebase SDK or dependency is needed in the orchestrator, integration layer, or agent code.
+### REST API Endpoints (implemented)
 
-The only pre-Phase-4 consideration: ensure FastAPI endpoints return clean JSON that Flutter can consume. This happens naturally if the API is well-designed REST.
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Unauthenticated service health check |
+| `GET /tasks` | List tasks (paginated, filterable by status/domain) |
+| `POST /tasks` | Create task |
+| `GET /tasks/{id}` | Get single task |
+| `PATCH /tasks/{id}` | Update task fields |
+| `DELETE /tasks/{id}` | Cancel task |
+| `GET /schedule` | Upcoming scheduled tasks (configurable window, default 7 days) |
+| `GET /schedule/week` | 7-day schedule (alias) |
+| `GET /agents/activity` | Recent LLM invocations from `invocation_log` |
+| `GET /agents/cost` | Daily + monthly cost totals vs budget |
+
+All endpoints (except `/health`) require `Authorization: Bearer <firebase_jwt>` and return user-scoped data only.
+
+Start the API: `uvicorn donna.api:app --host 0.0.0.0 --port 8200`
+
+### Multi-User Data Model
+
+All core tables have had `user_id` since Phase 1. The `calendar_mirror` table received `user_id` in Phase 4 via migration `add_calendar_mirror_user_id` (backfilled with `"nick"` for existing rows). The data model is now fully multi-user ready.
+
+### Flutter App
+
+The Flutter Web + Android app (`donna-app` — separate repository) connects to this FastAPI backend. See `slices/slice_11_flutter_ui.md` for the full spec, screen breakdown, and acceptance criteria.
 
 ## Schema Migration
 
