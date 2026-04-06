@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from donna.api.routes import (
+    admin_agents as admin_agents_routes,
     admin_config,
     admin_dashboard,
     admin_invocations,
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_invocations.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_tasks.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_config.router, prefix="/admin", tags=["admin"])
+    app.include_router(admin_agents_routes.router, prefix="/admin", tags=["admin"])
 
     return app
 

@@ -62,15 +62,21 @@ All endpoints are under the `/admin` prefix. No authentication required (develop
 | `GET /admin/tasks?status=&domain=&priority=&search=&limit=50&offset=0` | Extended task list with agent/nudge/quality fields |
 | `GET /admin/tasks/{id}` | Full task detail + linked invocations, nudges, corrections, subtasks |
 
-### Configs & Prompts (read-only in session 1, editable in session 2)
+### Configs & Prompts
 | Endpoint | Description |
 |----------|-------------|
 | `GET /admin/configs` | List YAML config files with metadata |
 | `GET /admin/configs/{filename}` | Read config file content |
-| `PUT /admin/configs/{filename}` | Write config file (session 2) |
+| `PUT /admin/configs/{filename}` | Write config file (validates YAML, atomic write) |
 | `GET /admin/prompts` | List prompt template files |
 | `GET /admin/prompts/{filename}` | Read prompt file content |
-| `PUT /admin/prompts/{filename}` | Write prompt file (session 2) |
+| `PUT /admin/prompts/{filename}` | Write prompt file (atomic write) |
+
+### Agents
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/agents` | List all agents with config + summary metrics from invocation_log |
+| `GET /admin/agents/{name}` | Detailed agent view: config, recent invocations, daily latency, tool usage, cost summary |
 
 ## Pages
 
@@ -80,13 +86,13 @@ All endpoints are under the `/admin` prefix. No authentication required (develop
 | `/` | Dashboard | 4 KPI sections: Parse Accuracy, Agent Performance, Task Throughput, Cost Analytics |
 | `/logs` | Log Viewer | Event type tree filter, level/service filters, correlation trace drawer, entity links |
 
-### Session 2 (Planned)
+### Session 2 (Implemented)
 | Route | Page | Description |
 |-------|------|-------------|
-| `/configs` | Config Editor | Edit agents.yaml, donna_models.yaml, task_types.yaml, task_states.yaml, preferences.yaml via structured forms. Hot reload support. |
-| `/prompts` | Prompt Editor | Edit prompt markdown templates with live preview. Variable inspection (show Jinja2 template vars). Syntax highlighting. |
-| `/agents` | Agent Details | Per-agent activity feed, performance charts, tool usage breakdown, execution timeline |
-| `/tasks` | Task Browser | Filterable task table with state timeline, linked invocations/nudges/corrections, subtask tree |
+| `/configs` | Config Editor | Structured form editing for agents/models/task_types/states YAML. Raw YAML tab with Monaco editor. Diff view before save. |
+| `/prompts` | Prompt Editor | Monaco markdown editor with live preview. Template variable inspector. Schema link from task_types.yaml. |
+| `/agents` | Agent Details | Card grid with metrics. Detail view: config, latency chart, tool usage chart, cost summary, recent invocations. |
+| `/tasks` | Task Browser | Filterable table (status/domain/priority/agent/search). Detail view with state timeline, linked invocations/nudges/corrections/subtasks. |
 
 ### Session 3 (Planned)
 | Route | Page | Description |
@@ -126,7 +132,10 @@ donna-ui/
 │   │   ├── client.ts                     # Axios instance with error handling
 │   │   ├── dashboard.ts                  # Dashboard KPI fetchers
 │   │   ├── logs.ts                       # Log query fetchers
-│   │   └── invocations.ts               # Invocation log fetchers
+│   │   ├── invocations.ts               # Invocation log fetchers
+│   │   ├── configs.ts                    # Config/prompt CRUD fetchers
+│   │   ├── agents.ts                     # Agent list/detail fetchers
+│   │   └── tasks.ts                      # Task list/detail fetchers
 │   ├── components/
 │   │   ├── Layout.tsx                    # App shell: sidebar + header + content
 │   │   ├── PageShell.tsx                 # Placeholder for unbuilt pages
@@ -143,10 +152,31 @@ donna-ui/
 │       │   ├── EventTypeTree.tsx         # Checkbox tree sidebar filter
 │       │   ├── LogTable.tsx              # Paginated, expandable, color-coded
 │       │   └── TraceView.tsx             # Correlation trace drawer/timeline
-│       ├── Configs/index.tsx             # Shell (session 2)
-│       ├── Prompts/index.tsx             # Shell (session 2)
-│       ├── Agents/index.tsx              # Shell (session 2)
-│       ├── Tasks/index.tsx               # Shell (session 2)
+│       ├── Configs/
+│       │   ├── index.tsx                 # Layout with sidebar + structured/raw tabs
+│       │   ├── ConfigFileList.tsx        # Sidebar file menu
+│       │   ├── RawYamlEditor.tsx         # Monaco YAML editor
+│       │   ├── StructuredEditor.tsx      # Routes to form by filename
+│       │   ├── SaveDiffModal.tsx         # Monaco diff before save
+│       │   └── forms/
+│       │       ├── AgentsForm.tsx        # Agent cards with tools/autonomy
+│       │       ├── ModelsForm.tsx        # Model defs, routing, cost, quality
+│       │       ├── TaskTypesForm.tsx     # Collapsible task type editor
+│       │       └── StatesForm.tsx        # SVG state diagram + transitions table
+│       ├── Prompts/
+│       │   ├── index.tsx                 # Split editor + preview layout
+│       │   ├── PromptFileList.tsx        # Sidebar file menu
+│       │   ├── VariableInspector.tsx     # Jinja2 variable extractor
+│       │   └── MarkdownPreview.tsx       # Simple markdown renderer
+│       ├── Agents/
+│       │   ├── index.tsx                 # Card grid + detail toggle
+│       │   ├── AgentCard.tsx             # Summary card with metrics
+│       │   └── AgentDetail.tsx           # Config, charts, invocations
+│       ├── Tasks/
+│       │   ├── index.tsx                 # Filter bar + table
+│       │   ├── TaskFilters.tsx           # Status/domain/priority/search
+│       │   ├── TaskTable.tsx             # Paginated table with color tags
+│       │   └── TaskDetail.tsx            # Full detail with state timeline
 │       ├── Shadow/index.tsx              # Shell (session 3)
 │       └── Preferences/index.tsx         # Shell (session 3)
 ```
@@ -159,7 +189,8 @@ src/donna/api/routes/
 ├── admin_logs.py           # Log query + trace endpoints
 ├── admin_invocations.py    # Invocation log browse/detail
 ├── admin_tasks.py          # Extended task list/detail
-└── admin_config.py         # Config/prompt file read (write in session 2)
+├── admin_config.py         # Config/prompt file CRUD (read + write)
+└── admin_agents.py         # Agent list/detail with merged metrics
 ```
 
 ## Reused Existing Code
@@ -192,13 +223,16 @@ src/donna/api/routes/
 - [x] Page shells (6 placeholders with feature descriptions for sessions 2-3)
 - [x] Docker files (Dockerfile, nginx.conf, donna-ui.yml compose)
 
-### Session 2 — Status: NOT STARTED
-- [ ] Config editor pages (structured YAML editing)
-- [ ] Prompt editor with live preview
-- [ ] Agent detail views
-- [ ] Task browser with linked entities
-- [ ] PUT endpoints for config/prompt editing
-- [ ] Hot reload support for configs
+### Session 2 — Status: COMPLETE
+- [x] Config editor pages (structured YAML editing for agents/models/task_types/states + raw YAML fallback)
+- [x] Prompt editor with Monaco markdown editor, live preview, template variable inspector
+- [x] Agent detail views (card grid + detail with charts and invocation feed)
+- [x] Task browser with filterable table, detail view, state timeline, linked entities
+- [x] PUT endpoints for config/prompt editing (YAML validation, atomic writes)
+- [x] Agent API endpoints (GET /admin/agents, GET /admin/agents/{name})
+- [x] Save diff modal with Monaco diff editor
+- [x] @monaco-editor/react for YAML/markdown editing
+- [x] CSS/SVG state machine diagram for task_states.yaml
 
 ### Session 3 — Status: NOT STARTED
 - [ ] Shadow scoring comparison view

@@ -1,16 +1,17 @@
 """Config and prompt file endpoints for the Donna Management GUI.
 
-Read-only in session 1. Write (PUT) endpoints will be added in session 2
-for editing configs and prompts through the GUI.
+Read and write endpoints for YAML configs and prompt templates.
 """
 
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+import yaml
+from fastapi import APIRouter, Body, HTTPException, Request
 
 router = APIRouter()
 
@@ -74,6 +75,48 @@ async def get_config(request: Request, filename: str) -> dict[str, Any]:
     }
 
 
+@router.put("/configs/{filename}")
+async def put_config(
+    request: Request,
+    filename: str,
+    body: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    """Write a config file after validating YAML syntax."""
+    if filename not in _ALLOWED_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"Config file not allowed: {filename}")
+
+    content = body.get("content", "")
+    if not isinstance(content, str):
+        raise HTTPException(status_code=400, detail="content must be a string")
+
+    # Validate YAML syntax
+    try:
+        yaml.safe_load(content)
+    except yaml.YAMLError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid YAML: {exc}")
+
+    config_dir = _get_config_dir(request)
+    path = config_dir / filename
+
+    # Atomic write: write to temp file then rename
+    fd, tmp_path = tempfile.mkstemp(dir=str(config_dir), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, str(path))
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+
+    stat = path.stat()
+    return {
+        "name": filename,
+        "size_bytes": stat.st_size,
+        "modified": stat.st_mtime,
+    }
+
+
 @router.get("/prompts")
 async def list_prompts(request: Request) -> dict[str, Any]:
     """List available prompt template files."""
@@ -116,4 +159,43 @@ async def get_prompt(request: Request, filename: str) -> dict[str, Any]:
         "content": content,
         "size_bytes": path.stat().st_size,
         "modified": path.stat().st_mtime,
+    }
+
+
+@router.put("/prompts/{filename}")
+async def put_prompt(
+    request: Request,
+    filename: str,
+    body: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    """Write a prompt template file."""
+    if not filename.endswith(".md"):
+        raise HTTPException(status_code=400, detail="Prompt files must be .md")
+    if ".." in filename or "/" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    content = body.get("content", "")
+    if not isinstance(content, str):
+        raise HTTPException(status_code=400, detail="content must be a string")
+
+    project_root = _get_project_root(request)
+    prompts_dir = project_root / "prompts"
+    path = prompts_dir / filename
+
+    # Atomic write
+    fd, tmp_path = tempfile.mkstemp(dir=str(prompts_dir), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, str(path))
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+
+    stat = path.stat()
+    return {
+        "name": filename,
+        "size_bytes": stat.st_size,
+        "modified": stat.st_mtime,
     }
