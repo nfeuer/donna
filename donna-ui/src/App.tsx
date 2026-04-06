@@ -6,6 +6,7 @@ import ConfigsPage from "./pages/Configs";
 import PromptsPage from "./pages/Prompts";
 import AgentsPage from "./pages/Agents";
 import TasksPage from "./pages/Tasks";
+import TaskDetail from "./pages/Tasks/TaskDetail";
 import ShadowPage from "./pages/Shadow";
 import PreferencesPage from "./pages/Preferences";
 
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/prompts" element={<PromptsPage />} />
         <Route path="/agents" element={<AgentsPage />} />
         <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/tasks/:id" element={<TaskDetail />} />
         <Route path="/shadow" element={<ShadowPage />} />
         <Route path="/preferences" element={<PreferencesPage />} />
       </Route>
