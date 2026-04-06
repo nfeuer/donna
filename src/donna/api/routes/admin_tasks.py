@@ -48,6 +48,7 @@ async def list_tasks_admin(
         where_clauses.append("assigned_agent = ?")
         params.append(agent)
 
+    # Safe: {where} is built from static column names; user values go through params
     where = " AND ".join(where_clauses) if where_clauses else "1=1"
 
     cursor = await conn.execute(

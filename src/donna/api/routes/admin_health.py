@@ -1,0 +1,87 @@
+"""Admin health endpoint for the Management GUI dashboard.
+
+Checks DB connectivity, Loki reachability, and reports uptime.
+Unlike the root /health endpoint (liveness probe), this provides
+richer component-level detail for the dashboard UI.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import time
+from datetime import datetime, timezone
+from typing import Any
+
+import aiohttp
+import structlog
+from fastapi import APIRouter, Request
+
+logger = structlog.get_logger()
+router = APIRouter()
+
+_start_time = time.monotonic()
+_LOKI_URL = os.environ.get("DONNA_LOKI_URL", "http://donna-loki:3100")
+
+
+async def _check_db(conn: Any) -> dict[str, Any]:
+    """Verify the DB connection responds within 2 seconds."""
+    try:
+        async with asyncio.timeout(2):
+            await conn.execute("SELECT 1")
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "detail": str(exc)}
+
+
+async def _check_loki() -> dict[str, Any]:
+    """HTTP GET to Loki /ready with a 3-second timeout."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{_LOKI_URL}/ready",
+                timeout=aiohttp.ClientTimeout(total=3),
+            ) as resp:
+                if resp.status == 200:
+                    return {"ok": True}
+                return {"ok": False, "detail": f"status {resp.status}"}
+    except Exception as exc:
+        return {"ok": False, "detail": str(exc)}
+
+
+@router.get("/health")
+async def admin_health(request: Request) -> dict[str, Any]:
+    """Single-glance system health for the dashboard.
+
+    Checks DB and Loki connectivity, reports uptime.
+    Returns 200 always (the status field indicates health).
+    """
+    conn = request.app.state.db.connection
+
+    db_check, loki_check = await asyncio.gather(
+        _check_db(conn),
+        _check_loki(),
+    )
+
+    checks = {
+        "db": db_check,
+        "loki": loki_check,
+    }
+
+    healthy = all(v["ok"] for v in checks.values())
+    status = "healthy" if healthy else "degraded"
+    uptime_s = int(time.monotonic() - _start_time)
+
+    logger.info(
+        "admin_health_check",
+        event_type="system.admin_health_check",
+        status=status,
+        checks={k: v["ok"] for k, v in checks.items()},
+    )
+
+    return {
+        "status": status,
+        "checks": checks,
+        "uptime_seconds": uptime_s,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }

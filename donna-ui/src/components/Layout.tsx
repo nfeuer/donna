@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Layout, Menu, Typography } from "antd";
 import useKeyboardShortcuts from "../hooks/useKeyboardShortcuts";
+import KeyboardShortcutsModal from "./KeyboardShortcutsModal";
 import {
   DashboardOutlined,
   FileSearchOutlined,
@@ -87,6 +88,7 @@ export default function AppLayout() {
           <Outlet />
         </Content>
       </Layout>
+      <KeyboardShortcutsModal />
     </Layout>
   );
 }

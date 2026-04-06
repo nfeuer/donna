@@ -45,6 +45,7 @@ async def list_invocations(
 
     where = " AND ".join(where_clauses) if where_clauses else "1=1"
 
+    # Safe: {where} is built from static column names; user values go through params
     cursor = await conn.execute(
         f"SELECT COUNT(*) FROM invocation_log WHERE {where}", params
     )

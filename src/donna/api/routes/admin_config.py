@@ -18,6 +18,7 @@ router = APIRouter()
 # Allowed config files (prevent directory traversal)
 _ALLOWED_CONFIGS = {
     "agents.yaml",
+    "dashboard.yaml",
     "donna_models.yaml",
     "task_types.yaml",
     "task_states.yaml",
@@ -33,8 +34,23 @@ def _get_config_dir(request: Request) -> Path:
     return Path(request.app.state.config_dir)
 
 
+def _find_project_root() -> Path:
+    """Walk up from this file to find the project root (contains pyproject.toml)."""
+    current = Path(__file__).resolve().parent
+    for _ in range(10):
+        if (current / "pyproject.toml").exists():
+            return current
+        if current == current.parent:
+            break
+        current = current.parent
+    raise RuntimeError("Could not locate project root (pyproject.toml not found)")
+
+
 def _get_project_root(request: Request) -> Path:
-    return Path(os.environ.get("DONNA_PROJECT_ROOT", Path(__file__).parent.parent.parent.parent.parent))
+    env = os.environ.get("DONNA_PROJECT_ROOT")
+    if env:
+        return Path(env)
+    return _find_project_root()
 
 
 @router.get("/configs")

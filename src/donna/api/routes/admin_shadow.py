@@ -72,6 +72,7 @@ async def list_shadow_comparisons(
     p_cols = ", ".join(f"p.{c}" for c in _COMPARISON_COLS)
     s_cols = ", ".join(f"s.{c}" for c in _COMPARISON_COLS)
 
+    # Safe: {p_cols}, {s_cols}, {where_extra} are built from static column names
     # Match by input_hash (primary + shadow share the same prompt hash)
     query = f"""
         SELECT {p_cols}, {s_cols}
@@ -246,7 +247,8 @@ async def list_spot_checks(
     """Invocations flagged for manual review."""
     conn = request.app.state.db.connection
 
-    where = "spot_check_queued = 1 OR (quality_score IS NOT NULL AND quality_score < 0.7)"
+    # Safe: {where} is a static string with no user input
+    where = "(spot_check_queued = 1) OR (quality_score IS NOT NULL AND quality_score < 0.7)"
 
     cursor = await conn.execute(
         f"SELECT COUNT(*) FROM invocation_log WHERE {where}"
