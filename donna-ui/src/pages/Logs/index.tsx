@@ -7,7 +7,11 @@ import {
   Space,
   Card,
   Tag,
+  Button,
+  Modal,
+  notification,
 } from "antd";
+import { SaveOutlined, DeleteOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import RefreshButton from "../../components/RefreshButton";
 import EventTypeTree from "./EventTypeTree";
@@ -18,6 +22,28 @@ import { fetchLogs, type LogEntry, type LogFilters } from "../../api/logs";
 const { Sider, Content } = Layout;
 const { RangePicker } = DatePicker;
 const { Search } = Input;
+
+interface FilterPreset {
+  name: string;
+  eventTypes: string[];
+  level: string;
+  search: string;
+}
+
+const PRESETS_KEY = "donna-log-presets";
+
+function loadPresets(): FilterPreset[] {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePresets(presets: FilterPreset[]): void {
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
 
 const LEVEL_OPTIONS = [
   { label: "All Levels", value: "" },
@@ -43,6 +69,42 @@ export default function Logs() {
   >(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
+
+  // Presets
+  const [presets, setPresets] = useState<FilterPreset[]>(loadPresets);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [presetName, setPresetName] = useState("");
+
+  const handleSavePreset = () => {
+    if (!presetName.trim()) return;
+    const newPreset: FilterPreset = {
+      name: presetName.trim(),
+      eventTypes: selectedEventTypes,
+      level,
+      search,
+    };
+    const updated = [...presets.filter((p) => p.name !== newPreset.name), newPreset];
+    setPresets(updated);
+    savePresets(updated);
+    setSaveModalOpen(false);
+    setPresetName("");
+    notification.success({ message: "Preset saved", duration: 2 });
+  };
+
+  const handleLoadPreset = (name: string) => {
+    const preset = presets.find((p) => p.name === name);
+    if (!preset) return;
+    setSelectedEventTypes(preset.eventTypes);
+    setLevel(preset.level);
+    setSearch(preset.search);
+    setPage(1);
+  };
+
+  const handleDeletePreset = (name: string) => {
+    const updated = presets.filter((p) => p.name !== name);
+    setPresets(updated);
+    savePresets(updated);
+  };
 
   // Trace drawer
   const [traceId, setTraceId] = useState<string | null>(null);
@@ -130,6 +192,27 @@ export default function Logs() {
               style={{ width: 200 }}
             />
             <Tag>{source || "—"}</Tag>
+            <Select
+              size="small"
+              placeholder="Load preset..."
+              allowClear
+              value={undefined}
+              style={{ width: 160 }}
+              onChange={(v) => v && handleLoadPreset(v)}
+              options={presets.map((p) => ({ value: p.name, label: p.name }))}
+              optionRender={(option) => (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>{option.label}</span>
+                  <DeleteOutlined
+                    style={{ color: "#ff4d4f", fontSize: 11 }}
+                    onClick={(e) => { e.stopPropagation(); handleDeletePreset(option.value as string); }}
+                  />
+                </div>
+              )}
+            />
+            <Button size="small" icon={<SaveOutlined />} onClick={() => setSaveModalOpen(true)}>
+              Save Preset
+            </Button>
             <RefreshButton onRefresh={doFetch} />
           </Space>
         </Card>
@@ -149,6 +232,22 @@ export default function Logs() {
           correlationId={traceId}
           onClose={() => setTraceId(null)}
         />
+
+        <Modal
+          title="Save Filter Preset"
+          open={saveModalOpen}
+          onOk={handleSavePreset}
+          onCancel={() => { setSaveModalOpen(false); setPresetName(""); }}
+          okText="Save"
+          okButtonProps={{ disabled: !presetName.trim() }}
+        >
+          <Input
+            placeholder="Preset name"
+            value={presetName}
+            onChange={(e) => setPresetName(e.target.value)}
+            onPressEnter={handleSavePreset}
+          />
+        </Modal>
       </Content>
     </Layout>
   );

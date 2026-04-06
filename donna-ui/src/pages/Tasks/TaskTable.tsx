@@ -1,7 +1,9 @@
-import { Table, Tag } from "antd";
+import { Table, Tag, Button } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import type { TaskSummary } from "../../api/tasks";
+import { exportToCsv } from "../../utils/csvExport";
 
 const STATUS_TAG_COLORS: Record<string, string> = {
   backlog: "default",
@@ -114,7 +116,27 @@ export default function TaskTable({
     },
   ];
 
+  const handleExport = () => {
+    exportToCsv("tasks", [
+      { key: "title", title: "Title" },
+      { key: "status", title: "Status" },
+      { key: "domain", title: "Domain" },
+      { key: "priority", title: "Priority" },
+      { key: "assigned_agent", title: "Agent" },
+      { key: "created_at", title: "Created" },
+      { key: "deadline", title: "Deadline" },
+      { key: "nudge_count", title: "Nudges" },
+      { key: "reschedule_count", title: "Reschedules" },
+    ], tasks as unknown as Record<string, unknown>[]);
+  };
+
   return (
+    <>
+    <div style={{ marginBottom: 8, textAlign: "right" }}>
+      <Button size="small" icon={<DownloadOutlined />} onClick={handleExport}>
+        Export CSV
+      </Button>
+    </div>
     <Table<TaskSummary>
       columns={columns}
       dataSource={tasks}
@@ -135,5 +157,6 @@ export default function TaskTable({
         size: "small",
       }}
     />
+    </>
   );
 }

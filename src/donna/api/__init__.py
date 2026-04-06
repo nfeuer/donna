@@ -24,6 +24,8 @@ from donna.api.routes import (
     admin_dashboard,
     admin_invocations,
     admin_logs,
+    admin_preferences,
+    admin_shadow,
     admin_tasks,
     agents,
     health,
@@ -93,6 +95,8 @@ def create_app() -> FastAPI:
     app.include_router(admin_tasks.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_config.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_agents_routes.router, prefix="/admin", tags=["admin"])
+    app.include_router(admin_shadow.router, prefix="/admin", tags=["admin"])
+    app.include_router(admin_preferences.router, prefix="/admin", tags=["admin"])
 
     return app
 

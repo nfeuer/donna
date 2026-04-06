@@ -78,6 +78,21 @@ All endpoints are under the `/admin` prefix. No authentication required (develop
 | `GET /admin/agents` | List all agents with config + summary metrics from invocation_log |
 | `GET /admin/agents/{name}` | Detailed agent view: config, recent invocations, daily latency, tool usage, cost summary |
 
+### Shadow Scoring
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/shadow/comparisons?task_type=&days=30&limit=50` | Pair primary and shadow invocations by input_hash or task_id proximity |
+| `GET /admin/shadow/stats?days=30` | Aggregate shadow vs primary quality and cost stats |
+| `GET /admin/shadow/spot-checks?limit=50&offset=0` | Invocations flagged for review (spot_check_queued or quality < 0.7) |
+
+### Preferences
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/preferences/rules?enabled=&rule_type=&limit=50` | List learned preference rules with filters |
+| `PATCH /admin/preferences/rules/{id}` | Toggle rule enabled/disabled state |
+| `GET /admin/preferences/corrections?field=&task_type=&limit=50&offset=0` | Paginated correction log |
+| `GET /admin/preferences/stats` | Aggregate preference and correction statistics |
+
 ## Pages
 
 ### Session 1 (Implemented)
@@ -94,12 +109,12 @@ All endpoints are under the `/admin` prefix. No authentication required (develop
 | `/agents` | Agent Details | Card grid with metrics. Detail view: config, latency chart, tool usage chart, cost summary, recent invocations. |
 | `/tasks` | Task Browser | Filterable table (status/domain/priority/agent/search). Detail view with state timeline, linked invocations/nudges/corrections/subtasks. |
 
-### Session 3 (Planned)
+### Session 3 (Implemented)
 | Route | Page | Description |
 |-------|------|-------------|
-| `/shadow` | Shadow Scoring | Side-by-side diff of primary vs shadow model outputs. Quality score comparison. Filter by task_type. |
-| `/preferences` | Preference Manager | View learned rules with confidence scores. Correction history. Enable/disable rules. Manual rule creation. |
-| Polish | UX Refinements | Keyboard shortcuts, saved filter presets, export to CSV, notification toasts for anomalies |
+| `/shadow` | Shadow Scoring | Side-by-side diff of primary vs shadow model outputs. Quality score scatter plot + trend chart. Spot-check queue. Filter by task_type/days. |
+| `/preferences` | Preference Manager | Learned rules table with confidence scores, enable/disable toggle. Correction history with filters. Rule provenance drawer. Stats cards. |
+| Polish | UX Refinements | Keyboard shortcuts (`g`+key nav, `r` refresh, `Esc` close), saved filter presets (Log Viewer), CSV export on all tables, anomaly toast notifications on dashboard refresh. |
 
 ## Design Decisions Made
 
@@ -135,11 +150,17 @@ donna-ui/
 │   │   ├── invocations.ts               # Invocation log fetchers
 │   │   ├── configs.ts                    # Config/prompt CRUD fetchers
 │   │   ├── agents.ts                     # Agent list/detail fetchers
-│   │   └── tasks.ts                      # Task list/detail fetchers
+│   │   ├── tasks.ts                      # Task list/detail fetchers
+│   │   ├── shadow.ts                     # Shadow scoring fetchers
+│   │   └── preferences.ts               # Preference rules/corrections fetchers
 │   ├── components/
 │   │   ├── Layout.tsx                    # App shell: sidebar + header + content
 │   │   ├── PageShell.tsx                 # Placeholder for unbuilt pages
 │   │   └── RefreshButton.tsx             # Manual refresh with "updated X ago"
+│   ├── hooks/
+│   │   └── useKeyboardShortcuts.ts       # Global keyboard nav (g+key, r refresh, Esc close)
+│   ├── utils/
+│   │   └── csvExport.ts                  # CSV export utility for tables
 │   └── pages/
 │       ├── Dashboard/
 │       │   ├── index.tsx                 # 2x2 grid layout, time range selector
@@ -177,8 +198,16 @@ donna-ui/
 │       │   ├── TaskFilters.tsx           # Status/domain/priority/search
 │       │   ├── TaskTable.tsx             # Paginated table with color tags
 │       │   └── TaskDetail.tsx            # Full detail with state timeline
-│       ├── Shadow/index.tsx              # Shell (session 3)
-│       └── Preferences/index.tsx         # Shell (session 3)
+│       ├── Shadow/
+│       │   ├── index.tsx                 # Filter controls, stats cards, tabbed layout
+│       │   ├── ComparisonTable.tsx        # Side-by-side diff, expandable rows
+│       │   ├── SpotCheckTable.tsx         # Flagged invocations with quality bars
+│       │   └── ShadowCharts.tsx           # Scatter plot + trend line chart
+│       └── Preferences/
+│           ├── index.tsx                  # Stats cards, rules/corrections tabs
+│           ├── RulesTable.tsx             # Rules with confidence bar, enable toggle
+│           ├── CorrectionsTable.tsx        # Paginated correction history
+│           └── RuleDetailDrawer.tsx        # Rule provenance with supporting corrections
 ```
 
 ## Backend Files
@@ -190,7 +219,9 @@ src/donna/api/routes/
 ├── admin_invocations.py    # Invocation log browse/detail
 ├── admin_tasks.py          # Extended task list/detail
 ├── admin_config.py         # Config/prompt file CRUD (read + write)
-└── admin_agents.py         # Agent list/detail with merged metrics
+├── admin_agents.py         # Agent list/detail with merged metrics
+├── admin_shadow.py         # Shadow scoring comparisons, stats, spot-checks
+└── admin_preferences.py    # Preference rules CRUD, corrections, stats
 ```
 
 ## Reused Existing Code
@@ -234,8 +265,9 @@ src/donna/api/routes/
 - [x] @monaco-editor/react for YAML/markdown editing
 - [x] CSS/SVG state machine diagram for task_states.yaml
 
-### Session 3 — Status: NOT STARTED
-- [ ] Shadow scoring comparison view
-- [ ] Preference rules manager
-- [ ] UX polish (keyboard shortcuts, saved filters, CSV export)
-- [ ] Anomaly notifications
+### Session 3 — Status: COMPLETE
+- [x] Shadow scoring comparison view (side-by-side diff, scatter plot, trend chart, spot-check queue)
+- [x] Preference rules manager (rules table with toggle, correction history, rule provenance drawer, stats)
+- [x] UX polish (keyboard shortcuts, saved filter presets, CSV export on all tables, empty states)
+- [x] Anomaly notifications (daily cost, parse accuracy, overdue tasks)
+- [x] Backend: `admin_shadow.py` (3 endpoints), `admin_preferences.py` (4 endpoints)
