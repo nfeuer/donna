@@ -1,0 +1,23 @@
+# Donna Management GUI
+# React admin panel for monitoring, debugging, and configuring Donna
+
+services:
+  donna-ui:
+    build:
+      context: ../donna-ui
+      dockerfile: Dockerfile
+    container_name: donna-ui
+    restart: unless-stopped
+    ports:
+      - "8400:8400"
+    networks:
+      - homelab
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  homelab:
+    external: true

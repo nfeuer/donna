@@ -18,7 +18,17 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from donna.api.routes import agents, health, schedule, tasks
+from donna.api.routes import (
+    admin_config,
+    admin_dashboard,
+    admin_invocations,
+    admin_logs,
+    admin_tasks,
+    agents,
+    health,
+    schedule,
+    tasks,
+)
 from donna.config import load_state_machine_config
 from donna.logging.setup import setup_logging
 from donna.tasks.database import Database
@@ -74,6 +84,13 @@ def create_app() -> FastAPI:
     app.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
     app.include_router(schedule.router, prefix="/schedule", tags=["schedule"])
     app.include_router(agents.router, prefix="/agents", tags=["agents"])
+
+    # Admin routes for the Management GUI (no auth required)
+    app.include_router(admin_dashboard.router, prefix="/admin", tags=["admin"])
+    app.include_router(admin_logs.router, prefix="/admin", tags=["admin"])
+    app.include_router(admin_invocations.router, prefix="/admin", tags=["admin"])
+    app.include_router(admin_tasks.router, prefix="/admin", tags=["admin"])
+    app.include_router(admin_config.router, prefix="/admin", tags=["admin"])
 
     return app
 
