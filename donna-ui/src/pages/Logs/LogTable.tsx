@@ -1,7 +1,9 @@
-import { Table, Tag, Typography } from "antd";
+import { Table, Tag, Typography, Button } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import type { LogEntry } from "../../api/logs";
 import { LEVEL_COLORS } from "../../theme/darkTheme";
+import { exportToCsv } from "../../utils/csvExport";
 
 const { Text, Link } = Typography;
 
@@ -110,7 +112,25 @@ export default function LogTable({
     },
   ];
 
+  const handleExport = () => {
+    exportToCsv("logs", [
+      { key: "timestamp", title: "Timestamp" },
+      { key: "level", title: "Level" },
+      { key: "event_type", title: "Event Type" },
+      { key: "message", title: "Message" },
+      { key: "service", title: "Service" },
+      { key: "task_id", title: "Task ID" },
+      { key: "correlation_id", title: "Correlation ID" },
+    ], entries as unknown as Record<string, unknown>[]);
+  };
+
   return (
+    <>
+    <div style={{ marginBottom: 8, textAlign: "right" }}>
+      <Button size="small" icon={<DownloadOutlined />} onClick={handleExport}>
+        Export CSV
+      </Button>
+    </div>
     <Table<LogEntry>
       columns={columns}
       dataSource={entries}
@@ -148,5 +168,6 @@ export default function LogTable({
           record.extra != null && Object.keys(record.extra).length > 0,
       }}
     />
+    </>
   );
 }

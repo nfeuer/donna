@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Layout, Menu, Typography } from "antd";
+import useKeyboardShortcuts from "../hooks/useKeyboardShortcuts";
 import {
   DashboardOutlined,
   FileSearchOutlined,
@@ -30,6 +31,7 @@ export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  useKeyboardShortcuts();
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
