@@ -6,6 +6,8 @@ reusable across unit and integration tests.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from donna.config import (
@@ -190,3 +192,31 @@ def state_machine_config() -> StateMachineConfig:
 def state_machine(state_machine_config: StateMachineConfig) -> StateMachine:
     """Build a StateMachine from the shared config."""
     return StateMachine(state_machine_config)
+
+
+# ---------------------------------------------------------------------------
+# Admin API fixtures
+# ---------------------------------------------------------------------------
+
+
+def _make_cursor(*fetchall_rows: list, fetchone_val: tuple | None = None) -> AsyncMock:
+    """Build an AsyncMock cursor with pre-configured return values."""
+    cursor = AsyncMock()
+    cursor.fetchall = AsyncMock(return_value=fetchall_rows[0] if fetchall_rows else [])
+    cursor.fetchone = AsyncMock(return_value=fetchone_val)
+    return cursor
+
+
+@pytest.fixture
+def mock_request() -> tuple[MagicMock, AsyncMock]:
+    """Mock FastAPI Request with app.state.db.connection and config_dir.
+
+    Returns (request, connection) so tests can configure connection.execute
+    return values per-call.
+    """
+    conn = AsyncMock()
+    conn.commit = AsyncMock()
+    request = MagicMock()
+    request.app.state.db.connection = conn
+    request.app.state.config_dir = "config"
+    return request, conn
