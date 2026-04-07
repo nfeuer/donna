@@ -41,6 +41,8 @@ dependencies = [
     "supabase>=2.0.0",
     # Twilio (SMS/Voice)
     "twilio>=9.0.0",
+    # Interactive CLI
+    "questionary>=2.0.0",
     # Utilities
     "python-dotenv>=1.0.0",
     "tenacity>=8.2.0",

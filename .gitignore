@@ -18,6 +18,7 @@ venv/
 # Environment
 .env
 docker/.env
+docker/.setup-state.json
 
 # Database files (local development)
 *.db
