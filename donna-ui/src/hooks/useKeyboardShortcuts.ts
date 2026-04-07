@@ -12,6 +12,26 @@ const NAV_MAP: Record<string, string> = {
   r: "/preferences",
 };
 
+export interface ShortcutDef {
+  keys: string;
+  description: string;
+  category: "Navigation" | "Actions" | "Help";
+}
+
+export const SHORTCUT_DEFINITIONS: ShortcutDef[] = [
+  { keys: "g d", description: "Go to Dashboard", category: "Navigation" },
+  { keys: "g l", description: "Go to Logs", category: "Navigation" },
+  { keys: "g c", description: "Go to Configs", category: "Navigation" },
+  { keys: "g p", description: "Go to Prompts", category: "Navigation" },
+  { keys: "g a", description: "Go to Agents", category: "Navigation" },
+  { keys: "g t", description: "Go to Tasks", category: "Navigation" },
+  { keys: "g s", description: "Go to Shadow Scoring", category: "Navigation" },
+  { keys: "g r", description: "Go to Preferences", category: "Navigation" },
+  { keys: "r", description: "Refresh current page", category: "Actions" },
+  { keys: "Esc", description: "Close drawer / modal", category: "Actions" },
+  { keys: "?", description: "Show keyboard shortcuts", category: "Help" },
+];
+
 export default function useKeyboardShortcuts() {
   const navigate = useNavigate();
   const pendingG = useRef(false);
@@ -54,6 +74,12 @@ export default function useKeyboardShortcuts() {
         timer.current = setTimeout(() => {
           pendingG.current = false;
         }, 500);
+        return;
+      }
+
+      // ? → show shortcuts help
+      if (e.key === "?") {
+        window.dispatchEvent(new Event("show-shortcuts-help"));
         return;
       }
 

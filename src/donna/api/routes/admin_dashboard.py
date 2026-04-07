@@ -5,15 +5,19 @@ Provides aggregated metrics for:
 - Agent performance (from invocation_log)
 - Task throughput (from tasks table)
 - Cost analytics (from invocation_log via CostTracker)
+- Quality warnings (low quality_score invocations)
 
 All endpoints are unauthenticated — admin-only, local dev tool.
 """
 
 from __future__ import annotations
 
+import calendar
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
+import yaml
 from fastapi import APIRouter, Query, Request
 
 router = APIRouter()
@@ -68,7 +72,7 @@ async def get_parse_accuracy(
     for day in all_days:
         parses = daily_parses.get(day, 0)
         corrections = daily_corrections.get(day, 0)
-        accuracy = ((parses - corrections) / parses * 100) if parses > 0 else 100.0
+        accuracy = max(0.0, (parses - corrections) / parses * 100) if parses > 0 else 100.0
         time_series.append({
             "date": day,
             "parses": parses,
@@ -90,7 +94,7 @@ async def get_parse_accuracy(
     total_corrections = (await cursor.fetchone())[0]
 
     overall_accuracy = (
-        (total_parses - total_corrections) / total_parses * 100
+        max(0.0, (total_parses - total_corrections) / total_parses * 100)
         if total_parses > 0
         else 100.0
     )
@@ -403,8 +407,7 @@ async def get_cost_analytics(
     week_cost = float((await cursor.fetchone())[0])
     daily_avg = week_cost / 7.0
 
-    import calendar as _cal
-    _, days_in_month = _cal.monthrange(now.year, now.month)
+    _, days_in_month = calendar.monthrange(now.year, now.month)
     projected_monthly = daily_avg * days_in_month
 
     # Cost by task_type
@@ -448,5 +451,108 @@ async def get_cost_analytics(
         "time_series": time_series,
         "by_task_type": by_task_type,
         "by_model": by_model,
+        "days": days,
+    }
+
+
+def _load_dashboard_config(config_dir: str) -> dict[str, Any]:
+    """Load quality_score thresholds from config/dashboard.yaml."""
+    path = Path(config_dir) / "dashboard.yaml"
+    defaults = {"critical_threshold": 0.3, "warning_threshold": 0.65}
+    if not path.exists():
+        return defaults
+    with open(path) as f:
+        cfg = yaml.safe_load(f) or {}
+    qs = cfg.get("quality_score", {})
+    return {
+        "critical_threshold": float(qs.get("critical_threshold", defaults["critical_threshold"])),
+        "warning_threshold": float(qs.get("warning_threshold", defaults["warning_threshold"])),
+    }
+
+
+@router.get("/dashboard/quality-warnings")
+async def get_quality_warnings(
+    request: Request,
+    days: int = Query(default=30, ge=1, le=365),
+) -> dict[str, Any]:
+    """Invocations with quality_score below configurable thresholds.
+
+    Reads thresholds from config/dashboard.yaml. Returns time series
+    of warning/critical counts and a breakdown by task_type.
+    """
+    conn = request.app.state.db.connection
+    since = _days_ago(days)
+    thresholds = _load_dashboard_config(request.app.state.config_dir)
+    warn_thresh = thresholds["warning_threshold"]
+    crit_thresh = thresholds["critical_threshold"]
+
+    # Daily warning/critical counts
+    cursor = await conn.execute(
+        """SELECT DATE(timestamp) as day,
+               COUNT(CASE WHEN quality_score < ? AND quality_score >= ? THEN 1 END) as warnings,
+               COUNT(CASE WHEN quality_score < ? THEN 1 END) as criticals
+           FROM invocation_log
+           WHERE timestamp >= ? AND quality_score IS NOT NULL AND is_shadow = 0
+           GROUP BY DATE(timestamp)
+           ORDER BY day""",
+        (warn_thresh, crit_thresh, crit_thresh, since),
+    )
+    time_series = [
+        {"date": row[0], "warnings": row[1], "criticals": row[2]}
+        for row in await cursor.fetchall()
+    ]
+
+    # Totals
+    cursor = await conn.execute(
+        """SELECT
+               COUNT(CASE WHEN quality_score < ? AND quality_score >= ? THEN 1 END),
+               COUNT(CASE WHEN quality_score < ? THEN 1 END),
+               COUNT(*)
+           FROM invocation_log
+           WHERE timestamp >= ? AND quality_score IS NOT NULL AND is_shadow = 0""",
+        (warn_thresh, crit_thresh, crit_thresh, since),
+    )
+    row = await cursor.fetchone()
+    total_warnings = row[0]
+    total_criticals = row[1]
+    total_scored = row[2]
+
+    # Breakdown by task_type
+    cursor = await conn.execute(
+        """SELECT task_type,
+               COUNT(CASE WHEN quality_score < ? AND quality_score >= ? THEN 1 END) as warnings,
+               COUNT(CASE WHEN quality_score < ? THEN 1 END) as criticals,
+               COUNT(*) as total_scored
+           FROM invocation_log
+           WHERE timestamp >= ? AND quality_score IS NOT NULL AND is_shadow = 0
+           GROUP BY task_type
+           HAVING warnings > 0 OR criticals > 0
+           ORDER BY criticals DESC, warnings DESC""",
+        (warn_thresh, crit_thresh, crit_thresh, since),
+    )
+    by_task_type = [
+        {
+            "task_type": row[0],
+            "warnings": row[1],
+            "criticals": row[2],
+            "total_scored": row[3],
+        }
+        for row in await cursor.fetchall()
+    ]
+
+    return {
+        "summary": {
+            "total_warnings": total_warnings,
+            "total_criticals": total_criticals,
+            "total_scored": total_scored,
+            "warning_rate_pct": round(
+                (total_warnings + total_criticals) / total_scored * 100, 1
+            )
+            if total_scored > 0
+            else 0.0,
+        },
+        "thresholds": thresholds,
+        "time_series": time_series,
+        "by_task_type": by_task_type,
         "days": days,
     }

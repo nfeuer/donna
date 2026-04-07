@@ -133,3 +133,37 @@ export async function fetchCostAnalytics(
   });
   return data;
 }
+
+export interface QualityWarningsData {
+  summary: {
+    total_warnings: number;
+    total_criticals: number;
+    total_scored: number;
+    warning_rate_pct: number;
+  };
+  thresholds: {
+    warning_threshold: number;
+    critical_threshold: number;
+  };
+  time_series: Array<{
+    date: string;
+    warnings: number;
+    criticals: number;
+  }>;
+  by_task_type: Array<{
+    task_type: string;
+    warnings: number;
+    criticals: number;
+    total_scored: number;
+  }>;
+  days: number;
+}
+
+export async function fetchQualityWarnings(
+  days: number,
+): Promise<QualityWarningsData> {
+  const { data } = await client.get("/admin/dashboard/quality-warnings", {
+    params: { days },
+  });
+  return data;
+}

@@ -73,6 +73,7 @@ async def list_agents(request: Request) -> dict[str, Any]:
         metrics = {"total_calls": 0, "avg_latency_ms": 0, "total_cost_usd": 0.0, "last_invocation": None}
         if task_types:
             placeholders = ",".join("?" for _ in task_types)
+            # Safe: {placeholders} is built from static "?" chars; values go through params
             cursor = await conn.execute(
                 f"""SELECT COUNT(*), COALESCE(AVG(latency_ms), 0),
                            COALESCE(SUM(cost_usd), 0), MAX(timestamp)

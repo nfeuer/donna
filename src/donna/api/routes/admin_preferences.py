@@ -53,6 +53,7 @@ async def list_preference_rules(
         where_clauses.append("rule_type = ?")
         params.append(rule_type)
 
+    # Safe: {where} is built from static column names; user values go through params
     where = " AND ".join(where_clauses) if where_clauses else "1=1"
 
     cursor = await conn.execute(
@@ -167,6 +168,7 @@ async def list_corrections(
         where_clauses.append("task_type = ?")
         params.append(task_type)
 
+    # Safe: {where} is built from static column names; user values go through params
     where = " AND ".join(where_clauses) if where_clauses else "1=1"
 
     cursor = await conn.execute(

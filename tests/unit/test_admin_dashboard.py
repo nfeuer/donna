@@ -13,6 +13,7 @@ from donna.api.routes.admin_dashboard import (
     get_agent_performance,
     get_cost_analytics,
     get_parse_accuracy,
+    get_quality_warnings,
     get_task_throughput,
 )
 
@@ -243,3 +244,80 @@ class TestCostAnalytics:
         assert result["summary"]["monthly_utilization_pct"] == 40.0  # 40/100 * 100
         assert result["summary"]["daily_remaining_usd"] == 15.0
         assert result["summary"]["monthly_remaining_usd"] == 60.0
+
+
+# ---------------------------------------------------------------------------
+# ParseAccuracy — clamp test
+# ---------------------------------------------------------------------------
+
+
+class TestParseAccuracyClamp:
+    async def test_accuracy_clamped_when_corrections_exceed_parses(
+        self, mock_request: tuple
+    ) -> None:
+        """When corrections > parses, accuracy should clamp to 0, not go negative."""
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(fetchall=[("2026-04-01", 3)]),   # daily parses
+                _cursor(fetchall=[("2026-04-01", 10)]),  # daily corrections (more than parses)
+                _cursor(fetchone=(3,)),   # total parses
+                _cursor(fetchone=(10,)),  # total corrections
+                _cursor(fetchall=[("title", 10)]),  # field breakdown
+            ]
+        )
+        result = await get_parse_accuracy(request, days=30)
+        # Should clamp to 0, not go to -233%
+        assert result["summary"]["accuracy_pct"] == 0.0
+        assert result["time_series"][0]["accuracy"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# QualityWarnings
+# ---------------------------------------------------------------------------
+
+
+class TestQualityWarnings:
+    async def test_no_scored_invocations(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(),  # daily time series
+                _cursor(fetchone=(0, 0, 0)),  # totals
+                _cursor(),  # by task_type
+            ]
+        )
+        result = await get_quality_warnings(request, days=30)
+        assert result["summary"]["total_warnings"] == 0
+        assert result["summary"]["total_criticals"] == 0
+        assert result["summary"]["warning_rate_pct"] == 0.0
+        assert "thresholds" in result
+
+    async def test_warnings_and_criticals(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(fetchall=[("2026-04-01", 3, 1)]),  # daily: 3 warn, 1 crit
+                _cursor(fetchone=(3, 1, 50)),  # totals: 3 warn, 1 crit, 50 scored
+                _cursor(fetchall=[("parse_task", 2, 1, 30)]),  # by task_type
+            ]
+        )
+        result = await get_quality_warnings(request, days=30)
+        assert result["summary"]["total_warnings"] == 3
+        assert result["summary"]["total_criticals"] == 1
+        assert result["summary"]["warning_rate_pct"] == 8.0  # (3+1)/50*100
+        assert len(result["by_task_type"]) == 1
+        assert result["by_task_type"][0]["task_type"] == "parse_task"
+
+    async def test_thresholds_returned(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(),
+                _cursor(fetchone=(0, 0, 0)),
+                _cursor(),
+            ]
+        )
+        result = await get_quality_warnings(request, days=7)
+        assert result["thresholds"]["warning_threshold"] == 0.65
+        assert result["thresholds"]["critical_threshold"] == 0.3

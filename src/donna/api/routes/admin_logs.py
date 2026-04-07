@@ -9,6 +9,7 @@ See docs/observability.md for the full event type taxonomy.
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -255,9 +256,8 @@ async def _query_loki(
     for stream_result in data.get("data", {}).get("result", []):
         stream_labels = stream_result.get("stream", {})
         for ts, line in stream_result.get("values", []):
-            import json as _json
             try:
-                parsed = _json.loads(line)
+                parsed = json.loads(line)
             except (ValueError, TypeError):
                 parsed = {"message": line}
 
@@ -347,6 +347,7 @@ async def _query_invocation_log_fallback(
         where_clauses.append("timestamp <= ?")
         params.append(end)
 
+    # Safe: {where} is built from static column names; user values go through params
     where = " AND ".join(where_clauses) if where_clauses else "1=1"
 
     # Count total

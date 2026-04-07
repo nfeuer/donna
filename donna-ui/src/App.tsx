@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import AppLayout from "./components/Layout";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Dashboard from "./pages/Dashboard";
 import Logs from "./pages/Logs";
 import ConfigsPage from "./pages/Configs";
@@ -14,15 +15,15 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/logs" element={<Logs />} />
-        <Route path="/configs" element={<ConfigsPage />} />
-        <Route path="/prompts" element={<PromptsPage />} />
-        <Route path="/agents" element={<AgentsPage />} />
-        <Route path="/tasks" element={<TasksPage />} />
-        <Route path="/tasks/:id" element={<TaskDetail />} />
-        <Route path="/shadow" element={<ShadowPage />} />
-        <Route path="/preferences" element={<PreferencesPage />} />
+        <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+        <Route path="/logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
+        <Route path="/configs" element={<ErrorBoundary><ConfigsPage /></ErrorBoundary>} />
+        <Route path="/prompts" element={<ErrorBoundary><PromptsPage /></ErrorBoundary>} />
+        <Route path="/agents" element={<ErrorBoundary><AgentsPage /></ErrorBoundary>} />
+        <Route path="/tasks" element={<ErrorBoundary><TasksPage /></ErrorBoundary>} />
+        <Route path="/tasks/:id" element={<ErrorBoundary><TaskDetail /></ErrorBoundary>} />
+        <Route path="/shadow" element={<ErrorBoundary><ShadowPage /></ErrorBoundary>} />
+        <Route path="/preferences" element={<ErrorBoundary><PreferencesPage /></ErrorBoundary>} />
       </Route>
     </Routes>
   );
