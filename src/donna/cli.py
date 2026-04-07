@@ -5,6 +5,7 @@ Usage:
     donna eval         Run evaluation harness (Phase 3+)
     donna health       Check system health
     donna backup       Trigger a manual backup
+    donna setup        Interactive setup wizard
 """
 
 from __future__ import annotations
@@ -77,6 +78,28 @@ def main() -> None:
     # donna backup
     subparsers.add_parser("backup", help="Trigger a manual backup")
 
+    # donna setup
+    setup_parser = subparsers.add_parser("setup", help="Interactive setup wizard")
+    setup_parser.add_argument(
+        "--phase",
+        type=int,
+        default=None,
+        choices=[1, 2, 3, 4],
+        help="Target deployment phase (1-4). Prompted if omitted.",
+    )
+    setup_parser.add_argument(
+        "--reconfigure",
+        type=str,
+        default=None,
+        metavar="STEP_ID",
+        help="Re-run a specific step (e.g. discord_channels)",
+    )
+    setup_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be configured without writing anything",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -91,6 +114,8 @@ def main() -> None:
         asyncio.run(_health_check())
     elif args.command == "backup":
         asyncio.run(_backup())
+    elif args.command == "setup":
+        asyncio.run(_setup(args))
 
 
 async def _run_orchestrator(args: argparse.Namespace) -> None:
@@ -433,6 +458,29 @@ async def _backup() -> None:
             print(f"  {p}")
     else:
         print("No databases found to back up.")
+
+
+async def _setup(args: argparse.Namespace) -> None:
+    """Run the interactive setup wizard."""
+    from pathlib import Path
+
+    from donna.setup.wizard import run_wizard
+
+    project_root = Path(__file__).resolve().parents[2]
+
+    try:
+        success = await run_wizard(
+            project_root=project_root,
+            phase=args.phase,
+            reconfigure=args.reconfigure,
+            dry_run=args.dry_run,
+        )
+    except KeyboardInterrupt:
+        print("\nSetup interrupted. Run 'donna setup' to resume.")
+        sys.exit(1)
+
+    if not success:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
