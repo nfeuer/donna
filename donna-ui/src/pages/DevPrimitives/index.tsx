@@ -25,6 +25,7 @@ import { ScrollArea } from "../../primitives/ScrollArea";
 import { PageHeader } from "../../primitives/PageHeader";
 import { Stat } from "../../primitives/Stat";
 import { Segmented } from "../../primitives/Segmented";
+import { EmptyState } from "../../primitives/EmptyState";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -324,6 +325,19 @@ export default function DevPrimitivesPage() {
             { value: "30d", label: "30d" },
           ]}
           aria-label="Time range"
+        />
+      </StorySection>
+
+      <StorySection
+        id="empty"
+        eyebrow="Primitive · 19"
+        title="EmptyState"
+        note="Instructive first, personality second. See spec §5 Voice."
+      >
+        <EmptyState
+          title="Nothing captured yet."
+          body="Press ⌘N to add one, or message Donna on Discord and she'll do it for you."
+          actions={<Button>New Task</Button>}
         />
       </StorySection>
 
