@@ -22,6 +22,7 @@ import {
 import { Popover, PopoverTrigger, PopoverContent } from "../../primitives/Popover";
 import { Skeleton } from "../../primitives/Skeleton";
 import { ScrollArea } from "../../primitives/ScrollArea";
+import { PageHeader } from "../../primitives/PageHeader";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -270,6 +271,28 @@ export default function DevPrimitivesPage() {
             ))}
           </div>
         </ScrollArea>
+      </StorySection>
+
+      <StorySection
+        id="pageheader"
+        eyebrow="Primitive · 16"
+        title="PageHeader"
+        note="The opening move on every page. Eyebrow + Fraunces title + meta + action slot."
+      >
+        <div style={{ width: "100%" }}>
+          <PageHeader
+            eyebrow="Tuesday · April 8"
+            title="Dashboard"
+            meta="14 day window · last refreshed 2 min ago"
+            actions={
+              <>
+                <Button variant="ghost" size="sm">24h</Button>
+                <Button size="sm">14d</Button>
+                <Button variant="ghost" size="sm">30d</Button>
+              </>
+            }
+          />
+        </div>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
