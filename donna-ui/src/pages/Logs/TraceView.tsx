@@ -1,27 +1,38 @@
 import { useEffect, useState } from "react";
-import { Drawer, Timeline, Tag, Spin, Typography, Descriptions } from "antd";
+import { Drawer } from "../../primitives/Drawer";
+import { Pill } from "../../primitives/Pill";
+import { ScrollArea } from "../../primitives/ScrollArea";
+import { Skeleton } from "../../primitives/Skeleton";
 import { fetchTrace, type LogEntry } from "../../api/logs";
-import { LEVEL_COLORS } from "../../theme/darkTheme";
-
-const { Text } = Typography;
+import { levelToPillVariant } from "./levelStyles";
+import { formatTimestamp } from "./LogTable";
+import styles from "./TraceView.module.css";
 
 interface Props {
   correlationId: string | null;
   onClose: () => void;
 }
 
+/**
+ * Right-side drawer showing every log entry that shares a
+ * correlation ID, rendered as a vertical timeline. Falls back to
+ * skeletons while loading and an empty hint if the trace is empty.
+ */
 export default function TraceView({ correlationId, onClose }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [source, setSource] = useState("");
 
   useEffect(() => {
-    if (!correlationId) return;
+    if (!correlationId) {
+      setEntries([]);
+      return;
+    }
     setLoading(true);
     fetchTrace(correlationId)
       .then((resp) => {
-        setEntries(resp.entries);
-        setSource(resp.source);
+        setEntries(resp?.entries ?? []);
+        setSource(resp?.source ?? "");
       })
       .catch(() => setEntries([]))
       .finally(() => setLoading(false));
@@ -35,68 +46,74 @@ export default function TraceView({ correlationId, onClose }: Props) {
 
   return (
     <Drawer
-      title={`Trace: ${correlationId?.slice(0, 12) ?? ""}...`}
       open={!!correlationId}
-      onClose={onClose}
-      width={560}
-      styles={{ body: { padding: "16px 24px" } }}
+      onOpenChange={(open) => !open && onClose()}
+      title={correlationId ? `Trace · ${correlationId.slice(0, 12)}…` : "Trace"}
     >
-      <Spin spinning={loading}>
-        <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
-          <Descriptions.Item label="Correlation ID">
-            <Text copyable style={{ fontSize: 11, fontFamily: "monospace" }}>
-              {correlationId}
-            </Text>
-          </Descriptions.Item>
-          <Descriptions.Item label="Events">{entries.length}</Descriptions.Item>
-          <Descriptions.Item label="Duration">
-            {totalDurationMs > 0 ? `${totalDurationMs}ms` : "—"}
-          </Descriptions.Item>
-          <Descriptions.Item label="Source">
-            <Tag>{source}</Tag>
-          </Descriptions.Item>
-        </Descriptions>
+      <dl className={styles.summary}>
+        <div className={styles.summaryItem}>
+          <dt>Correlation</dt>
+          <dd className={styles.mono}>{correlationId ?? "—"}</dd>
+        </div>
+        <div className={styles.summaryItem}>
+          <dt>Events</dt>
+          <dd>{entries.length}</dd>
+        </div>
+        <div className={styles.summaryItem}>
+          <dt>Duration</dt>
+          <dd>{totalDurationMs > 0 ? `${totalDurationMs} ms` : "—"}</dd>
+        </div>
+        <div className={styles.summaryItem}>
+          <dt>Source</dt>
+          <dd>
+            <Pill variant="muted">{source || "—"}</Pill>
+          </dd>
+        </div>
+      </dl>
 
-        <Timeline
-          items={entries.map((entry) => ({
-            color: LEVEL_COLORS[entry.level?.toUpperCase()] || "#8c8c8c",
-            children: (
-              <div>
-                <div style={{ marginBottom: 4 }}>
-                  <Tag
-                    color={
-                      LEVEL_COLORS[entry.level?.toUpperCase()] || "#8c8c8c"
-                    }
-                    style={{ fontSize: 10 }}
-                  >
-                    {entry.level?.toUpperCase()}
-                  </Tag>
-                  <Tag style={{ fontSize: 10 }}>{entry.event_type}</Tag>
-                  {entry.service && (
-                    <Text type="secondary" style={{ fontSize: 10 }}>
-                      {entry.service}
-                    </Text>
+      {loading ? (
+        <div className={styles.loading}>
+          <Skeleton height={14} />
+          <Skeleton height={14} />
+          <Skeleton height={14} />
+        </div>
+      ) : entries.length === 0 ? (
+        <div className={styles.emptyHint}>No events recorded for this trace.</div>
+      ) : (
+        <ol className={styles.timeline}>
+          {entries.map((entry, idx) => (
+            <li key={`${entry.timestamp}-${idx}`} className={styles.timelineItem}>
+              <span className={styles.timelineDot} aria-hidden="true" />
+              <div className={styles.timelineBody}>
+                <div className={styles.timelineHeader}>
+                  <Pill variant={levelToPillVariant(entry.level)}>
+                    {entry.level?.toUpperCase() ?? "—"}
+                  </Pill>
+                  <span className={styles.eventName}>{entry.event_type}</span>
+                  {entry.service && <span className={styles.dim}>{entry.service}</span>}
+                </div>
+                <div className={styles.message}>{entry.message || "—"}</div>
+                <div className={styles.metaRow}>
+                  <span className={styles.mono}>{formatTimestamp(entry.timestamp)}</span>
+                  {entry.duration_ms != null && (
+                    <span className={styles.dim}>{entry.duration_ms} ms</span>
+                  )}
+                  {entry.cost_usd != null && (
+                    <span className={styles.dim}>${entry.cost_usd.toFixed(4)}</span>
                   )}
                 </div>
-                <Text style={{ fontSize: 12 }}>{entry.message}</Text>
-                <div style={{ marginTop: 2 }}>
-                  <Text
-                    type="secondary"
-                    style={{ fontSize: 10, fontFamily: "monospace" }}
-                  >
-                    {entry.timestamp
-                      ? entry.timestamp.replace("T", " ").slice(0, 23)
-                      : ""}
-                    {entry.duration_ms != null && ` (${entry.duration_ms}ms)`}
-                    {entry.cost_usd != null &&
-                      ` $${entry.cost_usd.toFixed(4)}`}
-                  </Text>
-                </div>
+                {entry.extra && Object.keys(entry.extra).length > 0 && (
+                  <ScrollArea className={styles.extra} style={{ maxHeight: 200 }}>
+                    <pre className={styles.pre}>
+                      {JSON.stringify(entry.extra, null, 2)}
+                    </pre>
+                  </ScrollArea>
+                )}
               </div>
-            ),
-          }))}
-        />
-      </Spin>
+            </li>
+          ))}
+        </ol>
+      )}
     </Drawer>
   );
 }

@@ -57,6 +57,15 @@ const demoColumns: ColumnDef<DemoTask>[] = [
   { accessorKey: "due", header: "Due" },
 ];
 
+// Large dataset to exercise virtualization. 2000 rows is enough to
+// make non-virtualized rendering visibly chunky on a mid-range laptop.
+const bigRows: DemoTask[] = Array.from({ length: 2000 }, (_, i) => ({
+  id: `v${i}`,
+  title: `Virtualized row ${i + 1}`,
+  status: (["scheduled", "in_progress", "blocked", "done"] as const)[i % 4],
+  due: `Apr ${(i % 28) + 1} 09:00`,
+}));
+
 export default function DevPrimitivesPage() {
   const [selectValue, setSelectValue] = useState("scheduled");
   const [cb1, setCb1] = useState(true);
@@ -381,6 +390,24 @@ export default function DevPrimitivesPage() {
             onRowClick={(r) => setSelectedDemo(r.id)}
             selectedRowId={selectedDemo}
             keyboardNav
+          />
+        </div>
+      </StorySection>
+
+      <StorySection
+        id="datatable-virtual"
+        eyebrow="Primitive · 20 · Virtual"
+        title="DataTable (virtualized)"
+        note="Same primitive with virtual=true + rowHeight=44 + maxHeight=400. Scroll to verify the list is 2000 rows without dropping frames."
+      >
+        <div style={{ width: "100%" }}>
+          <DataTable
+            data={bigRows}
+            columns={demoColumns}
+            getRowId={(r) => r.id}
+            virtual
+            rowHeight={44}
+            maxHeight={400}
           />
         </div>
       </StorySection>

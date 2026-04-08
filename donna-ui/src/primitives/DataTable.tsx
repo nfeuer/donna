@@ -7,8 +7,17 @@ import {
   type ColumnDef,
   type SortingState,
 } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { cn } from "../lib/cn";
 import { Button } from "./Button";
 import { Skeleton } from "./Skeleton";
@@ -23,14 +32,20 @@ interface DataTableProps<T> {
   pageSize?: number;
   loading?: boolean;
   emptyState?: ReactNode;
-  /** When true, ↑/↓ navigates rows and Enter activates onRowClick. */
+  /** When true, ↑/↓ navigates rows and Enter activates onRowClick. Ignored in virtual mode. */
   keyboardNav?: boolean;
+  /** Opt into virtualized rendering. Disables client pagination. */
+  virtual?: boolean;
+  /** Fixed row height in px when virtual=true. Default 44. */
+  rowHeight?: number;
+  /** Scroll container max-height in px when virtual=true. Default 600. */
+  maxHeight?: number;
 }
 
 /**
  * Single table component for the entire app. Built on TanStack Table.
- * Sort + paginate + row selection + keyboard nav. No virtualization in
- * this version — Wave 5 adds it for Logs using @tanstack/react-virtual.
+ * Sort + paginate + row selection + keyboard nav. Optional virtualization
+ * via @tanstack/react-virtual for log-scale datasets (Wave 3).
  */
 export function DataTable<T>({
   data,
@@ -42,10 +57,14 @@ export function DataTable<T>({
   loading = false,
   emptyState,
   keyboardNav = false,
+  virtual = false,
+  rowHeight = 44,
+  maxHeight = 600,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [focusIndex, setFocusIndex] = useState(0);
   const bodyRef = useRef<HTMLTableSectionElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const table = useReactTable({
     data,
@@ -54,16 +73,33 @@ export function DataTable<T>({
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    // Only wire up client pagination when not virtualizing.
+    ...(virtual ? {} : { getPaginationRowModel: getPaginationRowModel() }),
     getRowId,
     initialState: { pagination: { pageSize } },
   });
 
   const rows = table.getRowModel().rows;
+  const colCount = table.getVisibleFlatColumns().length;
+
+  const virtualizer = useVirtualizer({
+    count: virtual ? rows.length : 0,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 8,
+  });
+
+  const virtualRows = virtual ? virtualizer.getVirtualItems() : [];
+  const totalSize = virtual ? virtualizer.getTotalSize() : 0;
+  const paddingTop = virtual && virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const paddingBottom =
+    virtual && virtualRows.length > 0
+      ? totalSize - virtualRows[virtualRows.length - 1].end
+      : 0;
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTableSectionElement>) => {
-      if (!keyboardNav || rows.length === 0) return;
+      if (!keyboardNav || virtual || rows.length === 0) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setFocusIndex((i) => Math.min(i + 1, rows.length - 1));
@@ -76,20 +112,24 @@ export function DataTable<T>({
         if (row && onRowClick) onRowClick(row.original);
       }
     },
-    [keyboardNav, rows, focusIndex, onRowClick],
+    [keyboardNav, virtual, rows, focusIndex, onRowClick],
   );
 
   useEffect(() => {
-    if (!keyboardNav || !bodyRef.current) return;
+    if (!keyboardNav || virtual || !bodyRef.current) return;
     const el = bodyRef.current.querySelectorAll<HTMLTableRowElement>("tr")[focusIndex];
     el?.focus();
-  }, [focusIndex, keyboardNav]);
+  }, [focusIndex, keyboardNav, virtual]);
 
   const pageIndex = table.getState().pagination.pageIndex;
-  const pageCount = table.getPageCount();
   const totalRows = data.length;
   const start = pageIndex * pageSize + 1;
   const end = Math.min((pageIndex + 1) * pageSize, totalRows);
+
+  const wrapperStyle = useMemo(
+    () => (virtual ? { maxHeight: `${maxHeight}px` } : undefined),
+    [virtual, maxHeight],
+  );
 
   if (loading) {
     return (
@@ -99,7 +139,9 @@ export function DataTable<T>({
             <tbody>
               {Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
-                  <td className={styles.bodyCell}><Skeleton height={16} /></td>
+                  <td className={styles.bodyCell}>
+                    <Skeleton height={16} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -115,9 +157,13 @@ export function DataTable<T>({
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.scroll}>
+      <div
+        ref={scrollRef}
+        className={cn(styles.scroll, virtual && styles.virtualScroll)}
+        style={wrapperStyle}
+      >
         <table className={styles.table}>
-          <thead>
+          <thead className={cn(virtual && styles.stickyHead)}>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className={styles.headerRow}>
                 {hg.headers.map((h) => {
@@ -143,7 +189,12 @@ export function DataTable<T>({
             ))}
           </thead>
           <tbody ref={bodyRef} onKeyDown={handleKeyDown}>
-            {rows.map((row, idx) => {
+            {virtual && paddingTop > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={colCount} style={{ height: paddingTop, padding: 0, border: 0 }} />
+              </tr>
+            )}
+            {(virtual ? virtualRows.map((vr) => rows[vr.index]) : rows).map((row, idx) => {
               const id = getRowId(row.original);
               const selected = selectedRowId === id;
               return (
@@ -155,8 +206,9 @@ export function DataTable<T>({
                     onRowClick && styles.clickable,
                   )}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                  tabIndex={keyboardNav ? (idx === focusIndex ? 0 : -1) : undefined}
+                  tabIndex={keyboardNav && !virtual ? (idx === focusIndex ? 0 : -1) : undefined}
                   aria-selected={selected}
+                  style={virtual ? { height: rowHeight } : undefined}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className={styles.bodyCell}>
@@ -166,10 +218,15 @@ export function DataTable<T>({
                 </tr>
               );
             })}
+            {virtual && paddingBottom > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={colCount} style={{ height: paddingBottom, padding: 0, border: 0 }} />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
-      {totalRows > pageSize && (
+      {!virtual && totalRows > pageSize && (
         <div className={styles.footer}>
           <span>
             Showing {start}–{end} of {totalRows}
@@ -194,7 +251,6 @@ export function DataTable<T>({
           </div>
         </div>
       )}
-      {pageCount > 1 && totalRows <= pageSize && null}
     </div>
   );
 }

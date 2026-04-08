@@ -1,0 +1,44 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.search {
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+
+.presets {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.deletePresetItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-error);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
