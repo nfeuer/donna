@@ -1,0 +1,64 @@
+/*
+ * KeyboardShortcutsModal styling — scoped to this component because it
+ * is the only consumer. Uses tokens from src/theme/tokens.css.
+ */
+
+.body {
+  padding-top: var(--space-3);
+}
+
+.group {
+  margin-bottom: var(--space-4);
+}
+
+.group:last-child {
+  margin-bottom: 0;
+}
+
+.groupTitle {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-eyebrow);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--color-text-muted);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-body);
+}
+
+.desc {
+  flex: 1;
+}
+
+.keyRow {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--color-text);
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  min-width: 20px;
+  text-align: center;
+}
