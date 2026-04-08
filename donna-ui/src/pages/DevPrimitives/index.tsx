@@ -7,6 +7,7 @@ import { Pill } from "../../primitives/Pill";
 import { Input, Textarea, FormField } from "../../primitives/Input";
 import { Select, SelectItem } from "../../primitives/Select";
 import { Checkbox } from "../../primitives/Checkbox";
+import { Switch } from "../../primitives/Switch";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -17,6 +18,7 @@ export default function DevPrimitivesPage() {
   const [selectValue, setSelectValue] = useState("scheduled");
   const [cb1, setCb1] = useState(true);
   const [cb2, setCb2] = useState(false);
+  const [sw, setSw] = useState(false);
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -111,6 +113,14 @@ export default function DevPrimitivesPage() {
       >
         <Checkbox checked={cb1} onCheckedChange={setCb1}>Show completed</Checkbox>
         <Checkbox checked={cb2} onCheckedChange={setCb2}>Include archived</Checkbox>
+      </StorySection>
+
+      <StorySection
+        id="switch"
+        eyebrow="Primitive · 07"
+        title="Switch"
+      >
+        <Switch checked={sw} onCheckedChange={setSw}>Notify on overdue</Switch>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}

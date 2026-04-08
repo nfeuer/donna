@@ -1,0 +1,40 @@
+.root {
+  width: 32px;
+  height: 18px;
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+.root[data-state="checked"] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.thumb {
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: var(--color-text-muted);
+  border-radius: 50%;
+  transform: translate(2px, 0);
+  transition: transform var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+  will-change: transform;
+}
+.root[data-state="checked"] .thumb {
+  transform: translate(16px, 0);
+  background: var(--color-accent-contrast);
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-text);
+  cursor: pointer;
+}
