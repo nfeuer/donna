@@ -10,6 +10,7 @@ import { Checkbox } from "../../primitives/Checkbox";
 import { Switch } from "../../primitives/Switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../primitives/Tabs";
 import { Tooltip } from "../../primitives/Tooltip";
+import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../../primitives/Dialog";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -22,6 +23,7 @@ export default function DevPrimitivesPage() {
   const [cb2, setCb2] = useState(false);
   const [sw, setSw] = useState(false);
   const [tab, setTab] = useState("edit");
+  const [dialogOpen, setDialogOpen] = useState(false);
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -156,6 +158,28 @@ export default function DevPrimitivesPage() {
         <Tooltip content="Arrows render in the same color as the surface">
           <Button variant="text">And me →</Button>
         </Tooltip>
+      </StorySection>
+
+      <StorySection
+        id="dialog"
+        eyebrow="Primitive · 10"
+        title="Dialog"
+        note="Focus trap, Escape to close, backdrop click to close — all handled by Radix."
+      >
+        <Button onClick={() => setDialogOpen(true)}>Open Dialog</Button>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogHeader>
+            <DialogTitle>Reschedule Task</DialogTitle>
+            <DialogDescription>Pick a new time for "Draft Q2 budget memo."</DialogDescription>
+          </DialogHeader>
+          <p style={{ color: "var(--color-text-secondary)" }}>
+            Dialog body content would go here.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button onClick={() => setDialogOpen(false)}>Confirm</Button>
+          </DialogFooter>
+        </Dialog>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
