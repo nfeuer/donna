@@ -24,6 +24,7 @@ import { Skeleton } from "../../primitives/Skeleton";
 import { ScrollArea } from "../../primitives/ScrollArea";
 import { PageHeader } from "../../primitives/PageHeader";
 import { Stat } from "../../primitives/Stat";
+import { Segmented } from "../../primitives/Segmented";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -38,6 +39,7 @@ export default function DevPrimitivesPage() {
   const [tab, setTab] = useState("edit");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [range, setRange] = useState<"24h" | "14d" | "30d">("14d");
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -305,6 +307,24 @@ export default function DevPrimitivesPage() {
         <Stat eyebrow="Tasks Today" value={12} suffix=" / 18" sub="3 overdue · 2 blocked" />
         <Stat eyebrow="Spend · 14 days" value="$47.20" sub="↓ 12% vs prior period" />
         <Stat eyebrow="Total Runs" value="1,240" plain sub="claude-sonnet-4" />
+      </StorySection>
+
+      <StorySection
+        id="segmented"
+        eyebrow="Primitive · 18"
+        title="Segmented"
+        note="Replaces AntD Segmented. Used for Dashboard time range and filter toggles."
+      >
+        <Segmented
+          value={range}
+          onValueChange={setRange}
+          options={[
+            { value: "24h", label: "24h" },
+            { value: "14d", label: "14d" },
+            { value: "30d", label: "30d" },
+          ]}
+          aria-label="Time range"
+        />
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}

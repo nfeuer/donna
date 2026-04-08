@@ -1,0 +1,30 @@
+.root {
+  display: inline-flex;
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 3px;
+  gap: 2px;
+  font-family: var(--font-body);
+}
+
+.item {
+  background: transparent;
+  border: 0;
+  padding: 7px 16px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-control);
+  font-weight: 500;
+  transition: color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+  font-family: inherit;
+}
+.item:hover { color: var(--color-text); }
+.item.active {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
