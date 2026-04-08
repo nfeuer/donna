@@ -1,0 +1,32 @@
+Donna UI bundle size baseline
+Recorded: 2026-04-08 (Wave 0 Task 9)
+Vite version: 6.x
+Node version: v22.22.1
+
+Notes
+-----
+- This baseline is captured immediately after Wave 0 (Foundation).
+- The app still uses Ant Design 5 + Recharts + Monaco Editor — none of
+  the redesign primitives have been built yet, and AntD has not been
+  stripped. Wave 9 (Cleanup) measures against this number after AntD
+  removal and code-splitting work.
+- Vite emits a single index-*.js bundle (no manual chunking yet); the
+  build warns about chunks > 500 kB.
+
+Raw Vite build output (.js + .css only)
+---------------------------------------
+dist/assets/index-DXtOB6tv.css                                  20.80 kB │ gzip:   9.26 kB
+dist/assets/index-DBYgmY9P.js                                2,003.20 kB │ gzip: 603.50 kB
+
+Totals
+------
+Total uncompressed JS:  2,003.20 kB
+Total gzipped JS:         603.50 kB  ← Wave 9 measures against this
+
+Total uncompressed CSS:    20.80 kB
+Total gzipped CSS:          9.26 kB
+
+Wave 9 acceptance target
+------------------------
+Wave 9 (Cleanup) must show ≥40% gzipped JS reduction vs this baseline.
+Target gzipped JS:  ≤ 362.10 kB  (603.50 × 0.60)
