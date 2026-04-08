@@ -21,6 +21,7 @@ import {
 } from "../../primitives/DropdownMenu";
 import { Popover, PopoverTrigger, PopoverContent } from "../../primitives/Popover";
 import { Skeleton } from "../../primitives/Skeleton";
+import { ScrollArea } from "../../primitives/ScrollArea";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -253,6 +254,22 @@ export default function DevPrimitivesPage() {
           <Skeleton height={14} />
           <Skeleton height={14} width="80%" />
         </div>
+      </StorySection>
+
+      <StorySection
+        id="scrollarea"
+        eyebrow="Primitive · 15"
+        title="ScrollArea"
+      >
+        <ScrollArea style={{ width: 320, height: 160, border: "1px solid var(--color-border)", borderRadius: "var(--radius-card)", padding: "var(--space-3)" }}>
+          <div style={{ color: "var(--color-text-secondary)" }}>
+            {Array.from({ length: 20 }).map((_, i) => (
+              <p key={i} style={{ margin: "0 0 var(--space-2) 0" }}>
+                Line {i + 1} — a scrolling line to prove the scrollbar themes correctly.
+              </p>
+            ))}
+          </div>
+        </ScrollArea>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
