@@ -1,0 +1,96 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-text-secondary);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  text-align: left;
+}
+.groupHeader:hover {
+  color: var(--color-accent);
+}
+
+.chevron {
+  display: inline-flex;
+  color: var(--color-text-dim);
+}
+
+.groupLabel {
+  flex: 1;
+}
+
+.groupCount {
+  color: var(--color-text-dim);
+  font-size: var(--text-eyebrow);
+  letter-spacing: var(--tracking-eyebrow);
+}
+
+.children {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--space-2) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.leaf {
+  padding: 4px 6px;
+  border-radius: var(--radius-control);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.leaf:hover {
+  background: var(--color-accent-soft);
+}
+.leafActive {
+  background: var(--color-accent-soft);
+}
+
+.leafText {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+}
+
+.emptyHint {
+  color: var(--color-text-dim);
+  font-size: var(--text-label);
+  font-style: italic;
+  padding: var(--space-2) 0;
+}
