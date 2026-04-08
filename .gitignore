@@ -52,3 +52,6 @@ backups/
 
 # Agent workspace outputs
 workspace/
+
+# Superpowers brainstorming mockups
+.superpowers/
