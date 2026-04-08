@@ -1,0 +1,60 @@
+/*
+ * Minimal CSS reset + base body styles.
+ * Loaded AFTER tokens.css + themes.css so it can consume the variables.
+ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Fraunces optical sizing */
+.display,
+h1, h2, h3, h4, h5, h6 {
+  font-optical-sizing: auto;
+  font-variation-settings: "opsz" 48;
+}
+
+/* Consistent focus ring — visible but not ugly */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+/* Remove focus ring from mouse-only interactions */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Scrollbar — subtle, themed */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-control);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-dim);
+}
