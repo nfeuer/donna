@@ -71,12 +71,14 @@
   position: relative;
 }
 
-.stickyHead {
+/*
+ * Sticky header. `.table` uses `border-collapse: collapse`, which disables
+ * `position: sticky` on <thead> in Chromium/WebKit — so sticky must live on
+ * the <th> cells themselves, not the group.
+ */
+.stickyHead .headerCell {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--color-bg);
-}
-.stickyHead .headerCell {
   background: var(--color-bg);
 }

@@ -122,7 +122,6 @@ export function DataTable<T>({
   }, [focusIndex, keyboardNav, virtual]);
 
   const pageIndex = table.getState().pagination.pageIndex;
-  const pageCount = table.getPageCount();
   const totalRows = data.length;
   const start = pageIndex * pageSize + 1;
   const end = Math.min((pageIndex + 1) * pageSize, totalRows);
@@ -252,7 +251,6 @@ export function DataTable<T>({
           </div>
         </div>
       )}
-      {!virtual && pageCount > 1 && totalRows <= pageSize && null}
     </div>
   );
 }
