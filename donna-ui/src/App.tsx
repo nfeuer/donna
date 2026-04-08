@@ -10,6 +10,7 @@ import TasksPage from "./pages/Tasks";
 import TaskDetail from "./pages/Tasks/TaskDetail";
 import ShadowPage from "./pages/Shadow";
 import PreferencesPage from "./pages/Preferences";
+import DevPrimitivesPage from "./pages/DevPrimitives";
 import { useTheme } from "./hooks/useTheme";
 
 export default function App() {
@@ -18,6 +19,10 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Dev-only primitives gallery — outside AppLayout so it renders standalone */}
+      {import.meta.env.DEV && (
+        <Route path="/dev/primitives" element={<DevPrimitivesPage />} />
+      )}
       <Route element={<AppLayout />}>
         <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
         <Route path="/logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
