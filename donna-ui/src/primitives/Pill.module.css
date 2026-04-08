@@ -1,0 +1,41 @@
+.pill {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-eyebrow);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--font-body);
+  border: 1px solid transparent;
+}
+
+.accent {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
+}
+
+.success {
+  background: rgba(138, 166, 114, 0.10);
+  color: var(--color-success);
+  border-color: rgba(138, 166, 114, 0.28);
+}
+
+.warning {
+  background: rgba(212, 169, 67, 0.10);
+  color: var(--color-warning);
+  border-color: rgba(212, 169, 67, 0.28);
+}
+
+.error {
+  background: rgba(200, 102, 94, 0.10);
+  color: var(--color-error);
+  border-color: rgba(200, 102, 94, 0.28);
+}
+
+.muted {
+  background: var(--color-inset);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}

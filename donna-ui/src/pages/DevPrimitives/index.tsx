@@ -2,6 +2,7 @@ import styles from "./DevPrimitives.module.css";
 import { StorySection } from "./StorySection";
 import { Button } from "../../primitives/Button";
 import { Card, CardHeader, CardEyebrow, CardTitle } from "../../primitives/Card";
+import { Pill } from "../../primitives/Pill";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -48,6 +49,19 @@ export default function DevPrimitivesPage() {
             Card content. Reads from tokens, no inline hex anywhere.
           </p>
         </Card>
+      </StorySection>
+
+      <StorySection
+        id="pill"
+        eyebrow="Primitive · 03"
+        title="Pill"
+        note="Status indicators. Semantic colors only appear when semantically required."
+      >
+        <Pill>Scheduled</Pill>
+        <Pill variant="success">Done</Pill>
+        <Pill variant="warning">At Risk</Pill>
+        <Pill variant="error">Overdue</Pill>
+        <Pill variant="muted">Backlog</Pill>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
