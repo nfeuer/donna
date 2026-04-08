@@ -1,6 +1,7 @@
 import styles from "./DevPrimitives.module.css";
 import { StorySection } from "./StorySection";
 import { Button } from "../../primitives/Button";
+import { Card, CardHeader, CardEyebrow, CardTitle } from "../../primitives/Card";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -30,6 +31,23 @@ export default function DevPrimitivesPage() {
         <Button size="sm">Small</Button>
         <Button size="lg">Large</Button>
         <Button disabled>Disabled</Button>
+      </StorySection>
+
+      <StorySection
+        id="card"
+        eyebrow="Primitive · 02"
+        title="Card"
+        note="Base container. Border lifts to text-dim on hover."
+      >
+        <Card style={{ width: 280 }}>
+          <CardHeader>
+            <CardEyebrow>Tasks Today</CardEyebrow>
+            <CardTitle>Spend This Week</CardTitle>
+          </CardHeader>
+          <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-body)", margin: 0 }}>
+            Card content. Reads from tokens, no inline hex anywhere.
+          </p>
+        </Card>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
