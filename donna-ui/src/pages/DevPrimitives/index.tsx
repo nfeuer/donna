@@ -12,6 +12,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../primitives/Tabs"
 import { Tooltip } from "../../primitives/Tooltip";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../../primitives/Dialog";
 import { Drawer } from "../../primitives/Drawer";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "../../primitives/DropdownMenu";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -196,6 +203,24 @@ export default function DevPrimitivesPage() {
             Drawer body. Use this for task/log detail panels in later waves.
           </p>
         </Drawer>
+      </StorySection>
+
+      <StorySection
+        id="dropdown"
+        eyebrow="Primitive · 12"
+        title="DropdownMenu"
+      >
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <Button variant="ghost">Actions</Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem>Reschedule</DropdownMenuItem>
+            <DropdownMenuItem>Mark done</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>Delete</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
