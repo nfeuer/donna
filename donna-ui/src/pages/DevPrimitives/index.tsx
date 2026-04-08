@@ -3,6 +3,7 @@ import { StorySection } from "./StorySection";
 import { Button } from "../../primitives/Button";
 import { Card, CardHeader, CardEyebrow, CardTitle } from "../../primitives/Card";
 import { Pill } from "../../primitives/Pill";
+import { Input, Textarea, FormField } from "../../primitives/Input";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -62,6 +63,25 @@ export default function DevPrimitivesPage() {
         <Pill variant="warning">At Risk</Pill>
         <Pill variant="error">Overdue</Pill>
         <Pill variant="muted">Backlog</Pill>
+      </StorySection>
+
+      <StorySection
+        id="input"
+        eyebrow="Primitive · 04"
+        title="Input, Textarea, FormField"
+        note="FormField wires labels, ids, and aria-describedby automatically."
+      >
+        <div style={{ display: "grid", gap: "var(--space-3)", width: 320 }}>
+          <FormField label="Task Title">
+            {(p) => <Input placeholder="Draft Q2 budget memo" {...p} />}
+          </FormField>
+          <FormField label="Notes">
+            {(p) => <Textarea placeholder="Include variance vs Q1…" {...p} />}
+          </FormField>
+          <FormField label="Invalid Example" error="Title is required">
+            {(p) => <Input {...p} />}
+          </FormField>
+        </div>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
