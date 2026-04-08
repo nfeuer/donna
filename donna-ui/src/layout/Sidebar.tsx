@@ -50,7 +50,7 @@ export function Sidebar() {
     <aside className={styles.sidebar}>
       <div className={styles.brand}>
         <div className={styles.brandName}>Donna</div>
-        <div className={styles.brandEyebrow}>Management</div>
+        <div className={styles.brandEyebrow}>Executive Console</div>
       </div>
 
       <nav className={styles.nav} aria-label="Primary navigation">
