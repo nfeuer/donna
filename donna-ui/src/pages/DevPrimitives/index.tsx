@@ -6,6 +6,7 @@ import { Card, CardHeader, CardEyebrow, CardTitle } from "../../primitives/Card"
 import { Pill } from "../../primitives/Pill";
 import { Input, Textarea, FormField } from "../../primitives/Input";
 import { Select, SelectItem } from "../../primitives/Select";
+import { Checkbox } from "../../primitives/Checkbox";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -14,6 +15,8 @@ import { Select, SelectItem } from "../../primitives/Select";
  */
 export default function DevPrimitivesPage() {
   const [selectValue, setSelectValue] = useState("scheduled");
+  const [cb1, setCb1] = useState(true);
+  const [cb2, setCb2] = useState(false);
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -99,6 +102,15 @@ export default function DevPrimitivesPage() {
           <SelectItem value="blocked">Blocked</SelectItem>
           <SelectItem value="done">Done</SelectItem>
         </Select>
+      </StorySection>
+
+      <StorySection
+        id="checkbox"
+        eyebrow="Primitive · 06"
+        title="Checkbox"
+      >
+        <Checkbox checked={cb1} onCheckedChange={setCb1}>Show completed</Checkbox>
+        <Checkbox checked={cb2} onCheckedChange={setCb2}>Include archived</Checkbox>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
