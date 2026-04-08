@@ -20,6 +20,7 @@ import {
   DropdownMenuSeparator,
 } from "../../primitives/DropdownMenu";
 import { Popover, PopoverTrigger, PopoverContent } from "../../primitives/Popover";
+import { Skeleton } from "../../primitives/Skeleton";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -238,6 +239,20 @@ export default function DevPrimitivesPage() {
             Popover body — use this to host date pickers, filter forms, etc.
           </PopoverContent>
         </Popover>
+      </StorySection>
+
+      <StorySection
+        id="skeleton"
+        eyebrow="Primitive · 14"
+        title="Skeleton"
+        note="Respects prefers-reduced-motion (no shimmer)."
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", width: 280 }}>
+          <Skeleton height={14} width="60%" />
+          <Skeleton height={32} />
+          <Skeleton height={14} />
+          <Skeleton height={14} width="80%" />
+        </div>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
