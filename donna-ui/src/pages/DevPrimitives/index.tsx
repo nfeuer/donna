@@ -9,6 +9,7 @@ import { Select, SelectItem } from "../../primitives/Select";
 import { Checkbox } from "../../primitives/Checkbox";
 import { Switch } from "../../primitives/Switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../primitives/Tabs";
+import { Tooltip } from "../../primitives/Tooltip";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -141,6 +142,20 @@ export default function DevPrimitivesPage() {
           <TabsContent value="preview">Preview panel content.</TabsContent>
           <TabsContent value="split">Split panel content.</TabsContent>
         </Tabs>
+      </StorySection>
+
+      <StorySection
+        id="tooltip"
+        eyebrow="Primitive · 09"
+        title="Tooltip"
+        note="400ms delay (overrides Radix default of 700ms)."
+      >
+        <Tooltip content="Hover text uses the surface token">
+          <Button variant="ghost">Hover me</Button>
+        </Tooltip>
+        <Tooltip content="Arrows render in the same color as the surface">
+          <Button variant="text">And me →</Button>
+        </Tooltip>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}

@@ -1,0 +1,16 @@
+.content {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 6px 10px;
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  box-shadow: var(--shadow-dialog);
+  z-index: var(--z-popover);
+  user-select: none;
+}
+
+.arrow {
+  fill: var(--color-surface);
+}
