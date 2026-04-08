@@ -1,0 +1,90 @@
+/*
+ * Donna design tokens — refined dark luxury aesthetic.
+ * All colors, typography, spacing, and motion live here.
+ * Consumed by src/theme/themes.css and every primitive module.
+ * See docs/superpowers/specs/2026-04-08-donna-ui-redesign-design.md §1
+ */
+
+:root {
+  /* ========== Surfaces ========== */
+  --color-bg: #1a1816;
+  --color-surface: #1f1c18;
+  --color-inset: #16140f;
+  --color-border: #2a2724;
+  --color-border-subtle: #221f1c;
+
+  /* ========== Text ========== */
+  --color-text: #e8e3d8;
+  --color-text-secondary: #c7c0b2;
+  --color-text-muted: #8a8378;
+  --color-text-dim: #5e5850;
+
+  /* ========== Semantic ========== */
+  --color-success: #8aa672;
+  --color-warning: #d4a943;
+  --color-error: #c8665e;
+
+  /* ========== Accent (default = champagne gold) ========== */
+  /* Overridden by [data-theme="coral"] in themes.css */
+  --color-accent: #d4a943;
+  --color-accent-soft: rgba(212, 169, 67, 0.10);
+  --color-accent-border: rgba(212, 169, 67, 0.28);
+  --color-accent-contrast: var(--color-inset); /* text on accent background */
+
+  /* ========== Typography ========== */
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-page-title: clamp(32px, 4vw, 44px);
+  --text-section: 20px;
+  --text-metric: clamp(40px, 5vw, 56px);
+  --text-body-lg: 15px;
+  --text-body: 13px;
+  --text-label: 11px;
+  --text-eyebrow: 9px;
+
+  --tracking-tight: -0.025em;
+  --tracking-normal: -0.01em;
+  --tracking-wide: 0.04em;
+  --tracking-eyebrow: 0.18em;
+
+  --leading-tight: 1;
+  --leading-snug: 1.2;
+  --leading-normal: 1.5;
+
+  /* ========== Spacing (asymmetric scale) ========== */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 14px;
+  --space-4: 20px;
+  --space-5: 28px;
+  --space-6: 44px;
+  --space-7: 72px;
+
+  /* ========== Radius ========== */
+  --radius-control: 2px;
+  --radius-card: 4px;
+
+  /* ========== Motion ========== */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 200ms;
+  --duration-base: 300ms;
+
+  /* ========== Shadows (used sparingly) ========== */
+  --shadow-drawer: -16px 0 32px rgba(0, 0, 0, 0.3);
+  --shadow-dialog: 0 16px 48px rgba(0, 0, 0, 0.4);
+
+  /* ========== Layering ========== */
+  --z-rail: 10;
+  --z-popover: 20;
+  --z-dialog: 30;
+  --z-toast: 40;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+  }
+}
