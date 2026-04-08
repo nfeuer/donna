@@ -1,9 +1,11 @@
+import { useState } from "react";
 import styles from "./DevPrimitives.module.css";
 import { StorySection } from "./StorySection";
 import { Button } from "../../primitives/Button";
 import { Card, CardHeader, CardEyebrow, CardTitle } from "../../primitives/Card";
 import { Pill } from "../../primitives/Pill";
 import { Input, Textarea, FormField } from "../../primitives/Input";
+import { Select, SelectItem } from "../../primitives/Select";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -11,6 +13,7 @@ import { Input, Textarea, FormField } from "../../primitives/Input";
  * Stays after production launch for reference (see Wave 9 cleanup).
  */
 export default function DevPrimitivesPage() {
+  const [selectValue, setSelectValue] = useState("scheduled");
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -82,6 +85,20 @@ export default function DevPrimitivesPage() {
             {(p) => <Input {...p} />}
           </FormField>
         </div>
+      </StorySection>
+
+      <StorySection
+        id="select"
+        eyebrow="Primitive · 05"
+        title="Select"
+        note="Radix Select wrapped with our chrome. Full keyboard nav built in."
+      >
+        <Select value={selectValue} onValueChange={setSelectValue} placeholder="Select a status">
+          <SelectItem value="scheduled">Scheduled</SelectItem>
+          <SelectItem value="in_progress">In Progress</SelectItem>
+          <SelectItem value="blocked">Blocked</SelectItem>
+          <SelectItem value="done">Done</SelectItem>
+        </Select>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
