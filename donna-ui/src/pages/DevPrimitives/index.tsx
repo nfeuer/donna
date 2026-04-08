@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "../../primitives/DropdownMenu";
+import { Popover, PopoverTrigger, PopoverContent } from "../../primitives/Popover";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -221,6 +222,22 @@ export default function DevPrimitivesPage() {
             <DropdownMenuItem>Delete</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+      </StorySection>
+
+      <StorySection
+        id="popover"
+        eyebrow="Primitive · 13"
+        title="Popover"
+        note="Used by filter bars and date range pickers."
+      >
+        <Popover>
+          <PopoverTrigger>
+            <Button variant="ghost">Filter by date</Button>
+          </PopoverTrigger>
+          <PopoverContent>
+            Popover body — use this to host date pickers, filter forms, etc.
+          </PopoverContent>
+        </Popover>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
