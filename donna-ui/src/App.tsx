@@ -10,8 +10,12 @@ import TasksPage from "./pages/Tasks";
 import TaskDetail from "./pages/Tasks/TaskDetail";
 import ShadowPage from "./pages/Shadow";
 import PreferencesPage from "./pages/Preferences";
+import { useTheme } from "./hooks/useTheme";
 
 export default function App() {
+  // Activates theme + persists to localStorage + registers ⌘. shortcut
+  useTheme();
+
   return (
     <Routes>
       <Route element={<AppLayout />}>
