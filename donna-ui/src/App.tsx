@@ -1,6 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import * as RadixTooltip from "@radix-ui/react-tooltip";
-import AppLayout from "./components/Layout";
+import { AppShell } from "./layout";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Dashboard from "./pages/Dashboard";
 import Logs from "./pages/Logs";
@@ -21,11 +21,11 @@ export default function App() {
   return (
     <RadixTooltip.Provider delayDuration={400} skipDelayDuration={100}>
       <Routes>
-        {/* Dev-only primitives gallery — outside AppLayout so it renders standalone */}
+        {/* Dev-only primitives gallery — outside AppShell so it renders standalone */}
         {import.meta.env.DEV && (
           <Route path="/dev/primitives" element={<DevPrimitivesPage />} />
         )}
-        <Route element={<AppLayout />}>
+        <Route element={<AppShell />}>
           <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
           <Route path="/logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
           <Route path="/configs" element={<ErrorBoundary><ConfigsPage /></ErrorBoundary>} />

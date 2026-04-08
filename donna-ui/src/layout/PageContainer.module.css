@@ -1,0 +1,10 @@
+/*
+ * PageContainer — max-width wrapper. No padding (AppShell's <main>
+ * provides it). Wave 3+ pages consume this; Wave 2 only ships the file.
+ */
+
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
+}

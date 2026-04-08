@@ -1,0 +1,145 @@
+/*
+ * Sidebar rail. Fixed 220 px, warm charcoal inset background, hairline right
+ * border. Layout uses flex column so the footer sticks to the bottom.
+ */
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-inset);
+  border-right: 1px solid var(--color-border);
+  z-index: var(--z-rail);
+}
+
+/* ========== Brand ========== */
+
+.brand {
+  padding: var(--space-5) var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.brandName {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 300;
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-text);
+  line-height: var(--leading-tight);
+}
+
+.brandEyebrow {
+  margin-top: 6px;
+  font-family: var(--font-body);
+  font-size: var(--text-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: var(--color-text-muted);
+}
+
+/* ========== Nav list ========== */
+
+.nav {
+  flex: 1;
+  padding: var(--space-3) 0;
+  overflow-y: auto;
+}
+
+.navList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ========== Footer ========== */
+
+.footer {
+  padding: var(--space-3) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.themeRow {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.themeChip {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.themeChip::before {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Swatch dots are literal brand colors — semantic purpose (showing the
+ * accent option), not decoration. Keep the hex values here. */
+.themeChipGold::before {
+  background: #d4a943;
+}
+.themeChipCoral::before {
+  background: #f56960;
+}
+
+.themeChip:hover {
+  color: var(--color-text);
+  border-color: var(--color-accent-border);
+}
+
+.themeChip:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.themeChipActive {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.shortcutHint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-top: 2px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-family: var(--font-body);
+  opacity: 0.75;
+}
+
+.kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}

@@ -1,0 +1,21 @@
+/*
+ * AppShell — flex row with fixed sidebar and scrolling main content.
+ * The 24px main padding is a TEMPORARY shim so existing AntD pages look
+ * identical to before this wave. Later waves (Wave 3+) either remove this
+ * entirely or tighten it to the spec value (40px 48px) once every page
+ * has migrated to PageContainer.
+ */
+
+.shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.main {
+  flex: 1;
+  min-width: 0; /* prevents flex child from overflowing horizontally */
+  overflow: auto;
+  padding: 24px;
+}
