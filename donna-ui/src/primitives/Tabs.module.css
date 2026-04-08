@@ -1,0 +1,35 @@
+.root { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; }
+
+.list {
+  display: flex;
+  gap: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.trigger {
+  padding: 10px 0;
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+  outline: none;
+}
+.trigger:hover { color: var(--color-text-secondary); }
+.trigger[data-state="active"] {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
+}
+
+.content {
+  color: var(--color-text-secondary);
+  font-size: var(--text-body);
+  outline: none;
+}

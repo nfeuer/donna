@@ -8,6 +8,7 @@ import { Input, Textarea, FormField } from "../../primitives/Input";
 import { Select, SelectItem } from "../../primitives/Select";
 import { Checkbox } from "../../primitives/Checkbox";
 import { Switch } from "../../primitives/Switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../primitives/Tabs";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -19,6 +20,7 @@ export default function DevPrimitivesPage() {
   const [cb1, setCb1] = useState(true);
   const [cb2, setCb2] = useState(false);
   const [sw, setSw] = useState(false);
+  const [tab, setTab] = useState("edit");
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -121,6 +123,24 @@ export default function DevPrimitivesPage() {
         title="Switch"
       >
         <Switch checked={sw} onCheckedChange={setSw}>Notify on overdue</Switch>
+      </StorySection>
+
+      <StorySection
+        id="tabs"
+        eyebrow="Primitive · 08"
+        title="Tabs"
+        note="Used by the Prompts editor (Edit / Preview / Split)."
+      >
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            <TabsTrigger value="edit">Edit</TabsTrigger>
+            <TabsTrigger value="preview">Preview</TabsTrigger>
+            <TabsTrigger value="split">Split</TabsTrigger>
+          </TabsList>
+          <TabsContent value="edit">Edit panel content.</TabsContent>
+          <TabsContent value="preview">Preview panel content.</TabsContent>
+          <TabsContent value="split">Split panel content.</TabsContent>
+        </Tabs>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
