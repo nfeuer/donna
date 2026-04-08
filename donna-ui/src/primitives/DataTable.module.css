@@ -64,3 +64,19 @@
 .footerActions { display: flex; gap: var(--space-2); }
 
 .empty { padding: var(--space-5); }
+
+/* Virtualized mode — fixed-height scroll container with sticky header. */
+.virtualScroll {
+  overflow-y: auto;
+  position: relative;
+}
+
+.stickyHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-bg);
+}
+.stickyHead .headerCell {
+  background: var(--color-bg);
+}
