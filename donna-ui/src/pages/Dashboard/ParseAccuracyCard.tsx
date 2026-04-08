@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { Card, Statistic, Row, Col, Table, Tag, Spin } from "antd";
+import { Card, Statistic, Row, Col, Table, Tag, Skeleton } from "antd";
 import {
   Area,
   XAxis,
@@ -10,28 +9,27 @@ import {
   Bar,
   ComposedChart,
 } from "recharts";
+import type { ParseAccuracyData } from "../../api/dashboard";
 import {
-  fetchParseAccuracy,
-  type ParseAccuracyData,
-} from "../../api/dashboard";
-import { STATUS_COLORS } from "../../theme/darkTheme";
+  STATUS_COLORS,
+  CHART_TOOLTIP_STYLE,
+  CHART_GRID_STROKE,
+  CHART_TICK,
+} from "../../theme/darkTheme";
 
 interface Props {
-  days: number;
-  refreshKey: number;
+  data: ParseAccuracyData | null;
+  loading: boolean;
 }
 
-export default function ParseAccuracyCard({ days, refreshKey }: Props) {
-  const [data, setData] = useState<ParseAccuracyData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchParseAccuracy(days)
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [days, refreshKey]);
+export default function ParseAccuracyCard({ data, loading }: Props) {
+  if (loading && !data) {
+    return (
+      <Card title="Parse Accuracy" size="small" styles={{ body: { padding: "12px 16px" } }}>
+        <Skeleton active paragraph={{ rows: 6 }} />
+      </Card>
+    );
+  }
 
   const accuracyColor = (pct: number) =>
     pct >= 90
@@ -48,65 +46,63 @@ export default function ParseAccuracyCard({ days, refreshKey }: Props) {
       size="small"
       styles={{ body: { padding: "12px 16px" } }}
     >
-      <Spin spinning={loading}>
-        <Row gutter={16} style={{ marginBottom: 16 }}>
-          <Col span={6}>
-            <Statistic
-              title="Accuracy"
-              value={s?.accuracy_pct ?? 0}
-              suffix="%"
-              valueStyle={{
-                color: s ? accuracyColor(s.accuracy_pct) : undefined,
-                fontSize: 22,
-              }}
-            />
-          </Col>
-          <Col span={6}>
-            <Statistic
-              title="Parses"
-              value={s?.total_parses ?? 0}
-              valueStyle={{ fontSize: 22 }}
-            />
-          </Col>
-          <Col span={6}>
-            <Statistic
-              title="Corrections"
-              value={s?.total_corrections ?? 0}
-              valueStyle={{ fontSize: 22 }}
-            />
-          </Col>
-          <Col span={6}>
-            <Statistic
-              title="Most Corrected"
-              value={s?.most_corrected_field ?? "—"}
-              valueStyle={{ fontSize: 14 }}
-            />
-          </Col>
-        </Row>
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={6}>
+          <Statistic
+            title="Accuracy"
+            value={s?.accuracy_pct ?? 0}
+            suffix="%"
+            valueStyle={{
+              color: s ? accuracyColor(s.accuracy_pct) : undefined,
+              fontSize: 22,
+            }}
+          />
+        </Col>
+        <Col xs={12} sm={6}>
+          <Statistic
+            title="Parses"
+            value={s?.total_parses ?? 0}
+            valueStyle={{ fontSize: 22 }}
+          />
+        </Col>
+        <Col xs={12} sm={6}>
+          <Statistic
+            title="Corrections"
+            value={s?.total_corrections ?? 0}
+            valueStyle={{ fontSize: 22 }}
+          />
+        </Col>
+        <Col xs={12} sm={6}>
+          <Statistic
+            title="Most Corrected"
+            value={s?.most_corrected_field ?? "—"}
+            valueStyle={{ fontSize: 14 }}
+          />
+        </Col>
+      </Row>
 
-        {data?.time_series && data.time_series.length > 0 && (
+      {data?.time_series && data.time_series.length > 0 && (
+        <div role="img" aria-label={`Parse accuracy trend over ${data.days} days`}>
           <ResponsiveContainer width="100%" height={180}>
             <ComposedChart data={data.time_series}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#303030" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} />
               <XAxis
                 dataKey="date"
-                tick={{ fill: "#8c8c8c", fontSize: 10 }}
+                tick={CHART_TICK}
                 tickFormatter={(v: string) => v.slice(5)}
               />
               <YAxis
                 yAxisId="pct"
                 domain={[0, 100]}
-                tick={{ fill: "#8c8c8c", fontSize: 10 }}
+                tick={CHART_TICK}
                 tickFormatter={(v: number) => `${v}%`}
               />
               <YAxis
                 yAxisId="count"
                 orientation="right"
-                tick={{ fill: "#8c8c8c", fontSize: 10 }}
+                tick={CHART_TICK}
               />
-              <Tooltip
-                contentStyle={{ background: "#1f1f1f", border: "1px solid #303030" }}
-              />
+              <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
               <Area
                 yAxisId="pct"
                 type="monotone"
@@ -125,35 +121,35 @@ export default function ParseAccuracyCard({ days, refreshKey }: Props) {
               />
             </ComposedChart>
           </ResponsiveContainer>
-        )}
+        </div>
+      )}
 
-        {data?.field_breakdown && data.field_breakdown.length > 0 && (
-          <Table
-            size="small"
-            dataSource={data.field_breakdown.slice(0, 5)}
-            rowKey="field"
-            pagination={false}
-            style={{ marginTop: 12 }}
-            columns={[
-              {
-                title: "Field",
-                dataIndex: "field",
-                render: (v: string) => <Tag>{v}</Tag>,
-              },
-              { title: "Corrections", dataIndex: "count", width: 100 },
-              {
-                title: "% of Total",
-                dataIndex: "count",
-                width: 100,
-                render: (v: number) =>
-                  s
-                    ? `${((v / s.total_corrections) * 100).toFixed(1)}%`
-                    : "—",
-              },
-            ]}
-          />
-        )}
-      </Spin>
+      {data?.field_breakdown && data.field_breakdown.length > 0 && (
+        <Table
+          size="small"
+          dataSource={data.field_breakdown.slice(0, 5)}
+          rowKey="field"
+          pagination={false}
+          style={{ marginTop: 12 }}
+          columns={[
+            {
+              title: "Field",
+              dataIndex: "field",
+              render: (v: string) => <Tag>{v}</Tag>,
+            },
+            { title: "Corrections", dataIndex: "count", width: 100 },
+            {
+              title: "% of Total",
+              dataIndex: "count",
+              width: 100,
+              render: (v: number) =>
+                s
+                  ? `${((v / s.total_corrections) * 100).toFixed(1)}%`
+                  : "—",
+            },
+          ]}
+        />
+      )}
     </Card>
   );
 }

@@ -11,8 +11,15 @@ import {
   fetchParseAccuracy,
   fetchQualityWarnings,
   fetchTaskThroughput,
+  fetchAgentPerformance,
+  type CostAnalyticsData,
+  type ParseAccuracyData,
+  type TaskThroughputData,
+  type AgentPerformanceData,
+  type QualityWarningsData,
 } from "../../api/dashboard";
 import { fetchAdminHealth, type AdminHealthData } from "../../api/health";
+import { SECONDARY_TEXT_COLOR } from "../../theme/darkTheme";
 
 const RANGE_OPTIONS = [
   { label: "7d", value: 7 },
@@ -21,76 +28,114 @@ const RANGE_OPTIONS = [
   { label: "90d", value: 90 },
 ];
 
+export interface DashboardData {
+  cost: CostAnalyticsData | null;
+  parse: ParseAccuracyData | null;
+  tasks: TaskThroughputData | null;
+  agents: AgentPerformanceData | null;
+  quality: QualityWarningsData | null;
+}
+
 export default function Dashboard() {
   const [days, setDays] = useState(30);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [health, setHealth] = useState<AdminHealthData | null>(null);
+  const [data, setData] = useState<DashboardData>({
+    cost: null,
+    parse: null,
+    tasks: null,
+    agents: null,
+    quality: null,
+  });
+  const [loading, setLoading] = useState(true);
+
+  // Anomaly dedup: only fire notification on state *transition*, not every poll
   const prevOverdue = useRef<number | null>(null);
+  const prevCostAlert = useRef(false);
+  const prevParseAlert = useRef(false);
+  const prevQualityAlert = useRef(false);
+
+  const fetchAll = useCallback(async (d: number) => {
+    setLoading(true);
+    try {
+      const [cost, parse, tasks, agents, quality] = await Promise.all([
+        fetchCostAnalytics(d).catch(() => null),
+        fetchParseAccuracy(d).catch(() => null),
+        fetchTaskThroughput(d).catch(() => null),
+        fetchAgentPerformance(d).catch(() => null),
+        fetchQualityWarnings(d).catch(() => null),
+      ]);
+
+      setData({ cost, parse, tasks, agents, quality });
+
+      // Deduplicated anomaly notifications — only on threshold crossing
+      if (cost) {
+        const overBudget = cost.summary.today_cost_usd > 16;
+        if (overBudget && !prevCostAlert.current) {
+          notification.warning({
+            message: "Daily Cost Alert",
+            description: `Today's cost ($${cost.summary.today_cost_usd.toFixed(2)}) exceeds 80% of the $20 daily threshold.`,
+            duration: 8,
+          });
+        }
+        prevCostAlert.current = overBudget;
+      }
+
+      if (parse) {
+        const lowAccuracy = parse.summary.accuracy_pct < 85;
+        if (lowAccuracy && !prevParseAlert.current) {
+          notification.warning({
+            message: "Parse Accuracy Alert",
+            description: `Parse accuracy (${parse.summary.accuracy_pct.toFixed(1)}%) dropped below 85%.`,
+            duration: 8,
+          });
+        }
+        prevParseAlert.current = lowAccuracy;
+      }
+
+      if (tasks) {
+        const currentOverdue = tasks.summary.overdue_count;
+        if (
+          prevOverdue.current !== null &&
+          currentOverdue > prevOverdue.current
+        ) {
+          notification.warning({
+            message: "Overdue Tasks Increased",
+            description: `Overdue tasks increased from ${prevOverdue.current} to ${currentOverdue}.`,
+            duration: 8,
+          });
+        }
+        prevOverdue.current = currentOverdue;
+      }
+
+      if (quality) {
+        const highRate = quality.summary.warning_rate_pct > 10;
+        if (highRate && !prevQualityAlert.current) {
+          notification.warning({
+            message: "Quality Warning Rate High",
+            description: `${quality.summary.warning_rate_pct.toFixed(1)}% of scored invocations are below quality thresholds.`,
+            duration: 8,
+          });
+        }
+        prevQualityAlert.current = highRate;
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const refreshHealth = useCallback(() => {
     fetchAdminHealth().then(setHealth).catch(() => setHealth(null));
   }, []);
 
   useEffect(() => {
+    fetchAll(days);
     refreshHealth();
-  }, [refreshHealth]);
-
-  const checkAnomalies = useCallback(async (d: number) => {
-    try {
-      const [cost, parse, tasks, qw] = await Promise.all([
-        fetchCostAnalytics(d),
-        fetchParseAccuracy(d),
-        fetchTaskThroughput(d),
-        fetchQualityWarnings(d),
-      ]);
-
-      // Daily cost > 80% of $20 threshold
-      if (cost.summary.today_cost_usd > 16) {
-        notification.warning({
-          message: "Daily Cost Alert",
-          description: `Today's cost ($${cost.summary.today_cost_usd.toFixed(2)}) exceeds 80% of the $20 daily threshold.`,
-          duration: 8,
-        });
-      }
-
-      // Parse accuracy < 85%
-      if (parse.summary.accuracy_pct < 85) {
-        notification.warning({
-          message: "Parse Accuracy Alert",
-          description: `Parse accuracy (${parse.summary.accuracy_pct.toFixed(1)}%) dropped below 85%.`,
-          duration: 8,
-        });
-      }
-
-      // Overdue count increased
-      const currentOverdue = tasks.summary.overdue_count;
-      if (prevOverdue.current !== null && currentOverdue > prevOverdue.current) {
-        notification.warning({
-          message: "Overdue Tasks Increased",
-          description: `Overdue tasks increased from ${prevOverdue.current} to ${currentOverdue}.`,
-          duration: 8,
-        });
-      }
-      prevOverdue.current = currentOverdue;
-
-      // Quality warning rate > 10%
-      if (qw.summary.warning_rate_pct > 10) {
-        notification.warning({
-          message: "Quality Warning Rate High",
-          description: `${qw.summary.warning_rate_pct.toFixed(1)}% of scored invocations are below quality thresholds.`,
-          duration: 8,
-        });
-      }
-    } catch {
-      // Silent — anomaly checks are best-effort
-    }
-  }, []);
+  }, [days, fetchAll, refreshHealth]);
 
   const handleRefresh = useCallback(async () => {
-    setRefreshKey((k) => k + 1);
     refreshHealth();
-    await checkAnomalies(days);
-  }, [days, checkAnomalies, refreshHealth]);
+    await fetchAll(days);
+  }, [days, fetchAll, refreshHealth]);
 
   return (
     <div>
@@ -107,6 +152,7 @@ export default function Dashboard() {
             options={RANGE_OPTIONS}
             value={days}
             onChange={(v) => setDays(v as number)}
+            aria-label="Date range"
           />
           {health && (
             <Tooltip
@@ -117,11 +163,13 @@ export default function Dashboard() {
                 )
                 .join(" | ")}
             >
-              <Badge
-                status={health.status === "healthy" ? "success" : "warning"}
-                text={health.status === "healthy" ? "Healthy" : "Degraded"}
-                style={{ marginLeft: 8, fontSize: 12, color: "#8c8c8c" }}
-              />
+              <span role="status" aria-label={`System status: ${health.status}`}>
+                <Badge
+                  status={health.status === "healthy" ? "success" : "warning"}
+                  text={health.status === "healthy" ? "Healthy" : "Degraded"}
+                  style={{ marginLeft: 8, fontSize: 12, color: SECONDARY_TEXT_COLOR }}
+                />
+              </span>
             </Tooltip>
           )}
         </Space>
@@ -129,20 +177,21 @@ export default function Dashboard() {
       </div>
 
       <Row gutter={[16, 16]}>
-        <Col xs={24} lg={12}>
-          <ParseAccuracyCard days={days} refreshKey={refreshKey} />
+        {/* Budget is the top constraint — give it full width for prominence */}
+        <Col xs={24}>
+          <CostAnalyticsCard data={data.cost} loading={loading} />
         </Col>
         <Col xs={24} lg={12}>
-          <AgentPerformanceCard days={days} refreshKey={refreshKey} />
+          <ParseAccuracyCard data={data.parse} loading={loading} />
         </Col>
         <Col xs={24} lg={12}>
-          <TaskThroughputCard days={days} refreshKey={refreshKey} />
+          <TaskThroughputCard data={data.tasks} loading={loading} />
         </Col>
         <Col xs={24} lg={12}>
-          <CostAnalyticsCard days={days} refreshKey={refreshKey} />
+          <AgentPerformanceCard data={data.agents} loading={loading} />
         </Col>
         <Col xs={24} lg={12}>
-          <QualityWarningsCard days={days} refreshKey={refreshKey} />
+          <QualityWarningsCard data={data.quality} loading={loading} />
         </Col>
       </Row>
     </div>

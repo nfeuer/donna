@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Layout, Menu, Typography } from "antd";
+import { Layout, Menu, Typography, Tooltip } from "antd";
 import useKeyboardShortcuts from "../hooks/useKeyboardShortcuts";
 import KeyboardShortcutsModal from "./KeyboardShortcutsModal";
 import {
@@ -49,12 +49,14 @@ export default function AppLayout() {
             textAlign: collapsed ? "center" : "left",
           }}
         >
-          <Title
-            level={4}
-            style={{ color: "#fff", margin: 0, whiteSpace: "nowrap" }}
-          >
-            {collapsed ? "D" : "Donna"}
-          </Title>
+          <Tooltip title={collapsed ? "Donna Management" : undefined} placement="right">
+            <Title
+              level={4}
+              style={{ color: "#fff", margin: 0, whiteSpace: "nowrap" }}
+            >
+              {collapsed ? "D" : "Donna"}
+            </Title>
+          </Tooltip>
           {!collapsed && (
             <span style={{ color: "#8c8c8c", fontSize: 11 }}>
               Management GUI

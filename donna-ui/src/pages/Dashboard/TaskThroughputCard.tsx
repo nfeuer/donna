@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { Card, Statistic, Row, Col, Spin } from "antd";
+import { Card, Statistic, Row, Col, Skeleton } from "antd";
 import {
   ComposedChart,
   Bar,
@@ -11,39 +10,31 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from "recharts";
+import type { TaskThroughputData } from "../../api/dashboard";
 import {
-  fetchTaskThroughput,
-  type TaskThroughputData,
-} from "../../api/dashboard";
-import { CHART_COLORS, STATUS_COLORS } from "../../theme/darkTheme";
+  CHART_COLORS,
+  STATUS_COLORS,
+  TASK_STATUS_COLORS,
+  CHART_TOOLTIP_STYLE,
+  CHART_GRID_STROKE,
+  CHART_TICK,
+} from "../../theme/darkTheme";
 
 interface Props {
-  days: number;
-  refreshKey: number;
+  data: TaskThroughputData | null;
+  loading: boolean;
 }
 
-const STATUS_PIE_COLORS: Record<string, string> = {
-  backlog: "#8c8c8c",
-  scheduled: "#1890ff",
-  in_progress: "#faad14",
-  blocked: "#ff4d4f",
-  waiting_input: "#722ed1",
-  done: "#52c41a",
-  cancelled: "#434343",
-};
-
-export default function TaskThroughputCard({ days, refreshKey }: Props) {
-  const [data, setData] = useState<TaskThroughputData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchTaskThroughput(days)
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [days, refreshKey]);
+export default function TaskThroughputCard({ data, loading }: Props) {
+  if (loading && !data) {
+    return (
+      <Card title="Task Throughput" size="small" styles={{ body: { padding: "12px 16px" } }}>
+        <Skeleton active paragraph={{ rows: 6 }} />
+      </Card>
+    );
+  }
 
   const s = data?.summary;
 
@@ -60,77 +51,72 @@ export default function TaskThroughputCard({ days, refreshKey }: Props) {
       size="small"
       styles={{ body: { padding: "12px 16px" } }}
     >
-      <Spin spinning={loading}>
-        <Row gutter={16} style={{ marginBottom: 16 }}>
-          <Col span={4}>
-            <Statistic
-              title="Created"
-              value={s?.total_created ?? 0}
-              valueStyle={{ fontSize: 22 }}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic
-              title="Completed"
-              value={s?.total_completed ?? 0}
-              valueStyle={{ fontSize: 22, color: STATUS_COLORS.SUCCESS }}
-            />
-          </Col>
-          <Col span={5}>
-            <Statistic
-              title="Completion"
-              value={s?.completion_rate ?? 0}
-              suffix="%"
-              valueStyle={{ fontSize: 22 }}
-            />
-          </Col>
-          <Col span={5}>
-            <Statistic
-              title="Avg Hours"
-              value={s?.avg_completion_hours ?? "—"}
-              valueStyle={{ fontSize: 22 }}
-            />
-          </Col>
-          <Col span={3}>
-            <Statistic
-              title="Overdue"
-              value={s?.overdue_count ?? 0}
-              valueStyle={{
-                fontSize: 22,
-                color:
-                  (s?.overdue_count ?? 0) > 0
-                    ? STATUS_COLORS.ERROR
-                    : undefined,
-              }}
-            />
-          </Col>
-          <Col span={3}>
-            <Statistic
-              title="Reschedules"
-              value={s?.avg_reschedules ?? 0}
-              valueStyle={{ fontSize: 22 }}
-            />
-          </Col>
-        </Row>
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={8} md={4}>
+          <Statistic
+            title="Created"
+            value={s?.total_created ?? 0}
+            valueStyle={{ fontSize: 22 }}
+          />
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Statistic
+            title="Completed"
+            value={s?.total_completed ?? 0}
+            valueStyle={{ fontSize: 22, color: STATUS_COLORS.SUCCESS }}
+          />
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Statistic
+            title="Completion"
+            value={s?.completion_rate ?? 0}
+            suffix="%"
+            valueStyle={{ fontSize: 22 }}
+          />
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Statistic
+            title="Avg Hours"
+            value={s?.avg_completion_hours ?? "—"}
+            valueStyle={{ fontSize: 22 }}
+          />
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Statistic
+            title="Overdue"
+            value={s?.overdue_count ?? 0}
+            valueStyle={{
+              fontSize: 22,
+              color:
+                (s?.overdue_count ?? 0) > 0
+                  ? STATUS_COLORS.ERROR
+                  : undefined,
+            }}
+          />
+        </Col>
+        <Col xs={12} sm={8} md={4}>
+          <Statistic
+            title="Reschedules"
+            value={s?.avg_reschedules ?? 0}
+            valueStyle={{ fontSize: 22 }}
+          />
+        </Col>
+      </Row>
 
-        <Row gutter={16}>
-          <Col span={16}>
-            {data?.time_series && data.time_series.length > 0 && (
+      <Row gutter={16}>
+        <Col xs={24} md={16}>
+          {data?.time_series && data.time_series.length > 0 && (
+            <div role="img" aria-label={`Task creation and completion trend over ${data.days} days`}>
               <ResponsiveContainer width="100%" height={180}>
                 <ComposedChart data={data.time_series}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#303030" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} />
                   <XAxis
                     dataKey="date"
-                    tick={{ fill: "#8c8c8c", fontSize: 10 }}
+                    tick={CHART_TICK}
                     tickFormatter={(v: string) => v.slice(5)}
                   />
-                  <YAxis tick={{ fill: "#8c8c8c", fontSize: 10 }} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "#1f1f1f",
-                      border: "1px solid #303030",
-                    }}
-                  />
+                  <YAxis tick={CHART_TICK} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                   <Bar
                     dataKey="created"
                     fill={CHART_COLORS[0]}
@@ -145,10 +131,12 @@ export default function TaskThroughputCard({ days, refreshKey }: Props) {
                   />
                 </ComposedChart>
               </ResponsiveContainer>
-            )}
-          </Col>
-          <Col span={8}>
-            {pieData.length > 0 && (
+            </div>
+          )}
+        </Col>
+        <Col xs={24} md={8}>
+          {pieData.length > 0 && (
+            <div role="img" aria-label="Task status distribution">
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
                   <Pie
@@ -159,30 +147,27 @@ export default function TaskThroughputCard({ days, refreshKey }: Props) {
                     outerRadius={70}
                     dataKey="value"
                     nameKey="name"
-                    label={({ name, value }: { name: string; value: number }) =>
-                      `${name}: ${value}`
-                    }
-                    labelLine={false}
                   >
                     {pieData.map((entry) => (
                       <Cell
                         key={entry.name}
-                        fill={STATUS_PIE_COLORS[entry.name] || "#595959"}
+                        fill={TASK_STATUS_COLORS[entry.name] || "#595959"}
                       />
                     ))}
                   </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      background: "#1f1f1f",
-                      border: "1px solid #303030",
-                    }}
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11 }}
+                    formatter={(value: string) => (
+                      <span style={{ color: CHART_TICK.fill, fontSize: 11 }}>{value}</span>
+                    )}
                   />
                 </PieChart>
               </ResponsiveContainer>
-            )}
-          </Col>
-        </Row>
-      </Spin>
+            </div>
+          )}
+        </Col>
+      </Row>
     </Card>
   );
 }
