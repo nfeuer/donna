@@ -26,12 +26,37 @@ import { PageHeader } from "../../primitives/PageHeader";
 import { Stat } from "../../primitives/Stat";
 import { Segmented } from "../../primitives/Segmented";
 import { EmptyState } from "../../primitives/EmptyState";
+import type { ColumnDef } from "@tanstack/react-table";
+import { DataTable } from "../../primitives/DataTable";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
  * Each primitive task in the plan appends a StorySection below.
  * Stays after production launch for reference (see Wave 9 cleanup).
  */
+interface DemoTask {
+  id: string;
+  title: string;
+  status: "scheduled" | "in_progress" | "blocked" | "done";
+  due: string;
+}
+const demoTasks: DemoTask[] = [
+  { id: "1", title: "Draft Q2 budget memo", status: "scheduled", due: "Apr 8 16:00" },
+  { id: "2", title: "Reply to legal review", status: "blocked", due: "Apr 7 12:00" },
+  { id: "3", title: "Prep Friday 1:1 notes", status: "scheduled", due: "Apr 11 09:00" },
+  { id: "4", title: "Sync with Carla", status: "done", due: "Apr 6 15:30" },
+  { id: "5", title: "File expense report", status: "in_progress", due: "Apr 9 17:00" },
+];
+const demoColumns: ColumnDef<DemoTask>[] = [
+  { accessorKey: "title", header: "Title" },
+  {
+    accessorKey: "status",
+    header: "Status",
+    cell: (info) => <Pill variant={info.getValue() === "done" ? "success" : info.getValue() === "blocked" ? "error" : "accent"}>{String(info.getValue())}</Pill>,
+  },
+  { accessorKey: "due", header: "Due" },
+];
+
 export default function DevPrimitivesPage() {
   const [selectValue, setSelectValue] = useState("scheduled");
   const [cb1, setCb1] = useState(true);
@@ -41,6 +66,7 @@ export default function DevPrimitivesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [range, setRange] = useState<"24h" | "14d" | "30d">("14d");
+  const [selectedDemo, setSelectedDemo] = useState<string | null>(null);
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -339,6 +365,24 @@ export default function DevPrimitivesPage() {
           body="Press ⌘N to add one, or message Donna on Discord and she'll do it for you."
           actions={<Button>New Task</Button>}
         />
+      </StorySection>
+
+      <StorySection
+        id="datatable"
+        eyebrow="Primitive · 20"
+        title="DataTable"
+        note="The single table replacement for Tasks, Logs, Shadow, Configs list, Prompts list, Preferences rules. Sort by clicking headers. Click a row to select."
+      >
+        <div style={{ width: "100%" }}>
+          <DataTable
+            data={demoTasks}
+            columns={demoColumns}
+            getRowId={(r) => r.id}
+            onRowClick={(r) => setSelectedDemo(r.id)}
+            selectedRowId={selectedDemo}
+            keyboardNav
+          />
+        </div>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
