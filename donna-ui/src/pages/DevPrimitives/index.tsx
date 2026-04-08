@@ -11,6 +11,7 @@ import { Switch } from "../../primitives/Switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../primitives/Tabs";
 import { Tooltip } from "../../primitives/Tooltip";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../../primitives/Dialog";
+import { Drawer } from "../../primitives/Drawer";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -24,6 +25,7 @@ export default function DevPrimitivesPage() {
   const [sw, setSw] = useState(false);
   const [tab, setTab] = useState("edit");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -180,6 +182,20 @@ export default function DevPrimitivesPage() {
             <Button onClick={() => setDialogOpen(false)}>Confirm</Button>
           </DialogFooter>
         </Dialog>
+      </StorySection>
+
+      <StorySection
+        id="drawer"
+        eyebrow="Primitive · 11"
+        title="Drawer"
+        note="Side sheet on Radix Dialog. Slides in from the right, same a11y guarantees as Dialog."
+      >
+        <Button onClick={() => setDrawerOpen(true)}>Open Drawer</Button>
+        <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} title="Task Detail">
+          <p style={{ color: "var(--color-text-secondary)" }}>
+            Drawer body. Use this for task/log detail panels in later waves.
+          </p>
+        </Drawer>
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
