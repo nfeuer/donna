@@ -23,6 +23,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "../../primitives/Popove
 import { Skeleton } from "../../primitives/Skeleton";
 import { ScrollArea } from "../../primitives/ScrollArea";
 import { PageHeader } from "../../primitives/PageHeader";
+import { Stat } from "../../primitives/Stat";
 
 /**
  * Dev-only primitives gallery. Gated behind import.meta.env.DEV in App.tsx.
@@ -293,6 +294,17 @@ export default function DevPrimitivesPage() {
             }
           />
         </div>
+      </StorySection>
+
+      <StorySection
+        id="stat"
+        eyebrow="Primitive · 17"
+        title="Stat"
+        note="Eyebrow + Fraunces number + optional sub. Used in ChartCards and headline metrics."
+      >
+        <Stat eyebrow="Tasks Today" value={12} suffix=" / 18" sub="3 overdue · 2 blocked" />
+        <Stat eyebrow="Spend · 14 days" value="$47.20" sub="↓ 12% vs prior period" />
+        <Stat eyebrow="Total Runs" value="1,240" plain sub="claude-sonnet-4" />
       </StorySection>
 
       {/* Stories appended by subsequent plan tasks */}
