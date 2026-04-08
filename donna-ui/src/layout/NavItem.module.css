@@ -1,0 +1,60 @@
+/*
+ * NavItem — single rail link entry.
+ * Active state: 2px gold left border + accent-soft background tint.
+ * Hover lifts to full text color without changing background.
+ */
+
+.listItem {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-4);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  border-left: 2px solid transparent;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.link:hover {
+  color: var(--color-text);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.active {
+  color: var(--color-text);
+  border-left-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.label {
+  flex: 1;
+}
