@@ -10,6 +10,7 @@ interface SelectProps {
   placeholder?: string;
   children: ReactNode;
   id?: string;
+  "aria-label"?: string;
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
 }
