@@ -1,173 +1,92 @@
-import { Card, Statistic, Row, Col, Skeleton } from "antd";
-import {
-  ComposedChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
+import { BarChart, ChartCard, type ChartCardStat } from "../../charts";
+import { Pill, type PillVariant } from "../../primitives/Pill";
 import type { TaskThroughputData } from "../../api/dashboard";
-import {
-  CHART_COLORS,
-  STATUS_COLORS,
-  TASK_STATUS_COLORS,
-  CHART_TOOLTIP_STYLE,
-  CHART_GRID_STROKE,
-  CHART_TICK,
-} from "../../theme/darkTheme";
 
 interface Props {
   data: TaskThroughputData | null;
   loading: boolean;
 }
 
-export default function TaskThroughputCard({ data, loading }: Props) {
-  if (loading && !data) {
-    return (
-      <Card title="Task Throughput" size="small" styles={{ body: { padding: "12px 16px" } }}>
-        <Skeleton active paragraph={{ rows: 6 }} />
-      </Card>
-    );
-  }
+function formatPct(v: number): string {
+  return `${v.toFixed(0)}%`;
+}
 
+/** Status → Pill variant. No rainbow — only meaningful semantics. */
+function statusVariant(status: string): PillVariant {
+  const normalized = status.toLowerCase();
+  if (normalized.includes("done") || normalized.includes("complete")) return "success";
+  if (normalized.includes("overdue") || normalized.includes("block")) return "error";
+  if (normalized.includes("progress") || normalized.includes("doing")) return "accent";
+  return "muted";
+}
+
+export default function TaskThroughputCard({ data, loading }: Props) {
   const s = data?.summary;
 
-  const pieData = data?.status_distribution
-    ? Object.entries(data.status_distribution).map(([name, value]) => ({
-        name,
-        value,
-      }))
-    : [];
+  const stats: ChartCardStat[] = [
+    { label: "Created", value: (s?.total_created ?? 0).toLocaleString() },
+    { label: "Completed", value: (s?.total_completed ?? 0).toLocaleString() },
+    {
+      label: "Overdue",
+      value: s && s.overdue_count > 0 ? `${s.overdue_count}` : "0",
+    },
+    {
+      label: "Avg Hours",
+      value: s?.avg_completion_hours != null ? s.avg_completion_hours.toFixed(1) : "—",
+    },
+  ];
+
+  const statusEntries = Object.entries(data?.status_distribution ?? {});
 
   return (
-    <Card
-      title="Task Throughput"
-      size="small"
-      styles={{ body: { padding: "12px 16px" } }}
+    <ChartCard
+      eyebrow={`Task Throughput · ${data?.days ?? 30} days`}
+      metric={s ? formatPct(s.completion_rate) : "—"}
+      chart={
+        data?.time_series && data.time_series.length > 0 ? (
+          <BarChart
+            data={data.time_series}
+            series={[
+              { dataKey: "created", name: "Created" },
+              { dataKey: "completed", name: "Completed", tone: "accentSoft" },
+            ]}
+            categoryKey="date"
+            orientation="horizontal"
+            formatCategoryTick={(v) => v.slice(5)}
+            ariaLabel={`Task creation and completion trend over ${data.days} days`}
+          />
+        ) : undefined
+      }
+      stats={stats}
+      loading={loading && !data}
     >
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col xs={12} sm={8} md={4}>
-          <Statistic
-            title="Created"
-            value={s?.total_created ?? 0}
-            valueStyle={{ fontSize: 22 }}
-          />
-        </Col>
-        <Col xs={12} sm={8} md={4}>
-          <Statistic
-            title="Completed"
-            value={s?.total_completed ?? 0}
-            valueStyle={{ fontSize: 22, color: STATUS_COLORS.SUCCESS }}
-          />
-        </Col>
-        <Col xs={12} sm={8} md={4}>
-          <Statistic
-            title="Completion"
-            value={s?.completion_rate ?? 0}
-            suffix="%"
-            valueStyle={{ fontSize: 22 }}
-          />
-        </Col>
-        <Col xs={12} sm={8} md={4}>
-          <Statistic
-            title="Avg Hours"
-            value={s?.avg_completion_hours ?? "—"}
-            valueStyle={{ fontSize: 22 }}
-          />
-        </Col>
-        <Col xs={12} sm={8} md={4}>
-          <Statistic
-            title="Overdue"
-            value={s?.overdue_count ?? 0}
-            valueStyle={{
-              fontSize: 22,
-              color:
-                (s?.overdue_count ?? 0) > 0
-                  ? STATUS_COLORS.ERROR
-                  : undefined,
+      {statusEntries.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "var(--space-2)",
+            alignItems: "center",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "var(--text-eyebrow)",
+              letterSpacing: "var(--tracking-eyebrow)",
+              textTransform: "uppercase",
+              color: "var(--color-text-muted)",
+              marginRight: "var(--space-1)",
             }}
-          />
-        </Col>
-        <Col xs={12} sm={8} md={4}>
-          <Statistic
-            title="Reschedules"
-            value={s?.avg_reschedules ?? 0}
-            valueStyle={{ fontSize: 22 }}
-          />
-        </Col>
-      </Row>
-
-      <Row gutter={16}>
-        <Col xs={24} md={16}>
-          {data?.time_series && data.time_series.length > 0 && (
-            <div role="img" aria-label={`Task creation and completion trend over ${data.days} days`}>
-              <ResponsiveContainer width="100%" height={180}>
-                <ComposedChart data={data.time_series}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_STROKE} />
-                  <XAxis
-                    dataKey="date"
-                    tick={CHART_TICK}
-                    tickFormatter={(v: string) => v.slice(5)}
-                  />
-                  <YAxis tick={CHART_TICK} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                  <Bar
-                    dataKey="created"
-                    fill={CHART_COLORS[0]}
-                    name="Created"
-                    radius={[4, 4, 0, 0]}
-                  />
-                  <Bar
-                    dataKey="completed"
-                    fill={CHART_COLORS[1]}
-                    name="Completed"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Col>
-        <Col xs={24} md={8}>
-          {pieData.length > 0 && (
-            <div role="img" aria-label="Task status distribution">
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={40}
-                    outerRadius={70}
-                    dataKey="value"
-                    nameKey="name"
-                  >
-                    {pieData.map((entry) => (
-                      <Cell
-                        key={entry.name}
-                        fill={TASK_STATUS_COLORS[entry.name] || "#595959"}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                  <Legend
-                    wrapperStyle={{ fontSize: 11 }}
-                    formatter={(value: string) => (
-                      <span style={{ color: CHART_TICK.fill, fontSize: 11 }}>{value}</span>
-                    )}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Col>
-      </Row>
-    </Card>
+          >
+            Status
+          </span>
+          {statusEntries.map(([name, count]) => (
+            <Pill key={name} variant={statusVariant(name)}>
+              {name} · {count}
+            </Pill>
+          ))}
+        </div>
+      )}
+    </ChartCard>
   );
 }
