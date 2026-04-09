@@ -1,4 +1,5 @@
 import Editor from "@monaco-editor/react";
+import { DONNA_MONACO_THEME, setupDonnaMonacoTheme } from "../../lib/monacoTheme";
 
 interface Props {
   value: string;
@@ -8,9 +9,10 @@ interface Props {
 export default function RawYamlEditor({ value, onChange }: Props) {
   return (
     <Editor
-      height="calc(100vh - 260px)"
+      height="min(calc(100vh - 280px), 640px)"
       language="yaml"
-      theme="vs-dark"
+      theme={DONNA_MONACO_THEME}
+      beforeMount={setupDonnaMonacoTheme}
       value={value}
       onChange={(v) => onChange(v ?? "")}
       options={{
