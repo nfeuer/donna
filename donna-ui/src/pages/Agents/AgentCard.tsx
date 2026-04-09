@@ -24,6 +24,7 @@ export default function AgentCard({ agent, chart }: Props) {
   return (
     <Link
       to={`/agents/${agent.name}`}
+      aria-label={`${agent.name} agent, ${agent.enabled ? "active" : "disabled"}, ${agent.autonomy} autonomy`}
       className={cn(styles.link, !agent.enabled && styles.disabled)}
     >
       <Card className={styles.card}>
@@ -33,7 +34,7 @@ export default function AgentCard({ agent, chart }: Props) {
               styles.statusDot,
               agent.enabled ? styles.active : styles.inactive,
             )}
-            aria-label={agent.enabled ? "Active" : "Disabled"}
+            aria-hidden="true"
           />
           <h3 className={styles.name}>{agent.name}</h3>
           <Pill variant={AUTONOMY_VARIANT[agent.autonomy] ?? "muted"}>
