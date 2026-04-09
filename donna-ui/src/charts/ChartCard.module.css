@@ -1,0 +1,96 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.headlineLeft {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1;
+}
+
+.eyebrow {
+  font-size: var(--text-eyebrow);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.metric {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: clamp(32px, 3.6vw, 44px);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-text);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricSuffix {
+  font-size: 60%;
+  color: var(--color-text-dim);
+  margin-left: 4px;
+}
+
+.delta {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.chart {
+  margin-top: var(--space-2);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-5);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.statLabel {
+  font-size: var(--text-eyebrow);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.statValue {
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.extra {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.skeletonChart {
+  height: 160px;
+  width: 100%;
+}
