@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import RefreshButton from "../../components/RefreshButton";
 import { Button } from "../../primitives/Button";
@@ -32,6 +32,14 @@ export default function TasksPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
+  // Debounce search to avoid firing API requests on every keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
   const doFetch = useCallback(async () => {
     setLoading(true);
     try {
@@ -39,7 +47,7 @@ export default function TasksPage() {
         status: status === ALL_VALUE ? undefined : status,
         domain: domain === ALL_VALUE ? undefined : domain,
         priority: priority === ALL_VALUE ? undefined : Number(priority),
-        search: search || undefined,
+        search: debouncedSearch || undefined,
         limit: PAGE_SIZE,
         offset: (page - 1) * PAGE_SIZE,
       });
@@ -51,7 +59,7 @@ export default function TasksPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, domain, priority, search, page]);
+  }, [status, domain, priority, debouncedSearch, page]);
 
   useEffect(() => {
     doFetch();
@@ -62,6 +70,8 @@ export default function TasksPage() {
     setDomain(ALL_VALUE);
     setPriority(ALL_VALUE);
     setSearch("");
+    setDebouncedSearch("");
+    clearTimeout(debounceRef.current);
     setPage(1);
   }, []);
 
