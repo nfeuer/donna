@@ -76,7 +76,7 @@ export default function Dashboard() {
       setData({ cost, parse, tasks, agents, quality });
 
       // Deduplicated anomaly toasts — only on threshold crossing.
-      if (cost) {
+      if (cost?.summary) {
         const overBudget = cost.summary.today_cost_usd > 16;
         if (overBudget && !prevCostAlert.current) {
           toast.warning("Daily Cost Alert", {
@@ -87,7 +87,7 @@ export default function Dashboard() {
         prevCostAlert.current = overBudget;
       }
 
-      if (parse) {
+      if (parse?.summary) {
         const lowAccuracy = parse.summary.accuracy_pct < 85;
         if (lowAccuracy && !prevParseAlert.current) {
           toast.warning("Parse Accuracy Alert", {
@@ -98,7 +98,7 @@ export default function Dashboard() {
         prevParseAlert.current = lowAccuracy;
       }
 
-      if (tasks) {
+      if (tasks?.summary) {
         const currentOverdue = tasks.summary.overdue_count;
         if (
           prevOverdue.current !== null &&
@@ -112,7 +112,7 @@ export default function Dashboard() {
         prevOverdue.current = currentOverdue;
       }
 
-      if (quality) {
+      if (quality?.summary) {
         const highRate = quality.summary.warning_rate_pct > 10;
         if (highRate && !prevQualityAlert.current) {
           toast.warning("Quality Warning Rate High", {
@@ -153,7 +153,7 @@ export default function Dashboard() {
     health?.status === "healthy" ? "success" : health ? "warning" : "muted";
   const healthLabel =
     health?.status === "healthy" ? "Healthy" : health ? "Degraded" : "—";
-  const healthTooltip = health
+  const healthTooltip = health?.checks
     ? Object.entries(health.checks)
         .map(([k, v]) => `${k}: ${v.ok ? "OK" : (v.detail ?? "down")}`)
         .join(" · ")
