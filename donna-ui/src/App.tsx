@@ -31,6 +31,7 @@ export default function App() {
           <Route path="/configs" element={<ErrorBoundary><ConfigsPage /></ErrorBoundary>} />
           <Route path="/prompts" element={<ErrorBoundary><PromptsPage /></ErrorBoundary>} />
           <Route path="/agents" element={<ErrorBoundary><AgentsPage /></ErrorBoundary>} />
+          <Route path="/agents/:name" element={<ErrorBoundary><AgentsPage /></ErrorBoundary>} />
           <Route path="/tasks" element={<ErrorBoundary><TasksPage /></ErrorBoundary>} />
           <Route path="/tasks/:id" element={<ErrorBoundary><TaskDetail /></ErrorBoundary>} />
           <Route path="/shadow" element={<ErrorBoundary><ShadowPage /></ErrorBoundary>} />

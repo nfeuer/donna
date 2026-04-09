@@ -1,0 +1,105 @@
+/* donna-ui/src/pages/Agents/Agents.module.css */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* Asymmetric editorial grid: featured card spans 2 rows. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: auto;
+  gap: var(--space-4);
+}
+
+.grid > :first-child {
+  grid-row: span 2;
+}
+
+@media (max-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .grid > :first-child {
+    grid-column: span 2;
+    grid-row: span 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .grid > :first-child {
+    grid-column: span 1;
+  }
+}
+
+/* Skeleton loading grid */
+.skeletonGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: auto;
+  gap: var(--space-4);
+}
+
+.skeletonGrid > :first-child {
+  grid-row: span 2;
+}
+
+@media (max-width: 1024px) {
+  .skeletonGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .skeletonGrid > :first-child {
+    grid-column: span 2;
+    grid-row: span 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .skeletonGrid {
+    grid-template-columns: 1fr;
+  }
+  .skeletonGrid > :first-child {
+    grid-column: span 1;
+  }
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: var(--text-body);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.backLink:hover {
+  color: var(--color-text);
+}
+
+.backLink:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.detailTitle {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: var(--text-section);
+  letter-spacing: var(--tracking-normal);
+  color: var(--color-text);
+  margin: 0;
+  text-transform: capitalize;
+}
