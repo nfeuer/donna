@@ -56,58 +56,61 @@ export async function mockAdminApi(page: Page) {
       });
     }
 
-    // /admin/configs (list) returns { configs: [...] }
+    // /admin/configs (list) returns { configs: ConfigFile[] } where
+    // ConfigFile = { name, size_bytes, modified (epoch seconds) }
     if (url.match(/\/admin\/configs(\?|$)/)) {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
           configs: [
-            { file: "task_states.yaml", size: 512, modified: "2026-04-01T12:00:00Z" },
-            { file: "models.yaml", size: 384, modified: "2026-04-01T12:00:00Z" },
+            { name: "task_states.yaml", size_bytes: 512, modified: 1774972800 },
+            { name: "models.yaml", size_bytes: 384, modified: 1774972800 },
           ],
         }),
       });
     }
 
-    // /admin/configs/:file returns { file, content, modified }
+    // /admin/configs/:name returns ConfigContent = { name, content, size_bytes, modified }
     if (url.match(/\/admin\/configs\/[^/?]+/)) {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          file: "task_states.yaml",
+          name: "task_states.yaml",
           content:
             "states:\n  - name: backlog\n    color: muted\n  - name: done\n    color: success\n",
-          modified: "2026-04-01T12:00:00Z",
+          size_bytes: 512,
+          modified: 1774972800,
         }),
       });
     }
 
-    // /admin/prompts (list) returns { prompts: [...] }
+    // /admin/prompts (list) returns { prompts: PromptFile[] } where
+    // PromptFile = { name, size_bytes, modified (epoch seconds) }
     if (url.match(/\/admin\/prompts(\?|$)/)) {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
           prompts: [
-            { file: "intake.md", size: 256, modified: "2026-04-01T12:00:00Z" },
+            { name: "intake.md", size_bytes: 256, modified: 1774972800 },
           ],
         }),
       });
     }
 
-    // /admin/prompts/:file returns { file, content, variables, modified }
+    // /admin/prompts/:name returns PromptContent = { name, content, size_bytes, modified }
     if (url.match(/\/admin\/prompts\/[^/?]+/)) {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          file: "intake.md",
+          name: "intake.md",
           content:
             "# Intake Prompt\n\nHello {{ name }}, today is {{ date }}.\n\n```python\nprint('hi')\n```\n",
-          variables: ["name", "date"],
-          modified: "2026-04-01T12:00:00Z",
+          size_bytes: 256,
+          modified: 1774972800,
         }),
       });
     }
