@@ -51,9 +51,10 @@
 
 .editorHeader {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-3) var(--space-4);
   margin-bottom: var(--space-3);
 }
 
@@ -67,10 +68,15 @@
 
 .editorSubtitle {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   color: var(--color-text-muted);
   font-size: var(--text-body);
+}
+
+@media (max-width: 600px) {
+  .editorHeader { flex-direction: column; align-items: flex-start; }
 }
 
 .warning { color: var(--color-warning); }

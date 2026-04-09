@@ -36,10 +36,51 @@
 
 .editorHeader {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-3) var(--space-4);
   margin-bottom: var(--space-3);
+}
+
+.editorStatus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: var(--text-body);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.backLink:hover { color: var(--color-text); }
+
+.backLink:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+.variableChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.variableEmpty {
+  color: var(--color-text-muted);
+  font-size: var(--text-body);
+}
+
+@media (max-width: 600px) {
+  .editorHeader { flex-direction: column; align-items: flex-start; }
 }
 
 .editorTitle {

@@ -1,0 +1,73 @@
+/*
+ * Shared layout primitives for Configs forms.
+ * Use these instead of inline style={} blocks so theme tokens and
+ * breakpoint values live in one place.
+ */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.stackTight {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fieldGrid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+/*
+ * Auto-fit card grid. Minimum column width is intentionally exposed
+ * as a custom property so individual forms can tune it without
+ * reintroducing inline styles.
+ */
+.autoFitGrid {
+  --form-grid-min: 320px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--form-grid-min), 1fr));
+  gap: var(--space-4);
+}
+
+.autoFitGridNarrow {
+  --form-grid-min: 180px;
+}
+
+.autoFitGridCheckbox {
+  --form-grid-min: 140px;
+  gap: var(--space-2);
+}
+
+.inlineRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: end;
+}
+
+.detailsBody {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.detailsSummary {
+  cursor: pointer;
+  font-size: var(--text-body);
+}
+
+.stateList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.stateListMeta {
+  margin-top: var(--space-3);
+  font-size: var(--text-label);
+  color: var(--color-text-muted);
+}

@@ -27,7 +27,11 @@ export default function ConfigsList() {
       <PageHeader
         eyebrow="System"
         title="Configs"
-        meta={loading ? "Loading…" : `${files.length} file${files.length === 1 ? "" : "s"}`}
+        meta={
+          <span role="status" aria-live="polite">
+            {loading ? "Loading…" : `${files.length} file${files.length === 1 ? "" : "s"}`}
+          </span>
+        }
       />
       {!loading && files.length === 0 ? (
         <EmptyState

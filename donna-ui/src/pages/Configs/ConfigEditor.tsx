@@ -105,11 +105,11 @@ export default function ConfigEditor() {
           <ArrowLeft size={14} /> All files
         </Link>
         <h2 className={styles.editorTitle}>{filename}</h2>
-        <div className={styles.editorSubtitle}>
+        <div className={styles.editorSubtitle} role="status" aria-live="polite">
           {contentLoading && <span>Loading…</span>}
           {hasChanges && <Pill variant="warning">Unsaved</Pill>}
           {!validation.ok && validation.error && (
-            <span className={styles.invalid}>
+            <span className={styles.invalid} role="alert">
               YAML error: {validation.error.message}
             </span>
           )}

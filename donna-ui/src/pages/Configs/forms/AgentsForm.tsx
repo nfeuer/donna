@@ -7,6 +7,8 @@ import { Select, SelectItem } from "../../../primitives/Select";
 import { Switch } from "../../../primitives/Switch";
 import { Checkbox } from "../../../primitives/Checkbox";
 import { agentsSchema, type AgentsConfig } from "../schemas";
+import styles from "./Forms.module.css";
+import { cn } from "../../../lib/cn";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -37,14 +39,7 @@ export default function AgentsForm({ data, onChange }: Props) {
   const agents = form.watch("agents") ?? {};
 
   return (
-    <form
-      onSubmit={(e) => e.preventDefault()}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-        gap: "var(--space-4)",
-      }}
-    >
+    <form onSubmit={(e) => e.preventDefault()} className={styles.autoFitGrid}>
       {Object.entries(agents).map(([name, cfg]) => {
         const selectedTools = new Set<string>(cfg?.allowed_tools ?? []);
         return (
@@ -60,7 +55,7 @@ export default function AgentsForm({ data, onChange }: Props) {
               />
             </CardHeader>
 
-            <div style={{ display: "grid", gap: "var(--space-3)" }}>
+            <div className={styles.fieldGrid}>
               <FormField label="Timeout (seconds)">
                 {(fieldProps) => (
                   <Input
@@ -96,13 +91,7 @@ export default function AgentsForm({ data, onChange }: Props) {
 
               <FormField label="Allowed tools">
                 {() => (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                      gap: "var(--space-2)",
-                    }}
-                  >
+                  <div className={cn(styles.autoFitGrid, styles.autoFitGridCheckbox)}>
                     {ALL_TOOLS.map((tool) => {
                       const checked = selectedTools.has(tool);
                       return (

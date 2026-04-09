@@ -1,5 +1,6 @@
 import { Card, CardHeader, CardTitle } from "../../primitives/Card";
 import { Pill } from "../../primitives/Pill";
+import styles from "./Prompts.module.css";
 
 interface Props {
   content: string;
@@ -17,11 +18,9 @@ export default function VariableInspector({ content, schemaPath }: Props) {
         {schemaPath && <Pill variant="accent">{schemaPath}</Pill>}
       </CardHeader>
       {variables.length === 0 ? (
-        <div style={{ color: "var(--color-text-muted)", fontSize: "var(--text-body)" }}>
-          No template variables found.
-        </div>
+        <div className={styles.variableEmpty}>No template variables found.</div>
       ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div className={styles.variableChips}>
           {variables.map((v) => (
             <Pill key={v} variant="muted">{`{{ ${v} }}`}</Pill>
           ))}

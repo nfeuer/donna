@@ -6,6 +6,8 @@ import { Input, FormField } from "../../../primitives/Input";
 import { Switch } from "../../../primitives/Switch";
 import { DataTable } from "../../../primitives/DataTable";
 import { modelsSchema, type ModelsConfig } from "../schemas";
+import styles from "./Forms.module.css";
+import { cn } from "../../../lib/cn";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -49,10 +51,7 @@ export default function ModelsForm({ data, onChange }: Props) {
   const topError = form.formState.errors.root?.message;
 
   return (
-    <form
-      style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}
-      onSubmit={(e) => e.preventDefault()}
-    >
+    <form className={styles.stack} onSubmit={(e) => e.preventDefault()}>
       {topError && (
         <div role="alert" style={{ color: "var(--color-error)" }}>
           Schema error: {String(topError)}
@@ -71,6 +70,7 @@ export default function ModelsForm({ data, onChange }: Props) {
               accessorKey: "provider",
               cell: ({ row }) => (
                 <Input
+                  aria-label={`${row.original.alias} provider`}
                   {...form.register(`models.${row.original.alias}.provider` as const)}
                 />
               ),
@@ -80,6 +80,7 @@ export default function ModelsForm({ data, onChange }: Props) {
               accessorKey: "model",
               cell: ({ row }) => (
                 <Input
+                  aria-label={`${row.original.alias} model`}
                   {...form.register(`models.${row.original.alias}.model` as const)}
                 />
               ),
@@ -99,21 +100,30 @@ export default function ModelsForm({ data, onChange }: Props) {
               header: "Model",
               accessorKey: "model",
               cell: ({ row }) => (
-                <Input {...form.register(`routing.${row.original.task_type}.model` as const)} />
+                <Input
+                  aria-label={`${row.original.task_type} model`}
+                  {...form.register(`routing.${row.original.task_type}.model` as const)}
+                />
               ),
             },
             {
               header: "Fallback",
               accessorKey: "fallback",
               cell: ({ row }) => (
-                <Input {...form.register(`routing.${row.original.task_type}.fallback` as const)} />
+                <Input
+                  aria-label={`${row.original.task_type} fallback`}
+                  {...form.register(`routing.${row.original.task_type}.fallback` as const)}
+                />
               ),
             },
             {
               header: "Shadow",
               accessorKey: "shadow",
               cell: ({ row }) => (
-                <Input {...form.register(`routing.${row.original.task_type}.shadow` as const)} />
+                <Input
+                  aria-label={`${row.original.task_type} shadow`}
+                  {...form.register(`routing.${row.original.task_type}.shadow` as const)}
+                />
               ),
             },
             {
@@ -125,6 +135,7 @@ export default function ModelsForm({ data, onChange }: Props) {
                   step={0.1}
                   min={0}
                   max={1}
+                  aria-label={`${row.original.task_type} confidence threshold`}
                   {...form.register(
                     `routing.${row.original.task_type}.confidence_threshold` as const,
                     { valueAsNumber: true },
@@ -138,7 +149,7 @@ export default function ModelsForm({ data, onChange }: Props) {
 
       <Card>
         <CardHeader><CardTitle>Cost tracking</CardTitle></CardHeader>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "var(--space-3)" }}>
+        <div className={cn(styles.autoFitGrid, styles.autoFitGridNarrow)}>
           <FormField label="Monthly budget ($)">
             {(fieldProps) => (
               <Input type="number" step={10} min={0} {...fieldProps} {...form.register("cost.monthly_budget_usd", { valueAsNumber: true })} />
@@ -164,7 +175,7 @@ export default function ModelsForm({ data, onChange }: Props) {
 
       <Card>
         <CardHeader><CardTitle>Quality monitoring</CardTitle></CardHeader>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-4)", alignItems: "end" }}>
+        <div className={styles.inlineRow}>
           <FormField label="Enabled">
             {() => (
               <Switch

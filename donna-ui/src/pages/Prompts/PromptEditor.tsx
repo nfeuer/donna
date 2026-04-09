@@ -22,31 +22,43 @@ import {
 } from "../../api/configs";
 import styles from "./Prompts.module.css";
 
+// Module-level cache: task_types.yaml rarely changes during a session,
+// and multiple PromptEditor mounts shouldn't each refetch it. The
+// promise is memoised so concurrent mounts share a single request.
+let schemaMapPromise: Promise<Record<string, string>> | null = null;
+
+async function loadSchemaMap(): Promise<Record<string, string>> {
+  const configs = await fetchConfigs();
+  if (!configs.some((c) => c.name === "task_types.yaml")) return {};
+  const data = await fetchConfig("task_types.yaml");
+  const next: Record<string, string> = {};
+  let currentPrompt = "";
+  for (const line of data.content.split("\n")) {
+    const p = line.match(/prompt_template:\s*(.+)/);
+    const s = line.match(/output_schema:\s*(.+)/);
+    if (p) currentPrompt = p[1].trim().split("/").pop() ?? "";
+    if (s && currentPrompt) {
+      next[currentPrompt] = s[1].trim();
+      currentPrompt = "";
+    }
+  }
+  return next;
+}
+
 function useSchemaMap() {
   const [map, setMap] = useState<Record<string, string>>({});
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const configs = await fetchConfigs();
-        if (!configs.some((c) => c.name === "task_types.yaml")) return;
-        const data = await fetchConfig("task_types.yaml");
-        const next: Record<string, string> = {};
-        let currentPrompt = "";
-        for (const line of data.content.split("\n")) {
-          const p = line.match(/prompt_template:\s*(.+)/);
-          const s = line.match(/output_schema:\s*(.+)/);
-          if (p) currentPrompt = p[1].trim().split("/").pop() ?? "";
-          if (s && currentPrompt) {
-            next[currentPrompt] = s[1].trim();
-            currentPrompt = "";
-          }
-        }
-        if (!cancelled) setMap(next);
-      } catch {
-        /* non-critical */
-      }
-    })();
+    if (!schemaMapPromise) {
+      schemaMapPromise = loadSchemaMap().catch(() => {
+        // Don't cache failures — let a future mount retry.
+        schemaMapPromise = null;
+        return {};
+      });
+    }
+    schemaMapPromise.then((next) => {
+      if (!cancelled) setMap(next);
+    });
     return () => {
       cancelled = true;
     };
@@ -150,7 +162,7 @@ export default function PromptEditor() {
         eyebrow="System"
         title="Prompts"
         meta={
-          <Link to="/prompts" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Link to="/prompts" className={styles.backLink}>
             <ArrowLeft size={14} /> All templates
           </Link>
         }
@@ -168,7 +180,7 @@ export default function PromptEditor() {
 
       <div className={styles.editorHeader}>
         <h2 className={styles.editorTitle}>{filename}</h2>
-        <div>
+        <div className={styles.editorStatus} role="status" aria-live="polite">
           {contentLoading && <span>Loading…</span>}
           {hasChanges && <Pill variant="warning">Unsaved</Pill>}
         </div>

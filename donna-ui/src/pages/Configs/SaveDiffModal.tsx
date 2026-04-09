@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
 import {
   Dialog,
@@ -8,6 +9,21 @@ import {
 } from "../../primitives/Dialog";
 import { Button } from "../../primitives/Button";
 import { DONNA_MONACO_THEME, setupDonnaMonacoTheme } from "../../lib/monacoTheme";
+
+const SIDE_BY_SIDE_QUERY = "(min-width: 900px)";
+
+function useSideBySide(): boolean {
+  const [sideBySide, setSideBySide] = useState(() =>
+    typeof window === "undefined" ? true : window.matchMedia(SIDE_BY_SIDE_QUERY).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(SIDE_BY_SIDE_QUERY);
+    const handler = (e: MediaQueryListEvent) => setSideBySide(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return sideBySide;
+}
 
 interface Props {
   open: boolean;
@@ -28,6 +44,7 @@ export default function SaveDiffModal({
   onConfirm,
   onCancel,
 }: Props) {
+  const sideBySide = useSideBySide();
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }} size="wide">
       <DialogHeader>
@@ -49,7 +66,7 @@ export default function SaveDiffModal({
           minimap: { enabled: false },
           fontSize: 12,
           scrollBeyondLastLine: false,
-          renderSideBySide: true,
+          renderSideBySide: sideBySide,
         }}
       />
 

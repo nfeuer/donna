@@ -6,6 +6,7 @@ import { Input, FormField } from "../../../primitives/Input";
 import { Select, SelectItem } from "../../../primitives/Select";
 import { Pill } from "../../../primitives/Pill";
 import { taskTypesSchema, type TaskTypesConfig } from "../schemas";
+import styles from "./Forms.module.css";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -32,19 +33,17 @@ export default function TaskTypesForm({ data, onChange }: Props) {
   const taskTypes = form.watch("task_types") ?? {};
 
   return (
-    <form
-      onSubmit={(e) => e.preventDefault()}
-      style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}
-    >
+    <form onSubmit={(e) => e.preventDefault()} className={styles.stackTight}>
       {Object.entries(taskTypes).map(([name, cfg]) => (
         <Card key={name}>
           <details open>
-            <summary style={{ cursor: "pointer", fontSize: "var(--text-body)" }}>
+            <summary className={styles.detailsSummary}>
               <strong>{name}</strong>{" "}
+              <span className="sr-only">model:</span>
               <Pill variant="accent">{cfg?.model ?? "—"}</Pill>
             </summary>
 
-            <div style={{ display: "grid", gap: "var(--space-3)", marginTop: "var(--space-3)" }}>
+            <div className={styles.detailsBody}>
               <FormField label="Description">
                 {(fieldProps) => (
                   <Input

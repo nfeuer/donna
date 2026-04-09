@@ -30,9 +30,11 @@ export default function PromptsList() {
         eyebrow="System"
         title="Prompts"
         meta={
-          loading
-            ? "Loading…"
-            : `${files.length} template${files.length === 1 ? "" : "s"}`
+          <span role="status" aria-live="polite">
+            {loading
+              ? "Loading…"
+              : `${files.length} template${files.length === 1 ? "" : "s"}`}
+          </span>
         }
       />
       {!loading && files.length === 0 ? (

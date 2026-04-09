@@ -5,6 +5,7 @@ import { Pill } from "../../../primitives/Pill";
 import { DataTable } from "../../../primitives/DataTable";
 import { stateCssVar, statePillVariant } from "../../../theme/stateColors";
 import { statesSchema, type StatesConfig } from "../schemas";
+import styles from "./Forms.module.css";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -120,7 +121,7 @@ export default function StatesForm({ data }: Props) {
   const topError = errors.root?.message ?? Object.values(errors)[0]?.message;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+    <div className={styles.stack}>
       {topError && (
         <div role="alert" style={{ color: "var(--color-error)", fontSize: "var(--text-body)" }}>
           Schema error: {String(topError)}
@@ -138,12 +139,12 @@ export default function StatesForm({ data }: Props) {
         <CardHeader>
           <CardTitle>States</CardTitle>
         </CardHeader>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)" }}>
+        <div className={styles.stateList}>
           {states.map((s) => (
             <Pill key={s} variant={statePillVariant(s)}>{s}</Pill>
           ))}
         </div>
-        <div style={{ marginTop: "var(--space-3)", fontSize: "var(--text-label)", color: "var(--color-text-muted)" }}>
+        <div className={styles.stateListMeta}>
           Initial state: <strong>{data.initial_state ?? "backlog"}</strong>
         </div>
       </Card>
