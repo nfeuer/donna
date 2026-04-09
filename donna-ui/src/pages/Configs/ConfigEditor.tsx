@@ -33,7 +33,7 @@ export default function ConfigEditor() {
   const [activeTab, setActiveTab] = useState("structured");
 
   const validation = useYamlValidator(editedContent);
-  const parsedData = (validation.ok ? (validation.data as Record<string, unknown>) : {}) ?? {};
+  const parsedData = (validation.ok ? validation.data : {}) as Record<string, unknown>;
   const hasChanges = editedContent !== originalContent;
 
   const loadFiles = useCallback(async () => {
@@ -100,11 +100,10 @@ export default function ConfigEditor() {
         }
       />
 
-      <Link to="/configs" className={styles.editorSubtitle}>
-        <ArrowLeft size={14} /> All files
-      </Link>
-
       <div className={styles.editorHeader}>
+        <Link to="/configs" className={styles.backLink}>
+          <ArrowLeft size={14} /> All files
+        </Link>
         <h2 className={styles.editorTitle}>{filename}</h2>
         <div className={styles.editorSubtitle}>
           {contentLoading && <span>Loading…</span>}
