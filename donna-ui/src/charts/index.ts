@@ -7,3 +7,4 @@ export {
   tooltipItemStyle,
   tooltipLabelStyle,
 } from "./theme";
+export { AreaChart, type AreaChartReference } from "./AreaChart";
