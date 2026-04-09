@@ -1,4 +1,12 @@
-import { Collapse, Form, Input, Select, Tag } from "antd";
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Card } from "../../../primitives/Card";
+import { Input, FormField } from "../../../primitives/Input";
+import { Select, SelectItem } from "../../../primitives/Select";
+import { Pill } from "../../../primitives/Pill";
+import { taskTypesSchema, type TaskTypesConfig } from "../schemas";
+import styles from "./Forms.module.css";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -7,92 +15,119 @@ interface Props {
   onChange: (data: Record<string, any>) => void;
 }
 
-const MODEL_OPTIONS = [
-  { label: "parser", value: "parser" },
-  { label: "reasoner", value: "reasoner" },
-  { label: "fallback", value: "fallback" },
-  { label: "local_parser", value: "local_parser" },
-];
+const MODEL_OPTIONS = ["parser", "reasoner", "fallback", "local_parser"];
+const NONE = "__none__";
 
 export default function TaskTypesForm({ data, onChange }: Props) {
-  const taskTypes = data.task_types ?? {};
+  const form = useForm<TaskTypesConfig>({
+    values: data as TaskTypesConfig,
+    resolver: zodResolver(taskTypesSchema) as any,
+    mode: "onChange",
+  });
 
-  const updateField = (ttName: string, field: string, value: any) => {
-    const updated = {
-      ...data,
-      task_types: {
-        ...taskTypes,
-        [ttName]: {
-          ...taskTypes[ttName],
-          [field]: value,
-        },
-      },
-    };
-    onChange(updated);
-  };
+  useEffect(() => {
+    const sub = form.watch((values) => onChange(values as Record<string, any>));
+    return () => sub.unsubscribe();
+  }, [form, onChange]);
 
-  const items = Object.entries(taskTypes).map(([name, cfg]: [string, any]) => ({
-    key: name,
-    label: (
-      <span>
-        <strong>{name}</strong>
-        <Tag color="blue" style={{ marginLeft: 8 }}>{cfg.model}</Tag>
-      </span>
-    ),
-    children: (
-      <Form layout="vertical" size="small">
-        <Form.Item label="Description">
-          <Input
-            value={cfg.description}
-            onChange={(e) => updateField(name, "description", e.target.value)}
-          />
-        </Form.Item>
-        <Form.Item label="Model">
-          <Select
-            value={cfg.model}
-            options={MODEL_OPTIONS}
-            onChange={(v) => updateField(name, "model", v)}
-          />
-        </Form.Item>
-        <Form.Item label="Shadow Model">
-          <Select
-            value={cfg.shadow}
-            options={[{ label: "(none)", value: "" }, ...MODEL_OPTIONS]}
-            onChange={(v) => updateField(name, "shadow", v || undefined)}
-            allowClear
-          />
-        </Form.Item>
-        <Form.Item label="Prompt Template">
-          <Input
-            value={cfg.prompt_template}
-            onChange={(e) => updateField(name, "prompt_template", e.target.value)}
-          />
-        </Form.Item>
-        <Form.Item label="Output Schema">
-          <Input
-            value={cfg.output_schema}
-            onChange={(e) => updateField(name, "output_schema", e.target.value)}
-          />
-        </Form.Item>
-        <Form.Item label="Tools">
-          <Select
-            mode="tags"
-            value={cfg.tools ?? []}
-            onChange={(v) => updateField(name, "tools", v)}
-            tagRender={({ label, closable, onClose }) => (
-              <Tag closable={closable} onClose={onClose} style={{ marginRight: 4 }}>
-                {label}
-              </Tag>
-            )}
-          />
-        </Form.Item>
-      </Form>
-    ),
-  }));
+  const taskTypes = form.watch("task_types") ?? {};
 
   return (
-    <div style={{ maxHeight: "calc(100vh - 290px)", overflow: "auto", paddingRight: 8 }}>
-      <Collapse items={items} />
-    </div>
+    <form onSubmit={(e) => e.preventDefault()} className={styles.stackTight}>
+      {Object.entries(taskTypes).map(([name, cfg]) => (
+        <Card key={name}>
+          <details open>
+            <summary className={styles.detailsSummary}>
+              <strong>{name}</strong>{" "}
+              <span className="sr-only">model:</span>
+              <Pill variant="accent">{cfg?.model ?? "—"}</Pill>
+            </summary>
+
+            <div className={styles.detailsBody}>
+              <FormField label="Description">
+                {(fieldProps) => (
+                  <Input
+                    {...fieldProps}
+                    {...form.register(`task_types.${name}.description` as const)}
+                  />
+                )}
+              </FormField>
+
+              <FormField label="Model">
+                {() => (
+                  <Select
+                    value={form.watch(`task_types.${name}.model`) ?? ""}
+                    onValueChange={(v) =>
+                      form.setValue(`task_types.${name}.model`, v, { shouldDirty: true })
+                    }
+                  >
+                    {MODEL_OPTIONS.map((m) => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    ))}
+                  </Select>
+                )}
+              </FormField>
+
+              <FormField label="Shadow model">
+                {() => (
+                  <Select
+                    value={form.watch(`task_types.${name}.shadow`) ?? NONE}
+                    onValueChange={(v) =>
+                      form.setValue(
+                        `task_types.${name}.shadow`,
+                        v === NONE ? undefined : v,
+                        { shouldDirty: true },
+                      )
+                    }
+                  >
+                    <SelectItem value={NONE}>(none)</SelectItem>
+                    {MODEL_OPTIONS.map((m) => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    ))}
+                  </Select>
+                )}
+              </FormField>
+
+              <FormField label="Prompt template">
+                {(fieldProps) => (
+                  <Input
+                    {...fieldProps}
+                    {...form.register(`task_types.${name}.prompt_template` as const)}
+                  />
+                )}
+              </FormField>
+
+              <FormField label="Output schema">
+                {(fieldProps) => (
+                  <Input
+                    {...fieldProps}
+                    {...form.register(`task_types.${name}.output_schema` as const)}
+                  />
+                )}
+              </FormField>
+
+              <FormField label="Tools (comma-separated)">
+                {(fieldProps) => (
+                  <Input
+                    {...fieldProps}
+                    value={(form.watch(`task_types.${name}.tools`) ?? []).join(", ")}
+                    onChange={(e) =>
+                      form.setValue(
+                        `task_types.${name}.tools`,
+                        e.target.value
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                        { shouldDirty: true },
+                      )
+                    }
+                  />
+                )}
+              </FormField>
+            </div>
+          </details>
+        </Card>
+      ))}
+    </form>
   );
 }

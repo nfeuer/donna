@@ -7,7 +7,7 @@ export { Checkbox } from "./Checkbox";
 export { Switch } from "./Switch";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
 export { Tooltip } from "./Tooltip";
-export { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./Dialog";
+export { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter, type DialogSize } from "./Dialog";
 export { Drawer } from "./Drawer";
 export {
   DropdownMenu,

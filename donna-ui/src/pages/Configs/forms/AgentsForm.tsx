@@ -1,22 +1,21 @@
-import { Card, Form, Switch, InputNumber, Select, Tag, Row, Col } from "antd";
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Card, CardHeader, CardTitle } from "../../../primitives/Card";
+import { Input, FormField } from "../../../primitives/Input";
+import { Select, SelectItem } from "../../../primitives/Select";
+import { Switch } from "../../../primitives/Switch";
+import { Checkbox } from "../../../primitives/Checkbox";
+import { agentsSchema, type AgentsConfig } from "../schemas";
+import styles from "./Forms.module.css";
+import { cn } from "../../../lib/cn";
 
-interface AgentConfig {
-  enabled: boolean;
-  timeout_seconds: number;
-  autonomy: string;
-  allowed_tools: string[];
-}
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface Props {
-  data: Record<string, Record<string, AgentConfig>>;
-  onChange: (data: Record<string, Record<string, AgentConfig>>) => void;
+  data: Record<string, any>;
+  onChange: (data: Record<string, any>) => void;
 }
-
-const AUTONOMY_OPTIONS = [
-  { label: "Low", value: "low" },
-  { label: "Medium", value: "medium" },
-  { label: "High", value: "high" },
-];
 
 const ALL_TOOLS = [
   "task_db_read", "task_db_write", "calendar_read", "calendar_write",
@@ -26,78 +25,100 @@ const ALL_TOOLS = [
 ];
 
 export default function AgentsForm({ data, onChange }: Props) {
-  const agents = data.agents ?? {};
+  const form = useForm<AgentsConfig>({
+    values: data as AgentsConfig,
+    resolver: zodResolver(agentsSchema) as any,
+    mode: "onChange",
+  });
 
-  const updateAgent = (name: string, field: string, value: unknown) => {
-    const updated = {
-      ...data,
-      agents: {
-        ...agents,
-        [name]: {
-          ...agents[name],
-          [field]: value,
-        },
-      },
-    };
-    onChange(updated);
-  };
+  useEffect(() => {
+    const sub = form.watch((values) => onChange(values as Record<string, any>));
+    return () => sub.unsubscribe();
+  }, [form, onChange]);
+
+  const agents = form.watch("agents") ?? {};
 
   return (
-    <div style={{ maxHeight: "calc(100vh - 290px)", overflow: "auto", paddingRight: 8 }}>
-      <Row gutter={[16, 16]}>
-        {Object.entries(agents).map(([name, cfg]) => (
-          <Col xs={24} lg={12} key={name}>
-            <Card
-              size="small"
-              title={
-                <span style={{ textTransform: "capitalize", fontWeight: 600 }}>
-                  {name}
-                </span>
-              }
-              extra={
-                <Switch
-                  checked={cfg.enabled}
-                  checkedChildren="On"
-                  unCheckedChildren="Off"
-                  onChange={(v) => updateAgent(name, "enabled", v)}
-                />
-              }
-            >
-              <Form layout="vertical" size="small">
-                <Form.Item label="Timeout (seconds)">
-                  <InputNumber
-                    value={cfg.timeout_seconds}
+    <form onSubmit={(e) => e.preventDefault()} className={styles.autoFitGrid}>
+      {Object.entries(agents).map(([name, cfg]) => {
+        const selectedTools = new Set<string>(cfg?.allowed_tools ?? []);
+        return (
+          <Card key={name}>
+            <CardHeader>
+              <CardTitle style={{ textTransform: "capitalize" }}>{name}</CardTitle>
+              <Switch
+                checked={!!cfg?.enabled}
+                onCheckedChange={(v) =>
+                  form.setValue(`agents.${name}.enabled`, v, { shouldDirty: true })
+                }
+                aria-label={`Enable ${name} agent`}
+              />
+            </CardHeader>
+
+            <div className={styles.fieldGrid}>
+              <FormField label="Timeout (seconds)">
+                {(fieldProps) => (
+                  <Input
+                    type="number"
                     min={10}
                     max={3600}
-                    style={{ width: "100%" }}
-                    onChange={(v) => updateAgent(name, "timeout_seconds", v ?? 60)}
+                    {...fieldProps}
+                    {...form.register(`agents.${name}.timeout_seconds` as const, {
+                      valueAsNumber: true,
+                    })}
                   />
-                </Form.Item>
-                <Form.Item label="Autonomy Level">
+                )}
+              </FormField>
+
+              <FormField label="Autonomy level">
+                {() => (
                   <Select
-                    value={cfg.autonomy}
-                    options={AUTONOMY_OPTIONS}
-                    onChange={(v) => updateAgent(name, "autonomy", v)}
-                  />
-                </Form.Item>
-                <Form.Item label="Allowed Tools">
-                  <Select
-                    mode="multiple"
-                    value={cfg.allowed_tools}
-                    options={ALL_TOOLS.map((t) => ({ label: t, value: t }))}
-                    onChange={(v) => updateAgent(name, "allowed_tools", v)}
-                    tagRender={({ label, closable, onClose }) => (
-                      <Tag closable={closable} onClose={onClose} style={{ marginRight: 4 }}>
-                        {label}
-                      </Tag>
-                    )}
-                  />
-                </Form.Item>
-              </Form>
-            </Card>
-          </Col>
-        ))}
-      </Row>
-    </div>
+                    value={cfg?.autonomy ?? "low"}
+                    onValueChange={(v) =>
+                      form.setValue(
+                        `agents.${name}.autonomy`,
+                        v as "low" | "medium" | "high",
+                        { shouldDirty: true },
+                      )
+                    }
+                  >
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </Select>
+                )}
+              </FormField>
+
+              <FormField label="Allowed tools">
+                {() => (
+                  <div className={cn(styles.autoFitGrid, styles.autoFitGridCheckbox)}>
+                    {ALL_TOOLS.map((tool) => {
+                      const checked = selectedTools.has(tool);
+                      return (
+                        <Checkbox
+                          key={tool}
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            const next = new Set(selectedTools);
+                            if (v) next.add(tool); else next.delete(tool);
+                            form.setValue(
+                              `agents.${name}.allowed_tools`,
+                              Array.from(next),
+                              { shouldDirty: true },
+                            );
+                          }}
+                        >
+                          {tool}
+                        </Checkbox>
+                      );
+                    })}
+                  </div>
+                )}
+              </FormField>
+            </div>
+          </Card>
+        );
+      })}
+    </form>
   );
 }

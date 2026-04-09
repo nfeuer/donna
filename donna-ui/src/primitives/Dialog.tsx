@@ -1,20 +1,24 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
+import { cn } from "../lib/cn";
 import styles from "./Dialog.module.css";
+
+export type DialogSize = "default" | "wide";
 
 interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode;
+  size?: DialogSize;
 }
 
-export function Dialog({ open, onOpenChange, children }: DialogProps) {
+export function Dialog({ open, onOpenChange, children, size = "default" }: DialogProps) {
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className={styles.overlay} />
-        <RadixDialog.Content className={styles.content}>
+        <RadixDialog.Content className={cn(styles.content, size === "wide" && styles.wide)}>
           {children}
           <RadixDialog.Close className={styles.close} aria-label="Close">
             <X size={16} />

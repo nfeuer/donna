@@ -1,75 +1,83 @@
-import { useMemo } from "react";
+import { Fragment, memo } from "react";
+import type { ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeHighlight from "rehype-highlight";
+import styles from "./MarkdownPreview.module.css";
 
 interface Props {
   content: string;
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+// Defense-in-depth: rehypeHighlight runs FIRST to decorate code blocks with
+// <span class="hljs-*"> tokens, then rehypeSanitize runs LAST as the final
+// security pass. The schema is a narrow extension of defaultSchema that only
+// permits hljs-*/language-* classNames on <code> and hljs-* classNames on
+// <span> — everything else defaultSchema rejects (raw <script>, <iframe>,
+// on* handler attributes, arbitrary classNames, etc.) still gets stripped.
+const SANITIZE_SCHEMA = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    code: [
+      ...(defaultSchema.attributes?.code ?? []),
+      ["className", /^language-./, /^hljs$/, /^hljs-./],
+    ],
+    span: [
+      ...(defaultSchema.attributes?.span ?? []),
+      ["className", /^hljs-./],
+    ],
+  },
+};
 
-function renderMarkdown(md: string): string {
-  let html = escapeHtml(md);
-
-  // Code blocks (triple backtick)
-  html = html.replace(
-    /```(\w*)\n([\s\S]*?)```/g,
-    '<pre style="background:#262626;padding:8px;border-radius:4px;overflow-x:auto"><code>$2</code></pre>',
-  );
-
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code style="background:#333;padding:1px 4px;border-radius:3px">$1</code>');
-
-  // Headers
-  html = html.replace(/^#### (.+)$/gm, '<h4 style="color:#fff;margin:12px 0 4px">$1</h4>');
-  html = html.replace(/^### (.+)$/gm, '<h3 style="color:#fff;margin:12px 0 4px">$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2 style="color:#fff;margin:14px 0 6px">$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1 style="color:#fff;margin:16px 0 8px">$1</h1>');
-
-  // Bold and italic
-  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
-
-  // Unordered lists
-  html = html.replace(/^- (.+)$/gm, '<li style="margin-left:16px">$1</li>');
-
-  // Ordered lists
-  html = html.replace(/^\d+\.\s(.+)$/gm, '<li style="margin-left:16px">$1</li>');
-
-  // Horizontal rules
-  html = html.replace(/^---$/gm, '<hr style="border-color:#333;margin:12px 0" />');
-
-  // Template variables highlighted
-  html = html.replace(
-    /\{\{\s*(\w+)\s*\}\}/g,
-    '<span style="background:#1d3557;padding:1px 6px;border-radius:3px;color:#a8dadc">{{ $1 }}</span>',
-  );
-
-  // Line breaks
-  html = html.replace(/\n/g, "<br />");
-
-  return html;
-}
-
-export default function MarkdownPreview({ content }: Props) {
-  const html = useMemo(() => renderMarkdown(content), [content]);
-
+function MarkdownPreviewImpl({ content }: Props) {
   return (
-    <div
-      style={{
-        padding: 16,
-        background: "#1a1a1a",
-        borderRadius: 6,
-        overflow: "auto",
-        height: "calc(100vh - 320px)",
-        fontSize: 13,
-        lineHeight: 1.6,
-        color: "#d4d4d4",
-      }}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <div className={styles.root}>
+      <ReactMarkdown
+        rehypePlugins={[rehypeHighlight, [rehypeSanitize, SANITIZE_SCHEMA]]}
+        components={{
+          // Highlight template variables: render `{{ foo }}` as an inline pill.
+          // Runs on text nodes only — the regex has no HTML capture, so it
+          // cannot reintroduce the old injection surface.
+          p: ({ children }) => <p>{highlightVariables(children)}</p>,
+          li: ({ children }) => <li>{highlightVariables(children)}</li>,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }
+
+function highlightVariables(children: ReactNode): ReactNode {
+  if (typeof children === "string") return splitVars(children);
+  if (Array.isArray(children)) {
+    return children.map((c, i) =>
+      typeof c === "string"
+        ? <Fragment key={i}>{splitVars(c)}</Fragment>
+        : c,
+    );
+  }
+  return children;
+}
+
+function splitVars(text: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  const regex = /\{\{\s*(\w+)\s*\}\}/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let i = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) out.push(text.slice(lastIndex, match.index));
+    out.push(
+      <span key={`v-${i++}`} className={styles.variable}>
+        {"{{ "}{match[1]}{" }}"}
+      </span>,
+    );
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) out.push(text.slice(lastIndex));
+  return out;
+}
+
+export default memo(MarkdownPreviewImpl);

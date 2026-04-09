@@ -1,4 +1,13 @@
-import { Card, Form, Input, InputNumber, Table, Switch } from "antd";
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Card, CardHeader, CardTitle } from "../../../primitives/Card";
+import { Input, FormField } from "../../../primitives/Input";
+import { Switch } from "../../../primitives/Switch";
+import { DataTable } from "../../../primitives/DataTable";
+import { modelsSchema, type ModelsConfig } from "../schemas";
+import styles from "./Forms.module.css";
+import { cn } from "../../../lib/cn";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -8,71 +17,71 @@ interface Props {
 }
 
 export default function ModelsForm({ data, onChange }: Props) {
-  const models = data.models ?? {};
-  const routing = data.routing ?? {};
-  const cost = data.cost ?? {};
-  const quality = data.quality_monitoring ?? {};
+  const form = useForm<ModelsConfig>({
+    values: data as ModelsConfig,
+    resolver: zodResolver(modelsSchema) as any,
+    mode: "onChange",
+  });
 
-  const updatePath = (path: string[], value: any) => {
-    const updated = JSON.parse(JSON.stringify(data));
-    let obj = updated;
-    for (let i = 0; i < path.length - 1; i++) {
-      if (!obj[path[i]]) obj[path[i]] = {};
-      obj = obj[path[i]];
-    }
-    obj[path[path.length - 1]] = value;
-    onChange(updated);
-  };
+  // Sync form state -> parent on every valid change.
+  useEffect(() => {
+    const sub = form.watch((values) => {
+      onChange(values as Record<string, any>);
+    });
+    return () => sub.unsubscribe();
+  }, [form, onChange]);
 
-  // Model definitions table data
-  const modelRows = Object.entries(models).map(([alias, cfg]: [string, any]) => ({
-    key: alias,
+  const models = form.watch("models") ?? {};
+  const routing = form.watch("routing") ?? {};
+
+  const modelRows = Object.entries(models).map(([alias, cfg]) => ({
     alias,
-    provider: cfg.provider ?? "",
-    model: cfg.model ?? "",
-    estimated_cost: cfg.estimated_cost_per_1k_tokens,
+    provider: cfg?.provider ?? "",
+    model: cfg?.model ?? "",
   }));
 
-  // Routing table data
-  const routingRows = Object.entries(routing).map(([taskType, cfg]: [string, any]) => ({
-    key: taskType,
+  const routingRows = Object.entries(routing).map(([taskType, cfg]) => ({
     task_type: taskType,
-    model: cfg.model ?? "",
-    fallback: cfg.fallback ?? "",
-    shadow: cfg.shadow ?? "",
-    confidence_threshold: cfg.confidence_threshold,
+    model: cfg?.model ?? "",
+    fallback: cfg?.fallback ?? "",
+    shadow: cfg?.shadow ?? "",
+    confidence_threshold: cfg?.confidence_threshold,
   }));
+
+  const topError = form.formState.errors.root?.message;
 
   return (
-    <div style={{ maxHeight: "calc(100vh - 290px)", overflow: "auto", paddingRight: 8 }}>
-      {/* Model Definitions */}
-      <Card size="small" title="Model Definitions" style={{ marginBottom: 16 }}>
-        <Table
-          dataSource={modelRows}
-          size="small"
-          pagination={false}
+    <form className={styles.stack} onSubmit={(e) => e.preventDefault()}>
+      {topError && (
+        <div role="alert" style={{ color: "var(--color-error)" }}>
+          Schema error: {String(topError)}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader><CardTitle>Model definitions</CardTitle></CardHeader>
+        <DataTable
+          data={modelRows}
+          getRowId={(row) => row.alias}
           columns={[
-            { title: "Alias", dataIndex: "alias", width: 120 },
+            { header: "Alias", accessorKey: "alias" },
             {
-              title: "Provider",
-              dataIndex: "provider",
-              width: 120,
-              render: (v: string, row) => (
+              header: "Provider",
+              accessorKey: "provider",
+              cell: ({ row }) => (
                 <Input
-                  size="small"
-                  value={v}
-                  onChange={(e) => updatePath(["models", row.alias, "provider"], e.target.value)}
+                  aria-label={`${row.original.alias} provider`}
+                  {...form.register(`models.${row.original.alias}.provider` as const)}
                 />
               ),
             },
             {
-              title: "Model",
-              dataIndex: "model",
-              render: (v: string, row) => (
+              header: "Model",
+              accessorKey: "model",
+              cell: ({ row }) => (
                 <Input
-                  size="small"
-                  value={v}
-                  onChange={(e) => updatePath(["models", row.alias, "model"], e.target.value)}
+                  aria-label={`${row.original.alias} model`}
+                  {...form.register(`models.${row.original.alias}.model` as const)}
                 />
               ),
             },
@@ -80,63 +89,57 @@ export default function ModelsForm({ data, onChange }: Props) {
         />
       </Card>
 
-      {/* Routing Table */}
-      <Card size="small" title="Routing Table" style={{ marginBottom: 16 }}>
-        <Table
-          dataSource={routingRows}
-          size="small"
-          pagination={false}
+      <Card>
+        <CardHeader><CardTitle>Routing table</CardTitle></CardHeader>
+        <DataTable
+          data={routingRows}
+          getRowId={(row) => row.task_type}
           columns={[
-            { title: "Task Type", dataIndex: "task_type", width: 160 },
+            { header: "Task type", accessorKey: "task_type" },
             {
-              title: "Model",
-              dataIndex: "model",
-              width: 120,
-              render: (v: string, row) => (
+              header: "Model",
+              accessorKey: "model",
+              cell: ({ row }) => (
                 <Input
-                  size="small"
-                  value={v}
-                  onChange={(e) => updatePath(["routing", row.task_type, "model"], e.target.value)}
+                  aria-label={`${row.original.task_type} model`}
+                  {...form.register(`routing.${row.original.task_type}.model` as const)}
                 />
               ),
             },
             {
-              title: "Fallback",
-              dataIndex: "fallback",
-              width: 120,
-              render: (v: string, row) => (
+              header: "Fallback",
+              accessorKey: "fallback",
+              cell: ({ row }) => (
                 <Input
-                  size="small"
-                  value={v}
-                  onChange={(e) => updatePath(["routing", row.task_type, "fallback"], e.target.value || undefined)}
+                  aria-label={`${row.original.task_type} fallback`}
+                  {...form.register(`routing.${row.original.task_type}.fallback` as const)}
                 />
               ),
             },
             {
-              title: "Shadow",
-              dataIndex: "shadow",
-              width: 120,
-              render: (v: string, row) => (
+              header: "Shadow",
+              accessorKey: "shadow",
+              cell: ({ row }) => (
                 <Input
-                  size="small"
-                  value={v}
-                  onChange={(e) => updatePath(["routing", row.task_type, "shadow"], e.target.value || undefined)}
+                  aria-label={`${row.original.task_type} shadow`}
+                  {...form.register(`routing.${row.original.task_type}.shadow` as const)}
                 />
               ),
             },
             {
-              title: "Threshold",
-              dataIndex: "confidence_threshold",
-              width: 100,
-              render: (v: number | undefined, row) => (
-                <InputNumber
-                  size="small"
-                  value={v}
+              header: "Threshold",
+              accessorKey: "confidence_threshold",
+              cell: ({ row }) => (
+                <Input
+                  type="number"
+                  step={0.1}
                   min={0}
                   max={1}
-                  step={0.1}
-                  style={{ width: "100%" }}
-                  onChange={(val) => updatePath(["routing", row.task_type, "confidence_threshold"], val ?? undefined)}
+                  aria-label={`${row.original.task_type} confidence threshold`}
+                  {...form.register(
+                    `routing.${row.original.task_type}.confidence_threshold` as const,
+                    { valueAsNumber: true },
+                  )}
                 />
               ),
             },
@@ -144,74 +147,55 @@ export default function ModelsForm({ data, onChange }: Props) {
         />
       </Card>
 
-      {/* Cost Tracking */}
-      <Card size="small" title="Cost Tracking" style={{ marginBottom: 16 }}>
-        <Form layout="inline" size="small">
-          <Form.Item label="Monthly Budget ($)">
-            <InputNumber
-              value={cost.monthly_budget_usd}
-              min={0}
-              step={10}
-              onChange={(v) => updatePath(["cost", "monthly_budget_usd"], v)}
-            />
-          </Form.Item>
-          <Form.Item label="Daily Pause ($)">
-            <InputNumber
-              value={cost.daily_pause_threshold_usd}
-              min={0}
-              step={5}
-              onChange={(v) => updatePath(["cost", "daily_pause_threshold_usd"], v)}
-            />
-          </Form.Item>
-          <Form.Item label="Task Approval ($)">
-            <InputNumber
-              value={cost.task_approval_threshold_usd}
-              min={0}
-              step={1}
-              onChange={(v) => updatePath(["cost", "task_approval_threshold_usd"], v)}
-            />
-          </Form.Item>
-          <Form.Item label="Warning %">
-            <InputNumber
-              value={cost.monthly_warning_pct}
-              min={0}
-              max={1}
-              step={0.05}
-              onChange={(v) => updatePath(["cost", "monthly_warning_pct"], v)}
-            />
-          </Form.Item>
-        </Form>
+      <Card>
+        <CardHeader><CardTitle>Cost tracking</CardTitle></CardHeader>
+        <div className={cn(styles.autoFitGrid, styles.autoFitGridNarrow)}>
+          <FormField label="Monthly budget ($)">
+            {(fieldProps) => (
+              <Input type="number" step={10} min={0} {...fieldProps} {...form.register("cost.monthly_budget_usd", { valueAsNumber: true })} />
+            )}
+          </FormField>
+          <FormField label="Daily pause ($)">
+            {(fieldProps) => (
+              <Input type="number" step={5} min={0} {...fieldProps} {...form.register("cost.daily_pause_threshold_usd", { valueAsNumber: true })} />
+            )}
+          </FormField>
+          <FormField label="Task approval ($)">
+            {(fieldProps) => (
+              <Input type="number" step={1} min={0} {...fieldProps} {...form.register("cost.task_approval_threshold_usd", { valueAsNumber: true })} />
+            )}
+          </FormField>
+          <FormField label="Warning %">
+            {(fieldProps) => (
+              <Input type="number" step={0.05} min={0} max={1} {...fieldProps} {...form.register("cost.monthly_warning_pct", { valueAsNumber: true })} />
+            )}
+          </FormField>
+        </div>
       </Card>
 
-      {/* Quality Monitoring */}
-      <Card size="small" title="Quality Monitoring">
-        <Form layout="inline" size="small">
-          <Form.Item label="Enabled">
-            <Switch
-              checked={quality.enabled}
-              onChange={(v) => updatePath(["quality_monitoring", "enabled"], v)}
-            />
-          </Form.Item>
-          <Form.Item label="Spot Check Rate">
-            <InputNumber
-              value={quality.spot_check_rate}
-              min={0}
-              max={1}
-              step={0.01}
-              onChange={(v) => updatePath(["quality_monitoring", "spot_check_rate"], v)}
-            />
-          </Form.Item>
-          <Form.Item label="Flag Threshold">
-            <InputNumber
-              value={quality.flag_threshold}
-              min={0}
-              max={1}
-              step={0.1}
-              onChange={(v) => updatePath(["quality_monitoring", "flag_threshold"], v)}
-            />
-          </Form.Item>
-        </Form>
+      <Card>
+        <CardHeader><CardTitle>Quality monitoring</CardTitle></CardHeader>
+        <div className={styles.inlineRow}>
+          <FormField label="Enabled">
+            {() => (
+              <Switch
+                checked={!!form.watch("quality_monitoring.enabled")}
+                onCheckedChange={(v) => form.setValue("quality_monitoring.enabled", v, { shouldDirty: true })}
+              />
+            )}
+          </FormField>
+          <FormField label="Spot check rate">
+            {(fieldProps) => (
+              <Input type="number" step={0.01} min={0} max={1} {...fieldProps} {...form.register("quality_monitoring.spot_check_rate", { valueAsNumber: true })} />
+            )}
+          </FormField>
+          <FormField label="Flag threshold">
+            {(fieldProps) => (
+              <Input type="number" step={0.1} min={0} max={1} {...fieldProps} {...form.register("quality_monitoring.flag_threshold", { valueAsNumber: true })} />
+            )}
+          </FormField>
+        </div>
       </Card>
-    </div>
+    </form>
   );
 }

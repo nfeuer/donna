@@ -7,10 +7,24 @@ interface SwitchProps {
   onCheckedChange: (checked: boolean) => void;
   children?: ReactNode;
   disabled?: boolean;
+  id?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }
 
-export function Switch({ checked, onCheckedChange, children, disabled }: SwitchProps) {
-  const id = useId();
+export function Switch({
+  checked,
+  onCheckedChange,
+  children,
+  disabled,
+  id: idProp,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
+}: SwitchProps) {
+  const generatedId = useId();
+  const id = idProp ?? generatedId;
   const control = (
     <RadixSwitch.Root
       id={id}
@@ -18,6 +32,9 @@ export function Switch({ checked, onCheckedChange, children, disabled }: SwitchP
       checked={checked}
       onCheckedChange={onCheckedChange}
       disabled={disabled}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
+      aria-describedby={ariaDescribedBy}
     >
       <RadixSwitch.Thumb className={styles.thumb} />
     </RadixSwitch.Root>

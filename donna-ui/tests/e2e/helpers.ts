@@ -56,9 +56,68 @@ export async function mockAdminApi(page: Page) {
       });
     }
 
+    // /admin/configs (list) returns { configs: ConfigFile[] } where
+    // ConfigFile = { name, size_bytes, modified (epoch seconds) }
+    if (url.match(/\/admin\/configs(\?|$)/)) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          configs: [
+            { name: "task_states.yaml", size_bytes: 512, modified: 1774972800 },
+            { name: "models.yaml", size_bytes: 384, modified: 1774972800 },
+          ],
+        }),
+      });
+    }
+
+    // /admin/configs/:name returns ConfigContent = { name, content, size_bytes, modified }
+    if (url.match(/\/admin\/configs\/[^/?]+/)) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          name: "task_states.yaml",
+          content:
+            "states:\n  - name: backlog\n    color: muted\n  - name: done\n    color: success\n",
+          size_bytes: 512,
+          modified: 1774972800,
+        }),
+      });
+    }
+
+    // /admin/prompts (list) returns { prompts: PromptFile[] } where
+    // PromptFile = { name, size_bytes, modified (epoch seconds) }
+    if (url.match(/\/admin\/prompts(\?|$)/)) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          prompts: [
+            { name: "intake.md", size_bytes: 256, modified: 1774972800 },
+          ],
+        }),
+      });
+    }
+
+    // /admin/prompts/:name returns PromptContent = { name, content, size_bytes, modified }
+    if (url.match(/\/admin\/prompts\/[^/?]+/)) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          name: "intake.md",
+          content:
+            "# Intake Prompt\n\nHello {{ name }}, today is {{ date }}.\n\n```python\nprint('hi')\n```\n",
+          size_bytes: 256,
+          modified: 1774972800,
+        }),
+      });
+    }
+
     // Default: empty array for lists, empty object otherwise
     const body = url.match(
-      /\/(logs|tasks|configs|prompts|shadow|preferences|rules|corrections)(\?|$)/,
+      /\/(logs|tasks|shadow|preferences|rules|corrections)(\?|$)/,
     )
       ? "[]"
       : "{}";

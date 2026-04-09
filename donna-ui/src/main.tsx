@@ -14,6 +14,7 @@ import "@fontsource/jetbrains-mono/400.css";
 import "./theme/tokens.css";
 import "./theme/themes.css";
 import "./theme/reset.css";
+import "highlight.js/styles/github-dark.css";
 
 import App from "./App";
 import darkTheme from "./theme/darkTheme";

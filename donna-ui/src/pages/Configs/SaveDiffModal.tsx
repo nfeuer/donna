@@ -1,5 +1,29 @@
-import { Modal } from "antd";
+import { useEffect, useState } from "react";
 import { DiffEditor } from "@monaco-editor/react";
+import {
+  Dialog,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "../../primitives/Dialog";
+import { Button } from "../../primitives/Button";
+import { DONNA_MONACO_THEME, setupDonnaMonacoTheme } from "../../lib/monacoTheme";
+
+const SIDE_BY_SIDE_QUERY = "(min-width: 900px)";
+
+function useSideBySide(): boolean {
+  const [sideBySide, setSideBySide] = useState(() =>
+    typeof window === "undefined" ? true : window.matchMedia(SIDE_BY_SIDE_QUERY).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(SIDE_BY_SIDE_QUERY);
+    const handler = (e: MediaQueryListEvent) => setSideBySide(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return sideBySide;
+}
 
 interface Props {
   open: boolean;
@@ -20,21 +44,21 @@ export default function SaveDiffModal({
   onConfirm,
   onCancel,
 }: Props) {
+  const sideBySide = useSideBySide();
   return (
-    <Modal
-      title={`Save changes to ${filename}?`}
-      open={open}
-      onOk={onConfirm}
-      onCancel={onCancel}
-      okText="Save"
-      confirmLoading={saving}
-      width={900}
-      styles={{ body: { padding: 0 } }}
-    >
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }} size="wide">
+      <DialogHeader>
+        <DialogTitle>Save changes to {filename}?</DialogTitle>
+        <DialogDescription>
+          Review the diff — left is on disk, right is your edits.
+        </DialogDescription>
+      </DialogHeader>
+
       <DiffEditor
-        height="400px"
+        height="min(60vh, 480px)"
         language="yaml"
-        theme="vs-dark"
+        theme={DONNA_MONACO_THEME}
+        beforeMount={setupDonnaMonacoTheme}
         original={original}
         modified={modified}
         options={{
@@ -42,9 +66,16 @@ export default function SaveDiffModal({
           minimap: { enabled: false },
           fontSize: 12,
           scrollBeyondLastLine: false,
-          renderSideBySide: true,
+          renderSideBySide: sideBySide,
         }}
       />
-    </Modal>
+
+      <DialogFooter>
+        <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button>
+        <Button variant="primary" onClick={onConfirm} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
