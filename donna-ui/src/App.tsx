@@ -28,7 +28,9 @@ export default function App() {
           <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
           <Route path="/logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
           <Route path="/configs" element={<ErrorBoundary><ConfigsPage /></ErrorBoundary>} />
+          <Route path="/configs/:file" element={<ErrorBoundary><ConfigsPage /></ErrorBoundary>} />
           <Route path="/prompts" element={<ErrorBoundary><PromptsPage /></ErrorBoundary>} />
+          <Route path="/prompts/:file" element={<ErrorBoundary><PromptsPage /></ErrorBoundary>} />
           <Route path="/agents" element={<ErrorBoundary><AgentsPage /></ErrorBoundary>} />
           <Route path="/agents/:name" element={<ErrorBoundary><AgentsPage /></ErrorBoundary>} />
           <Route path="/tasks" element={<ErrorBoundary><TasksPage /></ErrorBoundary>} />
