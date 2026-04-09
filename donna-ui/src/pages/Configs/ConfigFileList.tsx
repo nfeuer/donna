@@ -1,42 +1,45 @@
-import { Menu, Spin } from "antd";
-import { FileTextOutlined } from "@ant-design/icons";
+import { Link } from "react-router-dom";
+import { cn } from "../../lib/cn";
+import { Skeleton } from "../../primitives/Skeleton";
 import dayjs from "dayjs";
 import type { ConfigFile } from "../../api/configs";
+import styles from "./Configs.module.css";
 
 interface Props {
   files: ConfigFile[];
   loading: boolean;
   selected: string | null;
-  onSelect: (name: string) => void;
 }
 
-export default function ConfigFileList({ files, loading, selected, onSelect }: Props) {
+export default function ConfigFileList({ files, loading, selected }: Props) {
   if (loading) {
     return (
-      <div style={{ textAlign: "center", padding: 20 }}>
-        <Spin size="small" />
+      <div className={styles.list}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} height={36} />
+        ))}
       </div>
     );
   }
 
   return (
-    <Menu
-      mode="inline"
-      selectedKeys={selected ? [selected] : []}
-      onClick={({ key }) => onSelect(key)}
-      style={{ background: "transparent", border: "none" }}
-      items={files.map((f) => ({
-        key: f.name,
-        icon: <FileTextOutlined />,
-        label: (
-          <div>
-            <div style={{ fontSize: 13 }}>{f.name}</div>
-            <div style={{ fontSize: 10, color: "#666" }}>
+    <nav className={styles.list} aria-label="Config files">
+      {files.map((f) => {
+        const active = f.name === selected;
+        return (
+          <Link
+            key={f.name}
+            to={`/configs/${encodeURIComponent(f.name)}`}
+            className={cn(styles.item, active && styles.itemActive)}
+            aria-current={active ? "page" : undefined}
+          >
+            <span>{f.name}</span>
+            <span className={styles.meta}>
               {(f.size_bytes / 1024).toFixed(1)} KB · {dayjs(f.modified * 1000).format("MMM D")}
-            </div>
-          </div>
-        ),
-      }))}
-    />
+            </span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
