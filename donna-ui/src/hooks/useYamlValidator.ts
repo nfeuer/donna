@@ -20,8 +20,8 @@ const DEBOUNCE_MS = 200;
  */
 export function useYamlValidator(source: string): YamlValidationState {
   const [state, setState] = useState<YamlValidationState>({
-    validating: false,
-    ok: true,
+    validating: true,
+    ok: false,
     data: {},
     error: null,
   });
@@ -29,6 +29,8 @@ export function useYamlValidator(source: string): YamlValidationState {
   const nextId = useRef(0);
   const latestId = useRef(0);
   const timeoutRef = useRef<number | null>(null);
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
 
   useEffect(() => {
     const worker = new Worker(
@@ -46,6 +48,10 @@ export function useYamlValidator(source: string): YamlValidationState {
         error: msg.error,
       });
     });
+    // Validate the initial source synchronously on mount — no debounce for first run.
+    const initialId = ++nextId.current;
+    latestId.current = initialId;
+    worker.postMessage({ id: initialId, source: sourceRef.current });
     return () => {
       worker.terminate();
       workerRef.current = null;
