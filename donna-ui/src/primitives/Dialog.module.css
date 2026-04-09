@@ -66,3 +66,13 @@
   from { opacity: 0; }
   to   { opacity: 1; }
 }
+
+.wide {
+  max-width: min(96vw, 1120px);
+}
+
+@media (max-width: 640px) {
+  .wide {
+    padding: var(--space-3);
+  }
+}
