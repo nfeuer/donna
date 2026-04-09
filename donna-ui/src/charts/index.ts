@@ -8,3 +8,4 @@ export {
   tooltipLabelStyle,
 } from "./theme";
 export { AreaChart, type AreaChartReference } from "./AreaChart";
+export { LineChart, type LineSeries } from "./LineChart";
