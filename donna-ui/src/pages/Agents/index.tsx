@@ -52,6 +52,7 @@ export default function AgentsPage() {
   }, [agents]);
 
   useEffect(() => {
+    setFeaturedLatency([]);
     if (!featured) return;
     let cancelled = false;
     fetchAgentDetail(featured.name)
