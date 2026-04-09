@@ -1,4 +1,5 @@
-import { Card, Tag, Empty } from "antd";
+import { Card, CardHeader, CardTitle } from "../../primitives/Card";
+import { Pill } from "../../primitives/Pill";
 
 interface Props {
   content: string;
@@ -6,34 +7,23 @@ interface Props {
 }
 
 export default function VariableInspector({ content, schemaPath }: Props) {
-  // Extract {{ variable }} patterns
   const matches = content.match(/\{\{\s*(\w+)\s*\}\}/g) ?? [];
   const variables = [...new Set(matches.map((m) => m.replace(/[{}\s]/g, "")))];
 
   return (
-    <Card
-      size="small"
-      title="Template Variables"
-      style={{ marginTop: 8 }}
-      extra={
-        schemaPath ? (
-          <Tag color="blue">{schemaPath}</Tag>
-        ) : null
-      }
-    >
+    <Card>
+      <CardHeader>
+        <CardTitle>Template variables</CardTitle>
+        {schemaPath && <Pill variant="accent">{schemaPath}</Pill>}
+      </CardHeader>
       {variables.length === 0 ? (
-        <Empty
-          description="No template variables found"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-        />
+        <div style={{ color: "var(--color-text-muted)", fontSize: "var(--text-body)" }}>
+          No template variables found.
+        </div>
       ) : (
-        <div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {variables.map((v) => (
-            <Tag key={v} color="geekblue" style={{ marginBottom: 4 }}>
-              {"{{ "}
-              {v}
-              {" }}"}
-            </Tag>
+            <Pill key={v} variant="muted">{`{{ ${v} }}`}</Pill>
           ))}
         </div>
       )}
