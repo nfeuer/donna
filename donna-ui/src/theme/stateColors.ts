@@ -37,7 +37,7 @@ export const STATE_CSS_VAR: Record<string, string> = {
   blocked: "var(--color-error)",
   waiting_input: "var(--color-warning)",
   done: "var(--color-success)",
-  cancelled: "var(--color-text-dim)",
+  cancelled: "var(--color-text-muted)",
 };
 
 export function statePillVariant(state: string): PillVariant {
