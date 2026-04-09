@@ -56,9 +56,65 @@ export async function mockAdminApi(page: Page) {
       });
     }
 
+    // /admin/configs (list) returns { configs: [...] }
+    if (url.match(/\/admin\/configs(\?|$)/)) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          configs: [
+            { file: "task_states.yaml", size: 512, modified: "2026-04-01T12:00:00Z" },
+            { file: "models.yaml", size: 384, modified: "2026-04-01T12:00:00Z" },
+          ],
+        }),
+      });
+    }
+
+    // /admin/configs/:file returns { file, content, modified }
+    if (url.match(/\/admin\/configs\/[^/?]+/)) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          file: "task_states.yaml",
+          content:
+            "states:\n  - name: backlog\n    color: muted\n  - name: done\n    color: success\n",
+          modified: "2026-04-01T12:00:00Z",
+        }),
+      });
+    }
+
+    // /admin/prompts (list) returns { prompts: [...] }
+    if (url.match(/\/admin\/prompts(\?|$)/)) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          prompts: [
+            { file: "intake.md", size: 256, modified: "2026-04-01T12:00:00Z" },
+          ],
+        }),
+      });
+    }
+
+    // /admin/prompts/:file returns { file, content, variables, modified }
+    if (url.match(/\/admin\/prompts\/[^/?]+/)) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          file: "intake.md",
+          content:
+            "# Intake Prompt\n\nHello {{ name }}, today is {{ date }}.\n\n```python\nprint('hi')\n```\n",
+          variables: ["name", "date"],
+          modified: "2026-04-01T12:00:00Z",
+        }),
+      });
+    }
+
     // Default: empty array for lists, empty object otherwise
     const body = url.match(
-      /\/(logs|tasks|configs|prompts|shadow|preferences|rules|corrections)(\?|$)/,
+      /\/(logs|tasks|shadow|preferences|rules|corrections)(\?|$)/,
     )
       ? "[]"
       : "{}";
