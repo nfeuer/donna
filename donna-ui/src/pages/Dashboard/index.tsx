@@ -1,11 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Row, Col, Segmented, Space, Badge, Tooltip, notification } from "antd";
+import { toast } from "sonner";
 import RefreshButton from "../../components/RefreshButton";
+import CostAnalyticsCard from "./CostAnalyticsCard";
 import ParseAccuracyCard from "./ParseAccuracyCard";
 import AgentPerformanceCard from "./AgentPerformanceCard";
 import TaskThroughputCard from "./TaskThroughputCard";
-import CostAnalyticsCard from "./CostAnalyticsCard";
 import QualityWarningsCard from "./QualityWarningsCard";
+import { PageHeader } from "../../primitives/PageHeader";
+import { Segmented } from "../../primitives/Segmented";
+import { Pill } from "../../primitives/Pill";
+import { Tooltip } from "../../primitives/Tooltip";
 import {
   fetchCostAnalytics,
   fetchParseAccuracy,
@@ -19,14 +23,16 @@ import {
   type QualityWarningsData,
 } from "../../api/dashboard";
 import { fetchAdminHealth, type AdminHealthData } from "../../api/health";
-import { SECONDARY_TEXT_COLOR } from "../../theme/darkTheme";
+import styles from "./Dashboard.module.css";
 
 const RANGE_OPTIONS = [
-  { label: "7d", value: 7 },
-  { label: "14d", value: 14 },
-  { label: "30d", value: 30 },
-  { label: "90d", value: 90 },
-];
+  { label: "7d", value: "7" },
+  { label: "14d", value: "14" },
+  { label: "30d", value: "30" },
+  { label: "90d", value: "90" },
+] as const;
+
+type RangeValue = (typeof RANGE_OPTIONS)[number]["value"];
 
 export interface DashboardData {
   cost: CostAnalyticsData | null;
@@ -37,7 +43,8 @@ export interface DashboardData {
 }
 
 export default function Dashboard() {
-  const [days, setDays] = useState(30);
+  const [range, setRange] = useState<RangeValue>("30");
+  const days = Number(range);
   const [health, setHealth] = useState<AdminHealthData | null>(null);
   const [data, setData] = useState<DashboardData>({
     cost: null,
@@ -47,8 +54,9 @@ export default function Dashboard() {
     quality: null,
   });
   const [loading, setLoading] = useState(true);
+  const [entered, setEntered] = useState(false);
 
-  // Anomaly dedup: only fire notification on state *transition*, not every poll
+  // Anomaly dedup: only fire a toast on state *transition*, not every poll.
   const prevOverdue = useRef<number | null>(null);
   const prevCostAlert = useRef(false);
   const prevParseAlert = useRef(false);
@@ -67,14 +75,13 @@ export default function Dashboard() {
 
       setData({ cost, parse, tasks, agents, quality });
 
-      // Deduplicated anomaly notifications — only on threshold crossing
+      // Deduplicated anomaly toasts — only on threshold crossing.
       if (cost) {
         const overBudget = cost.summary.today_cost_usd > 16;
         if (overBudget && !prevCostAlert.current) {
-          notification.warning({
-            message: "Daily Cost Alert",
+          toast.warning("Daily Cost Alert", {
             description: `Today's cost ($${cost.summary.today_cost_usd.toFixed(2)}) exceeds 80% of the $20 daily threshold.`,
-            duration: 8,
+            duration: 8000,
           });
         }
         prevCostAlert.current = overBudget;
@@ -83,10 +90,9 @@ export default function Dashboard() {
       if (parse) {
         const lowAccuracy = parse.summary.accuracy_pct < 85;
         if (lowAccuracy && !prevParseAlert.current) {
-          notification.warning({
-            message: "Parse Accuracy Alert",
+          toast.warning("Parse Accuracy Alert", {
             description: `Parse accuracy (${parse.summary.accuracy_pct.toFixed(1)}%) dropped below 85%.`,
-            duration: 8,
+            duration: 8000,
           });
         }
         prevParseAlert.current = lowAccuracy;
@@ -98,10 +104,9 @@ export default function Dashboard() {
           prevOverdue.current !== null &&
           currentOverdue > prevOverdue.current
         ) {
-          notification.warning({
-            message: "Overdue Tasks Increased",
+          toast.warning("Overdue Tasks Increased", {
             description: `Overdue tasks increased from ${prevOverdue.current} to ${currentOverdue}.`,
-            duration: 8,
+            duration: 8000,
           });
         }
         prevOverdue.current = currentOverdue;
@@ -110,10 +115,9 @@ export default function Dashboard() {
       if (quality) {
         const highRate = quality.summary.warning_rate_pct > 10;
         if (highRate && !prevQualityAlert.current) {
-          notification.warning({
-            message: "Quality Warning Rate High",
+          toast.warning("Quality Warning Rate High", {
             description: `${quality.summary.warning_rate_pct.toFixed(1)}% of scored invocations are below quality thresholds.`,
-            duration: 8,
+            duration: 8000,
           });
         }
         prevQualityAlert.current = highRate;
@@ -132,68 +136,67 @@ export default function Dashboard() {
     refreshHealth();
   }, [days, fetchAll, refreshHealth]);
 
+  // Signature motion: flip data-entered once on first mount inside a
+  // requestAnimationFrame so the browser sees the initial false state
+  // before the true state arrives, triggering the staggered animation.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   const handleRefresh = useCallback(async () => {
     refreshHealth();
     await fetchAll(days);
   }, [days, fetchAll, refreshHealth]);
 
-  return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 20,
-        }}
-      >
-        <Space>
-          <Segmented
-            options={RANGE_OPTIONS}
-            value={days}
-            onChange={(v) => setDays(v as number)}
-            aria-label="Date range"
-          />
-          {health && (
-            <Tooltip
-              title={Object.entries(health.checks)
-                .map(
-                  ([k, v]) =>
-                    `${k}: ${v.ok ? "OK" : v.detail ?? "down"}`,
-                )
-                .join(" | ")}
-            >
-              <span role="status" aria-label={`System status: ${health.status}`}>
-                <Badge
-                  status={health.status === "healthy" ? "success" : "warning"}
-                  text={health.status === "healthy" ? "Healthy" : "Degraded"}
-                  style={{ marginLeft: 8, fontSize: 12, color: SECONDARY_TEXT_COLOR }}
-                />
-              </span>
-            </Tooltip>
-          )}
-        </Space>
-        <RefreshButton onRefresh={handleRefresh} autoRefreshMs={30000} />
-      </div>
+  const healthVariant =
+    health?.status === "healthy" ? "success" : health ? "warning" : "muted";
+  const healthLabel =
+    health?.status === "healthy" ? "Healthy" : health ? "Degraded" : "—";
+  const healthTooltip = health
+    ? Object.entries(health.checks)
+        .map(([k, v]) => `${k}: ${v.ok ? "OK" : (v.detail ?? "down")}`)
+        .join(" · ")
+    : "System status unknown";
 
-      <Row gutter={[16, 16]}>
-        {/* Budget is the top constraint — give it full width for prominence */}
-        <Col xs={24}>
+  return (
+    <div
+      className={styles.page}
+      data-entered={entered ? "true" : "false"}
+      data-testid="dashboard-root"
+    >
+      <PageHeader
+        eyebrow="Overview"
+        title="Dashboard"
+        actions={
+          <div className={styles.controls}>
+            <Segmented
+              value={range}
+              onValueChange={(v) => setRange(v as RangeValue)}
+              options={RANGE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              aria-label="Date range"
+            />
+            {health && (
+              <Tooltip content={healthTooltip}>
+                <span role="status" aria-label={`System status: ${health.status}`}>
+                  <Pill variant={healthVariant}>{healthLabel}</Pill>
+                </span>
+              </Tooltip>
+            )}
+            <RefreshButton onRefresh={handleRefresh} autoRefreshMs={30000} />
+          </div>
+        }
+      />
+
+      <div className={styles.grid}>
+        <div className={styles.fullWidth}>
           <CostAnalyticsCard data={data.cost} loading={loading} />
-        </Col>
-        <Col xs={24} lg={12}>
-          <ParseAccuracyCard data={data.parse} loading={loading} />
-        </Col>
-        <Col xs={24} lg={12}>
-          <TaskThroughputCard data={data.tasks} loading={loading} />
-        </Col>
-        <Col xs={24} lg={12}>
-          <AgentPerformanceCard data={data.agents} loading={loading} />
-        </Col>
-        <Col xs={24} lg={12}>
-          <QualityWarningsCard data={data.quality} loading={loading} />
-        </Col>
-      </Row>
+        </div>
+        <ParseAccuracyCard data={data.parse} loading={loading} />
+        <TaskThroughputCard data={data.tasks} loading={loading} />
+        <AgentPerformanceCard data={data.agents} loading={loading} />
+        <QualityWarningsCard data={data.quality} loading={loading} />
+      </div>
     </div>
   );
 }
