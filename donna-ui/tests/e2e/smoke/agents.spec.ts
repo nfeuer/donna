@@ -40,17 +40,14 @@ test.describe("Agents smoke", () => {
   });
 
   test("empty state when no agents", async ({ page }) => {
-    // Override the agents mock to return empty
-    await page.route("**/admin/agents", (route) => {
-      if (route.request().url().match(/\/admin\/agents(\?|$)/)) {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ agents: [] }),
-        });
-      }
-      return route.continue();
-    });
+    // Override only the list endpoint (regex excludes /admin/agents/:name).
+    await page.route(/\/admin\/agents(\?|$)/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ agents: [] }),
+      }),
+    );
     await page.goto("/agents");
     await expect(page.locator("text=No agents configured")).toBeVisible();
   });

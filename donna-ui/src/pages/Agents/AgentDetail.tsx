@@ -6,8 +6,7 @@ import { Pill } from "../../primitives/Pill";
 import { Stat } from "../../primitives/Stat";
 import { Skeleton } from "../../primitives/Skeleton";
 import { DataTable } from "../../primitives/DataTable";
-import { LineChart } from "../../charts";
-import { BarChart } from "../../charts";
+import { LineChart, BarChart } from "../../charts";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   fetchAgentDetail,

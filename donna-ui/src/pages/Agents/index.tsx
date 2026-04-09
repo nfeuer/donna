@@ -22,7 +22,9 @@ export default function AgentsPage() {
   const { name } = useParams<{ name?: string }>();
 
   const [agents, setAgents] = useState<AgentSummary[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Initialize true so the first paint shows the skeleton grid, not a flash
+  // of EmptyState while the initial fetch is in-flight.
+  const [loading, setLoading] = useState(true);
   const [featuredLatency, setFeaturedLatency] = useState<DailyLatency[]>([]);
 
   const doFetch = useCallback(async () => {
@@ -65,8 +67,21 @@ export default function AgentsPage() {
 
   const formatTick = useMemo(() => (d: string) => d.slice(5), []);
 
+  // Featured agent first, then alphabetical. Memoized so the sort doesn't
+  // run on unrelated re-renders (e.g. featuredLatency state changes).
+  const sortedAgents = useMemo(() => {
+    return [...agents].sort((a, b) => {
+      if (featured && a.name === featured.name) return -1;
+      if (featured && b.name === featured.name) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [agents, featured]);
+
   // Detail view
   if (name) {
+    // Convert "task_planner" / "task-planner" → "Task Planner" so the
+    // display title reads naturally regardless of agent naming style.
+    const displayName = name.replace(/[-_]+/g, " ");
     return (
       <div className={styles.root}>
         <div className={styles.detailHeader}>
@@ -74,7 +89,7 @@ export default function AgentsPage() {
             <ArrowLeft size={16} />
             All Agents
           </Link>
-          <h1 className={styles.detailTitle}>{name} Agent</h1>
+          <h1 className={styles.detailTitle}>{displayName} Agent</h1>
         </div>
         <AgentDetailView agentName={name} />
       </div>
@@ -110,34 +125,27 @@ export default function AgentsPage() {
         />
       ) : (
         <div className={styles.grid}>
-          {/* Sort: featured agent first, then alphabetical. */}
-          {[...agents]
-            .sort((a, b) => {
-              if (featured && a.name === featured.name) return -1;
-              if (featured && b.name === featured.name) return 1;
-              return a.name.localeCompare(b.name);
-            })
-            .map((agent) => (
-              <AgentCard
-                key={agent.name}
-                agent={agent}
-                chart={
-                  featured &&
-                  agent.name === featured.name &&
-                  featuredLatency.length > 0 ? (
-                    <AreaChart
-                      data={featuredLatency}
-                      dataKey="avg_latency_ms"
-                      xKey="date"
-                      formatTick={formatTick}
-                      name="Latency"
-                      height={80}
-                      ariaLabel={`${agent.name} latency sparkline`}
-                    />
-                  ) : undefined
-                }
-              />
-            ))}
+          {sortedAgents.map((agent) => (
+            <AgentCard
+              key={agent.name}
+              agent={agent}
+              chart={
+                featured &&
+                agent.name === featured.name &&
+                featuredLatency.length > 0 ? (
+                  <AreaChart
+                    data={featuredLatency}
+                    dataKey="avg_latency_ms"
+                    xKey="date"
+                    formatTick={formatTick}
+                    name="Latency"
+                    height={80}
+                    ariaLabel={`${agent.name} latency sparkline`}
+                  />
+                ) : undefined
+              }
+            />
+          ))}
         </div>
       )}
     </div>
