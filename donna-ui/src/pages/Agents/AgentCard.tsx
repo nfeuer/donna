@@ -1,82 +1,61 @@
-import { Card, Tag, Badge, Space, Statistic, Row, Col } from "antd";
-import {
-  ClockCircleOutlined,
-  ThunderboltOutlined,
-  DollarOutlined,
-} from "@ant-design/icons";
+// donna-ui/src/pages/Agents/AgentCard.tsx
+import { Link } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Card } from "../../primitives/Card";
+import { Pill, type PillVariant } from "../../primitives/Pill";
+import { Stat } from "../../primitives/Stat";
+import { cn } from "../../lib/cn";
 import type { AgentSummary } from "../../api/agents";
+import styles from "./AgentCard.module.css";
 
-const AUTONOMY_COLORS: Record<string, string> = {
-  low: "orange",
-  medium: "blue",
-  high: "green",
+const AUTONOMY_VARIANT: Record<string, PillVariant> = {
+  low: "warning",
+  medium: "accent",
+  high: "success",
 };
 
 interface Props {
   agent: AgentSummary;
-  selected: boolean;
-  onClick: () => void;
+  /** Optional mini chart rendered between tools and stats (featured card). */
+  chart?: ReactNode;
 }
 
-export default function AgentCard({ agent, selected, onClick }: Props) {
+export default function AgentCard({ agent, chart }: Props) {
   return (
-    <Badge.Ribbon
-      text={agent.enabled ? "Active" : "Disabled"}
-      color={agent.enabled ? "green" : "red"}
+    <Link
+      to={`/agents/${agent.name}`}
+      aria-label={`${agent.name} agent, ${agent.enabled ? "active" : "disabled"}, ${agent.autonomy} autonomy`}
+      className={cn(styles.link, !agent.enabled && styles.disabled)}
     >
-      <Card
-        hoverable
-        size="small"
-        onClick={onClick}
-        style={{
-          border: selected ? "1px solid #1890ff" : undefined,
-          opacity: agent.enabled ? 1 : 0.7,
-        }}
-      >
-        <div style={{ marginBottom: 8 }}>
-          <span style={{ fontSize: 16, fontWeight: 600, textTransform: "capitalize" }}>
-            {agent.name}
-          </span>
-          <Tag color={AUTONOMY_COLORS[agent.autonomy]} style={{ marginLeft: 8 }}>
+      <Card className={styles.card}>
+        <div className={styles.header}>
+          <span
+            className={cn(
+              styles.statusDot,
+              agent.enabled ? styles.active : styles.inactive,
+            )}
+            aria-hidden="true"
+          />
+          <h3 className={styles.name}>{agent.name}</h3>
+          <Pill variant={AUTONOMY_VARIANT[agent.autonomy] ?? "muted"}>
             {agent.autonomy}
-          </Tag>
+          </Pill>
         </div>
 
-        <Space size={4} wrap style={{ marginBottom: 8 }}>
+        <div className={styles.tools}>
           {agent.allowed_tools.map((t) => (
-            <Tag key={t} style={{ fontSize: 11 }}>{t}</Tag>
+            <Pill key={t} variant="muted">{t}</Pill>
           ))}
-        </Space>
+        </div>
 
-        <Row gutter={8}>
-          <Col span={8}>
-            <Statistic
-              title="Calls"
-              value={agent.total_calls}
-              prefix={<ThunderboltOutlined />}
-              valueStyle={{ fontSize: 14 }}
-            />
-          </Col>
-          <Col span={8}>
-            <Statistic
-              title="Avg Latency"
-              value={agent.avg_latency_ms}
-              suffix="ms"
-              prefix={<ClockCircleOutlined />}
-              valueStyle={{ fontSize: 14 }}
-            />
-          </Col>
-          <Col span={8}>
-            <Statistic
-              title="Cost"
-              value={agent.total_cost_usd}
-              prefix={<DollarOutlined />}
-              precision={4}
-              valueStyle={{ fontSize: 14 }}
-            />
-          </Col>
-        </Row>
+        {chart && <div className={styles.chartSlot}>{chart}</div>}
+
+        <div className={styles.stats}>
+          <Stat eyebrow="Calls" value={agent.total_calls.toLocaleString()} />
+          <Stat eyebrow="Avg Latency" value={agent.avg_latency_ms} suffix="ms" />
+          <Stat eyebrow="Cost" value={`$${agent.total_cost_usd.toFixed(4)}`} />
+        </div>
       </Card>
-    </Badge.Ribbon>
+    </Link>
   );
 }

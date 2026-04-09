@@ -6,8 +6,49 @@ test.describe("Agents smoke", () => {
     await mockAdminApi(page);
   });
 
-  test("loads without crashing", async ({ page }) => {
+  test("renders grid with agent cards", async ({ page }) => {
     await page.goto("/agents");
-    await expect(page.locator("#root")).not.toBeEmpty();
+    // PageHeader renders
+    await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+    // At least one agent card is rendered as a link
+    const card = page.locator('a[href="/agents/test-agent"]');
+    await expect(card).toBeVisible();
+  });
+
+  test("agent card has visible focus ring", async ({ page }) => {
+    await page.goto("/agents");
+    const card = page.locator('a[href="/agents/test-agent"]');
+    await card.focus();
+    // Focus ring is rendered via :focus-visible — just verify the element gets focus
+    await expect(card).toBeFocused();
+  });
+
+  test("navigates to agent detail", async ({ page }) => {
+    await page.goto("/agents");
+    await page.click('a[href="/agents/test-agent"]');
+    await expect(page).toHaveURL(/\/agents\/test-agent/);
+    // Back link is present
+    await expect(page.locator("text=All Agents")).toBeVisible();
+    // Configuration section renders
+    await expect(page.locator("text=Configuration")).toBeVisible();
+  });
+
+  test("detail page shows cost summary stats", async ({ page }) => {
+    await page.goto("/agents/test-agent");
+    await expect(page.locator("text=Cost Summary")).toBeVisible();
+    await expect(page.locator("text=Total Invocations")).toBeVisible();
+  });
+
+  test("empty state when no agents", async ({ page }) => {
+    // Override only the list endpoint (regex excludes /admin/agents/:name).
+    await page.route(/\/admin\/agents(\?|$)/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ agents: [] }),
+      }),
+    );
+    await page.goto("/agents");
+    await expect(page.locator("text=No agents configured")).toBeVisible();
   });
 });
