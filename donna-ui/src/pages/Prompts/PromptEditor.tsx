@@ -59,6 +59,7 @@ export default function PromptEditor() {
   const filename = file ? decodeURIComponent(file) : "";
 
   const [files, setFiles] = useState<PromptFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(true);
   const [originalContent, setOriginalContent] = useState("");
   const [editedContent, setEditedContent] = useState("");
   const [contentLoading, setContentLoading] = useState(false);
@@ -69,10 +70,13 @@ export default function PromptEditor() {
   const hasChanges = editedContent !== originalContent;
 
   const loadFiles = useCallback(async () => {
+    setFilesLoading(true);
     try {
       setFiles(await fetchPrompts());
     } catch {
       setFiles([]);
+    } finally {
+      setFilesLoading(false);
     }
   }, []);
   useEffect(() => {
@@ -82,6 +86,7 @@ export default function PromptEditor() {
   useEffect(() => {
     if (!filename) return;
     let cancelled = false;
+    setShowDiff(false);
     setContentLoading(true);
     fetchPrompt(filename)
       .then((d) => {
@@ -144,23 +149,20 @@ export default function PromptEditor() {
       <PageHeader
         eyebrow="System"
         title="Prompts"
+        meta={
+          <Link to="/prompts" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <ArrowLeft size={14} /> All templates
+          </Link>
+        }
         actions={
-          <>
-            <Link
-              to="/prompts"
-              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-            >
-              <ArrowLeft size={14} /> All templates
-            </Link>
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={!hasChanges}
-              onClick={() => setShowDiff(true)}
-            >
-              <Save size={14} /> Save
-            </Button>
-          </>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={!hasChanges}
+            onClick={() => setShowDiff(true)}
+          >
+            <Save size={14} /> Save
+          </Button>
         }
       />
 
@@ -172,7 +174,7 @@ export default function PromptEditor() {
         </div>
       </div>
 
-      <PromptFileList files={files} loading={false} selected={filename} />
+      <PromptFileList files={files} loading={filesLoading} selected={filename} />
 
       <Tabs value={view} onValueChange={(v) => setView(v as typeof view)}>
         <TabsList>
