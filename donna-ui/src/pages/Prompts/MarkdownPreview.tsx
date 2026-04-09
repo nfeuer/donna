@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { Fragment, memo } from "react";
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -9,16 +9,32 @@ interface Props {
   content: string;
 }
 
-// Lock sanitization to defaultSchema. defaultSchema already disallows raw
-// <script>, <iframe>, and on* handler attributes — we explicitly re-declare
-// the choice here so a future diff that touches the schema is obvious.
-const SANITIZE_SCHEMA = defaultSchema;
+// Defense-in-depth: rehypeHighlight runs FIRST to decorate code blocks with
+// <span class="hljs-*"> tokens, then rehypeSanitize runs LAST as the final
+// security pass. The schema is a narrow extension of defaultSchema that only
+// permits hljs-*/language-* classNames on <code> and hljs-* classNames on
+// <span> — everything else defaultSchema rejects (raw <script>, <iframe>,
+// on* handler attributes, arbitrary classNames, etc.) still gets stripped.
+const SANITIZE_SCHEMA = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    code: [
+      ...(defaultSchema.attributes?.code ?? []),
+      ["className", /^language-./, /^hljs$/, /^hljs-./],
+    ],
+    span: [
+      ...(defaultSchema.attributes?.span ?? []),
+      ["className", /^hljs-./],
+    ],
+  },
+};
 
 function MarkdownPreviewImpl({ content }: Props) {
   return (
     <div className={styles.root}>
       <ReactMarkdown
-        rehypePlugins={[[rehypeSanitize, SANITIZE_SCHEMA], rehypeHighlight]}
+        rehypePlugins={[rehypeHighlight, [rehypeSanitize, SANITIZE_SCHEMA]]}
         components={{
           // Highlight template variables: render `{{ foo }}` as an inline pill.
           // Runs on text nodes only — the regex has no HTML capture, so it
@@ -38,7 +54,7 @@ function highlightVariables(children: ReactNode): ReactNode {
   if (Array.isArray(children)) {
     return children.map((c, i) =>
       typeof c === "string"
-        ? <span key={i}>{splitVars(c)}</span>
+        ? <Fragment key={i}>{splitVars(c)}</Fragment>
         : c,
     );
   }
