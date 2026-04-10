@@ -218,7 +218,7 @@ export default function ShadowPage() {
           {
             key: "charts",
             label: "Charts",
-            children: <ShadowCharts comparisons={comparisons} stats={stats} />,
+            children: <ShadowCharts comparisons={comparisons} stats={stats} loading={compLoading} />,
           },
         ]}
       />
