@@ -35,8 +35,8 @@ export default function ShadowPage() {
   const [spotChecks, setSpotChecks] = useState<SpotCheckItem[]>([]);
   const [spotTotal, setSpotTotal] = useState(0);
   const [spotLoading, setSpotLoading] = useState(false);
-  const [spotPage, setSpotPage] = useState(1);
-  const [spotPageSize, setSpotPageSize] = useState(50);
+  const [spotPage] = useState(1);
+  const spotPageSize = 50;
 
   const doFetch = useCallback(async () => {
     setCompLoading(true);
@@ -70,11 +70,6 @@ export default function ShadowPage() {
     doFetch();
   }, [doFetch]);
 
-  const handleSpotPageChange = (page: number, size: number) => {
-    setSpotPage(page);
-    setSpotPageSize(size);
-  };
-
   return (
     <div>
       {/* Controls */}
@@ -92,7 +87,7 @@ export default function ShadowPage() {
             value={taskType || undefined}
             placeholder="All task types"
             allowClear
-            onChange={(v) => { setTaskType(v ?? ""); setSpotPage(1); }}
+            onChange={(v) => { setTaskType(v ?? ""); }}
             style={{ width: 180 }}
             options={[
               { value: "parse_task", label: "parse_task" },
@@ -208,9 +203,6 @@ export default function ShadowPage() {
                   items={spotChecks}
                   total={spotTotal}
                   loading={spotLoading}
-                  page={spotPage}
-                  pageSize={spotPageSize}
-                  onPageChange={handleSpotPageChange}
                 />
               </Card>
             ),
