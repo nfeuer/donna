@@ -1,0 +1,43 @@
+.chartGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.section {
+  margin-bottom: var(--space-5);
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.sectionTitle {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: var(--text-section);
+  color: var(--color-text);
+}
+
+.sectionCount {
+  font-size: var(--text-small);
+  color: var(--color-text-muted);
+  margin-left: var(--space-2);
+  font-weight: 400;
+  font-family: var(--font-body);
+}
+
+.filters {
+  display: flex;
+  gap: var(--space-2);
+}
+
+@media (max-width: 768px) {
+  .chartGrid {
+    grid-template-columns: 1fr;
+  }
+}

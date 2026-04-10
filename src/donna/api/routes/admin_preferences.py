@@ -152,6 +152,7 @@ async def list_corrections(
     request: Request,
     field: str | None = Query(default=None),
     task_type: str | None = Query(default=None),
+    rule_id: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
@@ -167,6 +168,25 @@ async def list_corrections(
     if task_type:
         where_clauses.append("task_type = ?")
         params.append(task_type)
+
+    # Filter by rule's supporting_corrections list
+    # Use isinstance check so bare Query() default objects (in unit tests) are ignored
+    if isinstance(rule_id, str):
+        rule_cursor = await conn.execute(
+            "SELECT supporting_corrections FROM preference_rules WHERE id = ?",
+            [rule_id],
+        )
+        rule_row = await rule_cursor.fetchone()
+        if rule_row:
+            correction_ids: list[str] = json.loads(rule_row[0]) if rule_row[0] else []
+            if correction_ids:
+                placeholders = ",".join("?" for _ in correction_ids)
+                where_clauses.append(f"id IN ({placeholders})")
+                params.extend(correction_ids)
+            else:
+                return {"corrections": [], "total": 0, "limit": limit, "offset": offset}
+        else:
+            return {"corrections": [], "total": 0, "limit": limit, "offset": offset}
 
     # Safe: {where} is built from static column names; user values go through params
     where = " AND ".join(where_clauses) if where_clauses else "1=1"

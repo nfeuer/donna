@@ -1,6 +1,7 @@
-import { Table, Tag, Progress, Empty, Button } from "antd";
-import { DownloadOutlined } from "@ant-design/icons";
-import type { ColumnsType } from "antd/es/table";
+import { useMemo } from "react";
+import { Download } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { DataTable, Pill, Button } from "../../primitives";
 import type { SpotCheckItem } from "../../api/shadow";
 import { exportToCsv } from "../../utils/csvExport";
 
@@ -8,79 +9,13 @@ interface Props {
   items: SpotCheckItem[];
   total: number;
   loading: boolean;
-  page: number;
-  pageSize: number;
-  onPageChange: (page: number, pageSize: number) => void;
 }
 
-const columns: ColumnsType<SpotCheckItem> = [
-  {
-    title: "Timestamp",
-    dataIndex: "timestamp",
-    key: "timestamp",
-    width: 170,
-    render: (val: string) => val?.replace("T", " ").substring(0, 19),
-  },
-  {
-    title: "Task Type",
-    dataIndex: "task_type",
-    key: "task_type",
-    width: 140,
-    render: (val: string) => <Tag color="blue">{val}</Tag>,
-  },
-  {
-    title: "Model",
-    dataIndex: "model_alias",
-    key: "model",
-    width: 120,
-  },
-  {
-    title: "Quality Score",
-    dataIndex: "quality_score",
-    key: "quality_score",
-    width: 180,
-    render: (val: number | null) => {
-      if (val === null) return <Tag>Pending</Tag>;
-      const pct = Math.round(val * 100);
-      const status = val >= 0.7 ? "normal" : "exception";
-      return <Progress percent={pct} size="small" status={status} />;
-    },
-  },
-  {
-    title: "Shadow",
-    dataIndex: "is_shadow",
-    key: "is_shadow",
-    width: 80,
-    render: (val: boolean) => (
-      <Tag color={val ? "purple" : "default"}>{val ? "Yes" : "No"}</Tag>
-    ),
-  },
-  {
-    title: "Queued",
-    dataIndex: "spot_check_queued",
-    key: "queued",
-    width: 80,
-    render: (val: boolean) => (
-      <Tag color={val ? "orange" : "default"}>{val ? "Yes" : "No"}</Tag>
-    ),
-  },
-  {
-    title: "Latency",
-    dataIndex: "latency_ms",
-    key: "latency",
-    width: 90,
-    render: (val: number) => `${val}ms`,
-  },
-  {
-    title: "Cost",
-    dataIndex: "cost_usd",
-    key: "cost",
-    width: 90,
-    render: (val: number) => `$${val.toFixed(4)}`,
-  },
-];
+function formatTs(ts: string): string {
+  return ts.replace("T", " ").substring(0, 19);
+}
 
-export default function SpotCheckTable({ items, total, loading, page, pageSize, onPageChange }: Props) {
+export default function SpotCheckTable({ items, total: _total, loading }: Props) {
   const handleExport = () => {
     exportToCsv("spot-checks", [
       { key: "timestamp", title: "Timestamp" },
@@ -94,29 +29,78 @@ export default function SpotCheckTable({ items, total, loading, page, pageSize, 
     ], items as unknown as Record<string, unknown>[]);
   };
 
+  const columns = useMemo<ColumnDef<SpotCheckItem>[]>(
+    () => [
+      {
+        accessorKey: "timestamp",
+        header: "Timestamp",
+        size: 170,
+        cell: ({ getValue }) => formatTs(getValue<string>()),
+      },
+      {
+        accessorKey: "task_type",
+        header: "Task Type",
+        size: 140,
+        cell: ({ getValue }) => <Pill variant="accent">{getValue<string>()}</Pill>,
+      },
+      {
+        accessorKey: "model_alias",
+        header: "Model",
+        size: 120,
+      },
+      {
+        accessorKey: "quality_score",
+        header: "Quality",
+        size: 100,
+        cell: ({ getValue }) => {
+          const v = getValue<number | null>();
+          if (v == null) return <Pill variant="muted">Pending</Pill>;
+          const variant = v >= 0.7 ? "success" : "error";
+          return <Pill variant={variant}>{Math.round(v * 100)}%</Pill>;
+        },
+      },
+      {
+        accessorKey: "is_shadow",
+        header: "Shadow",
+        size: 80,
+        cell: ({ getValue }) => (
+          <Pill variant={getValue<boolean>() ? "accent" : "muted"}>
+            {getValue<boolean>() ? "Yes" : "No"}
+          </Pill>
+        ),
+      },
+      {
+        accessorKey: "latency_ms",
+        header: "Latency",
+        size: 90,
+        cell: ({ getValue }) => `${getValue<number>()}ms`,
+      },
+      {
+        accessorKey: "cost_usd",
+        header: "Cost",
+        size: 90,
+        cell: ({ getValue }) => `$${getValue<number>().toFixed(4)}`,
+      },
+    ],
+    [],
+  );
+
   return (
     <>
-    <div style={{ marginBottom: 8, textAlign: "right" }}>
-      <Button size="small" icon={<DownloadOutlined />} onClick={handleExport}>
-        Export CSV
-      </Button>
-    </div>
-    <Table<SpotCheckItem>
-      columns={columns}
-      dataSource={items}
-      rowKey="id"
-      loading={loading}
-      size="small"
-      pagination={{
-        current: page,
-        pageSize,
-        total,
-        showSizeChanger: true,
-        pageSizeOptions: ["25", "50", "100"],
-        onChange: onPageChange,
-      }}
-      locale={{ emptyText: <Empty description="No spot-check items flagged for review" /> }}
-    />
+      <div style={{ marginBottom: "var(--space-2)", textAlign: "right" }}>
+        <Button variant="ghost" size="sm" onClick={handleExport}>
+          <Download size={14} />
+          Export CSV
+        </Button>
+      </div>
+      <DataTable
+        data={items}
+        columns={columns}
+        getRowId={(row) => row.id}
+        loading={loading}
+        pageSize={50}
+        emptyState="No spot-check items flagged for review"
+      />
     </>
   );
 }

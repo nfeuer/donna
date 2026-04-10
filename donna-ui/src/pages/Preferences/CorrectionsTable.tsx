@@ -1,98 +1,29 @@
-import { Table, Tag, Empty, Typography, Button } from "antd";
-import { DownloadOutlined } from "@ant-design/icons";
-import type { ColumnsType } from "antd/es/table";
+import { useMemo } from "react";
+import { Download } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { DataTable, Pill, Button, type PillVariant } from "../../primitives";
 import type { CorrectionEntry } from "../../api/preferences";
 import { exportToCsv } from "../../utils/csvExport";
 
-const { Text } = Typography;
-
 interface Props {
   corrections: CorrectionEntry[];
-  total: number;
   loading: boolean;
-  page: number;
-  pageSize: number;
-  onPageChange: (page: number, pageSize: number) => void;
 }
 
-const FIELD_COLORS: Record<string, string> = {
-  priority: "orange",
-  domain: "green",
-  scheduled_start: "blue",
-  deadline: "red",
-  title: "purple",
-  status: "cyan",
+const FIELD_VARIANT: Record<string, PillVariant> = {
+  priority: "warning",
+  domain: "success",
+  scheduled_start: "accent",
+  deadline: "error",
+  title: "muted",
+  status: "accent",
 };
 
-const columns: ColumnsType<CorrectionEntry> = [
-  {
-    title: "Timestamp",
-    dataIndex: "timestamp",
-    key: "timestamp",
-    width: 170,
-    render: (val: string) => val?.replace("T", " ").substring(0, 19),
-  },
-  {
-    title: "Task Type",
-    dataIndex: "task_type",
-    key: "task_type",
-    width: 130,
-    render: (val: string) => <Tag color="blue">{val}</Tag>,
-  },
-  {
-    title: "Field",
-    dataIndex: "field_corrected",
-    key: "field",
-    width: 130,
-    render: (val: string) => (
-      <Tag color={FIELD_COLORS[val] ?? "default"}>{val}</Tag>
-    ),
-  },
-  {
-    title: "Original",
-    dataIndex: "original_value",
-    key: "original",
-    width: 150,
-    ellipsis: true,
-    render: (val: string) => (
-      <Text delete type="danger" style={{ fontSize: 12 }}>
-        {val}
-      </Text>
-    ),
-  },
-  {
-    title: "Corrected",
-    dataIndex: "corrected_value",
-    key: "corrected",
-    width: 150,
-    ellipsis: true,
-    render: (val: string) => (
-      <Text type="success" style={{ fontSize: 12 }}>
-        {val}
-      </Text>
-    ),
-  },
-  {
-    title: "Input",
-    dataIndex: "input_text",
-    key: "input",
-    ellipsis: true,
-    render: (val: string | null) => (
-      <span style={{ color: "#8c8c8c", fontSize: 12 }}>
-        {val ? (val.length > 80 ? val.substring(0, 80) + "..." : val) : "-"}
-      </span>
-    ),
-  },
-];
+function formatTs(ts: string): string {
+  return ts.replace("T", " ").substring(0, 19);
+}
 
-export default function CorrectionsTable({
-  corrections,
-  total,
-  loading,
-  page,
-  pageSize,
-  onPageChange,
-}: Props) {
+export default function CorrectionsTable({ corrections, loading }: Props) {
   const handleExport = () => {
     exportToCsv("corrections", [
       { key: "timestamp", title: "Timestamp" },
@@ -104,29 +35,81 @@ export default function CorrectionsTable({
     ], corrections as unknown as Record<string, unknown>[]);
   };
 
+  const columns = useMemo<ColumnDef<CorrectionEntry>[]>(
+    () => [
+      {
+        accessorKey: "timestamp",
+        header: "Timestamp",
+        size: 170,
+        cell: ({ getValue }) => formatTs(getValue<string>()),
+      },
+      {
+        accessorKey: "task_type",
+        header: "Task Type",
+        size: 130,
+        cell: ({ getValue }) => <Pill variant="accent">{getValue<string>()}</Pill>,
+      },
+      {
+        accessorKey: "field_corrected",
+        header: "Field",
+        size: 130,
+        cell: ({ getValue }) => {
+          const v = getValue<string>();
+          return <Pill variant={FIELD_VARIANT[v] ?? "muted"}>{v}</Pill>;
+        },
+      },
+      {
+        accessorKey: "original_value",
+        header: "Original",
+        size: 150,
+        cell: ({ getValue }) => (
+          <span style={{ textDecoration: "line-through", color: "var(--color-error)", fontSize: "var(--text-small)" }}>
+            {getValue<string>()}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "corrected_value",
+        header: "Corrected",
+        size: 150,
+        cell: ({ getValue }) => (
+          <span style={{ color: "var(--color-success)", fontSize: "var(--text-small)" }}>
+            {getValue<string>()}
+          </span>
+        ),
+      },
+      {
+        accessorKey: "input_text",
+        header: "Input",
+        cell: ({ getValue }) => {
+          const v = getValue<string | null>();
+          return (
+            <span style={{ color: "var(--color-text-muted)", fontSize: "var(--text-small)" }}>
+              {v ? (v.length > 80 ? v.substring(0, 80) + "..." : v) : "—"}
+            </span>
+          );
+        },
+      },
+    ],
+    [],
+  );
+
   return (
     <>
-    <div style={{ marginBottom: 8, textAlign: "right" }}>
-      <Button size="small" icon={<DownloadOutlined />} onClick={handleExport}>
-        Export CSV
-      </Button>
-    </div>
-    <Table<CorrectionEntry>
-      columns={columns}
-      dataSource={corrections}
-      rowKey="id"
-      loading={loading}
-      size="small"
-      pagination={{
-        current: page,
-        pageSize,
-        total,
-        showSizeChanger: true,
-        pageSizeOptions: ["25", "50", "100"],
-        onChange: onPageChange,
-      }}
-      locale={{ emptyText: <Empty description="No corrections logged yet" /> }}
-    />
+      <div style={{ marginBottom: "var(--space-2)", textAlign: "right" }}>
+        <Button variant="ghost" size="sm" onClick={handleExport}>
+          <Download size={14} />
+          Export CSV
+        </Button>
+      </div>
+      <DataTable
+        data={corrections}
+        columns={columns}
+        getRowId={(row) => row.id}
+        loading={loading}
+        pageSize={50}
+        emptyState="No corrections logged yet"
+      />
     </>
   );
 }
