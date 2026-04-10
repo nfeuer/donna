@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { ConfigProvider } from "antd";
 
 // Font faces — order matters: loaded before CSS vars use them
 import "@fontsource/fraunces/300.css";
@@ -17,14 +16,17 @@ import "./theme/reset.css";
 import "highlight.js/styles/github-dark.css";
 
 import App from "./App";
-import darkTheme from "./theme/darkTheme";
+
+if (import.meta.env.DEV) {
+  import("@axe-core/react").then((axe) => {
+    axe.default(React, ReactDOM, 1000);
+  });
+}
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ConfigProvider theme={darkTheme}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </ConfigProvider>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </React.StrictMode>,
 );
