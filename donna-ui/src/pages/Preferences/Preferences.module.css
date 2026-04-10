@@ -33,3 +33,34 @@
   display: flex;
   gap: var(--space-2);
 }
+
+.dlGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.dlLabel {
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+}
+
+.dlValue {
+  color: var(--color-text);
+}
+
+.dlPre {
+  margin: 0;
+  font-size: var(--text-small);
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+.drawerSubheading {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: var(--text-section);
+  color: var(--color-text);
+  margin-bottom: var(--space-3);
+}

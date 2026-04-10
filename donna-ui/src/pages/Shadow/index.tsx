@@ -115,7 +115,7 @@ export default function ShadowPage() {
         }
       />
 
-      <ShadowCharts comparisons={comparisons} stats={stats} loading={loading} />
+      <ShadowCharts stats={stats} loading={loading} />
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>

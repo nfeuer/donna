@@ -1,14 +1,13 @@
 import { ChartCard, LineChart, type ChartCardStat } from "../../charts";
-import type { ShadowComparison, ShadowStats } from "../../api/shadow";
+import type { ShadowStats } from "../../api/shadow";
 import styles from "./Shadow.module.css";
 
 interface Props {
-  comparisons: ShadowComparison[];
   stats: ShadowStats | null;
   loading: boolean;
 }
 
-export default function ShadowCharts({ comparisons: _comparisons, stats, loading }: Props) {
+export default function ShadowCharts({ stats, loading }: Props) {
   const trendData = stats?.trend ?? [];
 
   const qualityStats: ChartCardStat[] = [

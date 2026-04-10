@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Drawer, Pill, DataTable } from "../../primitives";
 import { fetchCorrections, type PreferenceRule, type CorrectionEntry } from "../../api/preferences";
+import styles from "./Preferences.module.css";
 
 interface Props {
   rule: PreferenceRule | null;
@@ -72,47 +73,41 @@ export default function RuleDetailDrawer({ rule, open, onOpenChange }: Props) {
       onOpenChange={onOpenChange}
       title="Rule Details"
     >
-      <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "var(--space-2) var(--space-4)", marginBottom: "var(--space-4)" }}>
-        <dt style={{ color: "var(--color-text-muted)", fontSize: "var(--text-small)" }}>Type</dt>
+      <dl className={styles.dlGrid}>
+        <dt className={styles.dlLabel}>Type</dt>
         <dd><Pill variant="accent">{rule.rule_type}</Pill></dd>
 
-        <dt style={{ color: "var(--color-text-muted)", fontSize: "var(--text-small)" }}>Enabled</dt>
+        <dt className={styles.dlLabel}>Enabled</dt>
         <dd><Pill variant={rule.enabled ? "success" : "error"}>{rule.enabled ? "Yes" : "No"}</Pill></dd>
 
-        <dt style={{ color: "var(--color-text-muted)", fontSize: "var(--text-small)" }}>Confidence</dt>
+        <dt className={styles.dlLabel}>Confidence</dt>
         <dd><Pill variant={rule.confidence >= 0.7 ? "success" : "error"}>{Math.round(rule.confidence * 100)}%</Pill></dd>
 
-        <dt style={{ color: "var(--color-text-muted)", fontSize: "var(--text-small)" }}>Rule</dt>
-        <dd style={{ color: "var(--color-text)" }}>{rule.rule_text}</dd>
+        <dt className={styles.dlLabel}>Rule</dt>
+        <dd className={styles.dlValue}>{rule.rule_text}</dd>
 
-        <dt style={{ color: "var(--color-text-muted)", fontSize: "var(--text-small)" }}>Condition</dt>
+        <dt className={styles.dlLabel}>Condition</dt>
         <dd>
-          <pre style={{ margin: 0, fontSize: "var(--text-small)", fontFamily: "var(--font-mono)", color: "var(--color-text)" }}>
+          <pre className={styles.dlPre}>
             {rule.condition ? JSON.stringify(rule.condition, null, 2) : "any"}
           </pre>
         </dd>
 
-        <dt style={{ color: "var(--color-text-muted)", fontSize: "var(--text-small)" }}>Action</dt>
+        <dt className={styles.dlLabel}>Action</dt>
         <dd>
-          <pre style={{ margin: 0, fontSize: "var(--text-small)", fontFamily: "var(--font-mono)", color: "var(--color-text)" }}>
+          <pre className={styles.dlPre}>
             {rule.action ? JSON.stringify(rule.action, null, 2) : "—"}
           </pre>
         </dd>
 
-        <dt style={{ color: "var(--color-text-muted)", fontSize: "var(--text-small)" }}>Created</dt>
-        <dd style={{ color: "var(--color-text)" }}>{rule.created_at?.substring(0, 10)}</dd>
+        <dt className={styles.dlLabel}>Created</dt>
+        <dd className={styles.dlValue}>{rule.created_at?.substring(0, 10)}</dd>
 
-        <dt style={{ color: "var(--color-text-muted)", fontSize: "var(--text-small)" }}>Disabled</dt>
-        <dd style={{ color: "var(--color-text)" }}>{rule.disabled_at?.substring(0, 10) ?? "—"}</dd>
+        <dt className={styles.dlLabel}>Disabled</dt>
+        <dd className={styles.dlValue}>{rule.disabled_at?.substring(0, 10) ?? "—"}</dd>
       </dl>
 
-      <h4 style={{
-        fontFamily: "var(--font-display)",
-        fontWeight: 300,
-        fontSize: "var(--text-section)",
-        color: "var(--color-text)",
-        marginBottom: "var(--space-3)",
-      }}>
+      <h4 className={styles.drawerSubheading}>
         Supporting Corrections ({rule.supporting_corrections.length})
       </h4>
 
