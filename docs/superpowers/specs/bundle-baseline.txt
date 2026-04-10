@@ -30,3 +30,27 @@ Wave 9 acceptance target
 ------------------------
 Wave 9 (Cleanup) must show ≥40% gzipped JS reduction vs this baseline.
 Target gzipped JS:  ≤ 362.10 kB  (603.50 × 0.60)
+
+Wave 9 measurement
+------------------
+Raw Vite build output (.js + .css only)
+---------------------------------------
+dist/assets/yamlValidator.worker-CckVaNTR.js                      105.76 kB
+dist/assets/index-DPjmMnIJ.css                                     73.67 kB │ gzip:  18.31 kB
+dist/assets/index-MsCn12gF.js                                   1,524.84 kB │ gzip: 453.91 kB
+
+Total gzipped JS:   453.91 kB
+Reduction vs baseline: 24.8%  (603.50 → 453.91)
+Target met: NO (target was ≤ 362.10 kB, missed by 91.81 kB)
+
+Analysis
+--------
+Removing antd + @ant-design/icons saved ~150 kB gzipped. The remaining
+~454 kB is dominated by:
+  - Monaco Editor (~220 kB gzip) — framework-agnostic, stays
+  - Recharts (~80 kB gzip) — rethemed only, stays
+  - Radix UI primitives + React Router + misc (~150 kB gzip)
+
+To reach the 40% target, code-splitting Monaco into a lazy-loaded chunk
+(only Configs + Prompts pages use it) would likely push below 362 kB.
+This is a follow-up optimisation, not a wave 9 blocker.
