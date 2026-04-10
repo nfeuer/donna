@@ -34,7 +34,7 @@ export default function PreferencesPage() {
   const [corrTotal, setCorrTotal] = useState(0);
   const [corrLoading, setCorrLoading] = useState(false);
   const [corrPage, setCorrPage] = useState(1);
-  const [corrPageSize, setCorrPageSize] = useState(50);
+  const corrPageSize = 50;
   const [stats, setStats] = useState<PreferenceStats | null>(null);
 
   // Drawer
@@ -90,11 +90,6 @@ export default function PreferencesPage() {
   const handleRuleClick = (rule: PreferenceRule) => {
     setSelectedRule(rule);
     setDrawerOpen(true);
-  };
-
-  const handleCorrPageChange = (page: number, size: number) => {
-    setCorrPage(page);
-    setCorrPageSize(size);
   };
 
   return (
@@ -254,11 +249,7 @@ export default function PreferencesPage() {
                 </div>
                 <CorrectionsTable
                   corrections={corrections}
-                  total={corrTotal}
                   loading={corrLoading}
-                  page={corrPage}
-                  pageSize={corrPageSize}
-                  onPageChange={handleCorrPageChange}
                 />
               </Card>
             ),
