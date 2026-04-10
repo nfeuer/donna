@@ -51,6 +51,7 @@ export interface CorrectionsResponse {
 export interface CorrectionFilters {
   field?: string;
   task_type?: string;
+  rule_id?: string;
   limit?: number;
   offset?: number;
 }
@@ -92,6 +93,7 @@ export async function fetchCorrections(
   const params: Record<string, string | number> = {};
   if (filters.field) params.field = filters.field;
   if (filters.task_type) params.task_type = filters.task_type;
+  if (filters.rule_id) params.rule_id = filters.rule_id;
   params.limit = filters.limit ?? 50;
   params.offset = filters.offset ?? 0;
   const { data } = await client.get("/admin/preferences/corrections", {
