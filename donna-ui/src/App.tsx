@@ -20,10 +20,8 @@ export default function App() {
   return (
     <RadixTooltip.Provider delayDuration={400} skipDelayDuration={100}>
       <Routes>
-        {/* Dev-only primitives gallery — outside AppShell so it renders standalone */}
-        {import.meta.env.DEV && (
-          <Route path="/dev/primitives" element={<DevPrimitivesPage />} />
-        )}
+        {/* Primitives gallery — available as internal reference */}
+        <Route path="/dev/primitives" element={<DevPrimitivesPage />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
           <Route path="/logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
