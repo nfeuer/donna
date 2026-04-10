@@ -1,5 +1,5 @@
 import axios from "axios";
-import { notification } from "antd";
+import { toast } from "sonner";
 
 const client = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "",
@@ -13,16 +13,10 @@ client.interceptors.response.use(
     const detail = error.response?.data?.detail || error.message;
 
     if (status && status >= 500) {
-      notification.error({
-        message: `Server Error (${status})`,
-        description: detail,
-        duration: 5,
-      });
+      toast.error(`Server Error (${status})`, { description: detail });
     } else if (!error.response) {
-      notification.warning({
-        message: "Network Error",
+      toast.warning("Network Error", {
         description: "Could not reach the Donna API. Is the backend running?",
-        duration: 5,
       });
     }
 

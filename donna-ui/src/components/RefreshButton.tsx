@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { Button, Space, Typography } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
-
-const { Text } = Typography;
+import { RefreshCw } from "lucide-react";
+import { Button } from "../primitives";
+import { cn } from "../lib/cn";
+import styles from "./RefreshButton.module.css";
 
 interface RefreshButtonProps {
   onRefresh: () => Promise<void>;
@@ -49,20 +49,12 @@ export default function RefreshButton({
   }, [lastUpdated]);
 
   return (
-    <Space>
-      {lastUpdated && (
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {ago}
-        </Text>
-      )}
-      <Button
-        icon={<ReloadOutlined spin={loading} />}
-        size="small"
-        onClick={doRefresh}
-        loading={loading}
-      >
+    <span className={styles.wrapper}>
+      {lastUpdated && <span className={styles.ago}>{ago}</span>}
+      <Button variant="ghost" size="sm" onClick={doRefresh} disabled={loading}>
+        <RefreshCw className={cn(styles.icon, loading && styles.spinning)} />
         Refresh
       </Button>
-    </Space>
+    </span>
   );
 }

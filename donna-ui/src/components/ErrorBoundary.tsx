@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Result, Button } from "antd";
+import { AlertTriangle } from "lucide-react";
+import { Button } from "../primitives";
+import styles from "./ErrorBoundary.module.css";
 
 interface Props {
   children: ReactNode;
@@ -28,16 +30,16 @@ export default class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <Result
-          status="error"
-          title="Something went wrong"
-          subTitle={this.state.error?.message}
-          extra={
-            <Button type="primary" onClick={this.handleRetry}>
-              Try Again
-            </Button>
-          }
-        />
+        <div className={styles.errorContainer}>
+          <AlertTriangle className={styles.icon} />
+          <h2 className={styles.title}>Something went wrong</h2>
+          {this.state.error?.message && (
+            <p className={styles.message}>{this.state.error.message}</p>
+          )}
+          <Button variant="ghost" onClick={this.handleRetry}>
+            Try Again
+          </Button>
+        </div>
       );
     }
     return this.props.children;

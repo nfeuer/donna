@@ -63,16 +63,11 @@ test.describe("Dashboard smoke", () => {
     await expect(root).toHaveAttribute("data-entered", "true", { timeout: 2000 });
   });
 
-  test("no AntD class names inside the card grid", async ({ page }) => {
+  test("no AntD class names on the entire page", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
 
-    // Scope check to the grid (card area), not the PageHeader —
-    // RefreshButton is still AntD and lives in PageHeader's actions
-    // slot. It migrates in Wave 9.
-    const antdCount = await page
-      .locator('[data-testid="dashboard-root"] > div:last-child [class*="ant-"]')
-      .count();
+    const antdCount = await page.locator('[class*="ant-"]').count();
     expect(antdCount).toBe(0);
   });
 
