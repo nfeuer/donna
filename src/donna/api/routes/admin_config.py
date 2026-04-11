@@ -20,6 +20,7 @@ _ALLOWED_CONFIGS = {
     "agents.yaml",
     "dashboard.yaml",
     "donna_models.yaml",
+    "llm_gateway.yaml",
     "task_types.yaml",
     "task_states.yaml",
     "preferences.yaml",
@@ -126,6 +127,16 @@ async def put_config(
         raise
 
     stat = path.stat()
+
+    # Hot-reload hook for gateway config
+    if filename == "llm_gateway.yaml":
+        from donna.llm.types import load_gateway_config
+        new_config = load_gateway_config(config_dir)
+        queue = getattr(request.app.state, "llm_queue", None)
+        if queue:
+            queue.reload_config(new_config)
+        request.app.state.llm_gateway_config = new_config
+
     return {
         "name": filename,
         "size_bytes": stat.st_size,
