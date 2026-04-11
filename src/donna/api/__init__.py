@@ -10,6 +10,7 @@ Start with:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import time
 from collections.abc import AsyncIterator
@@ -164,10 +165,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await queue_worker.stop()
     worker_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await worker_task
-    except asyncio.CancelledError:
-        pass
     await ollama.close()
     await db.close()
     logger.info("donna_api_stopped")

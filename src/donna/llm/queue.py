@@ -8,9 +8,9 @@ preempted. See docs/superpowers/specs/2026-04-11-llm-gateway-queue-design.md.
 from __future__ import annotations
 
 import asyncio
-import time
+import contextlib
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -134,9 +134,8 @@ class LLMQueueWorker:
                 await self._alerter.alert_queue_full(
                     caller or "unknown", self._config.max_external_depth
                 )
-            raise QueueFullError(
-                f"External queue full ({self._config.max_external_depth}/{self._config.max_external_depth})"
-            )
+            max_d = self._config.max_external_depth
+            raise QueueFullError(f"External queue full ({max_d}/{max_d})")
 
         loop = asyncio.get_running_loop()
         future: asyncio.Future[Any] = loop.create_future()
@@ -183,7 +182,7 @@ class LLMQueueWorker:
             return False
 
         self._current_task = item
-        wait_ms = int((datetime.now(timezone.utc) - item.enqueued_at).total_seconds() * 1000)
+        wait_ms = int((datetime.now(UTC) - item.enqueued_at).total_seconds() * 1000)
 
         logger.info(
             "llm_gateway.dequeued",
@@ -283,11 +282,10 @@ class LLMQueueWorker:
             self._current_aio_task.cancel()
 
             # Check starvation
-            if item.interrupt_count >= self._config.max_interrupt_count:
-                if self._alerter:
-                    await self._alerter.alert_starvation(
-                        item.caller or "unknown", item.interrupt_count
-                    )
+            if item.interrupt_count >= self._config.max_interrupt_count and self._alerter:
+                await self._alerter.alert_starvation(
+                    item.caller or "unknown", item.interrupt_count
+                )
 
             # Re-enqueue at front of external priority
             self._external_priority.appendleft(item)
@@ -319,10 +317,8 @@ class LLMQueueWorker:
             if not processed:
                 # Both queues empty — wait a bit
                 self._internal_arrived.clear()
-                try:
+                with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self._internal_arrived.wait(), timeout=0.1)
-                except asyncio.TimeoutError:
-                    pass
 
     async def stop(self) -> None:
         """Signal the worker to stop."""

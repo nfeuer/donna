@@ -10,9 +10,9 @@ budget thresholds.
 
 from __future__ import annotations
 
+import calendar as _calendar
 import dataclasses
 from datetime import date, datetime, timedelta
-import calendar as _calendar
 from typing import Any
 
 import aiosqlite

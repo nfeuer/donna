@@ -105,22 +105,21 @@ async def llm_completion(
 
     # Rate limit check
     rate_limiter = getattr(request.app.state, "rate_limiter", None)
-    if rate_limiter and body.caller:
-        if not rate_limiter.check(body.caller):
-            config = request.app.state.llm_gateway_config
-            alerter = getattr(request.app.state, "gateway_alerter", None)
-            if alerter:
-                rejections = rate_limiter.recent_rejections(body.caller)
-                if rejections >= config.rate_limit_alert_threshold:
-                    usage = rate_limiter.get_usage(body.caller)
-                    await alerter.alert_rate_limited(
-                        body.caller, usage["minute_count"], usage["minute_limit"]
-                    )
-            raise HTTPException(
-                429,
-                detail="Rate limit exceeded",
-                headers={"Retry-After": "60"},
-            )
+    if rate_limiter and body.caller and not rate_limiter.check(body.caller):
+        config = request.app.state.llm_gateway_config
+        alerter = getattr(request.app.state, "gateway_alerter", None)
+        if alerter:
+            rejections = rate_limiter.recent_rejections(body.caller)
+            if rejections >= config.rate_limit_alert_threshold:
+                usage = rate_limiter.get_usage(body.caller)
+                await alerter.alert_rate_limited(
+                    body.caller, usage["minute_count"], usage["minute_limit"]
+                )
+        raise HTTPException(
+            429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": "60"},
+        )
 
     model = _resolve_model(request, body.model)
 
@@ -142,8 +141,8 @@ async def llm_completion(
 
     try:
         result, meta = await future
-    except asyncio.CancelledError:
-        raise HTTPException(504, "Request was preempted and not completed")
+    except asyncio.CancelledError as exc:
+        raise HTTPException(504, "Request was preempted and not completed") from exc
     except Exception as exc:
         raise HTTPException(502, f"LLM error: {exc}") from exc
 
