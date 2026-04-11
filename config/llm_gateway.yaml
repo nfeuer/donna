@@ -1,0 +1,42 @@
+# LLM Gateway Configuration — editable via dashboard, hot-reloaded on save.
+
+scheduling:
+  active_hours: "06:00-22:00"
+  schedule_drain_minutes: 2
+
+queue:
+  max_external_depth: 20
+  max_interrupt_count: 3
+
+priority_map:
+  parse_task: critical
+  challenge_task: critical
+  generate_digest: normal
+  extract_preferences: normal
+  dedup_check: normal
+  prep_research: normal
+  task_decompose: normal
+  generate_nudge: background
+  generate_reminder: background
+  generate_weekly_digest: normal
+
+rate_limits:
+  default:
+    requests_per_minute: 10
+    requests_per_hour: 100
+  callers: {}
+
+budget:
+  daily_external_usd: 5.00
+  alert_pct: 80
+
+cloud:
+  max_per_request_usd: 0.50
+  daily_cloud_external_usd: 2.00
+
+alerts:
+  queue_depth_warning: 10
+  rate_limit_alert_threshold: 3
+  debounce_minutes: 10
+
+ollama_health_check: true
