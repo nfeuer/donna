@@ -8,10 +8,12 @@ budget-checked. See docs/superpowers/specs/2026-04-11-llm-gateway-queue-design.m
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from donna.llm.queue import QueueFullError
@@ -91,6 +93,55 @@ async def llm_queue_status(request: Request) -> dict[str, Any]:
     if queue is None:
         return {"error": "Queue worker not initialised"}
     return queue.get_status()
+
+
+@router.get("/queue/item/{sequence}")
+async def llm_queue_item(sequence: int, request: Request) -> dict[str, Any]:
+    """Return full details for a single queued or in-progress item."""
+    queue = getattr(request.app.state, "llm_queue", None)
+    if queue is None:
+        raise HTTPException(503, "Queue worker not initialised")
+    item = queue.get_item(sequence)
+    if item is None:
+        raise HTTPException(404, "Item not found in queue")
+    return item
+
+
+@router.get("/queue/stream")
+async def llm_queue_stream(request: Request) -> StreamingResponse:
+    """SSE stream of queue state changes."""
+    queue = getattr(request.app.state, "llm_queue", None)
+    if queue is None:
+        raise HTTPException(503, "Queue worker not initialised")
+
+    async def event_generator():
+        try:
+            # Send initial state immediately
+            status = queue.get_status()
+            yield f"data: {json.dumps(status)}\n\n"
+
+            while True:
+                try:
+                    async with asyncio.timeout(15):
+                        async with queue.state_changed:
+                            await queue.state_changed.wait()
+                    status = queue.get_status()
+                    yield f"data: {json.dumps(status)}\n\n"
+                except TimeoutError:
+                    # Heartbeat
+                    yield ": heartbeat\n\n"
+        except asyncio.CancelledError:
+            return
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/completions", dependencies=[Depends(_require_api_key)])

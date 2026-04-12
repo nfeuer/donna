@@ -13,8 +13,10 @@ from donna.api.routes.llm import (
     llm_completion,
     llm_health,
     llm_models,
+    llm_queue_item,
     llm_queue_status,
 )
+from fastapi import HTTPException
 from donna.llm.queue import LLMQueueWorker
 from donna.llm.rate_limiter import RateLimiter
 from donna.llm.types import GatewayConfig
@@ -104,3 +106,30 @@ class TestQueueStatus:
         request = _make_request(queue=queue)
         result = await llm_queue_status(request)
         assert result["mode"] == "active"
+
+
+class TestQueueItem:
+    async def test_returns_item_when_found(self) -> None:
+        queue = MagicMock()
+        queue.get_item.return_value = {
+            "sequence": 1,
+            "type": "external",
+            "caller": "test",
+            "model": "m",
+            "enqueued_at": "2026-04-11T00:00:00+00:00",
+            "prompt": "full prompt",
+            "max_tokens": 100,
+            "json_mode": True,
+        }
+        request = _make_request(queue=queue)
+        result = await llm_queue_item(1, request)
+        assert result["prompt"] == "full prompt"
+        assert result["sequence"] == 1
+
+    async def test_returns_404_when_not_found(self) -> None:
+        queue = MagicMock()
+        queue.get_item.return_value = None
+        request = _make_request(queue=queue)
+        with pytest.raises(HTTPException) as exc_info:
+            await llm_queue_item(999, request)
+        assert exc_info.value.status_code == 404
