@@ -330,11 +330,13 @@ class LLMQueueWorker:
         if self._current_task:
             ct = self._current_task
             current = {
+                "sequence": ct.sequence,
                 "type": "internal" if ct.is_internal else "external",
                 "caller": ct.caller,
                 "model": ct.model,
                 "started_at": ct.enqueued_at.isoformat(),
                 "task_type": ct.task_type,
+                "prompt_preview": ct.prompt[:100],
             }
 
         internal_pending = self._internal.qsize()
@@ -344,9 +346,11 @@ class LLMQueueWorker:
             "current_request": current,
             "internal_queue": {
                 "pending": internal_pending,
+                "next_items": self._peek_internal(2),
             },
             "external_queue": {
                 "pending": external_pending,
+                "next_items": self._peek_external(2),
             },
             "stats_24h": {
                 "internal_completed": self._stats["internal_completed"],
@@ -355,6 +359,43 @@ class LLMQueueWorker:
             },
             "rate_limits": self._rate_limiter.get_all_usage(),
             "mode": "active" if self._config.is_active_hours() else "slow",
+        }
+
+    def _peek_internal(self, n: int) -> list[dict[str, Any]]:
+        """Peek at next N items in the internal PriorityQueue without removing them."""
+        items: list[QueueItem] = []
+        while not self._internal.empty() and len(items) < n:
+            items.append(self._internal.get_nowait())
+        result = [self._item_preview(it) for it in items]
+        for it in items:
+            self._internal.put_nowait(it)
+        return result
+
+    def _peek_external(self, n: int) -> list[dict[str, Any]]:
+        """Peek at next N items from external priority deque + external queue."""
+        result: list[dict[str, Any]] = []
+        for it in list(self._external_priority)[:n]:
+            result.append(self._item_preview(it))
+        remaining = n - len(result)
+        if remaining <= 0:
+            return result
+        items: list[QueueItem] = []
+        while not self._external.empty() and len(items) < remaining:
+            items.append(self._external.get_nowait())
+        result.extend(self._item_preview(it) for it in items)
+        for it in items:
+            self._external.put_nowait(it)
+        return result
+
+    def _item_preview(self, item: QueueItem) -> dict[str, Any]:
+        """Build a preview dict for a queue item."""
+        return {
+            "sequence": item.sequence,
+            "caller": item.caller,
+            "model": item.model,
+            "task_type": item.task_type,
+            "enqueued_at": item.enqueued_at.isoformat(),
+            "prompt_preview": item.prompt[:100],
         }
 
     def reload_config(self, config: GatewayConfig) -> None:

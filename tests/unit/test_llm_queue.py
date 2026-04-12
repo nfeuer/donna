@@ -169,3 +169,63 @@ class TestExternalQueueLimit:
                 prompt="3", model="m", max_tokens=100,
                 json_mode=True, caller="test", allow_cloud=False,
             )
+
+
+class TestQueueStatusExtended:
+    async def test_status_includes_next_items(self) -> None:
+        """get_status() returns up to 2 next_items per queue with prompt_preview."""
+        config = _make_config()
+        worker = LLMQueueWorker(
+            config=config,
+            ollama=_make_ollama(),
+            inv_logger=AsyncMock(),
+            alerter=AsyncMock(spec=GatewayAlerter),
+            rate_limiter=RateLimiter(10, 100, {}),
+        )
+
+        await worker.enqueue_internal(
+            prompt="A" * 200, model="m", max_tokens=100,
+            json_mode=True, task_type="parse_task", priority=Priority.NORMAL,
+        )
+        await worker.enqueue_external(
+            prompt="B" * 200, model="m", max_tokens=100,
+            json_mode=True, caller="test-caller", allow_cloud=False,
+        )
+
+        status = worker.get_status()
+
+        # Internal next_items
+        assert len(status["internal_queue"]["next_items"]) == 1
+        item = status["internal_queue"]["next_items"][0]
+        assert item["task_type"] == "parse_task"
+        assert item["model"] == "m"
+        assert len(item["prompt_preview"]) <= 100
+        assert "sequence" in item
+        assert "enqueued_at" in item
+
+        # External next_items
+        assert len(status["external_queue"]["next_items"]) == 1
+        ext = status["external_queue"]["next_items"][0]
+        assert ext["caller"] == "test-caller"
+        assert len(ext["prompt_preview"]) <= 100
+
+    async def test_status_limits_next_items_to_two(self) -> None:
+        """next_items returns at most 2 items even when more are queued."""
+        config = _make_config()
+        worker = LLMQueueWorker(
+            config=config,
+            ollama=_make_ollama(),
+            inv_logger=AsyncMock(),
+            alerter=AsyncMock(spec=GatewayAlerter),
+            rate_limiter=RateLimiter(10, 100, {}),
+        )
+
+        for i in range(5):
+            await worker.enqueue_external(
+                prompt=f"prompt-{i}", model="m", max_tokens=100,
+                json_mode=True, caller=f"caller-{i}", allow_cloud=False,
+            )
+
+        status = worker.get_status()
+        assert len(status["external_queue"]["next_items"]) == 2
+        assert status["external_queue"]["pending"] == 5
