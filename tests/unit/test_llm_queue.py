@@ -229,3 +229,71 @@ class TestQueueStatusExtended:
         status = worker.get_status()
         assert len(status["external_queue"]["next_items"]) == 2
         assert status["external_queue"]["pending"] == 5
+
+
+class TestQueueGetItem:
+    async def test_get_item_returns_queued_item(self) -> None:
+        config = _make_config()
+        worker = LLMQueueWorker(
+            config=config,
+            ollama=_make_ollama(),
+            inv_logger=AsyncMock(),
+            alerter=AsyncMock(spec=GatewayAlerter),
+            rate_limiter=RateLimiter(10, 100, {}),
+        )
+
+        future = await worker.enqueue_external(
+            prompt="full prompt text here", model="m", max_tokens=100,
+            json_mode=True, caller="test", allow_cloud=False,
+        )
+
+        # The sequence number is 1 (first item)
+        item = worker.get_item(1)
+        assert item is not None
+        assert item["prompt"] == "full prompt text here"
+        assert item["caller"] == "test"
+        assert item["sequence"] == 1
+
+    async def test_get_item_returns_none_for_missing(self) -> None:
+        config = _make_config()
+        worker = LLMQueueWorker(
+            config=config,
+            ollama=_make_ollama(),
+            inv_logger=AsyncMock(),
+            alerter=AsyncMock(spec=GatewayAlerter),
+            rate_limiter=RateLimiter(10, 100, {}),
+        )
+
+        assert worker.get_item(999) is None
+
+
+class TestStateChangedCondition:
+    async def test_enqueue_notifies_condition(self) -> None:
+        config = _make_config()
+        worker = LLMQueueWorker(
+            config=config,
+            ollama=_make_ollama(),
+            inv_logger=AsyncMock(),
+            alerter=AsyncMock(spec=GatewayAlerter),
+            rate_limiter=RateLimiter(10, 100, {}),
+        )
+
+        notified = False
+
+        async def waiter():
+            nonlocal notified
+            async with worker.state_changed:
+                await worker.state_changed.wait()
+                notified = True
+
+        task = asyncio.create_task(waiter())
+        # Give the waiter time to start waiting
+        await asyncio.sleep(0.01)
+
+        await worker.enqueue_external(
+            prompt="p", model="m", max_tokens=100,
+            json_mode=True, caller="test", allow_cloud=False,
+        )
+
+        await asyncio.wait_for(task, timeout=1.0)
+        assert notified is True

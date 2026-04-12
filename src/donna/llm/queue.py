@@ -63,6 +63,9 @@ class LLMQueueWorker:
         # Notify event for when internal items arrive (for preemption)
         self._internal_arrived = asyncio.Event()
 
+        # Condition broadcast for SSE — notified on every state change
+        self.state_changed = asyncio.Condition()
+
         # Stats (in-memory, reset on restart)
         self._stats = {
             "internal_completed": 0,
@@ -107,6 +110,9 @@ class LLMQueueWorker:
 
         await self._internal.put(item)
         self._internal_arrived.set()
+
+        async with self.state_changed:
+            self.state_changed.notify_all()
 
         logger.info(
             "llm_gateway.enqueued",
@@ -162,6 +168,9 @@ class LLMQueueWorker:
                 total_external, self._config.queue_depth_warning
             )
 
+        async with self.state_changed:
+            self.state_changed.notify_all()
+
         logger.info(
             "llm_gateway.enqueued",
             event_type="llm_gateway.enqueued",
@@ -199,6 +208,8 @@ class LLMQueueWorker:
 
             if not item.future.cancelled():
                 item.future.set_result((result, meta))
+                async with self.state_changed:
+                    self.state_changed.notify_all()
 
             if item.is_internal:
                 self._stats["internal_completed"] += 1
@@ -222,6 +233,8 @@ class LLMQueueWorker:
         except Exception as exc:
             if not item.future.cancelled():
                 item.future.set_exception(exc)
+                async with self.state_changed:
+                    self.state_changed.notify_all()
 
             logger.error(
                 "llm_gateway.failed",
@@ -289,6 +302,8 @@ class LLMQueueWorker:
 
             # Re-enqueue at front of external priority
             self._external_priority.appendleft(item)
+            async with self.state_changed:
+                self.state_changed.notify_all()
 
             logger.info(
                 "llm_gateway.interrupted",
@@ -396,6 +411,58 @@ class LLMQueueWorker:
             "task_type": item.task_type,
             "enqueued_at": item.enqueued_at.isoformat(),
             "prompt_preview": item.prompt[:100],
+        }
+
+    def get_item(self, sequence: int) -> dict[str, Any] | None:
+        """Return full details for a queued or in-progress item by sequence number."""
+        # Check current task
+        if self._current_task and self._current_task.sequence == sequence:
+            return self._item_full(self._current_task)
+
+        # Check internal queue (drain + refill)
+        found = None
+        items: list[QueueItem] = []
+        while not self._internal.empty():
+            it = self._internal.get_nowait()
+            items.append(it)
+            if it.sequence == sequence:
+                found = it
+        for it in items:
+            self._internal.put_nowait(it)
+        if found:
+            return self._item_full(found)
+
+        # Check external priority deque
+        for it in self._external_priority:
+            if it.sequence == sequence:
+                return self._item_full(it)
+
+        # Check external queue (drain + refill)
+        items = []
+        while not self._external.empty():
+            it = self._external.get_nowait()
+            items.append(it)
+            if it.sequence == sequence:
+                found = it
+        for it in items:
+            self._external.put_nowait(it)
+        if found:
+            return self._item_full(found)
+
+        return None
+
+    def _item_full(self, item: QueueItem) -> dict[str, Any]:
+        """Build a full detail dict for a queue item."""
+        return {
+            "sequence": item.sequence,
+            "type": "internal" if item.is_internal else "external",
+            "caller": item.caller,
+            "model": item.model,
+            "task_type": item.task_type,
+            "enqueued_at": item.enqueued_at.isoformat(),
+            "prompt": item.prompt,
+            "max_tokens": item.max_tokens,
+            "json_mode": item.json_mode,
         }
 
     def reload_config(self, config: GatewayConfig) -> None:
