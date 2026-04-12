@@ -37,6 +37,10 @@ class InvocationMetadata:
     is_shadow: bool = False
     eval_session_id: str | None = None
     spot_check_queued: bool = False
+    queue_wait_ms: int | None = None
+    interrupted: bool = False
+    chain_id: str | None = None
+    caller: str | None = None
 
 
 class InvocationLogger:
@@ -55,8 +59,9 @@ class InvocationLogger:
             (id, timestamp, task_type, task_id, model_alias, model_actual,
              input_hash, latency_ms, tokens_in, tokens_out, cost_usd,
              output, quality_score, is_shadow, eval_session_id,
-             spot_check_queued, user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             spot_check_queued, user_id,
+             queue_wait_ms, interrupted, chain_id, caller)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 invocation_id,
                 now,
@@ -75,6 +80,10 @@ class InvocationLogger:
                 metadata.eval_session_id,
                 metadata.spot_check_queued,
                 metadata.user_id,
+                metadata.queue_wait_ms,
+                metadata.interrupted,
+                metadata.chain_id,
+                metadata.caller,
             ),
         )
         await self._conn.commit()

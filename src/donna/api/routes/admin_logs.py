@@ -57,6 +57,16 @@ EVENT_TYPE_TREE: dict[str, list[str]] = {
     "sync": [
         "supabase.push", "supabase.failed", "keepalive.sent",
     ],
+    "admin": [
+        "request", "config.saved", "config.read", "prompt.saved",
+    ],
+    "llm_gateway": [
+        "enqueued", "dequeued", "interrupted", "completed",
+        "rejected", "drain_started", "config_reloaded", "alert",
+    ],
+    "ui": [
+        "request",
+    ],
 }
 
 

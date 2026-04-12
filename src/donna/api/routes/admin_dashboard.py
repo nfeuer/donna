@@ -13,7 +13,7 @@ All endpoints are unauthenticated — admin-only, local dev tool.
 from __future__ import annotations
 
 import calendar
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +25,7 @@ router = APIRouter()
 
 def _days_ago(days: int) -> str:
     """Return ISO timestamp for N days ago at midnight UTC."""
-    dt = datetime.now(timezone.utc).replace(
+    dt = datetime.now(UTC).replace(
         hour=0, minute=0, second=0, microsecond=0
     ) - timedelta(days=days)
     return dt.isoformat()
@@ -242,7 +242,7 @@ async def get_task_throughput(
     """
     conn = request.app.state.db.connection
     since = _days_ago(days)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # Created per day
     cursor = await conn.execute(
@@ -357,12 +357,13 @@ async def get_cost_analytics(
     """
     conn = request.app.state.db.connection
     since = _days_ago(days)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 
-    daily_budget = 20.0
-    monthly_budget = 100.0
+    config = _load_dashboard_config(request.app.state.config_dir)
+    daily_budget = config["daily_budget_usd"]
+    monthly_budget = config["monthly_budget_usd"]
 
     # Daily cost time series
     cursor = await conn.execute(
@@ -455,18 +456,129 @@ async def get_cost_analytics(
     }
 
 
+@router.get("/dashboard/llm-gateway")
+async def get_llm_gateway_analytics(
+    request: Request,
+    days: int = Query(default=30, ge=1, le=365),
+) -> dict[str, Any]:
+    """LLM gateway metrics from invocation_log.
+
+    Aggregates internal vs external calls, interruptions, and
+    per-caller breakdowns using the caller and interrupted columns
+    added by the gateway queue migration.
+    """
+    conn = request.app.state.db.connection
+    since = _days_ago(days)
+
+    # Daily time-series: internal/external/interrupted counts
+    cursor = await conn.execute(
+        """SELECT DATE(timestamp) as day,
+               COUNT(CASE WHEN caller IS NULL
+                   AND task_type != 'external_llm_call' THEN 1 END) as internal,
+               COUNT(CASE WHEN caller IS NOT NULL
+                   OR task_type = 'external_llm_call' THEN 1 END) as external,
+               COUNT(CASE WHEN interrupted = 1 THEN 1 END) as interrupted,
+               ROUND(AVG(latency_ms), 0) as avg_latency_ms
+           FROM invocation_log
+           WHERE timestamp >= ?
+           GROUP BY DATE(timestamp)
+           ORDER BY day""",
+        (since,),
+    )
+    daily_rows = await cursor.fetchall()
+
+    time_series = [
+        {
+            "date": row[0],
+            "internal": row[1],
+            "external": row[2],
+            "interrupted": row[3],
+            "avg_latency_ms": int(row[4] or 0),
+        }
+        for row in daily_rows
+    ]
+
+    total_internal = sum(r[1] for r in daily_rows)
+    total_external = sum(r[2] for r in daily_rows)
+    total_interrupted = sum(r[3] for r in daily_rows)
+    total_calls = total_internal + total_external
+    avg_latency = (
+        sum(r[4] * (r[1] + r[2]) for r in daily_rows if r[4]) / total_calls
+        if total_calls > 0
+        else 0
+    )
+
+    # Per-caller breakdown
+    cursor = await conn.execute(
+        """SELECT
+               COALESCE(caller, '_internal') as caller_name,
+               COUNT(*) as call_count,
+               ROUND(AVG(latency_ms), 0) as avg_latency_ms,
+               SUM(tokens_in) as total_tokens_in,
+               SUM(tokens_out) as total_tokens_out,
+               COUNT(CASE WHEN interrupted = 1 THEN 1 END) as interrupted_count,
+               0 as rejected_count
+           FROM invocation_log
+           WHERE timestamp >= ?
+               AND (caller IS NOT NULL OR task_type = 'external_llm_call')
+           GROUP BY caller_name
+           ORDER BY call_count DESC""",
+        (since,),
+    )
+    caller_rows = await cursor.fetchall()
+
+    by_caller = [
+        {
+            "caller": row[0],
+            "call_count": row[1],
+            "avg_latency_ms": int(row[2] or 0),
+            "total_tokens_in": row[3] or 0,
+            "total_tokens_out": row[4] or 0,
+            "interrupted_count": row[5],
+            "rejected_count": row[6],
+        }
+        for row in caller_rows
+    ]
+
+    unique_callers = len([c for c in by_caller if c["caller"] != "_internal"])
+
+    return {
+        "summary": {
+            "total_calls": total_calls,
+            "internal_calls": total_internal,
+            "external_calls": total_external,
+            "total_interrupted": total_interrupted,
+            "avg_latency_ms": int(avg_latency),
+            "unique_callers": unique_callers,
+        },
+        "time_series": time_series,
+        "by_caller": by_caller,
+        "days": days,
+    }
+
+
 def _load_dashboard_config(config_dir: str) -> dict[str, Any]:
-    """Load quality_score thresholds from config/dashboard.yaml."""
+    """Load quality_score thresholds and budget from config/dashboard.yaml."""
     path = Path(config_dir) / "dashboard.yaml"
-    defaults = {"critical_threshold": 0.3, "warning_threshold": 0.65}
+    defaults = {
+        "critical_threshold": 0.3,
+        "warning_threshold": 0.65,
+        "daily_budget_usd": 20.0,
+        "monthly_budget_usd": 100.0,
+        "budget_alert_pct": 80,
+    }
     if not path.exists():
         return defaults
     with open(path) as f:
         cfg = yaml.safe_load(f) or {}
     qs = cfg.get("quality_score", {})
+    budget = cfg.get("budget", {})
     return {
         "critical_threshold": float(qs.get("critical_threshold", defaults["critical_threshold"])),
         "warning_threshold": float(qs.get("warning_threshold", defaults["warning_threshold"])),
+        "daily_budget_usd": float(budget.get("daily_usd", defaults["daily_budget_usd"])),
+        "monthly_budget_usd": float(budget.get("monthly_usd", defaults["monthly_budget_usd"])),
+        "budget_alert_pct": int(budget.get("alert_pct", defaults["budget_alert_pct"])),
     }
 
 

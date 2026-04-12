@@ -10,9 +10,10 @@ budget thresholds.
 
 from __future__ import annotations
 
+import calendar as _calendar
 import dataclasses
 from datetime import date, datetime, timedelta
-import calendar as _calendar
+from typing import Any
 
 import aiosqlite
 import structlog
@@ -39,18 +40,23 @@ class CostTracker:
     def __init__(self, conn: aiosqlite.Connection) -> None:
         self._conn = conn
 
-    async def get_daily_cost(self, for_date: date | None = None) -> CostSummary:
+    async def get_daily_cost(
+        self,
+        for_date: date | None = None,
+        exclude_task_types: list[str] | None = None,
+    ) -> CostSummary:
         """Total cost and per-task-type breakdown for a single day.
 
         Args:
             for_date: The date to query. Defaults to today (UTC).
+            exclude_task_types: Task types to exclude from the cost sum.
         """
         target = for_date or date.today()
         day_start = datetime(target.year, target.month, target.day, 0, 0, 0).isoformat()
         day_end = datetime(target.year, target.month, target.day, 23, 59, 59, 999999).isoformat()
 
-        total, count = await self._sum_range(day_start, day_end)
-        breakdown = await self._breakdown_by_task_type(day_start, day_end)
+        total, count = await self._sum_range(day_start, day_end, exclude_task_types)
+        breakdown = await self._breakdown_by_task_type(day_start, day_end, exclude_task_types)
 
         logger.debug("cost_tracker_daily", date=str(target), total_usd=total, call_count=count)
         return CostSummary(total_usd=total, call_count=count, breakdown=breakdown)
@@ -140,13 +146,22 @@ class CostTracker:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _sum_range(self, start: str, end: str) -> tuple[float, int]:
+    async def _sum_range(
+        self,
+        start: str,
+        end: str,
+        exclude_task_types: list[str] | None = None,
+    ) -> tuple[float, int]:
         """Return (total_cost, call_count) for a timestamp range."""
+        where = "timestamp >= ? AND timestamp <= ?"
+        params: list[Any] = [start, end]
+        if exclude_task_types:
+            placeholders = ", ".join("?" for _ in exclude_task_types)
+            where += f" AND task_type NOT IN ({placeholders})"
+            params.extend(exclude_task_types)
         cursor = await self._conn.execute(
-            """SELECT COALESCE(SUM(cost_usd), 0.0), COUNT(*)
-               FROM invocation_log
-               WHERE timestamp >= ? AND timestamp <= ?""",
-            (start, end),
+            f"SELECT COALESCE(SUM(cost_usd), 0.0), COUNT(*) FROM invocation_log WHERE {where}",
+            params,
         )
         row = await cursor.fetchone()
         if row is None:
@@ -154,15 +169,21 @@ class CostTracker:
         return float(row[0]), int(row[1])
 
     async def _breakdown_by_task_type(
-        self, start: str, end: str
+        self,
+        start: str,
+        end: str,
+        exclude_task_types: list[str] | None = None,
     ) -> dict[str, float]:
         """Cost grouped by task_type for a timestamp range."""
+        where = "timestamp >= ? AND timestamp <= ?"
+        params: list[Any] = [start, end]
+        if exclude_task_types:
+            placeholders = ", ".join("?" for _ in exclude_task_types)
+            where += f" AND task_type NOT IN ({placeholders})"
+            params.extend(exclude_task_types)
         cursor = await self._conn.execute(
-            """SELECT task_type, SUM(cost_usd)
-               FROM invocation_log
-               WHERE timestamp >= ? AND timestamp <= ?
-               GROUP BY task_type""",
-            (start, end),
+            f"SELECT task_type, SUM(cost_usd) FROM invocation_log WHERE {where} GROUP BY task_type",
+            params,
         )
         rows = await cursor.fetchall()
         return {row[0]: float(row[1]) for row in rows}

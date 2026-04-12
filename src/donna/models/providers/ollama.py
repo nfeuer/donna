@@ -44,34 +44,38 @@ class OllamaProvider:
         return self._session
 
     async def complete(
-        self, prompt: str, model: str, max_tokens: int = 1024
+        self, prompt: str, model: str, max_tokens: int = 1024, json_mode: bool = True
     ) -> tuple[dict[str, Any], CompletionMetadata]:
-        """Send a prompt and return parsed JSON output with metadata.
+        """Send a prompt and return parsed output with metadata.
 
         Args:
             prompt: The fully-rendered prompt text.
             model: Ollama model tag (e.g. "qwen2.5:32b-instruct-q6_K").
             max_tokens: Maximum output tokens.
+            json_mode: When True (default), requests JSON format from Ollama
+                and parses the response as JSON. When False, returns plain text
+                wrapped in {"text": <response>}.
 
         Returns:
-            Tuple of (parsed JSON dict, CompletionMetadata).
+            Tuple of (parsed dict, CompletionMetadata).
 
         Raises:
-            json.JSONDecodeError: If the response is not valid JSON.
+            json.JSONDecodeError: If json_mode=True and the response is not valid JSON.
             aiohttp.ClientError: On connection or HTTP-level failures.
         """
         session = self._get_session()
         start = time.monotonic()
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
-            "format": "json",
             "options": {
                 "num_predict": max_tokens,
             },
         }
+        if json_mode:
+            payload["format"] = "json"
 
         async with session.post(
             f"{self._base_url}/api/chat", json=payload
@@ -82,7 +86,10 @@ class OllamaProvider:
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
         raw_text = data["message"]["content"]
-        parsed = parse_json_response(raw_text)
+        if json_mode:
+            parsed = parse_json_response(raw_text)
+        else:
+            parsed = {"text": raw_text}
 
         # Token counts — Ollama provides these at top level.
         # Graceful fallback if fields are missing (older Ollama versions).

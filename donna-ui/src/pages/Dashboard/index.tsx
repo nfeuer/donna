@@ -6,6 +6,7 @@ import ParseAccuracyCard from "./ParseAccuracyCard";
 import AgentPerformanceCard from "./AgentPerformanceCard";
 import TaskThroughputCard from "./TaskThroughputCard";
 import QualityWarningsCard from "./QualityWarningsCard";
+import LLMQueueCard from "./LLMQueueCard";
 import { PageHeader } from "../../primitives/PageHeader";
 import { Segmented } from "../../primitives/Segmented";
 import { Pill } from "../../primitives/Pill";
@@ -22,6 +23,10 @@ import {
   type AgentPerformanceData,
   type QualityWarningsData,
 } from "../../api/dashboard";
+import {
+  fetchLLMQueueStatus,
+  type LLMQueueStatusData,
+} from "../../api/llmGateway";
 import { fetchAdminHealth, type AdminHealthData } from "../../api/health";
 import styles from "./Dashboard.module.css";
 
@@ -40,6 +45,7 @@ export interface DashboardData {
   tasks: TaskThroughputData | null;
   agents: AgentPerformanceData | null;
   quality: QualityWarningsData | null;
+  llmQueue: LLMQueueStatusData | null;
 }
 
 export default function Dashboard() {
@@ -52,6 +58,7 @@ export default function Dashboard() {
     tasks: null,
     agents: null,
     quality: null,
+    llmQueue: null,
   });
   const [loading, setLoading] = useState(true);
   const [entered, setEntered] = useState(false);
@@ -65,15 +72,16 @@ export default function Dashboard() {
   const fetchAll = useCallback(async (d: number) => {
     setLoading(true);
     try {
-      const [cost, parse, tasks, agents, quality] = await Promise.all([
+      const [cost, parse, tasks, agents, quality, llmQueue] = await Promise.all([
         fetchCostAnalytics(d).catch(() => null),
         fetchParseAccuracy(d).catch(() => null),
         fetchTaskThroughput(d).catch(() => null),
         fetchAgentPerformance(d).catch(() => null),
         fetchQualityWarnings(d).catch(() => null),
+        fetchLLMQueueStatus().catch(() => null),
       ]);
 
-      setData({ cost, parse, tasks, agents, quality });
+      setData({ cost, parse, tasks, agents, quality, llmQueue });
 
       // Deduplicated anomaly toasts — only on threshold crossing.
       if (cost?.summary) {
@@ -191,6 +199,9 @@ export default function Dashboard() {
       <div className={styles.grid}>
         <div className={styles.fullWidth}>
           <CostAnalyticsCard data={data.cost} loading={loading} />
+        </div>
+        <div className={styles.fullWidth}>
+          <LLMQueueCard data={data.llmQueue} loading={loading} />
         </div>
         <ParseAccuracyCard data={data.parse} loading={loading} />
         <TaskThroughputCard data={data.tasks} loading={loading} />
