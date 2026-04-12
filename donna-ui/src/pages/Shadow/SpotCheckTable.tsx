@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { Download } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { DataTable, Pill, Button } from "../../primitives";
+import { DataTable } from "../../primitives/DataTable";
+import { Pill } from "../../primitives/Pill";
+import { Button } from "../../primitives/Button";
 import type { SpotCheckItem } from "../../api/shadow";
 import { exportToCsv } from "../../utils/csvExport";
 

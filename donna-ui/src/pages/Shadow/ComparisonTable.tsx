@@ -1,7 +1,8 @@
 // donna-ui/src/pages/Shadow/ComparisonTable.tsx
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { DataTable, Pill, type PillVariant } from "../../primitives";
+import { DataTable } from "../../primitives/DataTable";
+import { Pill, type PillVariant } from "../../primitives/Pill";
 import type { ShadowComparison } from "../../api/shadow";
 
 interface Props {

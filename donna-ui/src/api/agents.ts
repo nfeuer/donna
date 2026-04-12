@@ -51,11 +51,11 @@ export interface AgentDetail extends AgentSummary {
 }
 
 export async function fetchAgents(): Promise<AgentSummary[]> {
-  const resp = await client.get("/admin/agents");
-  return resp.data.agents;
+  const { data } = await client.get("/admin/agents");
+  return data.agents;
 }
 
 export async function fetchAgentDetail(name: string): Promise<AgentDetail> {
-  const resp = await client.get(`/admin/agents/${name}`);
-  return resp.data;
+  const { data } = await client.get(`/admin/agents/${name}`);
+  return data;
 }

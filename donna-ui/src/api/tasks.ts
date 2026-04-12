@@ -109,11 +109,11 @@ export async function fetchTasks(filters: TaskFilters = {}): Promise<TasksRespon
   params.limit = filters.limit ?? 50;
   params.offset = filters.offset ?? 0;
 
-  const resp = await client.get("/admin/tasks", { params });
-  return resp.data;
+  const { data } = await client.get("/admin/tasks", { params });
+  return data;
 }
 
 export async function fetchTask(id: string): Promise<TaskDetail> {
-  const resp = await client.get(`/admin/tasks/${id}`);
-  return resp.data;
+  const { data } = await client.get(`/admin/tasks/${id}`);
+  return data;
 }

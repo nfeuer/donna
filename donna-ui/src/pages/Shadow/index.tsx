@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
-import { PageHeader, Select, SelectItem } from "../../primitives";
+import { PageHeader } from "../../primitives/PageHeader";
+import { Select, SelectItem } from "../../primitives/Select";
 import RefreshButton from "../../components/RefreshButton";
 import ShadowCharts from "./ShadowCharts";
 import ComparisonTable from "./ComparisonTable";

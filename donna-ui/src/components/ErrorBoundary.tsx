@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
-import { Button } from "../primitives";
+import { Button } from "../primitives/Button";
 import styles from "./ErrorBoundary.module.css";
 
 interface Props {

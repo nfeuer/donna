@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
-import { PageHeader, Select, SelectItem, EmptyState } from "../../primitives";
+import { PageHeader } from "../../primitives/PageHeader";
+import { Select, SelectItem } from "../../primitives/Select";
+import { EmptyState } from "../../primitives/EmptyState";
 import RefreshButton from "../../components/RefreshButton";
 import RulesTable from "./RulesTable";
 import CorrectionsTable from "./CorrectionsTable";

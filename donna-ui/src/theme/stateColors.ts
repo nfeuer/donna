@@ -1,5 +1,5 @@
 // donna-ui/src/theme/stateColors.ts
-import type { PillVariant } from "../primitives";
+import type { PillVariant } from "../primitives/Pill";
 
 /**
  * Maps a task/workflow state to a Pill variant (for inline badges)
