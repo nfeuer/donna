@@ -13,7 +13,7 @@ All endpoints are unauthenticated — admin-only, local dev tool.
 from __future__ import annotations
 
 import calendar
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +25,7 @@ router = APIRouter()
 
 def _days_ago(days: int) -> str:
     """Return ISO timestamp for N days ago at midnight UTC."""
-    dt = datetime.now(timezone.utc).replace(
+    dt = datetime.now(UTC).replace(
         hour=0, minute=0, second=0, microsecond=0
     ) - timedelta(days=days)
     return dt.isoformat()
@@ -242,7 +242,7 @@ async def get_task_throughput(
     """
     conn = request.app.state.db.connection
     since = _days_ago(days)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # Created per day
     cursor = await conn.execute(
@@ -357,7 +357,7 @@ async def get_cost_analytics(
     """
     conn = request.app.state.db.connection
     since = _days_ago(days)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 
@@ -473,8 +473,10 @@ async def get_llm_gateway_analytics(
     # Daily time-series: internal/external/interrupted counts
     cursor = await conn.execute(
         """SELECT DATE(timestamp) as day,
-               COUNT(CASE WHEN caller IS NULL AND task_type != 'external_llm_call' THEN 1 END) as internal,
-               COUNT(CASE WHEN caller IS NOT NULL OR task_type = 'external_llm_call' THEN 1 END) as external,
+               COUNT(CASE WHEN caller IS NULL
+                   AND task_type != 'external_llm_call' THEN 1 END) as internal,
+               COUNT(CASE WHEN caller IS NOT NULL
+                   OR task_type = 'external_llm_call' THEN 1 END) as external,
                COUNT(CASE WHEN interrupted = 1 THEN 1 END) as interrupted,
                ROUND(AVG(latency_ms), 0) as avg_latency_ms
            FROM invocation_log
