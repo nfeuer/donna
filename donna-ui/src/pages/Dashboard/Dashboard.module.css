@@ -51,6 +51,8 @@
 .page[data-entered="true"] .grid > *:nth-child(3) { animation-delay: 100ms; }
 .page[data-entered="true"] .grid > *:nth-child(4) { animation-delay: 150ms; }
 .page[data-entered="true"] .grid > *:nth-child(5) { animation-delay: 200ms; }
+.page[data-entered="true"] .grid > *:nth-child(6) { animation-delay: 250ms; }
+.page[data-entered="true"] .grid > *:nth-child(7) { animation-delay: 300ms; }
 
 @keyframes cardRise {
   from {
