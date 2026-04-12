@@ -28,7 +28,7 @@ test.describe("Dashboard smoke", () => {
     const gridChildren = page.locator(
       '[data-testid="dashboard-root"] > div:last-child > *',
     );
-    await expect(gridChildren).toHaveCount(5);
+    await expect(gridChildren).toHaveCount(6);
   });
 
   test("changing range triggers a re-fetch", async ({ page }) => {

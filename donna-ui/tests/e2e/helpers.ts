@@ -332,4 +332,43 @@ export async function mockAdminApi(page: Page) {
       body,
     });
   });
+
+  // Mock /llm/queue/** endpoints for the dashboard LLM queue card
+  await page.route("**/llm/queue/**", (route) => {
+    const url = route.request().url();
+
+    if (url.match(/\/llm\/queue\/status/)) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          current_request: null,
+          internal_queue: { pending: 0, next_items: [] },
+          external_queue: { pending: 0, next_items: [] },
+          stats_24h: {
+            internal_completed: 12,
+            external_completed: 5,
+            external_interrupted: 1,
+          },
+          rate_limits: {},
+          mode: "active",
+        }),
+      });
+    }
+
+    if (url.match(/\/llm\/queue\/stream/)) {
+      // SSE: return a simple initial event then hang
+      return route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: 'data: {"current_request":null,"internal_queue":{"pending":0,"next_items":[]},"external_queue":{"pending":0,"next_items":[]},"stats_24h":{"internal_completed":12,"external_completed":5,"external_interrupted":1},"rate_limits":{},"mode":"active"}\n\n',
+      });
+    }
+
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "{}",
+    });
+  });
 }
