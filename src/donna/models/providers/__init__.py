@@ -20,5 +20,9 @@ class ModelProvider(Protocol):
     """
 
     async def complete(
-        self, prompt: str, model: str, max_tokens: int = 1024
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = 1024,
+        num_ctx: int | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]: ...
