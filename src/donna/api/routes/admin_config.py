@@ -138,6 +138,16 @@ async def put_config(
             queue.reload_config(new_config)
         request.app.state.llm_gateway_config = new_config
 
+    # Hot-reload hook for chat config
+    if filename == "chat.yaml":
+        from donna.chat.config import _cache, get_chat_config
+        key = str(config_dir)
+        _cache.pop(key, None)
+        new_chat_config = get_chat_config(config_dir, cache_ttl_s=0)
+        engine = getattr(request.app.state, "chat_engine", None)
+        if engine is not None:
+            engine._config = new_chat_config
+
     return {
         "name": filename,
         "size_bytes": stat.st_size,
