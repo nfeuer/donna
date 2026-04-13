@@ -78,7 +78,7 @@ class ConversationEngine:
             log.info("chat_session_created", session_id=session.id)
 
         # Refresh TTL
-        new_expires = datetime.utcnow() + timedelta(
+        new_expires = datetime.now(timezone.utc) + timedelta(
             minutes=self._config.sessions.ttl_minutes
         )
         await self._db.update_chat_session(
@@ -226,6 +226,14 @@ class ConversationEngine:
             content=result.text,
             intent="escalation",
             tokens_used=metadata.tokens_out if hasattr(metadata, "tokens_out") else None,
+        )
+
+        logger.info(
+            "chat_escalation_sent",
+            session_id=session_id,
+            user_id=user_id,
+            tokens_out=getattr(metadata, "tokens_out", None),
+            cost_usd=getattr(metadata, "cost_usd", None),
         )
 
         return result
