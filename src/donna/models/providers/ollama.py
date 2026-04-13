@@ -44,7 +44,12 @@ class OllamaProvider:
         return self._session
 
     async def complete(
-        self, prompt: str, model: str, max_tokens: int = 1024, json_mode: bool = True
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = 1024,
+        json_mode: bool = True,
+        num_ctx: int | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Send a prompt and return parsed output with metadata.
 
@@ -55,6 +60,8 @@ class OllamaProvider:
             json_mode: When True (default), requests JSON format from Ollama
                 and parses the response as JSON. When False, returns plain text
                 wrapped in {"text": <response>}.
+            num_ctx: Context window size to send to Ollama. Defaults to 8192
+                when not provided, overriding Ollama's 2048 built-in default.
 
         Returns:
             Tuple of (parsed dict, CompletionMetadata).
@@ -66,12 +73,15 @@ class OllamaProvider:
         session = self._get_session()
         start = time.monotonic()
 
+        effective_num_ctx = num_ctx if num_ctx is not None else 8192
+
         payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
             "options": {
                 "num_predict": max_tokens,
+                "num_ctx": effective_num_ctx,
             },
         }
         if json_mode:
@@ -113,6 +123,7 @@ class OllamaProvider:
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             cost_usd=metadata.cost_usd,
+            num_ctx=effective_num_ctx,
         )
 
         return parsed, metadata

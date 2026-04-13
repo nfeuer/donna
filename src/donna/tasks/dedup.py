@@ -239,6 +239,8 @@ class Deduplicator:
                 tokens_in=metadata.tokens_in,
                 tokens_out=metadata.tokens_out,
                 cost_usd=metadata.cost_usd,
+                estimated_tokens_in=metadata.estimated_tokens_in,
+                overflow_escalated=metadata.overflow_escalated,
                 user_id=user_id,
                 output=validated,
             )

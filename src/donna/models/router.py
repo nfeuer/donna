@@ -17,6 +17,7 @@ import structlog
 from donna.config import ModelsConfig, TaskTypesConfig
 from donna.models.providers import ModelProvider
 from donna.models.providers.anthropic import AnthropicProvider
+from donna.models.tokens import estimate_tokens
 from donna.models.types import CompletionMetadata
 from donna.resilience.retry import CircuitBreaker, TaskCategory, resilient_call
 
@@ -32,6 +33,12 @@ logger = structlog.get_logger()
 
 class RoutingError(Exception):
     """Raised when a task type or model alias cannot be resolved."""
+
+
+class ContextOverflowError(Exception):
+    """Raised when a prompt exceeds the local-model context budget and no
+    fallback is configured. Loud-fail by design: a silently truncated
+    prompt produces silent garbage, which is worse."""
 
 
 # Registry of known provider names → constructor callables.
@@ -147,12 +154,82 @@ class ModelRouter:
 
         Raises:
             RoutingError: If the task type or model cannot be resolved.
+            ContextOverflowError: If the prompt exceeds the local budget and
+                no fallback is configured.
             BudgetPausedError: If daily spend exceeds the pause threshold.
         """
         if self._budget_guard is not None:
             await self._budget_guard.check_pre_call(user_id)
 
         provider, model_id, alias = self._resolve_route(task_type)
+        model_config = self._models_config.models[alias]
+
+        estimated_in: int | None = None
+        overflow_escalated = False
+        num_ctx_to_send: int | None = None
+
+        if model_config.provider == "ollama":
+            num_ctx_to_send = (
+                model_config.num_ctx
+                if model_config.num_ctx is not None
+                else self._models_config.ollama.default_num_ctx
+            )
+            output_reserve = self._models_config.ollama.default_output_reserve
+            budget = num_ctx_to_send - output_reserve
+            estimated_in = estimate_tokens(prompt)
+
+            if estimated_in > budget:
+                routing_entry = self._models_config.routing.get(task_type)
+                fallback_alias = routing_entry.fallback if routing_entry else None
+
+                if fallback_alias is None:
+                    logger.error(
+                        "context_overflow_no_fallback",
+                        task_type=task_type,
+                        from_alias=alias,
+                        estimated_tokens=estimated_in,
+                        budget=budget,
+                        user_id=user_id,
+                    )
+                    raise ContextOverflowError(
+                        f"Prompt for task_type={task_type!r} estimated at "
+                        f"{estimated_in} tokens exceeds budget {budget} "
+                        f"(alias={alias!r}, num_ctx={num_ctx_to_send}, "
+                        f"reserve={output_reserve}); no fallback configured."
+                    )
+
+                logger.warning(
+                    "context_overflow_escalation",
+                    task_type=task_type,
+                    from_alias=alias,
+                    to_alias=fallback_alias,
+                    estimated_tokens=estimated_in,
+                    budget=budget,
+                    user_id=user_id,
+                )
+
+                # Post-resolution validation: these catch config drift (YAML fallback
+                # pointing at a missing alias, or a provider whose constructor was never
+                # registered), not logic bugs. Keep both.
+                fallback_config = self._models_config.models.get(fallback_alias)
+                if fallback_config is None:
+                    raise RoutingError(
+                        f"Fallback alias {fallback_alias!r} (for task type "
+                        f"{task_type!r}) not found in config"
+                    )
+                fallback_provider = self._providers.get(fallback_config.provider)
+                if fallback_provider is None:
+                    raise RoutingError(
+                        f"Fallback provider {fallback_config.provider!r} "
+                        f"not available (alias {fallback_alias!r})"
+                    )
+
+                provider = fallback_provider
+                model_id = fallback_config.model
+                alias = fallback_alias
+                model_config = fallback_config
+                num_ctx_to_send = None  # fallback is not Ollama
+                overflow_escalated = True
 
         logger.info(
             "model_router_dispatch",
@@ -160,6 +237,8 @@ class ModelRouter:
             model_alias=alias,
             model_id=model_id,
             task_id=task_id,
+            estimated_tokens_in=estimated_in,
+            overflow_escalated=overflow_escalated,
         )
 
         result, metadata = await resilient_call(
@@ -168,6 +247,18 @@ class ModelRouter:
             model_id,
             category=TaskCategory.STANDARD,
             circuit_breaker=self._circuit_breaker,
+            num_ctx=num_ctx_to_send,
+        )
+
+        enriched_metadata = CompletionMetadata(
+            latency_ms=metadata.latency_ms,
+            tokens_in=metadata.tokens_in,
+            tokens_out=metadata.tokens_out,
+            cost_usd=metadata.cost_usd,
+            model_actual=metadata.model_actual,
+            is_shadow=metadata.is_shadow,
+            estimated_tokens_in=estimated_in,
+            overflow_escalated=overflow_escalated,
         )
 
         # Shadow mode: fire secondary model in parallel if configured.
@@ -177,7 +268,7 @@ class ModelRouter:
                 self._run_shadow(prompt, task_type, routing.shadow)
             )
 
-        return result, metadata
+        return result, enriched_metadata
 
     async def _run_shadow(
         self, prompt: str, task_type: str, shadow_alias: str

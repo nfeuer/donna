@@ -65,6 +65,13 @@ export interface LLMGatewayCallerEntry {
   rejected_count: number;
 }
 
+export interface LLMGatewayContextBudget {
+  overflow_escalations_7d: number;
+  overflow_escalations_range: number;
+  estimation_mae_pct: number;
+  estimation_sample_count: number;
+}
+
 export interface LLMGatewayData {
   summary: {
     total_calls: number;
@@ -77,6 +84,7 @@ export interface LLMGatewayData {
   time_series: LLMGatewayTimeSeriesEntry[];
   by_caller: LLMGatewayCallerEntry[];
   days: number;
+  context_budget: LLMGatewayContextBudget;
 }
 
 export interface QueueItemDetail {

@@ -43,7 +43,11 @@ class AnthropicProvider:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
 
     async def complete(
-        self, prompt: str, model: str, max_tokens: int = 1024
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = 1024,
+        num_ctx: int | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Send a prompt and return parsed JSON output with metadata.
 
@@ -51,6 +55,7 @@ class AnthropicProvider:
             prompt: The fully-rendered prompt text.
             model: Anthropic model ID (e.g. "claude-sonnet-4-20250514").
             max_tokens: Maximum output tokens.
+            num_ctx: Accepted for Protocol uniformity; ignored by Anthropic.
 
         Returns:
             Tuple of (parsed JSON dict, CompletionMetadata).
@@ -59,6 +64,7 @@ class AnthropicProvider:
             json.JSONDecodeError: If the response is not valid JSON.
             anthropic.APIError: On API-level failures.
         """
+        # num_ctx is Ollama-only; accepted for Protocol uniformity.
         start = time.monotonic()
 
         response = await self._client.messages.create(

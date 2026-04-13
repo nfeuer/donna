@@ -22,7 +22,7 @@ import discord
 import structlog
 
 from donna.integrations.calendar import GoogleCalendarClient
-from donna.models.router import ModelRouter
+from donna.models.router import ContextOverflowError, ModelRouter
 from donna.notifications.service import CHANNEL_DIGEST, NOTIF_DIGEST, NotificationService
 from donna.tasks.database import Database
 
@@ -120,6 +120,8 @@ class MorningDigest:
             rendered_prompt = _render_template(template_text, data)
             result, _ = await self._router.complete(rendered_prompt, task_type="generate_digest")
             digest_text = result.get("digest_text") if isinstance(result, dict) else None
+        except ContextOverflowError:
+            raise
         except Exception:
             logger.exception("morning_digest_llm_failed")
 

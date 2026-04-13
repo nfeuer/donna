@@ -542,6 +542,53 @@ async def get_llm_gateway_analytics(
 
     unique_callers = len([c for c in by_caller if c["caller"] != "_internal"])
 
+    # --- Context-budget metrics ---
+    seven_days_ago = _days_ago(7)
+
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM invocation_log "
+        "WHERE timestamp >= ? AND overflow_escalated = 1",
+        (seven_days_ago,),
+    )
+    overflow_7d = (await cursor.fetchone())[0]
+
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM invocation_log "
+        "WHERE timestamp >= ? AND overflow_escalated = 1",
+        (since,),
+    )
+    overflow_range = (await cursor.fetchone())[0]
+
+    cursor = await conn.execute(
+        """SELECT estimated_tokens_in, tokens_in
+           FROM invocation_log
+           WHERE timestamp >= ?
+               AND model_actual LIKE 'ollama/%'
+               AND estimated_tokens_in IS NOT NULL
+               AND tokens_in > 0""",
+        (since,),
+    )
+    accuracy_rows = await cursor.fetchall()
+
+    if accuracy_rows:
+        errors = [
+            abs(est - actual) / actual
+            for est, actual in accuracy_rows
+            if est is not None and actual > 0
+        ]
+        estimation_mae_pct = round(sum(errors) / len(errors) * 100, 2) if errors else 0.0
+        sample_count = len(errors)
+    else:
+        estimation_mae_pct = 0.0
+        sample_count = 0
+
+    context_budget = {
+        "overflow_escalations_7d": overflow_7d,
+        "overflow_escalations_range": overflow_range,
+        "estimation_mae_pct": estimation_mae_pct,
+        "estimation_sample_count": sample_count,
+    }
+
     return {
         "summary": {
             "total_calls": total_calls,
@@ -554,6 +601,7 @@ async def get_llm_gateway_analytics(
         "time_series": time_series,
         "by_caller": by_caller,
         "days": days,
+        "context_budget": context_budget,
     }
 
 

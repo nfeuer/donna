@@ -41,6 +41,8 @@ class InvocationMetadata:
     interrupted: bool = False
     chain_id: str | None = None
     caller: str | None = None
+    estimated_tokens_in: int | None = None
+    overflow_escalated: bool = False
 
 
 class InvocationLogger:
@@ -60,8 +62,9 @@ class InvocationLogger:
              input_hash, latency_ms, tokens_in, tokens_out, cost_usd,
              output, quality_score, is_shadow, eval_session_id,
              spot_check_queued, user_id,
-             queue_wait_ms, interrupted, chain_id, caller)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             queue_wait_ms, interrupted, chain_id, caller,
+             estimated_tokens_in, overflow_escalated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 invocation_id,
                 now,
@@ -84,6 +87,8 @@ class InvocationLogger:
                 metadata.interrupted,
                 metadata.chain_id,
                 metadata.caller,
+                metadata.estimated_tokens_in,
+                metadata.overflow_escalated,
             ),
         )
         await self._conn.commit()

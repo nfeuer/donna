@@ -20,6 +20,7 @@ async def list_invocations(
     task_type: str | None = Query(default=None),
     model: str | None = Query(default=None, description="Filter by model_alias"),
     is_shadow: bool | None = Query(default=None),
+    overflow_escalated: bool | None = Query(default=None),
     task_id: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -39,6 +40,9 @@ async def list_invocations(
     if is_shadow is not None:
         where_clauses.append("is_shadow = ?")
         params.append(is_shadow)
+    if overflow_escalated is not None:
+        where_clauses.append("overflow_escalated = ?")
+        params.append(overflow_escalated)
     if task_id:
         where_clauses.append("task_id = ?")
         params.append(task_id)
@@ -54,7 +58,8 @@ async def list_invocations(
     cursor = await conn.execute(
         f"""SELECT id, timestamp, task_type, task_id, model_alias, model_actual,
                    latency_ms, tokens_in, tokens_out, cost_usd,
-                   quality_score, is_shadow, spot_check_queued, user_id
+                   quality_score, is_shadow, spot_check_queued, user_id,
+                   estimated_tokens_in, overflow_escalated
             FROM invocation_log
             WHERE {where}
             ORDER BY timestamp DESC
@@ -79,6 +84,8 @@ async def list_invocations(
             "is_shadow": bool(row[11]),
             "spot_check_queued": bool(row[12]),
             "user_id": row[13],
+            "estimated_tokens_in": row[14],
+            "overflow_escalated": bool(row[15]),
         }
         for row in rows
     ]
@@ -103,7 +110,8 @@ async def get_invocation(
         """SELECT id, timestamp, task_type, task_id, model_alias, model_actual,
                   input_hash, latency_ms, tokens_in, tokens_out, cost_usd,
                   output, quality_score, is_shadow, eval_session_id,
-                  spot_check_queued, user_id
+                  spot_check_queued, user_id,
+                  estimated_tokens_in, overflow_escalated
            FROM invocation_log WHERE id = ?""",
         (invocation_id,),
     )
@@ -136,6 +144,8 @@ async def get_invocation(
         "eval_session_id": row[14],
         "spot_check_queued": bool(row[15]),
         "user_id": row[16],
+        "estimated_tokens_in": row[17],
+        "overflow_escalated": bool(row[18]),
     }
 
     # Fetch linked task if present

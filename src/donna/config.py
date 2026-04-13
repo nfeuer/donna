@@ -20,6 +20,7 @@ class ModelConfig(BaseModel):
     provider: str
     model: str
     estimated_cost_per_1k_tokens: float | None = None
+    num_ctx: int | None = None
 
 
 class RoutingEntry(BaseModel):
@@ -56,6 +57,8 @@ class OllamaConfig(BaseModel):
     base_url: str = "http://localhost:11434"
     timeout_s: int = 120
     keepalive: str = "5m"
+    default_num_ctx: int = 8192
+    default_output_reserve: int = 1024
 
 
 class ModelsConfig(BaseModel):
