@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
-import { Button } from "../primitives";
+import { Button } from "../primitives/Button";
 import { cn } from "../lib/cn";
 import styles from "./RefreshButton.module.css";
 

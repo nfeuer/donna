@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { DataTable, Pill, Switch, type PillVariant } from "../../primitives";
+import { DataTable } from "../../primitives/DataTable";
+import { Pill, type PillVariant } from "../../primitives/Pill";
+import { Switch } from "../../primitives/Switch";
 import { toggleRule, type PreferenceRule } from "../../api/preferences";
 
 interface Props {

@@ -1,4 +1,5 @@
-import { Drawer, Pill, type PillVariant } from "../../primitives";
+import { Drawer } from "../../primitives/Drawer";
+import { Pill, type PillVariant } from "../../primitives/Pill";
 import type { ShadowComparison } from "../../api/shadow";
 import styles from "./ComparisonDrawer.module.css";
 

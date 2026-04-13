@@ -65,6 +65,16 @@ routing:
     model: local_parser
     fallback: parser
 
+  # Chat interface
+  classify_chat_intent:
+    model: local_parser
+  chat_respond:
+    model: local_parser
+  chat_summarize:
+    model: local_parser
+  chat_escalation:
+    model: parser
+
 # Cost tracking
 cost:
   monthly_budget_usd: 100.00

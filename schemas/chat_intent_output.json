@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ChatIntentOutput",
+  "description": "Intent classification for a chat message",
+  "type": "object",
+  "required": ["intent", "needs_escalation"],
+  "properties": {
+    "intent": {
+      "type": "string",
+      "enum": ["task_query", "task_action", "agent_output_query", "planning", "freeform", "escalation_request"]
+    },
+    "needs_escalation": {
+      "type": "boolean",
+      "description": "Whether this requires Claude escalation"
+    },
+    "escalation_reason": {
+      "type": ["string", "null"],
+      "description": "Why escalation is needed, if applicable"
+    },
+    "referenced_task_hint": {
+      "type": ["string", "null"],
+      "description": "Keyword or phrase that might identify a specific task"
+    }
+  }
+}

@@ -18,16 +18,17 @@ router = APIRouter()
 # Allowed config files (prevent directory traversal)
 _ALLOWED_CONFIGS = {
     "agents.yaml",
-    "dashboard.yaml",
-    "donna_models.yaml",
-    "llm_gateway.yaml",
-    "task_types.yaml",
-    "task_states.yaml",
-    "preferences.yaml",
-    "discord.yaml",
     "calendar.yaml",
+    "chat.yaml",
+    "dashboard.yaml",
+    "discord.yaml",
+    "donna_models.yaml",
     "email.yaml",
+    "llm_gateway.yaml",
+    "preferences.yaml",
     "sms.yaml",
+    "task_states.yaml",
+    "task_types.yaml",
 }
 
 
@@ -136,6 +137,16 @@ async def put_config(
         if queue:
             queue.reload_config(new_config)
         request.app.state.llm_gateway_config = new_config
+
+    # Hot-reload hook for chat config
+    if filename == "chat.yaml":
+        from donna.chat.config import _cache, get_chat_config
+        key = str(config_dir)
+        _cache.pop(key, None)
+        new_chat_config = get_chat_config(config_dir, cache_ttl_s=0)
+        engine = getattr(request.app.state, "chat_engine", None)
+        if engine is not None:
+            engine._config = new_chat_config
 
     return {
         "name": filename,

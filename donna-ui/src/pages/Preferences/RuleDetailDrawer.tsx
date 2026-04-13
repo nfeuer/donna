@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Drawer, Pill, DataTable } from "../../primitives";
+import { Drawer } from "../../primitives/Drawer";
+import { Pill } from "../../primitives/Pill";
+import { DataTable } from "../../primitives/DataTable";
 import { fetchCorrections, type PreferenceRule, type CorrectionEntry } from "../../api/preferences";
 import styles from "./Preferences.module.css";
 

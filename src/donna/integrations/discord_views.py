@@ -519,3 +519,32 @@ class PersistentTaskView(discord.ui.View):
     def __init__(self, db: Database) -> None:
         super().__init__(timeout=None)
         self._db = db
+
+
+# ------------------------------------------------------------------
+# Escalation Approval View
+# ------------------------------------------------------------------
+
+
+class EscalationApprovalView(discord.ui.View):
+    """Approve/Decline buttons for Claude escalation."""
+
+    def __init__(self, session_id: str, chat_engine: Any, user_id: str) -> None:
+        super().__init__(timeout=300)
+        self._session_id = session_id
+        self._chat_engine = chat_engine
+        self._user_id = user_id
+
+    @discord.ui.button(label="Approve", style=discord.ButtonStyle.green)
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
+        await interaction.response.defer()
+        resp = await self._chat_engine.handle_escalation(
+            session_id=self._session_id, user_id=self._user_id
+        )
+        await interaction.followup.send(resp.text)
+        self.stop()
+
+    @discord.ui.button(label="Decline", style=discord.ButtonStyle.grey)
+    async def decline(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
+        await interaction.response.send_message("Got it, I'll do my best without Claude.")
+        self.stop()

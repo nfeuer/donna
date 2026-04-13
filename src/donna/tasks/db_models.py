@@ -292,3 +292,59 @@ class EscalationState(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
+
+
+class ChatSessionStatus(str, enum.Enum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    CLOSED = "closed"
+
+
+class ChatMessageRole(str, enum.Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ChatSessionModel(Base):
+    """Chat conversation session. See docs/superpowers/specs/2026-04-12-chat-interface-design.md."""
+
+    __tablename__ = "conversation_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(50), nullable=False)
+    pinned_task_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tasks.id"), nullable=True
+    )
+    status: Mapped[ChatSessionStatus] = mapped_column(
+        Enum(ChatSessionStatus), nullable=False, default=ChatSessionStatus.ACTIVE
+    )
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+    last_activity: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    message_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class ChatMessageModel(Base):
+    """Individual message in a chat session."""
+
+    __tablename__ = "conversation_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("conversation_sessions.id"), nullable=False, index=True
+    )
+    role: Mapped[ChatMessageRole] = mapped_column(
+        Enum(ChatMessageRole), nullable=False
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    intent: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow
+    )
