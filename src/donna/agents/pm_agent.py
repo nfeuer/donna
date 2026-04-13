@@ -17,6 +17,7 @@ from typing import Any
 import structlog
 
 from donna.agents.base import AgentContext, AgentResult, ToolCallRecord
+from donna.models.router import ContextOverflowError
 from donna.models.validation import validate_output
 from donna.tasks.database import TaskRow
 
@@ -55,6 +56,8 @@ class PMAgent:
             result, metadata = await context.router.complete(
                 prompt, task_type=_TASK_TYPE, user_id=context.user_id
             )
+        except ContextOverflowError:
+            raise
         except Exception as exc:
             elapsed = int((time.monotonic() - start) * 1000)
             logger.error("pm_agent_llm_failed", task_id=task.id, error=str(exc))

@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 import structlog
 
+from donna.models.router import ContextOverflowError
 from donna.notifications.service import CHANNEL_TASKS, NOTIF_REMINDER, NotificationService
 from donna.tasks.database import Database, TaskRow
 from donna.tasks.db_models import TaskStatus
@@ -177,6 +178,8 @@ class ReminderScheduler:
             if text:
                 return text, True
             logger.warning("reminder_llm_empty_response", task_id=task.id)
+        except ContextOverflowError:
+            raise
         except Exception:
             logger.exception("reminder_llm_failed", task_id=task.id)
 

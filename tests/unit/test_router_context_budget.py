@@ -54,6 +54,11 @@ def _build_router(
     output_reserve: int = 20,
     with_fallback: bool = True,
 ) -> tuple[ModelRouter, _RecordingProvider, _RecordingProvider]:
+    """Build a stubbed ModelRouter by bypassing __init__.
+
+    Keep the private-attribute assignments below in sync with any new
+    required attributes added to ModelRouter.__init__.
+    """
     ollama = _RecordingProvider("ollama")
     anthropic = _RecordingProvider("anthropic")
 

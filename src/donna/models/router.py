@@ -17,6 +17,7 @@ import structlog
 from donna.config import ModelsConfig, TaskTypesConfig
 from donna.models.providers import ModelProvider
 from donna.models.providers.anthropic import AnthropicProvider
+from donna.models.tokens import estimate_tokens
 from donna.models.types import CompletionMetadata
 from donna.resilience.retry import CircuitBreaker, TaskCategory, resilient_call
 
@@ -157,8 +158,6 @@ class ModelRouter:
                 no fallback is configured.
             BudgetPausedError: If daily spend exceeds the pause threshold.
         """
-        from donna.models.tokens import estimate_tokens  # local import: circular-safe
-
         if self._budget_guard is not None:
             await self._budget_guard.check_pre_call(user_id)
 
@@ -209,6 +208,9 @@ class ModelRouter:
                     user_id=user_id,
                 )
 
+                # Post-resolution validation: these catch config drift (YAML fallback
+                # pointing at a missing alias, or a provider whose constructor was never
+                # registered), not logic bugs. Keep both.
                 fallback_config = self._models_config.models.get(fallback_alias)
                 if fallback_config is None:
                     raise RoutingError(

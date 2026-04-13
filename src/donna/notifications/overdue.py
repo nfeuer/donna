@@ -22,6 +22,7 @@ from datetime import UTC, datetime, timedelta, timezone
 import structlog
 
 from donna.integrations.discord_bot import DonnaBot
+from donna.models.router import ContextOverflowError
 from donna.notifications.service import CHANNEL_TASKS, NOTIF_OVERDUE, NotificationService
 from donna.scheduling.scheduler import Scheduler
 from donna.tasks.database import Database
@@ -211,6 +212,8 @@ class OverdueDetector:
             if nudge_text:
                 return nudge_text, True
             logger.warning("nudge_llm_empty_response", task_id=getattr(task, "id", None))
+        except ContextOverflowError:
+            raise
         except Exception:
             logger.exception("nudge_llm_failed", task_id=getattr(task, "id", None))
 
