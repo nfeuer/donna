@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ import aiosqlite
 import structlog
 import uuid6
 
+from donna.chat.types import ChatMessage, ChatSession
 from donna.tasks.db_models import (
     DeadlineType,
     InputChannel,
@@ -548,3 +549,212 @@ class Database:
             "weekly_cost": weekly_cost,
             "completion_rate": round(tasks_completed / tasks_created * 100, 1) if tasks_created > 0 else 0,
         }
+
+    # ------------------------------------------------------------------
+    # Chat session CRUD
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _row_to_chat_session(
+        row: tuple[Any, ...], description: tuple[Any, ...]
+    ) -> ChatSession:
+        """Convert a SQLite row + cursor.description to a ChatSession."""
+        col_names = [d[0] for d in description]
+        data = dict(zip(col_names, row))
+        return ChatSession(
+            id=data["id"],
+            user_id=data["user_id"],
+            channel=data["channel"],
+            status=data["status"],
+            created_at=data["created_at"],
+            last_activity=data["last_activity"],
+            expires_at=data["expires_at"],
+            message_count=data["message_count"],
+            pinned_task_id=data.get("pinned_task_id"),
+            summary=data.get("summary"),
+        )
+
+    @staticmethod
+    def _row_to_chat_message(
+        row: tuple[Any, ...], description: tuple[Any, ...]
+    ) -> ChatMessage:
+        """Convert a SQLite row + cursor.description to a ChatMessage."""
+        col_names = [d[0] for d in description]
+        data = dict(zip(col_names, row))
+        return ChatMessage(
+            id=data["id"],
+            session_id=data["session_id"],
+            role=data["role"],
+            content=data["content"],
+            created_at=data["created_at"],
+            intent=data.get("intent"),
+            tokens_used=data.get("tokens_used"),
+        )
+
+    async def create_chat_session(
+        self,
+        user_id: str,
+        channel: str,
+        ttl_minutes: int = 60,
+    ) -> ChatSession:
+        """Create a new active chat session. Returns the created ChatSession."""
+        conn = self.connection
+        session_id = str(uuid6.uuid7())
+        now = datetime.utcnow()
+        now_iso = now.isoformat()
+        expires_iso = (now + timedelta(minutes=ttl_minutes)).isoformat()
+
+        await conn.execute(
+            """INSERT INTO conversation_sessions
+               (id, user_id, channel, status, created_at, last_activity, expires_at, message_count)
+               VALUES (?, ?, ?, 'active', ?, ?, ?, 0)""",
+            (session_id, user_id, channel, now_iso, now_iso, expires_iso),
+        )
+        await conn.commit()
+
+        logger.info(
+            "chat_session_created",
+            session_id=session_id,
+            user_id=user_id,
+            channel=channel,
+        )
+        session = await self.get_chat_session(session_id)
+        return session  # type: ignore[return-value]
+
+    async def get_chat_session(self, session_id: str) -> ChatSession | None:
+        """Fetch a chat session by ID. Returns None if not found."""
+        conn = self.connection
+        cursor = await conn.execute(
+            "SELECT * FROM conversation_sessions WHERE id = ?",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_chat_session(row, cursor.description)
+
+    async def get_active_chat_session(
+        self, user_id: str, channel: str
+    ) -> ChatSession | None:
+        """Find the most recent active session for user+channel.
+
+        Returns None if no active unexpired session exists.
+        """
+        conn = self.connection
+        now_iso = datetime.utcnow().isoformat()
+        cursor = await conn.execute(
+            """SELECT * FROM conversation_sessions
+               WHERE user_id = ? AND channel = ? AND status = 'active' AND expires_at > ?
+               ORDER BY created_at DESC
+               LIMIT 1""",
+            (user_id, channel, now_iso),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_chat_session(row, cursor.description)
+
+    async def update_chat_session(self, session_id: str, **kwargs: Any) -> None:
+        """Update allowed fields on a chat session.
+
+        Allowed fields: status, summary, pinned_task_id, last_activity,
+        expires_at, message_count.
+        """
+        _ALLOWED = {
+            "status",
+            "summary",
+            "pinned_task_id",
+            "last_activity",
+            "expires_at",
+            "message_count",
+        }
+        if not kwargs:
+            return
+
+        invalid = set(kwargs.keys()) - _ALLOWED
+        if invalid:
+            raise ValueError(f"Invalid fields for update_chat_session: {invalid}")
+
+        conn = self.connection
+        set_clause = ", ".join(f"{col} = ?" for col in kwargs)
+        values = list(kwargs.values()) + [session_id]
+
+        await conn.execute(
+            f"UPDATE conversation_sessions SET {set_clause} WHERE id = ?",
+            values,
+        )
+        await conn.commit()
+
+    async def get_expired_chat_sessions(self) -> list[ChatSession]:
+        """Return active sessions whose expires_at is in the past."""
+        conn = self.connection
+        now_iso = datetime.utcnow().isoformat()
+        cursor = await conn.execute(
+            """SELECT * FROM conversation_sessions
+               WHERE status = 'active' AND expires_at <= ?
+               ORDER BY expires_at ASC""",
+            (now_iso,),
+        )
+        rows = await cursor.fetchall()
+        description = cursor.description
+        return [self._row_to_chat_session(row, description) for row in rows]
+
+    async def add_chat_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        intent: str | None = None,
+        tokens_used: int | None = None,
+    ) -> ChatMessage:
+        """Insert a message and increment session message_count + last_activity."""
+        conn = self.connection
+        message_id = str(uuid6.uuid7())
+        now_iso = datetime.utcnow().isoformat()
+
+        await conn.execute(
+            """INSERT INTO conversation_messages
+               (id, session_id, role, content, intent, tokens_used, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (message_id, session_id, role, content, intent, tokens_used, now_iso),
+        )
+        await conn.execute(
+            """UPDATE conversation_sessions
+               SET message_count = message_count + 1, last_activity = ?
+               WHERE id = ?""",
+            (now_iso, session_id),
+        )
+        await conn.commit()
+
+        logger.info(
+            "chat_message_added",
+            message_id=message_id,
+            session_id=session_id,
+            role=role,
+        )
+
+        cursor = await conn.execute(
+            "SELECT * FROM conversation_messages WHERE id = ?",
+            (message_id,),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_chat_message(row, cursor.description)
+
+    async def list_chat_messages(
+        self,
+        session_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[ChatMessage]:
+        """Return paginated messages for a session, ordered by created_at ASC."""
+        conn = self.connection
+        cursor = await conn.execute(
+            """SELECT * FROM conversation_messages
+               WHERE session_id = ?
+               ORDER BY created_at ASC
+               LIMIT ? OFFSET ?""",
+            (session_id, limit, offset),
+        )
+        rows = await cursor.fetchall()
+        description = cursor.description
+        return [self._row_to_chat_message(row, description) for row in rows]
