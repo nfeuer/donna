@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from donna.chat.config import ChatConfig
 from donna.chat.engine import ConversationEngine
-from donna.chat.types import ChatIntent, ChatResponse
+from donna.chat.types import ChatResponse
 
 
 @pytest.fixture
@@ -42,12 +41,23 @@ def mock_router() -> AsyncMock:
     router.complete.side_effect = [
         # First call: intent classification
         (
-            {"intent": "freeform", "needs_escalation": False, "escalation_reason": None, "referenced_task_hint": None},
+            {
+                "intent": "freeform",
+                "needs_escalation": False,
+                "escalation_reason": None,
+                "referenced_task_hint": None,
+            },
             MagicMock(tokens_in=50, tokens_out=20, cost_usd=0.0, latency_ms=200),
         ),
         # Second call: chat response
         (
-            {"response_text": "Hey there!", "needs_escalation": False, "suggested_actions": [], "pin_suggestion": None, "action": None},
+            {
+                "response_text": "Hey there!",
+                "needs_escalation": False,
+                "suggested_actions": [],
+                "pin_suggestion": None,
+                "action": None,
+            },
             MagicMock(tokens_in=100, tokens_out=50, cost_usd=0.0, latency_ms=500),
         ),
     ]
@@ -75,7 +85,9 @@ def engine(
 
 
 class TestHandleMessage:
-    def test_creates_session_if_none_active(self, engine: ConversationEngine, mock_db: AsyncMock) -> None:
+    def test_creates_session_if_none_active(
+        self, engine: ConversationEngine, mock_db: AsyncMock
+    ) -> None:
         async def _test() -> None:
             resp = await engine.handle_message(
                 session_id=None, user_id="nick", text="Hello Donna",
@@ -107,7 +119,12 @@ class TestHandleMessage:
         async def _test() -> None:
             mock_router.complete.side_effect = [
                 (
-                    {"intent": "planning", "needs_escalation": True, "escalation_reason": "Complex planning needed", "referenced_task_hint": None},
+                    {
+                        "intent": "planning",
+                        "needs_escalation": True,
+                        "escalation_reason": "Complex planning needed",
+                        "referenced_task_hint": None,
+                    },
                     MagicMock(tokens_in=50, tokens_out=20, cost_usd=0.0, latency_ms=200),
                 ),
             ]
@@ -155,8 +172,17 @@ class TestEscalationApproval:
             ]
             mock_router.complete.side_effect = None
             mock_router.complete.return_value = (
-                {"response_text": "Here's my analysis...", "needs_escalation": False, "suggested_actions": [], "pin_suggestion": None, "action": None},
-                MagicMock(tokens_in=500, tokens_out=200, cost_usd=0.03, latency_ms=2000),
+                {
+                    "response_text": "Here's my analysis...",
+                    "needs_escalation": False,
+                    "suggested_actions": [],
+                    "pin_suggestion": None,
+                    "action": None,
+                },
+                MagicMock(
+                    tokens_in=500, tokens_out=200,
+                    cost_usd=0.03, latency_ms=2000,
+                ),
             )
             resp = await engine.handle_escalation(
                 session_id="sess-1", user_id="nick"

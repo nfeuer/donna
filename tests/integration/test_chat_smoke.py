@@ -36,12 +36,23 @@ def mock_router() -> AsyncMock:
     router.complete.side_effect = [
         # classify_chat_intent
         (
-            {"intent": "freeform", "needs_escalation": False, "escalation_reason": None, "referenced_task_hint": None},
+            {
+                "intent": "freeform",
+                "needs_escalation": False,
+                "escalation_reason": None,
+                "referenced_task_hint": None,
+            },
             MagicMock(tokens_in=50, tokens_out=20, cost_usd=0.0, latency_ms=100),
         ),
         # chat_respond
         (
-            {"response_text": "Hey Nick, what's up?", "needs_escalation": False, "suggested_actions": [], "pin_suggestion": None, "action": None},
+            {
+                "response_text": "Hey Nick, what's up?",
+                "needs_escalation": False,
+                "suggested_actions": [],
+                "pin_suggestion": None,
+                "action": None,
+            },
             MagicMock(tokens_in=100, tokens_out=30, cost_usd=0.0, latency_ms=300),
         ),
     ]
@@ -98,9 +109,24 @@ def test_session_close_with_summary(
         )
 
         # Create a session with a message
+        classify_result = {
+            "intent": "freeform",
+            "needs_escalation": False,
+            "escalation_reason": None,
+            "referenced_task_hint": None,
+        }
+        respond_result = {
+            "response_text": "Hello!",
+            "needs_escalation": False,
+            "suggested_actions": [],
+            "pin_suggestion": None,
+            "action": None,
+        }
+        meta1 = MagicMock(tokens_in=50, tokens_out=20, cost_usd=0.0, latency_ms=100)
+        meta2 = MagicMock(tokens_in=100, tokens_out=30, cost_usd=0.0, latency_ms=300)
         mock_router.complete.side_effect = [
-            ({"intent": "freeform", "needs_escalation": False, "escalation_reason": None, "referenced_task_hint": None}, MagicMock(tokens_in=50, tokens_out=20, cost_usd=0.0, latency_ms=100)),
-            ({"response_text": "Hello!", "needs_escalation": False, "suggested_actions": [], "pin_suggestion": None, "action": None}, MagicMock(tokens_in=100, tokens_out=30, cost_usd=0.0, latency_ms=300)),
+            (classify_result, meta1),
+            (respond_result, meta2),
         ]
         await engine.handle_message(None, "nick", "Hi", "api")
 
@@ -108,7 +134,10 @@ def test_session_close_with_summary(
 
         # Close with summary
         mock_router.complete.side_effect = [
-            ({"summary": "Brief greeting exchange."}, MagicMock(tokens_in=100, tokens_out=20, cost_usd=0.0, latency_ms=200)),
+            (
+                {"summary": "Brief greeting exchange."},
+                MagicMock(tokens_in=100, tokens_out=20, cost_usd=0.0, latency_ms=200),
+            ),
         ]
         summary = await engine.close_session(session.id)
         assert summary == "Brief greeting exchange."

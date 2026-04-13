@@ -6,7 +6,7 @@ import dataclasses
 import enum
 
 
-class ChatIntent(str, enum.Enum):
+class ChatIntent(enum.StrEnum):
     TASK_QUERY = "task_query"
     TASK_ACTION = "task_action"
     AGENT_OUTPUT_QUERY = "agent_output_query"
@@ -15,13 +15,13 @@ class ChatIntent(str, enum.Enum):
     ESCALATION_REQUEST = "escalation_request"
 
 
-class ChatSessionStatus(str, enum.Enum):
+class ChatSessionStatus(enum.StrEnum):
     ACTIVE = "active"
     EXPIRED = "expired"
     CLOSED = "closed"
 
 
-class MessageRole(str, enum.Enum):
+class MessageRole(enum.StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
 

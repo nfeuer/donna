@@ -1,8 +1,8 @@
 """Tests for chat context assembly."""
 
 from donna.chat.context import (
-    build_session_context,
     build_intent_context,
+    build_session_context,
     render_chat_prompt,
 )
 from donna.chat.types import ChatIntent, ChatMessage

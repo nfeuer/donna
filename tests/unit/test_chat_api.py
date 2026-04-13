@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -47,7 +47,8 @@ def mock_db() -> AsyncMock:
 @pytest.fixture
 def client(mock_engine: AsyncMock, mock_db: AsyncMock) -> TestClient:
     from fastapi import FastAPI
-    from donna.api.routes.chat import router, get_chat_engine
+
+    from donna.api.routes.chat import get_chat_engine, router
 
     app = FastAPI()
     app.state.db = mock_db
@@ -81,8 +82,6 @@ class TestPostMessage:
 
 class TestGetSession:
     def test_get_session(self, client: TestClient, mock_db: AsyncMock) -> None:
-        from donna.api.routes.chat import get_database
-        from fastapi import FastAPI
 
         resp = client.get("/chat/sessions/sess-1")
         assert resp.status_code in (200, 422)

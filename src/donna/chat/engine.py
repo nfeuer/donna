@@ -7,9 +7,9 @@ See docs/superpowers/specs/2026-04-12-chat-interface-design.md.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -20,8 +20,6 @@ from donna.chat.context import (
     render_chat_prompt,
 )
 from donna.chat.types import ChatIntent, ChatResponse
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from donna.models.router import ModelRouter
@@ -78,7 +76,7 @@ class ConversationEngine:
             log.info("chat_session_created", session_id=session.id)
 
         # Refresh TTL
-        new_expires = datetime.now(timezone.utc) + timedelta(
+        new_expires = datetime.now(UTC) + timedelta(
             minutes=self._config.sessions.ttl_minutes
         )
         await self._db.update_chat_session(
@@ -98,8 +96,11 @@ class ConversationEngine:
         if intent_result.get("needs_escalation"):
             cost_estimate = self._estimate_escalation_cost()
             return ChatResponse(
-                text=f"I'd need to use Claude for this — {intent_result.get('escalation_reason', 'complex reasoning required')}. "
-                     f"Estimated cost: ~${cost_estimate:.2f}. Go ahead?",
+                text=(
+                    f"I'd need to use Claude for this — "
+                    f"{intent_result.get('escalation_reason', 'complex reasoning required')}. "
+                    f"Estimated cost: ~${cost_estimate:.2f}. Go ahead?"
+                ),
                 needs_escalation=True,
                 escalation_reason=intent_result.get("escalation_reason"),
                 estimated_cost=cost_estimate,
@@ -148,8 +149,11 @@ class ConversationEngine:
         if needs_escalation:
             cost_estimate = self._estimate_escalation_cost()
             result = ChatResponse(
-                text=f"I'd need to use Claude for this — {response_data.get('escalation_reason', 'complex reasoning required')}. "
-                     f"Estimated cost: ~${cost_estimate:.2f}. Go ahead?",
+                text=(
+                    f"I'd need to use Claude for this — "
+                    f"{response_data.get('escalation_reason', 'complex reasoning required')}. "
+                    f"Estimated cost: ~${cost_estimate:.2f}. Go ahead?"
+                ),
                 needs_escalation=True,
                 escalation_reason=response_data.get("escalation_reason"),
                 estimated_cost=cost_estimate,

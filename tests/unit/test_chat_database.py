@@ -11,7 +11,6 @@ import pytest
 from donna.chat.types import ChatMessage, ChatSession
 from donna.tasks.database import Database
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -179,7 +178,7 @@ async def test_get_active_chat_session_wrong_channel(db: Database) -> None:
 
 @pytest.mark.asyncio
 async def test_get_active_chat_session_returns_most_recent(db: Database) -> None:
-    s1 = await db.create_chat_session(user_id="nick", channel="discord", ttl_minutes=60)
+    await db.create_chat_session(user_id="nick", channel="discord", ttl_minutes=60)
     s2 = await db.create_chat_session(user_id="nick", channel="discord", ttl_minutes=60)
 
     active = await db.get_active_chat_session(user_id="nick", channel="discord")
@@ -201,10 +200,14 @@ async def test_update_chat_session_pin_task(db: Database) -> None:
 
     # Insert a task to pin
     conn = db.connection
+    now_iso = datetime.utcnow().isoformat()
     await conn.execute(
-        "INSERT INTO tasks (id, user_id, title, domain, priority, status, deadline_type, created_at, created_via) "
+        "INSERT INTO tasks "
+        "(id, user_id, title, domain, priority, status, "
+        "deadline_type, created_at, created_via) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ("task-1", "nick", "Test Task", "personal", 2, "backlog", "none", datetime.utcnow().isoformat(), "discord"),
+        ("task-1", "nick", "Test Task", "personal", 2,
+         "backlog", "none", now_iso, "discord"),
     )
     await conn.commit()
 
@@ -318,7 +321,6 @@ async def test_add_chat_message_updates_last_activity(db: Database) -> None:
     session = await db.create_chat_session(
         user_id="nick", channel="discord", ttl_minutes=60
     )
-    original_activity = session.last_activity
 
     # Small sleep to ensure different timestamp
     import asyncio

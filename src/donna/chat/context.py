@@ -6,7 +6,7 @@ based on intent type and session state.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from donna.chat.types import ChatIntent, ChatMessage
@@ -59,15 +59,17 @@ def build_intent_context(
 
     parts: list[str] = []
 
-    if intent in (ChatIntent.TASK_QUERY, ChatIntent.TASK_ACTION, ChatIntent.PLANNING):
-        if tasks:
-            parts.append("## Active Tasks")
-            for t in tasks:
-                parts.append(
-                    f"- [{t.get('status', '?')}] {t.get('title', 'Untitled')} "
-                    f"(P{t.get('priority', '?')}, {t.get('domain', '?')})"
-                )
-            parts.append("")
+    if (
+        intent in (ChatIntent.TASK_QUERY, ChatIntent.TASK_ACTION, ChatIntent.PLANNING)
+        and tasks
+    ):
+        parts.append("## Active Tasks")
+        for t in tasks:
+            parts.append(
+                f"- [{t.get('status', '?')}] {t.get('title', 'Untitled')} "
+                f"(P{t.get('priority', '?')}, {t.get('domain', '?')})"
+            )
+        parts.append("")
 
     if intent == ChatIntent.PLANNING:
         if schedule_summary:
@@ -75,15 +77,14 @@ def build_intent_context(
         if open_task_count is not None:
             parts.append(f"Open tasks across all domains: {open_task_count}\n")
 
-    if intent == ChatIntent.AGENT_OUTPUT_QUERY:
-        if agent_outputs:
-            parts.append("## Agent Outputs")
-            for ao in agent_outputs:
-                parts.append(
-                    f"- [{ao.get('task_type', '?')}] {ao.get('model_actual', '?')}: "
-                    f"{str(ao.get('output', ''))[:500]}"
-                )
-            parts.append("")
+    if intent == ChatIntent.AGENT_OUTPUT_QUERY and agent_outputs:
+        parts.append("## Agent Outputs")
+        for ao in agent_outputs:
+            parts.append(
+                f"- [{ao.get('task_type', '?')}] {ao.get('model_actual', '?')}: "
+                f"{str(ao.get('output', ''))[:500]}"
+            )
+        parts.append("")
 
     return "\n".join(parts)
 
@@ -97,7 +98,7 @@ def render_chat_prompt(
     conversation_history: str = "",
 ) -> str:
     """Render a chat prompt template with variables."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return (
         template
         .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))

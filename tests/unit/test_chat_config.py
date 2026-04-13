@@ -1,12 +1,10 @@
 """Tests for chat configuration loading."""
 
 from pathlib import Path
-import tempfile
-import time
 
 import yaml
 
-from donna.chat.config import ChatConfig, load_chat_config, get_chat_config
+from donna.chat.config import ChatConfig, get_chat_config, load_chat_config
 
 
 class TestChatConfig:
@@ -58,7 +56,7 @@ class TestChatConfig:
         config_file = tmp_path / "chat.yaml"
         config_file.write_text(yaml.dump(config_data))
 
-        c1 = get_chat_config(tmp_path, cache_ttl_s=0)
+        get_chat_config(tmp_path, cache_ttl_s=0)
         # Write new config
         config_data["chat"]["persona"]["mode"] = "neutral"
         config_file.write_text(yaml.dump(config_data))
