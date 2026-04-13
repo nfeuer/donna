@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ChatRespondOutput",
+  "description": "Structured chat response from the LLM",
+  "type": "object",
+  "required": ["response_text", "needs_escalation"],
+  "properties": {
+    "response_text": {
+      "type": "string",
+      "description": "The text response to show the user"
+    },
+    "needs_escalation": {
+      "type": "boolean"
+    },
+    "escalation_reason": {
+      "type": ["string", "null"]
+    },
+    "suggested_actions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Actions Donna can take (e.g. schedule_task, run_prep_agent)"
+    },
+    "pin_suggestion": {
+      "type": ["object", "null"],
+      "properties": {
+        "task_id": { "type": "string" },
+        "task_title": { "type": "string" }
+      },
+      "description": "Suggest pinning to a task if conversation is about one"
+    },
+    "action": {
+      "type": ["object", "null"],
+      "description": "Task action to execute (e.g. {action: 'reschedule', task_id: '...', new_time: '...'})"
+    }
+  }
+}
