@@ -66,6 +66,8 @@ class DonnaBot(discord.Client):
         guild_id: int | None = None,
         overdue_reply_handler: Callable[[str, str], Awaitable[None]] | None = None,
         dispatcher: AgentDispatcher | None = None,
+        chat_channel_id: int | None = None,
+        chat_engine: Any | None = None,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -79,6 +81,8 @@ class DonnaBot(discord.Client):
         self._guild_id = guild_id
         self._overdue_reply_handler = overdue_reply_handler
         self._dispatcher = dispatcher
+        self._chat_channel_id = chat_channel_id
+        self._chat_engine = chat_engine
         # Command tree for slash commands (may fail if Client not fully initialized).
         try:
             self.tree = app_commands.CommandTree(self)
@@ -125,6 +129,7 @@ class DonnaBot(discord.Client):
             "debug": self._debug_channel_id,
             "digest": self._digest_channel_id,
             "agents": self._agents_channel_id,
+            "chat": self._chat_channel_id,
         }
         channel_id = mapping.get(channel_name)
         if channel_id is None:
@@ -260,6 +265,15 @@ class DonnaBot(discord.Client):
             task_id = self._challenger_threads[message.channel.id]
             reply = message.content.strip()
             await self._handle_challenger_reply(message, task_id, reply)
+            return
+
+        # Route chat channel messages to conversation engine.
+        if (
+            self._chat_channel_id is not None
+            and message.channel.id == self._chat_channel_id
+            and self._chat_engine is not None
+        ):
+            await self._handle_chat_message(message)
             return
 
         # Ignore messages outside the designated tasks channel
@@ -608,6 +622,38 @@ class DonnaBot(discord.Client):
 
         # Clean up thread tracking — one round of follow-up is enough.
         self._challenger_threads.pop(message.channel.id, None)
+
+    async def _handle_chat_message(self, message: discord.Message) -> None:
+        """Route a #donna-chat message through the ConversationEngine."""
+        user_id = str(message.author.id)
+        text = message.content.strip()
+        log = logger.bind(user_id=user_id, channel="discord_chat")
+
+        try:
+            resp = await self._chat_engine.handle_message(
+                session_id=None,
+                user_id=user_id,
+                text=text,
+                channel="discord",
+            )
+
+            if resp.needs_escalation:
+                from donna.integrations.discord_views import EscalationApprovalView
+
+                view = EscalationApprovalView(
+                    session_id=resp.session_pinned_task_id or "unknown",
+                    chat_engine=self._chat_engine,
+                    user_id=user_id,
+                )
+                await message.channel.send(resp.text, view=view)
+            else:
+                await message.channel.send(resp.text)
+
+        except Exception:
+            log.exception("chat_message_failed")
+            await message.channel.send(
+                "Something went wrong. Try again in a moment."
+            )
 
 
 # ------------------------------------------------------------------
