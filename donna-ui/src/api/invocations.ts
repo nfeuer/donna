@@ -15,6 +15,8 @@ export interface Invocation {
   is_shadow: boolean;
   spot_check_queued: boolean;
   user_id: string;
+  estimated_tokens_in: number | null;
+  overflow_escalated: boolean;
 }
 
 export interface InvocationsResponse {
@@ -47,6 +49,7 @@ export async function fetchInvocations(params: {
   task_id?: string;
   limit?: number;
   offset?: number;
+  overflow_escalated?: boolean;
 }): Promise<InvocationsResponse> {
   const { data } = await client.get("/admin/invocations", { params });
   return data;
