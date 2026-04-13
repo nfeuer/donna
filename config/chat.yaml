@@ -19,4 +19,5 @@ chat:
     templates_dir: prompts/chat
 
   discord:
-    chat_channel_id: ${DONNA_DISCORD_CHAT_CHANNEL_ID}
+    # Set via DONNA_DISCORD_CHAT_CHANNEL_ID env var at runtime
+    chat_channel_id: null
