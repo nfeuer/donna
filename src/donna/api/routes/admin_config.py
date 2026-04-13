@@ -18,16 +18,17 @@ router = APIRouter()
 # Allowed config files (prevent directory traversal)
 _ALLOWED_CONFIGS = {
     "agents.yaml",
-    "dashboard.yaml",
-    "donna_models.yaml",
-    "llm_gateway.yaml",
-    "task_types.yaml",
-    "task_states.yaml",
-    "preferences.yaml",
-    "discord.yaml",
     "calendar.yaml",
+    "chat.yaml",
+    "dashboard.yaml",
+    "discord.yaml",
+    "donna_models.yaml",
     "email.yaml",
+    "llm_gateway.yaml",
+    "preferences.yaml",
     "sms.yaml",
+    "task_states.yaml",
+    "task_types.yaml",
 }
 
 

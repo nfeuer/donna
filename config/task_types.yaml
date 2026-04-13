@@ -87,6 +87,34 @@ task_types:
     output_schema: schemas/weekly_digest_output.json
     tools: []
 
+  classify_chat_intent:
+    description: "Classify user chat message intent"
+    model: local_parser
+    prompt_template: prompts/chat/classify_intent.md
+    output_schema: schemas/chat_intent_output.json
+    tools: []
+
+  chat_respond:
+    description: "Generate chat response based on intent and context"
+    model: local_parser
+    prompt_template: prompts/chat/chat_respond.md
+    output_schema: schemas/chat_respond_output.json
+    tools: []
+
+  chat_summarize:
+    description: "Summarize a chat session on close or expiry"
+    model: local_parser
+    prompt_template: prompts/chat/chat_summarize.md
+    output_schema: schemas/chat_summarize_output.json
+    tools: []
+
+  chat_escalation:
+    description: "Chat response via Claude when local LLM cannot answer"
+    model: parser
+    prompt_template: prompts/chat/chat_respond.md
+    output_schema: schemas/chat_respond_output.json
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions
