@@ -145,6 +145,33 @@ models:
 
 Never show local inference as "free" — enables genuine cost-per-quality comparison.
 
+## Local LLM Context Window Strategy
+
+Ollama defaults to a 2048-token window unless `num_ctx` is explicitly set. Donna configures it on every Ollama call via two knobs in `config/donna_models.yaml`:
+
+- `ollama.default_num_ctx` — the total window (prompt + output) for all Ollama aliases.
+- `ollama.default_output_reserve` — tokens held aside for model output so the prompt budget never clips mid-generation.
+
+Per-alias overrides live on the individual model entry: `models.<alias>.num_ctx`.
+
+### Pre-dispatch budgeting
+
+Before dispatching to a local alias, `ModelRouter` estimates prompt tokens (`len(prompt) // 4`) and compares against `num_ctx - output_reserve`. If the estimate exceeds the budget:
+
+1. If the task type has a `fallback` configured, the call escalates to the cloud alias. A `context_overflow_escalation` warn event is logged, and `invocation_log.overflow_escalated` is set to `1`.
+2. If no fallback exists, the router raises `ContextOverflowError`. This is deliberate — silent truncation produces silent garbage.
+
+Every call to an Ollama alias records `invocation_log.estimated_tokens_in` alongside the actual `tokens_in` reported by Ollama. The LLM Gateway dashboard surfaces mean absolute error as a gauge for when to upgrade the estimator to exact tokenization.
+
+### Future extensions (explicitly deferred)
+
+The following are documented as deferred in `docs/superpowers/specs/2026-04-12-local-llm-context-strategy-design.md`:
+
+- Per-task-type compaction strategies (rolling summary, map-reduce, RAG).
+- `pgvector` "brain" on Supabase for long-history retrieval.
+- Exact tokenization via Ollama `/api/tokenize`.
+- Per-alias daily caps on overflow escalations.
+
 ## Cost Tracking Scope
 
 Cost tracking and budget limits apply exclusively to **LLM API costs** (Claude API and local model cost approximations). External service costs (Twilio, Firebase, Supabase, Gmail API) have their own billing dashboards and are not tracked by Donna's cost system.
