@@ -40,6 +40,8 @@ def _make_invocation_row(**overrides: object) -> tuple:
         "is_shadow": 0,
         "spot_check_queued": 0,
         "user_id": "nick",
+        "estimated_tokens_in": 1480,
+        "overflow_escalated": 0,
     }
     defaults.update(overrides)
     return tuple(defaults.values())
@@ -65,6 +67,8 @@ def _make_detail_row(**overrides: object) -> tuple:
         "eval_session_id": None,
         "spot_check_queued": 0,
         "user_id": "nick",
+        "estimated_tokens_in": 1480,
+        "overflow_escalated": 0,
     }
     defaults.update(overrides)
     return tuple(defaults.values())
@@ -127,6 +131,55 @@ class TestListInvocations:
         await list_invocations(request, is_shadow=True)
         call_args = conn.execute.call_args_list[0]
         assert "is_shadow = ?" in call_args[0][0]
+
+    async def test_response_includes_context_budget_fields(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(fetchone=(1,)),
+                _cursor(fetchall=[_make_invocation_row()]),
+            ]
+        )
+        result = await list_invocations(request)
+        inv = result["invocations"][0]
+        assert inv["estimated_tokens_in"] == 1480
+        assert inv["overflow_escalated"] is False
+
+    async def test_filter_by_overflow_escalated_true(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(fetchone=(1,)),
+                _cursor(
+                    fetchall=[
+                        _make_invocation_row(
+                            id="inv-escalated",
+                            estimated_tokens_in=8200,
+                            overflow_escalated=1,
+                        )
+                    ]
+                ),
+            ]
+        )
+        result = await list_invocations(request, overflow_escalated=True)
+        # Verify SQL got the overflow_escalated filter clause
+        call_args = conn.execute.call_args_list[0]
+        assert "overflow_escalated = ?" in call_args[0][0]
+        inv = result["invocations"][0]
+        assert inv["overflow_escalated"] is True
+        assert inv["estimated_tokens_in"] == 8200
+
+    async def test_no_filter_when_overflow_escalated_none(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(fetchone=(0,)),
+                _cursor(),
+            ]
+        )
+        await list_invocations(request, overflow_escalated=None)
+        call_args = conn.execute.call_args_list[0]
+        assert "overflow_escalated = ?" not in call_args[0][0]
 
     async def test_pagination(self, mock_request: tuple) -> None:
         request, conn = mock_request
@@ -196,3 +249,15 @@ class TestGetInvocation:
         )
         result = await get_invocation(request, invocation_id="inv-001")
         assert result["output"] is None
+
+    async def test_detail_includes_context_budget_fields(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(fetchone=_make_detail_row(estimated_tokens_in=1480, overflow_escalated=1)),
+                _cursor(fetchone=None),
+            ]
+        )
+        result = await get_invocation(request, invocation_id="inv-001")
+        assert result["estimated_tokens_in"] == 1480
+        assert result["overflow_escalated"] is True
