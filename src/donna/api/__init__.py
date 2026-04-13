@@ -42,6 +42,8 @@ from donna.api.routes import (
     schedule,
     tasks,
 )
+from donna.chat.config import get_chat_config
+from donna.chat.engine import ConversationEngine
 from donna.config import load_state_machine_config
 from donna.llm.alerter import GatewayAlerter
 from donna.llm.queue import LLMQueueWorker
@@ -160,6 +162,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Start worker as background task
     worker_task = asyncio.create_task(queue_worker.run())
+
+    # Chat engine
+    chat_config = get_chat_config(config_dir)
+    chat_engine = None
+    models_yaml = config_dir / "donna_models.yaml"
+    task_types_yaml = config_dir / "task_types.yaml"
+    if models_yaml.exists() and task_types_yaml.exists():
+        try:
+            from donna.config import load_models_config, load_task_types_config
+            from donna.models.router import ModelRouter
+
+            m_cfg = load_models_config(config_dir)
+            t_cfg = load_task_types_config(config_dir)
+            project_root = Path(os.environ.get("DONNA_PROJECT_ROOT", "."))
+            chat_router = ModelRouter(m_cfg, t_cfg, project_root)
+            chat_engine = ConversationEngine(
+                db=db, router=chat_router, config=chat_config,
+                project_root=project_root,
+            )
+        except Exception:
+            logger.warning("chat_engine_init_failed", exc_info=True)
+
+    app.state.chat_engine = chat_engine
+    app.state.chat_config = chat_config
 
     logger.info("donna_api_started", db_path=str(db_path), port=8200)
     yield
