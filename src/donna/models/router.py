@@ -250,6 +250,17 @@ class ModelRouter:
             num_ctx=num_ctx_to_send,
         )
 
+        enriched_metadata = CompletionMetadata(
+            latency_ms=metadata.latency_ms,
+            tokens_in=metadata.tokens_in,
+            tokens_out=metadata.tokens_out,
+            cost_usd=metadata.cost_usd,
+            model_actual=metadata.model_actual,
+            is_shadow=metadata.is_shadow,
+            estimated_tokens_in=estimated_in,
+            overflow_escalated=overflow_escalated,
+        )
+
         # Shadow mode: fire secondary model in parallel if configured.
         routing = self._models_config.routing.get(task_type)
         if routing and routing.shadow and self._on_shadow_complete:
@@ -257,7 +268,7 @@ class ModelRouter:
                 self._run_shadow(prompt, task_type, routing.shadow)
             )
 
-        return result, metadata
+        return result, enriched_metadata
 
     async def _run_shadow(
         self, prompt: str, task_type: str, shadow_alias: str

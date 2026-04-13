@@ -148,3 +148,19 @@ async def test_local_dispatch_forwards_num_ctx_to_provider() -> None:
     router, ollama, _ = _build_router(num_ctx=4096)
     await router.complete(prompt="small", task_type="generate_nudge")
     assert ollama.calls[0]["num_ctx"] == 4096
+
+
+@pytest.mark.asyncio
+async def test_metadata_carries_estimated_and_overflow_flag() -> None:
+    router, _, _ = _build_router()
+    _, meta = await router.complete(prompt="x" * 200, task_type="generate_nudge")
+    assert meta.estimated_tokens_in == 50  # 200 // 4
+    assert meta.overflow_escalated is False
+
+
+@pytest.mark.asyncio
+async def test_metadata_marks_overflow_escalation() -> None:
+    router, _, _ = _build_router()
+    _, meta = await router.complete(prompt="x" * 2000, task_type="generate_nudge")
+    assert meta.estimated_tokens_in == 500  # 2000 // 4
+    assert meta.overflow_escalated is True

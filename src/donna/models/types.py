@@ -23,3 +23,5 @@ class CompletionMetadata:
     cost_usd: float
     model_actual: str
     is_shadow: bool = False
+    estimated_tokens_in: int | None = None
+    overflow_escalated: bool = False
