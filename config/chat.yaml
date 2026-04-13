@@ -1,0 +1,22 @@
+chat:
+  persona:
+    mode: donna  # donna | neutral
+    template: prompts/chat/chat_system.md
+
+  sessions:
+    ttl_minutes: 120
+    context_budget_tokens: 24000
+    summary_on_close: true
+
+  escalation:
+    enabled: true
+    auto_approve_under_usd: 0.0  # 0 = always ask
+    daily_budget_usd: 2.00
+    model: parser  # from donna_models.yaml
+
+  intents:
+    classify_model: local_parser
+    templates_dir: prompts/chat
+
+  discord:
+    chat_channel_id: ${DONNA_DISCORD_CHAT_CHANNEL_ID}
