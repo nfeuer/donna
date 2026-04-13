@@ -255,6 +255,8 @@ export default function LLMGateway() {
     health?.status === "healthy" ? "Healthy" : health ? "Degraded" : "—";
 
   const s = analytics?.summary;
+  const cb = analytics?.context_budget;
+
   const chartStats: ChartCardStat[] = [
     { label: "Total", value: s?.total_calls.toLocaleString() ?? "—" },
     { label: "Internal", value: s?.internal_calls.toLocaleString() ?? "—" },
@@ -262,6 +264,20 @@ export default function LLMGateway() {
     { label: "Interrupted", value: s?.total_interrupted.toLocaleString() ?? "—" },
     { label: "Avg Latency", value: s ? `${s.avg_latency_ms.toLocaleString()}ms` : "—" },
     { label: "Callers", value: s?.unique_callers.toLocaleString() ?? "—" },
+    {
+      label: "Overflow (7d)",
+      value: cb ? (
+        <span style={{ color: cb.overflow_escalations_7d > 0 ? "var(--color-warning)" : undefined }}>
+          {cb.overflow_escalations_7d.toLocaleString()}
+        </span>
+      ) : "—",
+    },
+    {
+      label: "Estimation MAE",
+      value: cb && cb.estimation_sample_count > 0
+        ? `${cb.estimation_mae_pct.toFixed(1)}%`
+        : "—",
+    },
   ];
 
   const allNextItems = [
