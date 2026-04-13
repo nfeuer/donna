@@ -15,12 +15,15 @@ models:
     provider: ollama
     model: qwen2.5:32b-instruct-q6_K
     estimated_cost_per_1k_tokens: 0.0001  # hardware amortization
+    num_ctx: 8192
 
 # Ollama local LLM connection settings (RTX 3090)
 ollama:
   base_url: http://localhost:11434
   timeout_s: 120
   keepalive: 5m
+  default_num_ctx: 8192
+  default_output_reserve: 1024
 
 routing:
   # Keys match task_types.yaml entries exactly
