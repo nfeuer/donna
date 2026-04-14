@@ -55,3 +55,7 @@ workspace/
 
 # Superpowers brainstorming mockups
 .superpowers/
+
+# Claude Code local state (worktrees, per-user settings)
+.claude/
+.claire/
