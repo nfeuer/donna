@@ -27,8 +27,9 @@ class SupabaseSync:
     Args:
         supabase_url: Supabase project URL (e.g. https://xyz.supabase.co).
             Reads from SUPABASE_URL env var if not provided.
-        supabase_key: Supabase anon/service key.
-            Reads from SUPABASE_KEY env var if not provided.
+        supabase_key: Supabase service_role key (needed to bypass RLS on
+            write-through sync). Reads from SUPABASE_SERVICE_ROLE_KEY env
+            var if not provided.
         sync_timestamp_path: Path to file that records last successful sync
             time (used by SelfDiagnostic). Defaults to /donna/db/.supabase_last_sync.
     """
@@ -40,7 +41,7 @@ class SupabaseSync:
         sync_timestamp_path: Path | None = None,
     ) -> None:
         self._url = (supabase_url or os.environ.get("SUPABASE_URL", "")).rstrip("/")
-        self._key = supabase_key or os.environ.get("SUPABASE_KEY", "")
+        self._key = supabase_key or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
         self._sync_timestamp_path = sync_timestamp_path or Path(
             os.environ.get("DONNA_DB_DIR", "/donna/db")
         ) / _SYNC_TIMESTAMP_FILENAME
