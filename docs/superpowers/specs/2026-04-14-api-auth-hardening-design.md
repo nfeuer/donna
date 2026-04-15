@@ -110,7 +110,7 @@ src/donna/api/auth/
 
 - `ip_gate.py` — CRUD for `trusted_ips`, `verification_tokens`, `ip_connections`. Pure async SQL, no HTTP concerns. Port of `shared/auth/ip_gate.py` rewritten on `aiosqlite`. Same table schema. Same `check_ip_access` return contract: `{"action": "allow"|"challenge"|"block", "reason": str, "ip_record": dict|None}`.
 - `immich.py` — Single function `resolve_immich_user(cookie_or_bearer)`: calls Immich `/api/users/me`, returns `{immich_user_id, email, name, is_admin}` or raises `HTTPException(401)`. Caches responses for 60 seconds keyed on token hash. Uses Immich URL from `config/auth.yaml`.
-- `device_tokens.py` — `issue(user_id, label, user_agent, ip) -> str`, `validate(token) -> {user_id, device_id}|None`, `revoke(device_id)`, `list_for_user(user_id)`. Stores argon2 hashes; raw token is returned only from `issue` and never re-retrievable. Sliding-window expiry: every successful validate extends `expires_at` by the configured window.
+- `device_tokens.py` — `issue(user_id, label, user_agent, ip) -> str`, `validate(token) -> {user_id, device_id}|None`, `revoke(device_id)`, `list_for_user(user_id)`. Stores argon2 hashes; raw token is returned only from `issue` and never re-retrievable. Sliding-window expiry: every successful validate extends `expires_at` by the configured window, capped at `absolute_max_days` from `created_at`. The **same table** backs both mobile and desktop sessions — the only difference is transport: mobile apps receive the token in the response body and send it as `Authorization: Bearer`; browsers never see the raw token at all, because `issue` also sets a `Set-Cookie: donna_device=...; Domain=donna.houseoffeuer.com; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=<sliding_window_seconds>` response header. `_resolve_user_id` reads the token from whichever source is present (Bearer header takes precedence, cookie falls back). Revocation, sliding-window refresh, and `/admin/devices` visibility work identically for both.
 - `service_keys.py` — `validate(caller_key, source_ip) -> {caller_id, budget_usd}|None`. Same argon2 hashing. Rejects if source_ip is outside `DONNA_INTERNAL_CIDRS`. The `X-Forwarded-Host` header is checked and the request is rejected if set (defense against accidental Caddy proxying of `/llm/*`).
 - `email_allowlist.py` — Exposes `is_allowed(email) -> bool` and starts a background task on app startup that refreshes `allowed_emails` from Immich admin API every 15 minutes. On sync failure, serves stale data for up to 24h, after which the sync task marks itself unhealthy (visible in `/health`) but does **not** change the email check's behavior — a stale allowlist still blocks new emails.
 - `email_sender.py` — Uses Donna's existing Gmail integration to send the magic-link email. Template is a plain-text + HTML message with the verify URL and a human warning "If you did not request this, ignore this email and revoke the IP at donna.houseoffeuer.com." The verify URL is constructed from a fixed base (no user-controlled components).
@@ -129,8 +129,12 @@ CurrentServiceCaller = Annotated[ServiceCaller, Depends(_resolve_service_caller)
 `_resolve_user_id` runs in this order:
 
 ```
-1. Is "Authorization: Bearer <token>" present and valid in device_tokens?
-   → Return device_tokens.user_id.
+1. Is a device token present? Check in this order:
+     a. Authorization: Bearer <token>   (mobile app)
+     b. Cookie: donna_device=<token>    (desktop browser)
+   If either is valid in device_tokens (argon2 verified, not revoked, not expired):
+     → Refresh sliding-window expires_at.
+     → Return device_tokens.user_id. SKIP steps 2-4.
 2. Else: run ip_gate.check_ip_access(client_ip).
    → If action != "allow", raise 403 with {"error": "ip_not_trusted", "step": "request_access"}.
 3. Resolve Immich session from cookie or Authorization header.
@@ -346,6 +350,14 @@ Identical to web steps 1-11, but step 12 also includes:
 13. On the first authenticated response, Donna includes `{"device_token": "<opaque>"}` in the body. The app stores this in Keystore/Keychain.
 14. All subsequent requests send `Authorization: Bearer <device_token>`. Steps 2, 3, 5-11 are bypassed for the lifetime of the token.
 
+### First-time desktop browser login
+
+Steps 1-11 as in the web flow, then at step 12:
+
+12. Donna resolves the Immich cookie, provisions/looks up the Donna user, and on the same response sets `Set-Cookie: donna_device=<opaque>; Domain=donna.houseoffeuer.com; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=<sliding_window_seconds>`. The raw token is **never** placed in the response body for browser sessions — so JS code in the SPA can't read it, and a React XSS can't exfiltrate it.
+13. All subsequent requests from that browser carry the cookie automatically. `_resolve_user_id` sees it via the cookie branch and skips the IP gate. The laptop can move between networks freely for the life of the cookie.
+14. When the user clicks "Logout" in the SPA, Donna clears the cookie (`Set-Cookie: donna_device=; Max-Age=0`) **and** marks the `device_tokens` row `revoked_at`. Both the local cookie and the server-side token die together.
+
 ### Mobile app on a new network (device token already exists)
 
 1. App issues `GET /api/tasks` with `Authorization: Bearer <device_token>`.
@@ -383,6 +395,10 @@ Unit tests:
 - SQL injection payload passed as `email` to `/auth/request-access` is treated as a literal (DB unchanged).
 - SQL injection payload passed as `token` to `/auth/verify` is rejected by hash validation before reaching SQL.
 - Device token argon2 hash round-trips.
+- Device token is accepted when presented as `Authorization: Bearer` header (mobile) and when presented as `donna_device` cookie (browser); both refresh the sliding window.
+- Browser login response sets `donna_device` cookie with HttpOnly, Secure, SameSite=Strict, and Domain=donna.houseoffeuer.com.
+- Mobile login response body includes `device_token` field; browser login response body does **not** include it.
+- Logout route clears the cookie and marks the `device_tokens` row revoked.
 - `X-Forwarded-For` from a non-trusted proxy is **ignored**; `request.client.host` is used.
 - `X-Forwarded-For` from a trusted proxy extracts the correct client IP.
 - `service_keys.validate` rejects a valid key presented from outside `internal_cidrs`.
