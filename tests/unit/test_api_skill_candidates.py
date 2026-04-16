@@ -121,16 +121,21 @@ async def test_dismiss_candidate_404(db_with_candidates):
     assert excinfo.value.status_code == 404
 
 
-async def test_draft_now_503_when_autodrafter_not_configured(db_with_candidates):
+async def test_draft_now_501_when_autodrafter_not_configured(db_with_candidates):
+    """After Wave 1 F-6, auto_drafter lives in orchestrator only.
+    Without an in-process drafter (the production state), the endpoint
+    returns 501 Not Implemented with a pointer to follow-up F-W1-D.
+    """
     from donna.api.routes.skill_candidates import draft_candidate_now
 
     request = _make_request(db_with_candidates)
-    # Do NOT set auto_drafter on app.state — it should not be present
+    # Do NOT set auto_drafter on app.state — that's the production state.
     del request.app.state.auto_drafter
 
     with pytest.raises(HTTPException) as excinfo:
         await draft_candidate_now(candidate_id="c1", request=request)
-    assert excinfo.value.status_code == 503
+    assert excinfo.value.status_code == 501
+    assert "F-W1-D" in str(excinfo.value.detail)
 
 
 async def test_draft_now_404_for_missing_candidate(db_with_candidates):

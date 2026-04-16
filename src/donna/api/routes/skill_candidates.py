@@ -57,13 +57,31 @@ async def dismiss_candidate(candidate_id: str, request: Request) -> dict:
 async def draft_candidate_now(candidate_id: str, request: Request) -> dict:
     """Trigger immediate auto-draft for this candidate (bypass nightly cron).
 
-    Requires ``request.app.state.auto_drafter`` to be configured.
-    If not configured, returns 503. If configured, runs draft_one synchronously.
+    After Wave 1 (F-6 process migration), ``auto_drafter`` lives only in the
+    orchestrator process. The API can no longer invoke it directly. The
+    endpoint returns 501 until a follow-up implements an IPC path (see
+    followup F-W1-D in docs/superpowers/followups/...md).
+
+    Existing callers can either (a) wait for the nightly cron, or (b) run
+    ``donna draft --candidate-id <id>`` from the orchestrator (a future
+    subcommand).
+
+    Tests that provide their own ``request.app.state.auto_drafter`` (in-
+    process doubles) continue to work — the 501 path is reached only when
+    no drafter is present, which is the production state post-Wave 1.
     """
     conn = request.app.state.db.connection
     auto_drafter = getattr(request.app.state, "auto_drafter", None)
+
     if auto_drafter is None:
-        raise HTTPException(status_code=503, detail="auto-drafter not configured")
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "draft-now runs in the orchestrator process after Wave 1 F-6 "
+                "and has no HTTP trigger yet; see followup F-W1-D. Wait for "
+                "the nightly cron or invoke from the orchestrator."
+            ),
+        )
 
     # Load the candidate.
     cursor = await conn.execute(
