@@ -1,8 +1,8 @@
 # Skill system tunables. See src/donna/config.py:SkillSystemConfig.
 # Missing keys fall back to the defaults in SkillSystemConfig.
 
-# Phase 1
-enabled: false
+# Phase 1 — Wave 1 complete (2026-04-16)
+enabled: true
 match_confidence_high: 0.75
 match_confidence_medium: 0.40
 similarity_audit_threshold: 0.80
@@ -37,8 +37,8 @@ evolution_daily_cap: 10                    # Max evolution attempts per nightly 
 correction_cluster_window_runs: 10
 correction_cluster_threshold: 2
 
-# Phase 5 — automation subsystem
-automation_poll_interval_seconds: 60
+# Phase 5 — automation subsystem (Wave 1: reduced to 15s for responsive run-now)
+automation_poll_interval_seconds: 15
 automation_min_interval_default_seconds: 300
 automation_failure_pause_threshold: 5
 automation_max_cost_per_run_default_usd: 2.0
