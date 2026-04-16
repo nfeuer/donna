@@ -910,7 +910,7 @@ After Phase 1 completes, the following must be true and later phases may rely on
 - `ChallengerAgent.match_and_extract(parse_result) → ChallengerResult` is the new public interface. The old `assess_completeness` method is removed.
 - `SkillExecutor.execute(skill, inputs, user_id) → SkillRun` is callable for single-step `llm`-kind skills.
 - `skill.state` values used in v1: `claude_native`, `draft`, `sandbox`, `shadow_primary`, `trusted`. Other states come in later phases.
-- Three seed capabilities exist: `parse_task`, `dedup_check`, `classify_priority`, each with a hand-written skill in `shadow_primary` state.
+- Three seed capabilities exist: `parse_task`, `dedup_check`, `classify_priority`, each with a hand-written skill in `sandbox` state. (See Drift Log entry 2026-04-15 for the rationale.)
 - The dispatcher uses `skill.state` to choose execution path; `claude_native` and any unrecognized state fall back to Claude.
 
 **Acceptance scenarios.**
@@ -1045,6 +1045,23 @@ Format:
 - **Handoff contracts affected**: Phase N handoff bullet list
 - **Action required for downstream phases**: ...
 ```
+
+#### 2026-04-15 — Phase 1, §7 Handoff Contract
+- **What changed**: Seed skills land in `sandbox` state, not `shadow_primary` as
+  originally written in the Phase 1 handoff contract.
+- **Why**: Shadow sampling infrastructure (100% Claude comparison during
+  `shadow_primary`) is a Phase 3 dependency. Landing seeds in `shadow_primary`
+  would require shadow machinery that doesn't exist until Phase 3, violating
+  the "task flow is never blocked by skill infrastructure" invariant from §4.2.
+  `sandbox` means the skill runs alongside Claude without affecting user-visible
+  output, which preserves the invariant and still generates per-skill run data.
+- **Handoff contracts affected**: Phase 1 handoff (seed skill state), Phase 3
+  handoff (must promote sandbox → shadow_primary for existing seed skills when
+  shadow sampling lands).
+- **Action required for downstream phases**: Phase 3 implementation should
+  include a targeted migration that promotes the three seed skills from
+  `sandbox` → `shadow_primary` as the first step after shadow sampling is
+  working.
 
 ---
 
