@@ -438,6 +438,7 @@ class SkillSystemConfig(BaseModel):
     auto_draft_min_expected_savings_usd: float = 5.0
     auto_draft_fixture_pass_rate: float = 0.80
     nightly_run_hour_utc: int = 3
+    degradation_agreement_threshold: float = 0.5
 
 
 def load_skill_system_config(config_dir: Path) -> SkillSystemConfig:

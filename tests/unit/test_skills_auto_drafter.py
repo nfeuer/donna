@@ -215,7 +215,7 @@ def _make_drafter(
     config: SkillSystemConfig | None = None,
     estimated_draft_cost_usd: float = 0.50,
 ) -> AutoDrafter:
-    budget_guard = MagicMock()
+    budget_guard = AsyncMock()
     repo = SkillCandidateRepository(db)
     cfg = config or SkillSystemConfig()
     lifecycle = SkillLifecycleManager(db, config=cfg)

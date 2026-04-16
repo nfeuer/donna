@@ -20,3 +20,4 @@ auto_draft_daily_cap: 50
 auto_draft_min_expected_savings_usd: 5.0
 auto_draft_fixture_pass_rate: 0.80
 nightly_run_hour_utc: 3               # 3 AM UTC
+degradation_agreement_threshold: 0.5      # Binary threshold for Wilson-CI success counting

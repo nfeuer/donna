@@ -95,7 +95,8 @@ class DegradationDetector:
         if baseline_agreement is None:
             logger.debug("degradation_no_baseline", skill_id=skill_id)
             current_successes = sum(
-                1 for d in divergences if d.overall_agreement >= 0.5
+                1 for d in divergences
+                if d.overall_agreement >= self._config.degradation_agreement_threshold
             )
             current_lower, current_upper = self.wilson_score_ci(
                 current_successes, n, self._config.degradation_ci_confidence
@@ -111,7 +112,8 @@ class DegradationDetector:
             )
 
         current_successes = sum(
-            1 for d in divergences if d.overall_agreement >= 0.5
+            1 for d in divergences
+            if d.overall_agreement >= self._config.degradation_agreement_threshold
         )
         current_lower, current_upper = self.wilson_score_ci(
             current_successes, n, self._config.degradation_ci_confidence

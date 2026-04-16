@@ -44,7 +44,7 @@ def _make_deps(
     daily_summary.total_usd = daily_spent
     cost_tracker.get_daily_cost.return_value = daily_summary
 
-    config = SkillSystemConfig(auto_draft_daily_cap=auto_draft_cap)
+    config = SkillSystemConfig(auto_draft_daily_cap=auto_draft_cap, enabled=True)
 
     return NightlyDeps(
         detector=detector,
@@ -198,3 +198,21 @@ async def test_nightly_timestamps_set() -> None:
     # Timezone-aware.
     assert started.tzinfo is not None
     assert finished.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_nightly_skipped_when_disabled() -> None:
+    """When config.enabled=False, run_nightly_tasks must return immediately
+    without calling any collaborators."""
+    deps = _make_deps()
+    deps.config.enabled = False
+
+    report = await run_nightly_tasks(deps)
+
+    assert report.new_candidates == []
+    assert report.drafted == []
+    assert report.degraded == []
+    assert report.errors == []
+    deps.detector.run.assert_not_called()
+    deps.auto_drafter.run.assert_not_called()
+    deps.degradation.run.assert_not_called()

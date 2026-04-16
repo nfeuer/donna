@@ -1146,8 +1146,8 @@ Legend: `[x]` = done · `[~]` = partial — see drift log · `[ ]` = not yet sta
 | R17 | Skill lifecycle state machine enforces all transitions in §6.2 | 6.2 | `test_skill_lifecycle` suite | [x] |
 | R18 | Sandbox → shadow_primary auto-promotion on N=20 runs with ≥90% validity | 6.2 | AS-3.3 | [x] |
 | R19 | shadow_primary → trusted auto-promotion on M=100 runs with ≥85% agreement | 6.2 | AS-3.3 | [x] |
-| R20 | Draft → sandbox requires human approval | 6.2 | AS-3.3 | [ ] |
-| R21 | `requires_human_gate` skills require approval at every transition | 6.2 | Unit test | [ ] |
+| R20 | Draft → sandbox requires human approval | 6.2 | AS-3.3 | [x] |
+| R21 | `requires_human_gate` skills require approval at every transition | 6.2 | Unit test | [x] |
 | R22 | Skill candidate detector identifies high-savings claude_native capabilities | 6.5 | AS-3.1, AS-3.2 | [x] |
 | R23 | Auto-drafter runs at end-of-day with 50/day cap and budget guard | 6.5 | AS-3.2, AS-3.5 | [x] |
 | R24 | EOD digest surfaces new drafts, rejections, and flagged skills | 6.5, 6.6 | AS-3.2, AS-4.1 | [x] |

@@ -164,6 +164,8 @@ class AutoDrafter:
 
         # 3. Call Claude.
         try:
+            if self._budget_guard is not None:
+                await self._budget_guard.check_pre_call(user_id="system")
             parsed, _metadata = await self._router.complete(
                 prompt=self._build_prompt(capability, samples),
                 task_type=TASK_TYPE,

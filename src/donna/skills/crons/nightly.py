@@ -62,6 +62,11 @@ async def run_nightly_tasks(deps: NightlyDeps) -> NightlyReport:
     started = datetime.now(timezone.utc).isoformat()
     report = NightlyReport(started_at=started, finished_at="")
 
+    if not deps.config.enabled:
+        logger.info("nightly_tasks_skipped_disabled")
+        report.finished_at = datetime.now(timezone.utc).isoformat()
+        return report
+
     # Step 1: Detect new skill candidates.
     try:
         report.new_candidates = await deps.detector.run()
