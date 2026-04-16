@@ -3,6 +3,7 @@
 Called once at application boot. Idempotent:
 1. Generate embeddings for capability rows with embedding=NULL.
 2. Load seed skills from skills/ for capabilities without a skill row.
+3. Build a ToolRegistry populated with the built-in tools.
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ import structlog
 from donna.capabilities.embeddings import embed_text, embedding_to_bytes
 from donna.capabilities.registry import _embedding_text
 from donna.skills.loader import SkillLoadError, load_skill_from_directory
+from donna.skills.tool_registry import ToolRegistry
+from donna.skills.tools import register_default_tools
 
 logger = structlog.get_logger()
 
@@ -23,9 +26,23 @@ logger = structlog.get_logger()
 async def initialize_skill_system(
     conn: aiosqlite.Connection,
     skills_dir: Path,
-) -> None:
+) -> ToolRegistry:
+    """Run skill-system startup tasks and return a populated ToolRegistry.
+
+    The returned registry already has all built-in tools registered
+    (see `donna.skills.tools.register_default_tools`). Callers should
+    pass this registry to `SkillExecutor(tool_registry=...)`.
+    """
     await _fill_missing_embeddings(conn)
     await _load_seed_skills(conn, skills_dir)
+
+    registry = ToolRegistry()
+    register_default_tools(registry)
+    logger.info(
+        "skill_system_tool_registry_ready",
+        tool_names=registry.list_tool_names(),
+    )
+    return registry
 
 
 async def _fill_missing_embeddings(conn: aiosqlite.Connection) -> None:

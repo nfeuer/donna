@@ -70,3 +70,12 @@ async def test_initialize_is_idempotent(db_with_seed_caps, tmp_path):
     cursor = await db_with_seed_caps.execute("SELECT COUNT(*) FROM skill WHERE capability_name = 'parse_task'")
     count = (await cursor.fetchone())[0]
     assert count == 1
+
+
+@pytest.mark.slow
+async def test_initialize_returns_registry_with_default_tools(db_with_seed_caps, tmp_path):
+    skills_dir = Path("skills")
+    registry = await initialize_skill_system(db_with_seed_caps, skills_dir)
+
+    assert registry is not None
+    assert "web_fetch" in registry.list_tool_names()

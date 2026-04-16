@@ -228,6 +228,15 @@ class SkillExecutor:
                 step_results.append(record)
                 await self._persist_step_if_repo(skill_run_id, record)
 
+                logger.info(
+                    "skill_step_completed",
+                    skill_id=skill.id,
+                    capability_name=skill.capability_name,
+                    step_name=step_name,
+                    step_kind=step_kind,
+                    latency_ms=record.latency_ms,
+                )
+
             except (SchemaValidationError, ToolInvocationError, DSLError, jinja2.UndefinedError) as exc:
                 record.error = str(exc)
                 record.validation_status = (
