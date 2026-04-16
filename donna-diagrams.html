@@ -148,7 +148,24 @@
   <section class="card">
     <header>
       <div>
-        <h2>7 · Shirt Monitor — end-to-end flow (proposed)</h2>
+        <h2>7 · Evolution Pipeline (Phase 4)</h2>
+        <p class="lede">How a degraded skill flows through EvolutionScheduler, EvolutionInputBuilder, Claude, and the 4 validation gates before landing back in draft or reverting to claude_native.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-evolution" data-action="in">＋</button>
+        <button data-target="stage-evolution" data-action="out">－</button>
+        <button data-target="stage-evolution" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-evolution">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <header>
+      <div>
+        <h2>8 · Shirt Monitor — end-to-end flow (proposed)</h2>
         <p class="lede">The motivating example traced from Discord message through challenger, capability creation, automation scheduling, and alert dispatch when the price drops.</p>
       </div>
       <div class="controls">
@@ -556,6 +573,19 @@ sequenceDiagram
     Alert->>U: Discord DM - cos shirt on sale at 87
 </script>
 
+<script type="text/plain" class="src" id="src-evolution">
+flowchart LR
+    Flagged[flagged_for_review] -->|user approves| Degraded[degraded]
+    Degraded --> Scheduler[EvolutionScheduler]
+    Scheduler -->|per skill| Builder[EvolutionInputBuilder]
+    Builder --> Claude[Claude evolution call]
+    Claude --> Gates[4 gates]
+    Gates -->|pass| NewVersion[new skill_version]
+    Gates -->|fail| Log[rejected_validation log]
+    NewVersion --> Draft[draft]
+    Log -->|2 in a row| ClaudeNative[claude_native]
+</script>
+
 <script>
   mermaid.initialize({
     startOnLoad: false,
@@ -636,6 +666,7 @@ sequenceDiagram
     await renderInto('stage-lifecycle', 'src-lifecycle');
     await renderInto('stage-nightly', 'src-nightly');
     await renderInto('stage-shadow', 'src-shadow');
+    await renderInto('stage-evolution', 'src-evolution');
     await renderInto('stage-shirt', 'src-shirt');
   })();
 </script>
