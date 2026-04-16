@@ -103,6 +103,17 @@ async def db(tmp_path: Path):
             spot_check_queued INTEGER DEFAULT 0,
             user_id TEXT NOT NULL
         );
+        CREATE TABLE skill_fixture (
+            id TEXT PRIMARY KEY,
+            skill_id TEXT NOT NULL,
+            case_name TEXT NOT NULL,
+            input TEXT NOT NULL,
+            expected_output_shape TEXT,
+            source TEXT NOT NULL,
+            captured_run_id TEXT,
+            created_at TEXT NOT NULL,
+            tool_mocks TEXT
+        );
         """
     )
     await conn.commit()
@@ -516,3 +527,46 @@ async def test_persisted_skill_has_correct_fields(db: aiosqlite.Connection) -> N
     assert json.loads(v[4]) == output["output_schemas"]
     assert v[5] == "claude_auto_draft"
     assert v[6] is not None  # changelog populated
+
+
+async def test_draft_persists_fixtures_with_tool_mocks(
+    db: aiosqlite.Connection,
+) -> None:
+    """Claude-generated fixtures (including tool_mocks) are persisted to
+    ``skill_fixture`` with source='claude_generated'."""
+    await _insert_capability(db, "parse_task")
+    repo = SkillCandidateRepository(db)
+    await _insert_candidate(repo, "parse_task")
+
+    output = _well_formed_output()
+    # Stamp a tool_mocks blob onto the first fixture; leave others bare.
+    mocks = {'web_fetch:{"url":"https://x"}': {"status": 200, "body": "OK"}}
+    output["fixtures"][0]["tool_mocks"] = mocks
+
+    router = _make_router(output)
+    drafter = _make_drafter(db, router)
+
+    reports = await drafter.run(remaining_budget_usd=5.0, max_drafts=1)
+    assert reports[0].outcome == "drafted"
+    skill_id = reports[0].skill_id
+
+    cursor = await db.execute(
+        "SELECT case_name, source, tool_mocks FROM skill_fixture "
+        "WHERE skill_id = ? ORDER BY case_name",
+        (skill_id,),
+    )
+    rows = await cursor.fetchall()
+    assert len(rows) == 3  # three well-formed fixtures
+    for case_name, source, _ in rows:
+        assert source == "claude_generated"
+
+    # Find the fixture with the mocks we stamped on.
+    matching = [r for r in rows if r[0] == "simple_email"]
+    assert matching, "simple_email fixture not persisted"
+    assert json.loads(matching[0][2]) == mocks
+
+    # The fixtures without tool_mocks should have NULL.
+    bare = [r for r in rows if r[0] != "simple_email"]
+    assert bare
+    for _, _, tm in bare:
+        assert tm is None
