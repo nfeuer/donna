@@ -301,6 +301,99 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
             reason="DISCORD_BOT_TOKEN or DISCORD_TASKS_CHANNEL_ID not set",
         )
 
+    # --- Skill-system wiring (moved from API; Wave 1 F-6 Step 6b / Task 14) ---
+    # The nightly cron + auto-drafter + lifecycle manager run in the
+    # orchestrator, not the API. notification_service may be None if Discord
+    # isn't configured — in that case the alert path logs instead of
+    # dispatching.
+    from donna.config import load_skill_system_config
+    from donna.cost.budget import BudgetGuard
+    from donna.cost.tracker import CostTracker
+    from donna.skills.crons import (
+        AsyncCronScheduler,
+        NightlyDeps,
+        run_nightly_tasks,
+    )
+    from donna.skills.startup_wiring import assemble_skill_system
+
+    skill_config = load_skill_system_config(config_dir)
+
+    if skill_config.enabled:
+        skill_router = ModelRouter(models_config, task_types_config, project_root)
+        cost_tracker = CostTracker(db.connection)
+
+        async def _skill_system_notifier(message: str) -> None:
+            if notification_service is None:
+                log.info(
+                    "skill_system_notification_no_service",
+                    message=message,
+                )
+                return
+            from donna.notifications.service import (
+                CHANNEL_TASKS,
+                NOTIF_AUTOMATION_FAILURE,
+            )
+
+            await notification_service.dispatch(
+                notification_type=NOTIF_AUTOMATION_FAILURE,
+                content=message,
+                channel=CHANNEL_TASKS,
+                priority=4,
+            )
+
+        skill_budget_guard = BudgetGuard(
+            tracker=cost_tracker,
+            models_config=models_config,
+            notifier=lambda channel, message: _skill_system_notifier(message),
+        )
+
+        bundle = assemble_skill_system(
+            connection=db.connection,
+            model_router=skill_router,
+            budget_guard=skill_budget_guard,
+            notifier=_skill_system_notifier,
+            config=skill_config,
+            validation_executor_factory=None,  # default real ValidationExecutor
+        )
+
+        if bundle is not None:
+            async def _nightly_job() -> None:
+                deps = NightlyDeps(
+                    detector=bundle.detector,
+                    auto_drafter=bundle.auto_drafter,
+                    degradation=bundle.degradation,
+                    evolution_scheduler=bundle.evolution_scheduler,
+                    correction_cluster=bundle.correction_cluster,
+                    cost_tracker=cost_tracker,
+                    daily_budget_limit_usd=models_config.cost.daily_pause_threshold_usd,
+                    config=skill_config,
+                )
+                report = await run_nightly_tasks(deps)
+                log.info(
+                    "nightly_skill_tasks_done",
+                    new_candidates=len(report.new_candidates),
+                    drafted=len(report.drafted),
+                    evolved=len(report.evolved),
+                    degraded=len(report.degraded),
+                    correction_flagged=len(report.correction_flagged),
+                    errors=len(report.errors),
+                )
+
+            scheduler = AsyncCronScheduler(
+                hour_utc=skill_config.nightly_run_hour_utc,
+                task=_nightly_job,
+            )
+            tasks.append(asyncio.create_task(scheduler.run_forever()))
+            log.info(
+                "skill_system_started",
+                nightly_run_hour_utc=skill_config.nightly_run_hour_utc,
+            )
+
+            # Task 15 will construct AutomationDispatcher + AutomationScheduler
+            # here and append their run_forever task.
+    else:
+        log.info("skill_system_disabled_in_config")
+
     try:
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
