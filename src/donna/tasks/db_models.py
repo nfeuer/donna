@@ -531,3 +531,54 @@ class SkillEvolutionLog(Base):
     validation_results: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     outcome: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class Automation(Base):
+    """Recurring work item Donna runs on a schedule. See docs/skills-system.md §6.9."""
+
+    __tablename__ = "automation"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    capability_name: Mapped[str] = mapped_column(
+        String(200), ForeignKey("capability.name"), nullable=False, index=True,
+    )
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    schedule: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    alert_conditions: Mapped[dict] = mapped_column(JSON, nullable=False)
+    alert_channels: Mapped[list] = mapped_column(JSON, nullable=False)
+    max_cost_per_run_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    min_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_via: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class AutomationRun(Base):
+    """Single execution of an automation. See docs/skills-system.md §5.12."""
+
+    __tablename__ = "automation_run"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    automation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("automation.id"), nullable=False, index=True,
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    execution_path: Mapped[str] = mapped_column(String(20), nullable=False)
+    skill_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    invocation_log_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    alert_sent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    alert_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
