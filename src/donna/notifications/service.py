@@ -34,6 +34,8 @@ NOTIF_REMINDER = "reminder"
 NOTIF_OVERDUE = "overdue"
 NOTIF_DIGEST = "digest"
 NOTIF_DEBUG = "debug"
+NOTIF_AUTOMATION_ALERT = "automation_alert"
+NOTIF_AUTOMATION_FAILURE = "automation_failure"
 
 # Channel name constants
 CHANNEL_TASKS = "tasks"

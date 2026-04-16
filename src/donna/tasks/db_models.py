@@ -483,3 +483,102 @@ class SkillFixture(Base):
     source: Mapped[str] = mapped_column(String(30), nullable=False)
     captured_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SkillDivergence(Base):
+    """Shadow-run divergence record for a skill_run. See docs/skills-system.md."""
+
+    __tablename__ = "skill_divergence"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    skill_run_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill_run.id"), nullable=False, index=True)
+    shadow_invocation_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    overall_agreement: Mapped[float] = mapped_column(Float, nullable=False)
+    diff_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    flagged_for_evolution: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class SkillCandidateReport(Base):
+    """Candidate skill report surfaced by the divergence analyser. See docs/skills-system.md."""
+
+    __tablename__ = "skill_candidate_report"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    capability_name: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
+    task_pattern_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expected_savings_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    volume_30d: Mapped[int] = mapped_column(Integer, nullable=False)
+    variance_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="new", index=True)
+    reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SkillEvolutionLog(Base):
+    """Audit log of skill evolution events (diagnosis + rewrite attempts). See docs/skills-system.md."""
+
+    __tablename__ = "skill_evolution_log"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
+    from_version_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    to_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    triggered_by: Mapped[str] = mapped_column(String(30), nullable=False)
+    claude_invocation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    diagnosis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    targeted_case_ids: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    validation_results: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    outcome: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class Automation(Base):
+    """Recurring work item Donna runs on a schedule. See docs/skills-system.md §6.9."""
+
+    __tablename__ = "automation"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    capability_name: Mapped[str] = mapped_column(
+        String(200), ForeignKey("capability.name"), nullable=False, index=True,
+    )
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    schedule: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    alert_conditions: Mapped[dict] = mapped_column(JSON, nullable=False)
+    alert_channels: Mapped[list] = mapped_column(JSON, nullable=False)
+    max_cost_per_run_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    min_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_via: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class AutomationRun(Base):
+    """Single execution of an automation. See docs/skills-system.md §5.12."""
+
+    __tablename__ = "automation_run"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    automation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("automation.id"), nullable=False, index=True,
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    execution_path: Mapped[str] = mapped_column(String(20), nullable=False)
+    skill_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    invocation_log_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    alert_sent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    alert_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)

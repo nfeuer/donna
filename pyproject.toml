@@ -39,6 +39,8 @@ dependencies = [
     "fastmcp>=3.0.0",
     # Supabase sync
     "supabase>=2.0.0",
+    # Automation subsystem (Phase 5)
+    "croniter>=2.0.0",
     # Twilio (SMS/Voice)
     "twilio>=9.0.0",
     # Interactive CLI

@@ -1,10 +1,12 @@
-"""Read-only API routes for the skill system."""
+"""API routes for the skill system."""
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel
 
 from donna.skills.models import (
     SELECT_SKILL,
@@ -16,6 +18,16 @@ from donna.skills.models import (
 )
 
 router = APIRouter()
+
+
+class TransitionRequest(BaseModel):
+    to_state: str
+    reason: str
+    notes: str | None = None
+
+
+class HumanGateRequest(BaseModel):
+    value: bool
 
 
 def _skill_to_dict(skill: SkillRow, version: SkillVersionRow | None = None) -> dict[str, Any]:
@@ -90,3 +102,86 @@ async def get_skill(skill_id: str, request: Request) -> dict[str, Any]:
             version = row_to_skill_version(vrow)
 
     return _skill_to_dict(skill, version)
+
+
+@router.post("/skills/{skill_id}/state")
+async def transition_skill_state(
+    skill_id: str,
+    body: TransitionRequest,
+    request: Request,
+) -> dict:
+    """User-initiated state transition via SkillLifecycleManager."""
+    conn = request.app.state.db.connection
+    lifecycle = getattr(request.app.state, "skill_lifecycle_manager", None)
+    if lifecycle is None:
+        raise HTTPException(status_code=503, detail="lifecycle manager not configured")
+
+    from donna.skills.lifecycle import (
+        HumanGateRequiredError,
+        IllegalTransitionError,
+        SkillNotFoundError,
+    )
+    from donna.tasks.db_models import SkillState
+
+    try:
+        to_state = SkillState(body.to_state)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"invalid state: {body.to_state}")
+
+    try:
+        await lifecycle.transition(
+            skill_id=skill_id,
+            to_state=to_state,
+            reason=body.reason,
+            actor="user",
+            notes=body.notes,
+        )
+    except SkillNotFoundError:
+        raise HTTPException(status_code=404, detail="skill not found")
+    except IllegalTransitionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except HumanGateRequiredError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    # AS-4.2: Save (reset baseline) — on flagged_for_review → trusted with
+    # reason=human_approval, recompute baseline_agreement from recent divergences.
+    if body.to_state == "trusted" and body.reason == "human_approval":
+        cursor = await conn.execute(
+            "SELECT AVG(agreement) FROM ("
+            "  SELECT d.overall_agreement AS agreement"
+            "  FROM skill_divergence d"
+            "  JOIN skill_run r ON d.skill_run_id = r.id"
+            "  WHERE r.skill_id = ?"
+            "  ORDER BY d.created_at DESC LIMIT 100"
+            ")",
+            (skill_id,),
+        )
+        row = await cursor.fetchone()
+        if row and row[0] is not None:
+            await conn.execute(
+                "UPDATE skill SET baseline_agreement = ? WHERE id = ?",
+                (float(row[0]), skill_id),
+            )
+            await conn.commit()
+
+    return {"skill_id": skill_id, "to_state": body.to_state, "ok": True}
+
+
+@router.post("/skills/{skill_id}/flags/requires_human_gate")
+async def set_requires_human_gate(
+    skill_id: str,
+    body: HumanGateRequest,
+    request: Request,
+) -> dict:
+    """Toggle the requires_human_gate flag on a skill."""
+    conn = request.app.state.db.connection
+    cursor = await conn.execute("SELECT id FROM skill WHERE id = ?", (skill_id,))
+    if await cursor.fetchone() is None:
+        raise HTTPException(status_code=404, detail="skill not found")
+
+    await conn.execute(
+        "UPDATE skill SET requires_human_gate = ?, updated_at = ? WHERE id = ?",
+        (1 if body.value else 0, datetime.now(timezone.utc).isoformat(), skill_id),
+    )
+    await conn.commit()
+    return {"skill_id": skill_id, "requires_human_gate": body.value}

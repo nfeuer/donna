@@ -16,6 +16,7 @@ import structlog
 
 from donna.capabilities.embeddings import embed_text, embedding_to_bytes
 from donna.capabilities.registry import _embedding_text
+from donna.config import SkillSystemConfig
 from donna.skills.loader import SkillLoadError, load_skill_from_directory
 from donna.skills.tool_registry import ToolRegistry
 from donna.skills.tools import register_default_tools
@@ -26,6 +27,7 @@ logger = structlog.get_logger()
 async def initialize_skill_system(
     conn: aiosqlite.Connection,
     skills_dir: Path,
+    config: SkillSystemConfig | None = None,
 ) -> ToolRegistry:
     """Run skill-system startup tasks and return a populated ToolRegistry.
 
@@ -33,6 +35,15 @@ async def initialize_skill_system(
     (see `donna.skills.tools.register_default_tools`). Callers should
     pass this registry to `SkillExecutor(tool_registry=...)`.
     """
+    if config is not None:
+        logger.info(
+            "skill_system_config_loaded",
+            enabled=config.enabled,
+            high=config.match_confidence_high,
+            medium=config.match_confidence_medium,
+            similarity_audit=config.similarity_audit_threshold,
+        )
+
     await _fill_missing_embeddings(conn)
     await _load_seed_skills(conn, skills_dir)
 

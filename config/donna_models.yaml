@@ -80,6 +80,12 @@ routing:
   triage_failure:
     model: local_parser
     fallback: parser
+  skill_equivalence_judge:
+    model: reasoner
+  skill_auto_draft:
+    model: reasoner
+  skill_evolution:
+    model: reasoner
 
 # Cost tracking
 cost:

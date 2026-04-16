@@ -9,6 +9,7 @@ from typing import Any
 import jinja2
 import structlog
 
+from donna.skills._render import render_value
 from donna.skills.tool_registry import (
     ToolNotAllowedError,
     ToolNotFoundError,
@@ -34,10 +35,6 @@ class ToolInvocationSpec:
 class ToolDispatcher:
     def __init__(self, registry: ToolRegistry) -> None:
         self._registry = registry
-        self._jinja = jinja2.Environment(
-            autoescape=False,
-            undefined=jinja2.StrictUndefined,
-        )
 
     async def run_invocation(
         self,
@@ -48,7 +45,11 @@ class ToolDispatcher:
     ) -> dict:
         """Run a single tool invocation; return {store_as_key: tool_result}."""
         try:
-            resolved_args = self._render_args(spec.args, state=state, inputs=inputs)
+            resolved_args = render_value(
+                spec.args,
+                context={"state": state, "inputs": inputs},
+                preserve_types=False,
+            )
         except jinja2.UndefinedError as exc:
             raise ToolInvocationError(f"arg render failed: {exc}") from exc
 
@@ -88,15 +89,3 @@ class ToolDispatcher:
             error=str(last_err) if last_err else "unknown",
         )
         raise ToolInvocationError(str(last_err)) from last_err
-
-    def _render_args(self, args: dict, state: dict, inputs: dict) -> dict:
-        return {k: self._render_value(v, state=state, inputs=inputs) for k, v in args.items()}
-
-    def _render_value(self, value: Any, state: dict, inputs: dict) -> Any:
-        if isinstance(value, str):
-            return self._jinja.from_string(value).render(state=state, inputs=inputs)
-        if isinstance(value, dict):
-            return self._render_args(value, state=state, inputs=inputs)
-        if isinstance(value, list):
-            return [self._render_value(v, state=state, inputs=inputs) for v in value]
-        return value

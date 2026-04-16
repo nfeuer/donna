@@ -10,10 +10,12 @@ Phase 1 test suite keeps passing.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import jinja2
 import structlog
@@ -35,6 +37,9 @@ from donna.skills.triage import (
     TriageResult,
 )
 from donna.skills.validation import SchemaValidationError, validate_output
+
+if TYPE_CHECKING:
+    from donna.skills.shadow import ShadowSampler
 
 logger = structlog.get_logger()
 
@@ -86,12 +91,14 @@ class SkillExecutor:
         tool_registry: ToolRegistry | None = None,
         triage: TriageAgent | None = None,
         run_repository: Any | None = None,
+        shadow_sampler: "ShadowSampler | None" = None,
     ) -> None:
         self._router = model_router
         self._tool_registry = tool_registry or ToolRegistry()
         self._tool_dispatcher = ToolDispatcher(self._tool_registry)
         self._triage = triage
         self._run_repository = run_repository  # used in Task 10
+        self._shadow_sampler = shadow_sampler
         self._jinja = jinja2.Environment(
             autoescape=False,
             undefined=jinja2.StrictUndefined,
@@ -129,7 +136,11 @@ class SkillExecutor:
         invocation_ids: list[str] = []
         total_cost = 0.0
 
-        for idx, step in enumerate(steps):
+        idx = 0
+        prompt_additions: str | None = None
+
+        while idx < len(steps):
+            step = steps[idx]
             step_name = step.get("name") or f"step_{idx}"
             step_kind = step.get("kind", "llm")
             allowed_tools = step.get("tools", [])
@@ -163,6 +174,7 @@ class SkillExecutor:
                         step=step, step_name=step_name, version=version,
                         state=state, inputs=inputs,
                         user_id=user_id, skill=skill,
+                        prompt_additions=prompt_additions,
                     )
                     total_cost += cost
                     invocation_ids.append(inv_id)
@@ -196,6 +208,7 @@ class SkillExecutor:
                         step=step, step_name=step_name, version=version,
                         state=state, inputs=inputs,
                         user_id=user_id, skill=skill,
+                        prompt_additions=prompt_additions,
                     )
                     total_cost += cost
                     invocation_ids.append(inv_id)
@@ -237,6 +250,10 @@ class SkillExecutor:
                     latency_ms=record.latency_ms,
                 )
 
+                # Step succeeded — advance to the next step.
+                idx += 1
+                prompt_additions = None
+
             except (SchemaValidationError, ToolInvocationError, DSLError, jinja2.UndefinedError) as exc:
                 record.error = str(exc)
                 record.validation_status = (
@@ -246,11 +263,21 @@ class SkillExecutor:
                 step_results.append(record)
                 await self._persist_step_if_repo(skill_run_id, record)
 
-                # No triage configured → preserve Phase 1 failure semantics.
+                # No triage configured → escalate typed failures inline.
                 if self._triage is None:
-                    result = self._phase1_style_failure_result(
-                        exc=exc, state=state, invocation_ids=invocation_ids,
-                        total_cost=total_cost, start=start,
+                    error_type = {
+                        SchemaValidationError: "schema_validation",
+                        ToolInvocationError: "tool_exhausted",
+                        DSLError: "dsl_error",
+                        jinja2.UndefinedError: "template_error",
+                    }.get(type(exc), "unknown")
+                    result = SkillRunResult(
+                        status="escalated",
+                        state=state.to_dict(),
+                        escalation_reason=f"{error_type}: {exc}",
+                        invocation_ids=invocation_ids,
+                        total_latency_ms=int((time.monotonic() - start) * 1000),
+                        total_cost_usd=total_cost,
                         step_results=step_results,
                     )
                     await self._finish_run_if_repo(skill_run_id, result)
@@ -263,28 +290,20 @@ class SkillExecutor:
                 )
 
                 if triage_result.decision == TriageDecision.RETRY_STEP:
-                    # Phase 2 defers the full retry loop — see drift log.
                     retry_count += 1
+                    prompt_additions = triage_result.modified_prompt_additions
                     logger.info(
-                        "skill_step_triage_retry_deferred",
+                        "skill_step_triage_retry",
                         skill_id=skill.id, step=step_name,
+                        retry_count=retry_count,
+                        modifications=bool(prompt_additions),
                     )
-                    result = SkillRunResult(
-                        status="escalated", state=state.to_dict(),
-                        escalation_reason=(
-                            f"triage requested retry (not yet implemented in Phase 2): "
-                            f"{triage_result.rationale}"
-                        ),
-                        invocation_ids=invocation_ids,
-                        total_latency_ms=int((time.monotonic() - start) * 1000),
-                        total_cost_usd=total_cost,
-                        step_results=step_results,
-                    )
-                    await self._finish_run_if_repo(skill_run_id, result)
-                    return result
+                    continue  # Re-loop at same idx, with prompt_additions set.
 
                 if triage_result.decision == TriageDecision.SKIP_STEP:
                     state[step_name] = {}
+                    idx += 1
+                    prompt_additions = None
                     continue
 
                 # ESCALATE_TO_CLAUDE, ALERT_USER, MARK_SKILL_DEGRADED all terminate.
@@ -302,29 +321,6 @@ class SkillExecutor:
                     status=status, state=state.to_dict(),
                     escalation_reason=escalation_reason,
                     error=str(exc),
-                    invocation_ids=invocation_ids,
-                    total_latency_ms=int((time.monotonic() - start) * 1000),
-                    total_cost_usd=total_cost,
-                    step_results=step_results,
-                )
-                await self._finish_run_if_repo(skill_run_id, result)
-                return result
-
-            except _ModelCallError as exc:
-                # Raised by _run_llm_step when the router itself fails.
-                record.error = str(exc)
-                record.validation_status = "tool_failed"
-                record.latency_ms = int((time.monotonic() - step_start) * 1000)
-                step_results.append(record)
-                await self._persist_step_if_repo(skill_run_id, record)
-                logger.exception(
-                    "skill_executor_model_call_failed",
-                    skill_id=skill.id, step=step_name,
-                )
-                # Preserve Phase 1 error prefix.
-                result = SkillRunResult(
-                    status="failed", state=state.to_dict(),
-                    error=f"model_call: {exc}",
                     invocation_ids=invocation_ids,
                     total_latency_ms=int((time.monotonic() - start) * 1000),
                     total_cost_usd=total_cost,
@@ -370,6 +366,30 @@ class SkillExecutor:
             step_results=step_results,
         )
         await self._finish_run_if_repo(skill_run_id, result)
+
+        # Fire-and-forget shadow sampling — only when a run row exists to link
+        # the divergence to and the sampler is configured.
+        if self._shadow_sampler is not None and skill_run_id is not None:
+            claude_prompt = json.dumps(
+                {"capability": skill.capability_name, "inputs": inputs},
+                sort_keys=True,
+            )
+            skill_output_dict = (
+                result.final_output
+                if isinstance(result.final_output, dict)
+                else {"output": result.final_output}
+            )
+            asyncio.create_task(
+                self._shadow_sampler.sample_if_applicable(
+                    skill=skill,
+                    skill_run_id=skill_run_id,
+                    inputs=inputs,
+                    skill_output=skill_output_dict,
+                    claude_task_type=skill.capability_name,
+                    claude_prompt=claude_prompt,
+                )
+            )
+
         return result
 
     async def _persist_step_if_repo(
@@ -416,29 +436,23 @@ class SkillExecutor:
     async def _run_llm_step(
         self, step: dict, step_name: str, version: SkillVersionRow,
         state: StateObject, inputs: dict, user_id: str, skill: SkillRow,
+        prompt_additions: str | None = None,
     ) -> tuple[Any, str, float]:
         prompt_template = version.step_content.get(step_name, "")
         rendered = self._jinja.from_string(prompt_template).render(
             inputs=inputs, state=state.to_dict(),
         )
+        if prompt_additions:
+            rendered = rendered + "\n\n" + prompt_additions
         schema = version.output_schemas.get(step_name, {})
 
-        try:
-            output, meta = await self._router.complete(
-                prompt=rendered,
-                schema=schema,
-                model_alias="local_parser",
-                task_type=f"skill_step::{skill.capability_name}::{step_name}",
-                user_id=user_id,
-            )
-        except (
-            SchemaValidationError, ToolInvocationError, DSLError, jinja2.UndefinedError,
-        ):
-            raise
-        except Exception as exc:
-            # Model-layer failure (connection error, provider raised, etc.).
-            # Wrapped so the executor can preserve the Phase 1 "model_call:" prefix.
-            raise _ModelCallError(str(exc)) from exc
+        output, meta = await self._router.complete(
+            prompt=rendered,
+            schema=schema,
+            model_alias="local_parser",
+            task_type=f"skill_step::{skill.capability_name}::{step_name}",
+            user_id=user_id,
+        )
 
         return output, meta.invocation_id, getattr(meta, "cost_usd", 0.0)
 
@@ -494,32 +508,6 @@ class SkillExecutor:
             retry_count=retry_count,
         ))
 
-    def _phase1_style_failure_result(
-        self, exc: Exception, state: StateObject, invocation_ids: list[str],
-        total_cost: float, start: float, step_results: list[StepResultRecord],
-    ) -> SkillRunResult:
-        """Preserve the Phase 1 failure shape when no triage is configured."""
-        if isinstance(exc, SchemaValidationError):
-            error = f"schema_validation: {exc}"
-        elif isinstance(exc, ToolInvocationError):
-            error = f"tool_exhausted: {exc}"
-        elif isinstance(exc, DSLError):
-            error = f"dsl_error: {exc}"
-        elif isinstance(exc, jinja2.UndefinedError):
-            error = f"prompt_render: undefined variable: {exc}"
-        else:
-            error = str(exc)
-
-        return SkillRunResult(
-            status="failed",
-            state=state.to_dict(),
-            error=error,
-            invocation_ids=invocation_ids,
-            total_latency_ms=int((time.monotonic() - start) * 1000),
-            total_cost_usd=total_cost,
-            step_results=step_results,
-        )
-
     def _render_final_output(
         self, expr: str | None, state: StateObject, default: Any,
     ) -> Any:
@@ -555,12 +543,3 @@ class SkillExecutor:
         if isinstance(esc, dict):
             return esc.get("reason", "unspecified")
         return str(esc) if esc is not None else "unspecified"
-
-
-class _ModelCallError(Exception):
-    """Internal wrapper for router.complete failures.
-
-    Exists so the executor can preserve the Phase 1 ``model_call: ...``
-    error prefix without making the control flow hinge on subclass checks
-    against third-party exception types.
-    """

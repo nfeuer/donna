@@ -1,0 +1,44 @@
+# Skill system tunables. See src/donna/config.py:SkillSystemConfig.
+# Missing keys fall back to the defaults in SkillSystemConfig.
+
+# Phase 1
+enabled: false
+match_confidence_high: 0.75
+match_confidence_medium: 0.40
+similarity_audit_threshold: 0.80
+seed_skills_initial_state: sandbox
+
+# Phase 3 additions
+shadow_sample_rate_trusted: 0.05       # 5% while trusted; shadow_primary is always 100%
+sandbox_promotion_min_runs: 20
+sandbox_promotion_validity_rate: 0.90
+shadow_primary_promotion_min_runs: 100
+shadow_primary_promotion_agreement_rate: 0.85
+degradation_rolling_window: 30
+degradation_ci_confidence: 0.95
+auto_draft_daily_cap: 50
+auto_draft_min_expected_savings_usd: 5.0
+auto_draft_fixture_pass_rate: 0.80
+nightly_run_hour_utc: 3               # 3 AM UTC
+degradation_agreement_threshold: 0.5      # Binary threshold for Wilson-CI success counting
+
+# Phase 4 — evolution loop
+evolution_min_divergence_cases: 15
+evolution_max_divergence_cases: 30
+evolution_targeted_case_pass_rate: 0.80
+evolution_fixture_regression_pass_rate: 0.95
+evolution_recent_success_count: 20
+evolution_recent_success_window_days: 30
+evolution_max_consecutive_failures: 2      # Rejected_validation streak before -> claude_native
+evolution_estimated_cost_usd: 0.75         # Per-call budget estimate
+evolution_daily_cap: 10                    # Max evolution attempts per nightly run
+
+# Phase 4 — correction clustering
+correction_cluster_window_runs: 10
+correction_cluster_threshold: 2
+
+# Phase 5 — automation subsystem
+automation_poll_interval_seconds: 60
+automation_min_interval_default_seconds: 300
+automation_failure_pause_threshold: 5
+automation_max_cost_per_run_default_usd: 2.0
