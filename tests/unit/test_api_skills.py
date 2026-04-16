@@ -49,6 +49,23 @@ SCHEMA = """
         at TEXT,
         notes TEXT
     );
+    CREATE TABLE skill_run (
+        id TEXT PRIMARY KEY,
+        skill_id TEXT,
+        skill_version_id TEXT,
+        status TEXT,
+        state_object TEXT,
+        user_id TEXT,
+        started_at TEXT
+    );
+    CREATE TABLE skill_divergence (
+        id TEXT PRIMARY KEY,
+        skill_run_id TEXT,
+        shadow_invocation_id TEXT,
+        overall_agreement REAL,
+        diff_summary TEXT,
+        created_at TEXT
+    );
 """
 
 
@@ -221,3 +238,50 @@ async def test_post_human_gate_404_missing_skill(db_with_skill):
     with pytest.raises(HTTPException) as excinfo:
         await set_requires_human_gate(skill_id="missing", body=body, request=request)
     assert excinfo.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# AS-4.2: baseline reset on flagged_for_review → trusted (human_approval)
+# ---------------------------------------------------------------------------
+
+async def test_post_state_transition_resets_baseline_on_save(db_with_skill):
+    """When flagged_for_review → trusted with reason=human_approval,
+    baseline_agreement is recomputed from recent divergences."""
+    import pytest as _pytest
+    from donna.api.routes.skills import TransitionRequest, transition_skill_state
+
+    now = "2026-04-16T00:00:00+00:00"
+
+    # Update the pre-seeded skill to flagged_for_review with baseline 0.95
+    await db_with_skill.execute(
+        "UPDATE skill SET state = 'flagged_for_review', baseline_agreement = 0.95 WHERE id = 's1'"
+    )
+    await db_with_skill.execute(
+        "INSERT INTO skill_run (id, skill_id, skill_version_id, status, "
+        "state_object, user_id, started_at) VALUES "
+        "('r1', 's1', 'v1', 'succeeded', '{}', 'u', ?)",
+        (now,),
+    )
+    for i in range(10):
+        await db_with_skill.execute(
+            "INSERT INTO skill_divergence (id, skill_run_id, shadow_invocation_id, "
+            "overall_agreement, diff_summary, created_at) VALUES "
+            "(?, 'r1', ?, 0.85, '{}', ?)",
+            (f"d{i}", f"inv{i}", now),
+        )
+    await db_with_skill.commit()
+
+    lifecycle = AsyncMock()
+    lifecycle.transition = AsyncMock(return_value=None)
+
+    request = _make_request(db_with_skill, lifecycle=lifecycle)
+    body = TransitionRequest(to_state="trusted", reason="human_approval")
+
+    result = await transition_skill_state(skill_id="s1", body=body, request=request)
+    assert result["ok"] is True
+
+    cursor = await db_with_skill.execute(
+        "SELECT baseline_agreement FROM skill WHERE id = 's1'"
+    )
+    row = await cursor.fetchone()
+    assert row[0] == _pytest.approx(0.85, abs=0.01)

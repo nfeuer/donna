@@ -143,6 +143,27 @@ async def transition_skill_state(
     except HumanGateRequiredError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
 
+    # AS-4.2: Save (reset baseline) — on flagged_for_review → trusted with
+    # reason=human_approval, recompute baseline_agreement from recent divergences.
+    if body.to_state == "trusted" and body.reason == "human_approval":
+        cursor = await conn.execute(
+            "SELECT AVG(agreement) FROM ("
+            "  SELECT d.overall_agreement AS agreement"
+            "  FROM skill_divergence d"
+            "  JOIN skill_run r ON d.skill_run_id = r.id"
+            "  WHERE r.skill_id = ?"
+            "  ORDER BY d.created_at DESC LIMIT 100"
+            ")",
+            (skill_id,),
+        )
+        row = await cursor.fetchone()
+        if row and row[0] is not None:
+            await conn.execute(
+                "UPDATE skill SET baseline_agreement = ? WHERE id = ?",
+                (float(row[0]), skill_id),
+            )
+            await conn.commit()
+
     return {"skill_id": skill_id, "to_state": body.to_state, "ok": True}
 
 
