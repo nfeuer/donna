@@ -115,6 +115,13 @@ task_types:
     output_schema: schemas/chat_respond_output.json
     tools: []
 
+  triage_failure:
+    description: "Decide how to handle a skill runtime failure"
+    model: local_parser
+    prompt_template: ""
+    output_schema: ""
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions

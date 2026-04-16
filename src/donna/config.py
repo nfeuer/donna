@@ -411,3 +411,16 @@ def load_discord_config(config_dir: Path) -> DiscordConfig:
     """Load Discord integration configuration."""
     data = load_yaml(config_dir / "discord.yaml")
     return DiscordConfig(**data.get("discord", {}))
+
+
+# === Skill System Config ===
+
+
+class SkillSystemConfig(BaseModel):
+    """Phase 1 skill system runtime configuration."""
+
+    enabled: bool = False
+    match_confidence_high: float = 0.75
+    match_confidence_medium: float = 0.40
+    similarity_audit_threshold: float = 0.80
+    seed_skills_initial_state: str = "sandbox"

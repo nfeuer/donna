@@ -36,10 +36,13 @@ from donna.api.routes import (
     admin_shadow,
     admin_tasks,
     agents,
+    capabilities as capabilities_routes,
     chat as chat_routes,
     health,
     llm,
     schedule,
+    skill_runs as skill_runs_routes,
+    skills as skills_routes,
     tasks,
 )
 from donna.chat.config import get_chat_config
@@ -235,6 +238,9 @@ def create_app() -> FastAPI:
     app.include_router(admin_shadow.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_preferences.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_health.router, prefix="/admin", tags=["admin"])
+    app.include_router(capabilities_routes.router, prefix="/admin", tags=["capabilities"])
+    app.include_router(skills_routes.router, prefix="/admin", tags=["skills"])
+    app.include_router(skill_runs_routes.router, prefix="/admin", tags=["skill-runs"])
 
     # LLM gateway for homelab services
     app.include_router(llm.router, prefix="/llm", tags=["llm"])
