@@ -109,3 +109,66 @@ async def test_list_all_with_status_filter(registry):
     review_caps = await registry.list_all(status="pending_review")
     assert len(review_caps) == 1
     assert review_caps[0].name == "review_cap"
+
+
+@pytest.mark.slow
+async def test_semantic_search_returns_ranked_matches(registry):
+    await registry.register(CapabilityInput(
+        name="product_watch",
+        description="Monitor a product URL for price or availability changes",
+        input_schema={},
+        trigger_type="on_schedule",
+    ), created_by="seed")
+    await registry.register(CapabilityInput(
+        name="news_check",
+        description="Fetch recent news articles about a topic",
+        input_schema={},
+        trigger_type="on_schedule",
+    ), created_by="seed")
+    await registry.register(CapabilityInput(
+        name="parse_task",
+        description="Extract structured task fields from a natural language message",
+        input_schema={},
+        trigger_type="on_message",
+    ), created_by="seed")
+
+    results = await registry.semantic_search("watch this shirt for a price drop", k=3)
+    assert len(results) == 3
+    assert results[0][0].name == "product_watch"
+    assert -1.0 <= results[0][1] <= 1.0
+
+
+@pytest.mark.slow
+async def test_register_stores_embedding(registry):
+    cap = await registry.register(CapabilityInput(
+        name="product_watch",
+        description="Monitor a product URL for price changes",
+        input_schema={},
+        trigger_type="on_schedule",
+    ), created_by="seed")
+    assert cap.embedding is not None
+    assert len(cap.embedding) == 384 * 4
+
+
+@pytest.mark.slow
+async def test_register_flags_similar_capability_for_review(registry):
+    await registry.register(CapabilityInput(
+        name="product_price_watch",
+        description="Monitor a product URL for price drops and availability",
+        input_schema={"type": "object", "properties": {"url": {"type": "string"}}},
+        trigger_type="on_schedule",
+    ), created_by="seed")
+
+    flagged = await registry.register(CapabilityInput(
+        name="watch_product_price",
+        description="Watch a product URL for price changes and stock availability",
+        input_schema={"type": "object", "properties": {"url": {"type": "string"}}},
+        trigger_type="on_schedule",
+    ), created_by="claude")
+
+    assert flagged.status == "pending_review"
+
+    results = await registry.semantic_search("monitor product price", k=5)
+    names = [cap.name for cap, _ in results]
+    assert "watch_product_price" not in names
+    assert "product_price_watch" in names

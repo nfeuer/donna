@@ -13,6 +13,12 @@ import aiosqlite
 import structlog
 import uuid6
 
+from donna.capabilities.embeddings import (
+    bytes_to_embedding,
+    cosine_similarity,
+    embed_text,
+    embedding_to_bytes,
+)
 from donna.capabilities.models import (
     SELECT_CAPABILITY,
     CapabilityRow,
@@ -20,6 +26,12 @@ from donna.capabilities.models import (
 )
 
 logger = structlog.get_logger()
+
+
+def _embedding_text(name: str, description: str, input_schema: dict) -> str:
+    field_names = list(input_schema.get("properties", {}).keys())
+    field_part = " ".join(field_names) if field_names else ""
+    return f"{name}. {description}. Inputs: {field_part}".strip()
 
 
 @dataclass(slots=True)
@@ -57,6 +69,10 @@ class CapabilityRegistry:
         cap_id = str(uuid6.uuid7())
         now = datetime.now(timezone.utc)
 
+        embedding_text = _embedding_text(payload.name, payload.description, payload.input_schema)
+        embedding_blob = embedding_to_bytes(embed_text(embedding_text))
+        audit_status = await self._audit_for_duplicates(embedding_blob, status)
+
         await self._conn.execute(
             f"""
             INSERT INTO capability ({SELECT_CAPABILITY})
@@ -69,8 +85,8 @@ class CapabilityRegistry:
                 json.dumps(payload.input_schema),
                 payload.trigger_type,
                 json.dumps(payload.default_output_shape) if payload.default_output_shape else None,
-                status,
-                None,  # embedding — filled by Task 7
+                audit_status,
+                embedding_blob,
                 now.isoformat(),
                 created_by,
                 payload.notes,
@@ -82,7 +98,7 @@ class CapabilityRegistry:
             "capability_registered",
             capability_id=cap_id,
             name=payload.name,
-            status=status,
+            status=audit_status,
             created_by=created_by,
         )
 
@@ -119,3 +135,47 @@ class CapabilityRegistry:
             (status, name),
         )
         await self._conn.commit()
+
+    SIMILARITY_THRESHOLD = 0.80
+
+    async def _audit_for_duplicates(
+        self, new_embedding_blob: bytes, requested_status: str
+    ) -> str:
+        if requested_status != "active":
+            return requested_status
+
+        new_vec = bytes_to_embedding(new_embedding_blob)
+        existing = await self.list_all(status="active", limit=1000)
+
+        for cap in existing:
+            if cap.embedding is None:
+                continue
+            cap_vec = bytes_to_embedding(cap.embedding)
+            sim = cosine_similarity(new_vec, cap_vec)
+            if sim >= self.SIMILARITY_THRESHOLD:
+                logger.warning(
+                    "capability_post_creation_audit_flagged",
+                    similar_to=cap.name,
+                    similarity=sim,
+                    threshold=self.SIMILARITY_THRESHOLD,
+                )
+                return "pending_review"
+
+        return "active"
+
+    async def semantic_search(
+        self, query: str, k: int = 5, status: str = "active"
+    ) -> list[tuple[CapabilityRow, float]]:
+        query_vec = embed_text(query)
+        caps = await self.list_all(status=status, limit=1000)
+
+        scored: list[tuple[CapabilityRow, float]] = []
+        for cap in caps:
+            if cap.embedding is None:
+                continue
+            cap_vec = bytes_to_embedding(cap.embedding)
+            score = cosine_similarity(query_vec, cap_vec)
+            scored.append((cap, score))
+
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        return scored[:k]
