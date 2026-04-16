@@ -175,6 +175,7 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     guild_id_str = os.environ.get("DISCORD_GUILD_ID")
     user_id = os.environ.get("DONNA_USER_ID", "nick")
 
+    notification_service = None
     if discord_token and tasks_channel_id_str:
         from donna.integrations.discord_bot import DonnaBot
 
@@ -186,6 +187,25 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
             agents_channel_id=int(agents_channel_id_str) if agents_channel_id_str else None,
             guild_id=int(guild_id_str) if guild_id_str else None,
         )
+
+        # Wave 1 (F-6 Step 6a): construct NotificationService with the live bot.
+        # Tasks 14 and 15 will wire this into the skill-system bundle and the
+        # AutomationDispatcher. SMS/Gmail wiring is Wave 2+.
+        from donna.config import load_calendar_config
+        from donna.notifications.service import NotificationService
+
+        try:
+            calendar_config = load_calendar_config(config_dir)
+            notification_service = NotificationService(
+                bot=bot,
+                calendar_config=calendar_config,
+                user_id=user_id,
+                sms=None,
+                gmail=None,
+            )
+            log.info("notification_service_wired")
+        except Exception:
+            log.exception("notification_service_init_failed")
 
         # Load Discord config and register slash commands if enabled.
         try:
