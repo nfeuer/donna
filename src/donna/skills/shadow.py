@@ -19,6 +19,7 @@ import structlog
 from donna.config import SkillSystemConfig
 from donna.skills.divergence import SkillDivergenceRepository
 from donna.skills.equivalence import EquivalenceJudge
+from donna.skills.lifecycle import SkillLifecycleManager
 from donna.skills.models import SkillRow
 from donna.tasks.db_models import SkillState
 
@@ -42,6 +43,7 @@ class ShadowSampler:
         judge: EquivalenceJudge,
         divergence_repo: SkillDivergenceRepository,
         config: SkillSystemConfig,
+        lifecycle_manager: SkillLifecycleManager,
         # Deterministic random: used to inject a fixed seed in tests.
         random_fn: Callable[[], float] | None = None,
     ) -> None:
@@ -49,6 +51,7 @@ class ShadowSampler:
         self._judge = judge
         self._divergence_repo = divergence_repo
         self._config = config
+        self._lifecycle = lifecycle_manager
         self._random_fn = random_fn if random_fn is not None else _random_module.random
 
     async def sample_if_applicable(
@@ -158,7 +161,22 @@ class ShadowSampler:
             diff_summary=diff_summary,
         )
 
-        # Step 8: Log success.
+        # Step 8: Check for auto-promotion eligibility.
+        try:
+            promoted_to = await self._lifecycle.check_and_promote_if_eligible(skill.id)
+            if promoted_to is not None:
+                logger.info(
+                    "skill_auto_promoted",
+                    skill_id=skill.id,
+                    new_state=promoted_to,
+                )
+        except Exception:
+            logger.exception(
+                "shadow_sampler_promotion_check_failed",
+                skill_id=skill.id,
+            )
+
+        # Step 9: Log success.
         logger.info(
             "shadow_sample_recorded",
             skill_id=skill.id,

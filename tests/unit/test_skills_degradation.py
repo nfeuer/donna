@@ -183,7 +183,7 @@ async def test_stable_skill_no_demotion(db: aiosqlite.Connection) -> None:
 
     config = _make_config(rolling_window=30)
     divergence_repo = SkillDivergenceRepository(db)
-    lifecycle = SkillLifecycleManager(db)
+    lifecycle = SkillLifecycleManager(db, config=SkillSystemConfig())
     detector = DegradationDetector(db, divergence_repo, lifecycle, config)
 
     reports = await detector.run()
@@ -220,7 +220,7 @@ async def test_degraded_skill_gets_flagged(db: aiosqlite.Connection) -> None:
 
     config = _make_config(rolling_window=30)
     divergence_repo = SkillDivergenceRepository(db)
-    lifecycle = SkillLifecycleManager(db)
+    lifecycle = SkillLifecycleManager(db, config=SkillSystemConfig())
     detector = DegradationDetector(db, divergence_repo, lifecycle, config)
 
     reports = await detector.run()
@@ -254,7 +254,7 @@ async def test_insufficient_samples_no_flag(db: aiosqlite.Connection) -> None:
 
     config = _make_config(rolling_window=30)
     divergence_repo = SkillDivergenceRepository(db)
-    lifecycle = SkillLifecycleManager(db)
+    lifecycle = SkillLifecycleManager(db, config=SkillSystemConfig())
     detector = DegradationDetector(db, divergence_repo, lifecycle, config)
 
     reports = await detector.run()
@@ -288,7 +288,7 @@ async def test_skill_without_baseline_skipped(db: aiosqlite.Connection) -> None:
 
     config = _make_config(rolling_window=30)
     divergence_repo = SkillDivergenceRepository(db)
-    lifecycle = SkillLifecycleManager(db)
+    lifecycle = SkillLifecycleManager(db, config=SkillSystemConfig())
     detector = DegradationDetector(db, divergence_repo, lifecycle, config)
 
     reports = await detector.run()
@@ -316,7 +316,7 @@ async def test_only_trusted_skills_checked(db: aiosqlite.Connection) -> None:
 
     config = _make_config(rolling_window=30)
     divergence_repo = SkillDivergenceRepository(db)
-    lifecycle = SkillLifecycleManager(db)
+    lifecycle = SkillLifecycleManager(db, config=SkillSystemConfig())
     detector = DegradationDetector(db, divergence_repo, lifecycle, config)
 
     reports = await detector.run()
@@ -348,7 +348,7 @@ async def test_flagging_uses_lifecycle_manager(db: aiosqlite.Connection) -> None
     divergence_repo = SkillDivergenceRepository(db)
 
     # Wrap the real lifecycle manager so we can spy on it
-    real_lifecycle = SkillLifecycleManager(db)
+    real_lifecycle = SkillLifecycleManager(db, config=SkillSystemConfig())
     original_transition = real_lifecycle.transition
     transition_calls: list[dict] = []
 

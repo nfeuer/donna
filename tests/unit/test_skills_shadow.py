@@ -41,6 +41,7 @@ def _make_sampler(
     judge=None,
     repo=None,
     config=None,
+    lifecycle_manager=None,
     random_fn=None,
 ) -> ShadowSampler:
     if router is None:
@@ -54,11 +55,15 @@ def _make_sampler(
         repo.record.return_value = "div-1"
     if config is None:
         config = SkillSystemConfig(shadow_sample_rate_trusted=0.1)
+    if lifecycle_manager is None:
+        lifecycle_manager = MagicMock()
+        lifecycle_manager.check_and_promote_if_eligible = AsyncMock(return_value=None)
     return ShadowSampler(
         model_router=router,
         judge=judge,
         divergence_repo=repo,
         config=config,
+        lifecycle_manager=lifecycle_manager,
         random_fn=random_fn,
     )
 

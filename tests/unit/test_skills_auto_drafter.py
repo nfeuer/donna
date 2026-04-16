@@ -217,8 +217,8 @@ def _make_drafter(
 ) -> AutoDrafter:
     budget_guard = MagicMock()
     repo = SkillCandidateRepository(db)
-    lifecycle = SkillLifecycleManager(db)
     cfg = config or SkillSystemConfig()
+    lifecycle = SkillLifecycleManager(db, config=cfg)
     return AutoDrafter(
         connection=db,
         model_router=router,

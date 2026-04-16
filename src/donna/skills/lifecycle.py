@@ -6,12 +6,14 @@ Every successful state change writes a ``skill_state_transition`` audit row.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 import aiosqlite
 import structlog
 import uuid6
 
+from donna.config import SkillSystemConfig
 from donna.tasks.db_models import SkillState
 
 logger = structlog.get_logger()
@@ -93,8 +95,9 @@ class SkillLifecycleManager:
 
     _TRANSITIONS: dict[tuple[SkillState, SkillState], set[str]] = _build_transitions()
 
-    def __init__(self, connection: aiosqlite.Connection) -> None:
+    def __init__(self, connection: aiosqlite.Connection, config: SkillSystemConfig) -> None:
         self._conn = connection
+        self._config = config
 
     async def transition(
         self,
@@ -212,3 +215,153 @@ class SkillLifecycleManager:
             actor=actor,
             actor_id=actor_id,
         )
+
+    # ---------------------------------------------------------------------------
+    # Auto-promotion gates
+    # ---------------------------------------------------------------------------
+
+    async def check_and_promote_if_eligible(self, skill_id: str) -> str | None:
+        """Check if a skill is eligible for auto-promotion and promote if so.
+
+        Returns the new state value if promoted, None otherwise.
+
+        Only fires for skills in ``sandbox`` or ``shadow_primary`` state. Honors
+        ``requires_human_gate`` — logs eligibility but does not transition.
+        """
+        # 1. Load skill row.
+        cursor = await self._conn.execute(
+            "SELECT state, requires_human_gate, baseline_agreement "
+            "FROM skill WHERE id = ?",
+            (skill_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        state_value, requires_human_gate_int, _baseline = row
+        current_state = SkillState(state_value)
+        requires_human_gate = bool(requires_human_gate_int)
+
+        # 2. Route to the appropriate gate.
+        if current_state == SkillState.SANDBOX:
+            return await self._maybe_promote_to_shadow_primary(
+                skill_id=skill_id,
+                requires_human_gate=requires_human_gate,
+            )
+        if current_state == SkillState.SHADOW_PRIMARY:
+            return await self._maybe_promote_to_trusted(
+                skill_id=skill_id,
+                requires_human_gate=requires_human_gate,
+            )
+        return None
+
+    async def _maybe_promote_to_shadow_primary(
+        self,
+        skill_id: str,
+        requires_human_gate: bool,
+    ) -> str | None:
+        """Gate: successful skill_runs >= N AND validity_rate >= threshold.
+
+        validity_rate = fraction of skill_runs where status='succeeded'.
+        """
+        config = self._config
+        min_runs = config.sandbox_promotion_min_runs
+        rate_threshold = config.sandbox_promotion_validity_rate
+
+        cursor = await self._conn.execute(
+            "SELECT status FROM skill_run WHERE skill_id = ? ORDER BY started_at DESC LIMIT ?",
+            (skill_id, min_runs),
+        )
+        statuses = [row[0] for row in await cursor.fetchall()]
+
+        if len(statuses) < min_runs:
+            return None
+
+        succeeded = sum(1 for s in statuses if s == "succeeded")
+        validity_rate = succeeded / len(statuses)
+        if validity_rate < rate_threshold:
+            return None
+
+        if requires_human_gate:
+            logger.info(
+                "skill_eligible_for_promotion_blocked_by_human_gate",
+                skill_id=skill_id,
+                from_state="sandbox",
+                to_state="shadow_primary",
+                validity_rate=validity_rate,
+            )
+            return None
+
+        notes = json.dumps({"validity_rate": validity_rate, "runs_examined": len(statuses)})
+        await self.transition(
+            skill_id=skill_id,
+            to_state=SkillState.SHADOW_PRIMARY,
+            reason="gate_passed",
+            actor="system",
+            notes=notes,
+        )
+        return SkillState.SHADOW_PRIMARY.value
+
+    async def _maybe_promote_to_trusted(
+        self,
+        skill_id: str,
+        requires_human_gate: bool,
+    ) -> str | None:
+        """Gate: divergences >= M AND agreement_rate >= threshold.
+
+        agreement_rate = mean overall_agreement on the rolling window.
+        On promotion, set baseline_agreement to the observed rate.
+        """
+        config = self._config
+        min_runs = config.shadow_primary_promotion_min_runs
+        rate_threshold = config.shadow_primary_promotion_agreement_rate
+
+        cursor = await self._conn.execute(
+            """
+            SELECT d.overall_agreement
+              FROM skill_divergence d
+              JOIN skill_run r ON d.skill_run_id = r.id
+             WHERE r.skill_id = ?
+             ORDER BY d.created_at DESC
+             LIMIT ?
+            """,
+            (skill_id, min_runs),
+        )
+        agreements = [row[0] for row in await cursor.fetchall()]
+
+        if len(agreements) < min_runs:
+            return None
+
+        mean_agreement = sum(agreements) / len(agreements)
+        if mean_agreement < rate_threshold:
+            return None
+
+        if requires_human_gate:
+            logger.info(
+                "skill_eligible_for_promotion_blocked_by_human_gate",
+                skill_id=skill_id,
+                from_state="shadow_primary",
+                to_state="trusted",
+                agreement_rate=mean_agreement,
+            )
+            return None
+
+        notes = json.dumps(
+            {
+                "mean_agreement": mean_agreement,
+                "runs_examined": len(agreements),
+            }
+        )
+        await self.transition(
+            skill_id=skill_id,
+            to_state=SkillState.TRUSTED,
+            reason="gate_passed",
+            actor="system",
+            notes=notes,
+        )
+        # Also update baseline_agreement on the skill row.
+        await self._conn.execute(
+            "UPDATE skill SET baseline_agreement = ? WHERE id = ?",
+            (mean_agreement, skill_id),
+        )
+        await self._conn.commit()
+        return SkillState.TRUSTED.value
