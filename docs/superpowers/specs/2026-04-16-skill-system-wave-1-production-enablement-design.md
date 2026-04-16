@@ -506,24 +506,24 @@ Legend: `[x]` = done · `[~]` = partial — see drift log · `[ ]` = not yet sta
 
 | # | Requirement | Section | Verified by | ✓ |
 |---|---|---|---|---|
-| W1-R1 | `skill_fixture.tool_mocks` column exists with JSON shape documented in §5.1 | 5.1 | Migration test + backfill test | [ ] |
-| W1-R2 | `MockToolRegistry` dispatches only from `tool_mocks`; raises `UnmockedToolError` for unmocked invocations | 6.2 | Unit test `test_mock_tool_registry` | [ ] |
-| W1-R3 | `ValidationExecutor.execute` drops into `validate_against_fixtures(...)` unchanged and produces a real `FixtureValidationReport` | 6.1 | Unit test `test_validation_executor` | [ ] |
-| W1-R4 | Validation runs never write to `skill_run`, `skill_step_result`, or `invocation_log` | 4.4, 6.1 | Unit test `test_validation_no_production_writes` | [ ] |
-| W1-R5 | Validation LLM calls are tagged with `local_parser_validation` alias / `skill_validation::*` task_type prefix so they're filterable — even though sink suppresses invocation_log writes, the sink captures the attempted alias for the test | 6.1 | Unit test asserting the sink records the alias and no invocation_log row is persisted | [ ] |
-| W1-R6 | `AutoDrafter._run_sandbox_validation` consumes a real `FixtureValidationReport`, no vacuous `1.0` path | 6.3 | Unit test asserting previously-vacuous path now fails on intentional regression | [ ] |
-| W1-R7 | `Evolver` gates 2/3/4 each produce real pass rates from `FixtureValidationReport` | 6.3 | AS-W1.2 | [ ] |
-| W1-R8 | `assemble_skill_system` default factory produces a working `ValidationExecutor` | 6.3 | Unit test instantiating with no kwargs | [ ] |
-| W1-R9 | `NotificationService` instantiated in orchestrator process lifespan | 6.4 | Integration test with `FakeDonnaBot`; manual Discord test | [ ] |
-| W1-R10 | `AutomationScheduler` + `AutomationDispatcher` run in orchestrator, not API | 6.4 | AS-W1.3; smoke that API process has no `automation_scheduler_task` on `app.state` | [ ] |
-| W1-R11 | API `POST /admin/automations/{id}/run-now` returns 202 and sets `next_run_at=now()` | 6.4 | AS-W1.4 | [ ] |
-| W1-R12 | Orchestrator scheduler processes `next_run_at=now()` within configured short-poll interval | 6.4 | AS-W1.3 timing assertion | [ ] |
-| W1-R13 | E2E scenario 1: nightly cycle → drafted skill | 6.5 | `test_wave1_smoke::test_nightly_cycle_drafts_skill` | [ ] |
-| W1-R14 | E2E scenario 2: automation tick → run + alert | 6.5 | `test_wave1_smoke::test_automation_tick_alerts` | [ ] |
-| W1-R15 | E2E scenario 3: sandbox → shadow_primary auto-promotion | 6.5 | `test_wave1_smoke::test_sandbox_promotes_to_shadow` | [ ] |
-| W1-R16 | E2E scenario 4: trusted → flagged_for_review on degradation | 6.5 | `test_wave1_smoke::test_trusted_degrades_to_flagged` | [ ] |
+| W1-R1 | `skill_fixture.tool_mocks` column exists with JSON shape documented in §5.1 | 5.1 | Migration test + backfill test | [x] |
+| W1-R2 | `MockToolRegistry` dispatches only from `tool_mocks`; raises `UnmockedToolError` for unmocked invocations | 6.2 | Unit test `test_mock_tool_registry` | [x] |
+| W1-R3 | `ValidationExecutor.execute` drops into `validate_against_fixtures(...)` unchanged and produces a real `FixtureValidationReport` | 6.1 | Unit test `test_validation_executor` | [x] |
+| W1-R4 | Validation runs never write to `skill_run`, `skill_step_result`, or `invocation_log` | 4.4, 6.1 | Unit test `test_validation_no_production_writes` | [x] |
+| W1-R5 | Validation LLM calls are tagged with `local_parser_validation` alias / `skill_validation::*` task_type prefix so they're filterable — even though sink suppresses invocation_log writes, the sink captures the attempted alias for the test | 6.1 | Unit test asserting the sink records the alias and no invocation_log row is persisted | [x] |
+| W1-R6 | `AutoDrafter._run_sandbox_validation` consumes a real `FixtureValidationReport`, no vacuous `1.0` path | 6.3 | Unit test asserting previously-vacuous path now fails on intentional regression | [x] |
+| W1-R7 | `Evolver` gates 2/3/4 each produce real pass rates from `FixtureValidationReport` | 6.3 | AS-W1.2 | [x] |
+| W1-R8 | `assemble_skill_system` default factory produces a working `ValidationExecutor` | 6.3 | Unit test instantiating with no kwargs | [x] |
+| W1-R9 | `NotificationService` instantiated in orchestrator process lifespan | 6.4 | Integration test with `FakeDonnaBot`; manual Discord test | [x] |
+| W1-R10 | `AutomationScheduler` + `AutomationDispatcher` run in orchestrator, not API | 6.4 | AS-W1.3; smoke that API process has no `automation_scheduler_task` on `app.state` | [x] |
+| W1-R11 | API `POST /admin/automations/{id}/run-now` returns 202 and sets `next_run_at=now()` | 6.4 | AS-W1.4 | [x] |
+| W1-R12 | Orchestrator scheduler processes `next_run_at=now()` within configured short-poll interval | 6.4 | AS-W1.3 timing assertion | [x] |
+| W1-R13 | E2E scenario 1: nightly cycle → drafted skill | 6.5 | `test_wave1_smoke::test_nightly_cycle_drafts_skill` | [x] |
+| W1-R14 | E2E scenario 2: automation tick → run + alert | 6.5 | `test_wave1_smoke::test_automation_tick_alerts` | [x] |
+| W1-R15 | E2E scenario 3: sandbox → shadow_primary auto-promotion | 6.5 | `test_wave1_smoke::test_sandbox_promotes_to_shadow` | [x] |
+| W1-R16 | E2E scenario 4: trusted → flagged_for_review on degradation | 6.5 | `test_wave1_smoke::test_trusted_degrades_to_flagged` | [x] |
 | W1-R17 | Existing full test suite passes | 7 acceptance | AS-W1.6 | [ ] |
-| W1-R18 | Followups doc ticks F-1/F-5/F-6/F-14 | 7 | Doc update | [ ] |
+| W1-R18 | Followups doc ticks F-1/F-5/F-6/F-14 | 7 | Doc update | [x] |
 
 ---
 

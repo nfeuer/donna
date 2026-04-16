@@ -2,6 +2,11 @@
 
 > Split from Donna Project Spec v3.0 — Sections 10, 11
 
+> **Status (Wave 1):** NotificationService is now instantiated in the
+> orchestrator process on startup, wired with the live DonnaBot and the
+> calendar config. Previously only tests constructed it; production code
+> now relies on it for automation alerts and skill-system warnings.
+
 ## Input Channels
 
 | Channel | Implementation | Cost | Priority |

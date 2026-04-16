@@ -8,6 +8,18 @@ This is a backlog, not a roadmap. Priority suggestions are opinions — use them
 
 ---
 
+## Completed — Wave 1 (2026-04-16)
+
+- **F-1** Sandbox SkillExecutor → shipped as `ValidationExecutor`. See `docs/superpowers/specs/2026-04-16-skill-system-wave-1-production-enablement-design.md`.
+- **F-5** Wire ValidationExecutor into lifespan.
+- **F-6** NotificationService wired; automation scheduler moved to orchestrator process.
+- **F-14** End-to-end "enabled" smoke test.
+
+New follow-up surfaced during Wave 1 implementation:
+- **F-W1-A** `DegradationDetector` threshold semantics. The detector uses `degradation_agreement_threshold=0.5` as a binary success/failure classifier on each divergence, then computes a Wilson CI on the success count. Divergences with agreement between the threshold and the baseline (e.g., 0.65 when baseline is 0.90) all count as successes and never trigger degradation. This is a logic concern for Wave 2+ — consider using graded/continuous agreement in the CI or adjusting the default threshold. E2E scenario 4 (`test_trusted_degrades_to_flagged`) seeds 0.30 agreement to work around this.
+
+---
+
 ## Legend
 
 - **Priority P0 — Ship-blocker.** Something promised-but-stubbed, silent footgun, or production-correctness risk. Do before enabling `skill_system.enabled=true` in production.
