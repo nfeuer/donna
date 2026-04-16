@@ -386,3 +386,42 @@ final_output: "{{ state.step2 }}"
     assert result.status == "succeeded"
     assert result.state["step1"] == {}
     assert result.state["step2"] == {"ok": True}
+
+
+async def test_executor_with_repository_writes_run_and_steps():
+    """Verifies the executor wires start_run, record_step, finish_run correctly."""
+    yaml_backbone = """
+capability_name: x
+version: 1
+steps:
+  - name: only
+    kind: llm
+    prompt: p.md
+    output_schema: s.json
+final_output: "{{ state.only }}"
+"""
+    version = _multistep_version(
+        yaml_backbone,
+        step_content={"only": "prompt"},
+        output_schemas={"only": {"type": "object", "properties": {"v": {"type": "integer"}}, "required": ["v"]}},
+    )
+
+    router = AsyncMock()
+    router.complete.return_value = ({"v": 42}, _mock_meta(invocation_id="i1"))
+
+    # Mock the repository. Track calls.
+    repo = AsyncMock()
+    repo.start_run.return_value = "run-id-1"
+
+    executor = SkillExecutor(router, run_repository=repo)
+    result = await executor.execute(
+        skill=_make_skill(), version=version, inputs={"foo": "bar"}, user_id="nick",
+    )
+
+    assert result.status == "succeeded"
+    repo.start_run.assert_awaited_once()
+    repo.record_step.assert_awaited_once()
+    repo.finish_run.assert_awaited_once()
+    finish_kwargs = repo.finish_run.call_args.kwargs
+    assert finish_kwargs["status"] == "succeeded"
+    assert finish_kwargs["final_output"] == {"v": 42}

@@ -117,6 +117,14 @@ class SkillExecutor:
         if not steps:
             return SkillRunResult(status="succeeded", final_output={}, state={})
 
+        skill_run_id: str | None = None
+        if self._run_repository is not None:
+            skill_run_id = await self._run_repository.start_run(
+                skill_id=skill.id, skill_version_id=version.id,
+                inputs=inputs, user_id=user_id,
+                task_id=None, automation_run_id=None,
+            )
+
         step_results: list[StepResultRecord] = []
         invocation_ids: list[str] = []
         total_cost = 0.0
@@ -166,7 +174,8 @@ class SkillExecutor:
                         record.output = llm_output
                         record.latency_ms = int((time.monotonic() - step_start) * 1000)
                         step_results.append(record)
-                        return SkillRunResult(
+                        await self._persist_step_if_repo(skill_run_id, record)
+                        result = SkillRunResult(
                             status="escalated", state=state.to_dict(),
                             escalation_reason=reason,
                             invocation_ids=invocation_ids,
@@ -174,6 +183,8 @@ class SkillExecutor:
                             total_cost_usd=total_cost,
                             step_results=step_results,
                         )
+                        await self._finish_run_if_repo(skill_run_id, result)
+                        return result
 
                     schema = version.output_schemas.get(step_name, {})
                     validate_output(llm_output, schema)
@@ -196,7 +207,8 @@ class SkillExecutor:
                         record.output = llm_output
                         record.latency_ms = int((time.monotonic() - step_start) * 1000)
                         step_results.append(record)
-                        return SkillRunResult(
+                        await self._persist_step_if_repo(skill_run_id, record)
+                        result = SkillRunResult(
                             status="escalated", state=state.to_dict(),
                             escalation_reason=reason,
                             invocation_ids=invocation_ids,
@@ -204,6 +216,8 @@ class SkillExecutor:
                             total_cost_usd=total_cost,
                             step_results=step_results,
                         )
+                        await self._finish_run_if_repo(skill_run_id, result)
+                        return result
 
                     schema = version.output_schemas.get(step_name, {})
                     validate_output(llm_output, schema)
@@ -212,6 +226,7 @@ class SkillExecutor:
 
                 record.latency_ms = int((time.monotonic() - step_start) * 1000)
                 step_results.append(record)
+                await self._persist_step_if_repo(skill_run_id, record)
 
             except (SchemaValidationError, ToolInvocationError, DSLError, jinja2.UndefinedError) as exc:
                 record.error = str(exc)
@@ -220,14 +235,17 @@ class SkillExecutor:
                 )
                 record.latency_ms = int((time.monotonic() - step_start) * 1000)
                 step_results.append(record)
+                await self._persist_step_if_repo(skill_run_id, record)
 
                 # No triage configured → preserve Phase 1 failure semantics.
                 if self._triage is None:
-                    return self._phase1_style_failure_result(
+                    result = self._phase1_style_failure_result(
                         exc=exc, state=state, invocation_ids=invocation_ids,
                         total_cost=total_cost, start=start,
                         step_results=step_results,
                     )
+                    await self._finish_run_if_repo(skill_run_id, result)
+                    return result
 
                 triage_result = await self._consult_triage(
                     skill=skill, step_name=step_name, exc=exc,
@@ -242,7 +260,7 @@ class SkillExecutor:
                         "skill_step_triage_retry_deferred",
                         skill_id=skill.id, step=step_name,
                     )
-                    return SkillRunResult(
+                    result = SkillRunResult(
                         status="escalated", state=state.to_dict(),
                         escalation_reason=(
                             f"triage requested retry (not yet implemented in Phase 2): "
@@ -253,6 +271,8 @@ class SkillExecutor:
                         total_cost_usd=total_cost,
                         step_results=step_results,
                     )
+                    await self._finish_run_if_repo(skill_run_id, result)
+                    return result
 
                 if triage_result.decision == TriageDecision.SKIP_STEP:
                     state[step_name] = {}
@@ -269,7 +289,7 @@ class SkillExecutor:
                     if triage_result.decision == TriageDecision.ESCALATE_TO_CLAUDE
                     else None
                 )
-                return SkillRunResult(
+                result = SkillRunResult(
                     status=status, state=state.to_dict(),
                     escalation_reason=escalation_reason,
                     error=str(exc),
@@ -278,6 +298,8 @@ class SkillExecutor:
                     total_cost_usd=total_cost,
                     step_results=step_results,
                 )
+                await self._finish_run_if_repo(skill_run_id, result)
+                return result
 
             except _ModelCallError as exc:
                 # Raised by _run_llm_step when the router itself fails.
@@ -285,12 +307,13 @@ class SkillExecutor:
                 record.validation_status = "tool_failed"
                 record.latency_ms = int((time.monotonic() - step_start) * 1000)
                 step_results.append(record)
+                await self._persist_step_if_repo(skill_run_id, record)
                 logger.exception(
                     "skill_executor_model_call_failed",
                     skill_id=skill.id, step=step_name,
                 )
                 # Preserve Phase 1 error prefix.
-                return SkillRunResult(
+                result = SkillRunResult(
                     status="failed", state=state.to_dict(),
                     error=f"model_call: {exc}",
                     invocation_ids=invocation_ids,
@@ -298,17 +321,20 @@ class SkillExecutor:
                     total_cost_usd=total_cost,
                     step_results=step_results,
                 )
+                await self._finish_run_if_repo(skill_run_id, result)
+                return result
 
             except Exception as exc:
                 record.error = str(exc)
                 record.validation_status = "tool_failed"
                 record.latency_ms = int((time.monotonic() - step_start) * 1000)
                 step_results.append(record)
+                await self._persist_step_if_repo(skill_run_id, record)
                 logger.exception(
                     "skill_executor_unexpected_failure",
                     skill_id=skill.id, step=step_name,
                 )
-                return SkillRunResult(
+                result = SkillRunResult(
                     status="failed", state=state.to_dict(),
                     error=f"unexpected: {exc}",
                     invocation_ids=invocation_ids,
@@ -316,6 +342,8 @@ class SkillExecutor:
                     total_cost_usd=total_cost,
                     step_results=step_results,
                 )
+                await self._finish_run_if_repo(skill_run_id, result)
+                return result
 
         # All steps succeeded. Render final_output.
         final_output_expr = backbone.get("final_output")
@@ -323,7 +351,7 @@ class SkillExecutor:
             final_output_expr, state=state, default=state.to_dict(),
         )
 
-        return SkillRunResult(
+        result = SkillRunResult(
             status="succeeded",
             final_output=final_output,
             state=state.to_dict(),
@@ -332,6 +360,49 @@ class SkillExecutor:
             total_cost_usd=total_cost,
             step_results=step_results,
         )
+        await self._finish_run_if_repo(skill_run_id, result)
+        return result
+
+    async def _persist_step_if_repo(
+        self, skill_run_id: str | None, record: StepResultRecord,
+    ) -> None:
+        if skill_run_id is None or self._run_repository is None:
+            return
+        try:
+            await self._run_repository.record_step(
+                skill_run_id=skill_run_id,
+                step_name=record.step_name,
+                step_index=record.step_index,
+                step_kind=record.step_kind,
+                output=record.output,
+                latency_ms=record.latency_ms,
+                validation_status=record.validation_status,
+                invocation_log_id=record.invocation_id,
+                tool_calls=record.tool_calls,
+                error=record.error,
+            )
+        except Exception:
+            logger.exception("skill_run_persistence_step_failed", skill_run_id=skill_run_id)
+
+    async def _finish_run_if_repo(
+        self, skill_run_id: str | None, result: SkillRunResult,
+    ) -> None:
+        if skill_run_id is None or self._run_repository is None:
+            return
+        try:
+            await self._run_repository.finish_run(
+                skill_run_id=skill_run_id,
+                status=result.status,
+                final_output=result.final_output,
+                state_object=result.state,
+                tool_result_cache=result.tool_result_cache,
+                total_latency_ms=result.total_latency_ms,
+                total_cost_usd=result.total_cost_usd,
+                escalation_reason=result.escalation_reason,
+                error=result.error,
+            )
+        except Exception:
+            logger.exception("skill_run_persistence_finish_failed", skill_run_id=skill_run_id)
 
     async def _run_llm_step(
         self, step: dict, step_name: str, version: SkillVersionRow,
