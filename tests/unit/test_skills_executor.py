@@ -425,3 +425,243 @@ final_output: "{{ state.only }}"
     finish_kwargs = repo.finish_run.call_args.kwargs
     assert finish_kwargs["status"] == "succeeded"
     assert finish_kwargs["final_output"] == {"v": 42}
+
+
+# --- Phase 3 retry-loop tests ---
+
+
+async def test_triage_retry_step_succeeds_on_second_attempt():
+    """First call raises SchemaValidationError; triage returns RETRY_STEP with a
+    prompt modification; second call succeeds.  Skill run must succeed."""
+    yaml_backbone = """
+capability_name: x
+version: 1
+steps:
+  - name: step1
+    kind: llm
+    prompt: p.md
+    output_schema: s.json
+final_output: "{{ state.step1 }}"
+"""
+    version = _multistep_version(
+        yaml_backbone,
+        step_content={"step1": "base prompt"},
+        output_schemas={
+            "step1": {
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+                "required": ["value"],
+            }
+        },
+    )
+
+    router = AsyncMock()
+    # First call returns invalid output (missing required "value" field),
+    # causing SchemaValidationError in validate_output.
+    # Second call returns valid output.
+    router.complete.side_effect = [
+        ({"wrong_key": "bad"}, _mock_meta(invocation_id="i1")),
+        ({"value": "good"}, _mock_meta(invocation_id="i2")),
+    ]
+
+    triage = AsyncMock()
+    triage.handle_failure.return_value = TriageResult(
+        decision=TriageDecision.RETRY_STEP,
+        rationale="output schema mismatch; retry with hint",
+        modified_prompt_additions="IMPORTANT: you must return a JSON object with key 'value'.",
+    )
+
+    executor = SkillExecutor(router, triage=triage)
+    result = await executor.execute(
+        skill=_make_skill(), version=version, inputs={}, user_id="nick",
+    )
+
+    assert result.status == "succeeded"
+    assert result.state["step1"] == {"value": "good"}
+    assert router.complete.call_count == 2
+    triage.handle_failure.assert_awaited_once()
+
+    # Verify the second call's prompt included the modification from triage.
+    second_call_prompt = router.complete.call_args_list[1].kwargs["prompt"]
+    assert "IMPORTANT: you must return a JSON object with key 'value'." in second_call_prompt
+
+
+async def test_triage_retry_step_exhausts_retries_then_escalates():
+    """Every call raises; triage keeps returning RETRY_STEP up to the retry cap,
+    after which triage (enforcing MAX_RETRY_COUNT) returns ESCALATE_TO_CLAUDE.
+    The run must end with status='escalated'."""
+    yaml_backbone = """
+capability_name: x
+version: 1
+steps:
+  - name: step1
+    kind: llm
+    prompt: p.md
+    output_schema: s.json
+final_output: "{{ state.step1 }}"
+"""
+    version = _multistep_version(
+        yaml_backbone,
+        step_content={"step1": "prompt"},
+        output_schemas={
+            "step1": {
+                "type": "object",
+                "properties": {"v": {"type": "string"}},
+                "required": ["v"],
+            }
+        },
+    )
+
+    router = AsyncMock()
+    # All calls return invalid output — validation always fails.
+    router.complete.return_value = ({"wrong": "x"}, _mock_meta(invocation_id="i1"))
+
+    # Triage returns RETRY_STEP for the first two calls, then ESCALATE on the third
+    # (simulating MAX_RETRY_COUNT=3 cap enforcement in TriageAgent).
+    triage = AsyncMock()
+    triage.handle_failure.side_effect = [
+        TriageResult(
+            decision=TriageDecision.RETRY_STEP,
+            rationale="attempt 1",
+            modified_prompt_additions="hint1",
+        ),
+        TriageResult(
+            decision=TriageDecision.RETRY_STEP,
+            rationale="attempt 2",
+            modified_prompt_additions="hint2",
+        ),
+        TriageResult(
+            decision=TriageDecision.ESCALATE_TO_CLAUDE,
+            rationale="retry cap reached",
+        ),
+    ]
+
+    executor = SkillExecutor(router, triage=triage)
+    result = await executor.execute(
+        skill=_make_skill(), version=version, inputs={}, user_id="nick",
+    )
+
+    assert result.status == "escalated"
+    assert "retry cap reached" in result.escalation_reason
+    # router.complete called once per attempt (3 total)
+    assert router.complete.call_count == 3
+    assert triage.handle_failure.await_count == 3
+
+
+async def test_triage_retry_step_state_preserved_across_retries():
+    """Multi-step skill: step1 succeeds; step2 retried once then succeeds;
+    step3 runs with state including both step1 and step2 outputs."""
+    yaml_backbone = """
+capability_name: x
+version: 1
+steps:
+  - name: step1
+    kind: llm
+    prompt: p1.md
+    output_schema: s1.json
+  - name: step2
+    kind: llm
+    prompt: p2.md
+    output_schema: s2.json
+  - name: step3
+    kind: llm
+    prompt: p3.md
+    output_schema: s3.json
+final_output: "{{ state.step3 }}"
+"""
+    version = _multistep_version(
+        yaml_backbone,
+        step_content={
+            "step1": "step1 prompt",
+            "step2": "step2 prompt",
+            "step3": "step3 using {{ state.step1.a }} and {{ state.step2.b }}",
+        },
+        output_schemas={
+            "step1": {"type": "object", "properties": {"a": {"type": "string"}}, "required": ["a"]},
+            "step2": {"type": "object", "properties": {"b": {"type": "string"}}, "required": ["b"]},
+            "step3": {"type": "object", "properties": {"c": {"type": "string"}}, "required": ["c"]},
+        },
+    )
+
+    router = AsyncMock()
+    router.complete.side_effect = [
+        ({"a": "from_step1"}, _mock_meta(invocation_id="i1")),   # step1 success
+        ({"wrong": "x"}, _mock_meta(invocation_id="i2")),         # step2 attempt 1 fails
+        ({"b": "from_step2"}, _mock_meta(invocation_id="i3")),    # step2 retry succeeds
+        ({"c": "from_step3"}, _mock_meta(invocation_id="i4")),    # step3 success
+    ]
+
+    triage = AsyncMock()
+    triage.handle_failure.return_value = TriageResult(
+        decision=TriageDecision.RETRY_STEP,
+        rationale="step2 schema mismatch",
+        modified_prompt_additions="please return 'b'",
+    )
+
+    executor = SkillExecutor(router, triage=triage)
+    result = await executor.execute(
+        skill=_make_skill(), version=version, inputs={}, user_id="nick",
+    )
+
+    assert result.status == "succeeded"
+    assert result.state["step1"] == {"a": "from_step1"}
+    assert result.state["step2"] == {"b": "from_step2"}
+    assert result.state["step3"] == {"c": "from_step3"}
+    assert router.complete.call_count == 4
+    triage.handle_failure.assert_awaited_once()
+
+    # step3 prompt was rendered with state including step1 and step2 outputs
+    step3_call_prompt = router.complete.call_args_list[3].kwargs["prompt"]
+    assert "from_step1" in step3_call_prompt
+    assert "from_step2" in step3_call_prompt
+
+
+async def test_skip_step_still_advances_idx():
+    """Regression: SKIP_STEP must advance idx so the next step runs.
+
+    Before the while-loop refactor the for-loop implicit advance handled this;
+    now the explicit ``idx += 1`` in the SKIP_STEP branch is responsible.
+    """
+    yaml_backbone = """
+capability_name: x
+version: 1
+steps:
+  - name: step1
+    kind: llm
+    prompt: p1.md
+    output_schema: s1.json
+  - name: step2
+    kind: llm
+    prompt: p2.md
+    output_schema: s2.json
+final_output: "{{ state.step2 }}"
+"""
+    version = _multistep_version(
+        yaml_backbone,
+        step_content={"step1": "p1", "step2": "p2"},
+        output_schemas={
+            "step1": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]},
+            "step2": {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]},
+        },
+    )
+
+    router = AsyncMock()
+    router.complete.side_effect = [
+        ({"not_title": "x"}, _mock_meta(invocation_id="i1")),  # step1 fails schema
+        ({"ok": True}, _mock_meta(invocation_id="i2")),          # step2 succeeds
+    ]
+
+    triage = AsyncMock()
+    triage.handle_failure.return_value = TriageResult(
+        decision=TriageDecision.SKIP_STEP, rationale="step1 non-essential",
+    )
+
+    executor = SkillExecutor(router, triage=triage)
+    result = await executor.execute(
+        skill=_make_skill(), version=version, inputs={}, user_id="nick",
+    )
+
+    assert result.status == "succeeded"
+    assert result.state["step1"] == {}       # skipped → empty dict
+    assert result.state["step2"] == {"ok": True}
+    assert router.complete.call_count == 2   # both steps attempted

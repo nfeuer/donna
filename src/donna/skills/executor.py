@@ -136,7 +136,11 @@ class SkillExecutor:
         invocation_ids: list[str] = []
         total_cost = 0.0
 
-        for idx, step in enumerate(steps):
+        idx = 0
+        prompt_additions: str | None = None
+
+        while idx < len(steps):
+            step = steps[idx]
             step_name = step.get("name") or f"step_{idx}"
             step_kind = step.get("kind", "llm")
             allowed_tools = step.get("tools", [])
@@ -170,6 +174,7 @@ class SkillExecutor:
                         step=step, step_name=step_name, version=version,
                         state=state, inputs=inputs,
                         user_id=user_id, skill=skill,
+                        prompt_additions=prompt_additions,
                     )
                     total_cost += cost
                     invocation_ids.append(inv_id)
@@ -203,6 +208,7 @@ class SkillExecutor:
                         step=step, step_name=step_name, version=version,
                         state=state, inputs=inputs,
                         user_id=user_id, skill=skill,
+                        prompt_additions=prompt_additions,
                     )
                     total_cost += cost
                     invocation_ids.append(inv_id)
@@ -244,6 +250,10 @@ class SkillExecutor:
                     latency_ms=record.latency_ms,
                 )
 
+                # Step succeeded — advance to the next step.
+                idx += 1
+                prompt_additions = None
+
             except (SchemaValidationError, ToolInvocationError, DSLError, jinja2.UndefinedError) as exc:
                 record.error = str(exc)
                 record.validation_status = (
@@ -270,28 +280,20 @@ class SkillExecutor:
                 )
 
                 if triage_result.decision == TriageDecision.RETRY_STEP:
-                    # Phase 2 defers the full retry loop — see drift log.
                     retry_count += 1
+                    prompt_additions = triage_result.modified_prompt_additions
                     logger.info(
-                        "skill_step_triage_retry_deferred",
+                        "skill_step_triage_retry",
                         skill_id=skill.id, step=step_name,
+                        retry_count=retry_count,
+                        modifications=bool(prompt_additions),
                     )
-                    result = SkillRunResult(
-                        status="escalated", state=state.to_dict(),
-                        escalation_reason=(
-                            f"triage requested retry (not yet implemented in Phase 2): "
-                            f"{triage_result.rationale}"
-                        ),
-                        invocation_ids=invocation_ids,
-                        total_latency_ms=int((time.monotonic() - start) * 1000),
-                        total_cost_usd=total_cost,
-                        step_results=step_results,
-                    )
-                    await self._finish_run_if_repo(skill_run_id, result)
-                    return result
+                    continue  # Re-loop at same idx, with prompt_additions set.
 
                 if triage_result.decision == TriageDecision.SKIP_STEP:
                     state[step_name] = {}
+                    idx += 1
+                    prompt_additions = None
                     continue
 
                 # ESCALATE_TO_CLAUDE, ALERT_USER, MARK_SKILL_DEGRADED all terminate.
@@ -447,11 +449,14 @@ class SkillExecutor:
     async def _run_llm_step(
         self, step: dict, step_name: str, version: SkillVersionRow,
         state: StateObject, inputs: dict, user_id: str, skill: SkillRow,
+        prompt_additions: str | None = None,
     ) -> tuple[Any, str, float]:
         prompt_template = version.step_content.get(step_name, "")
         rendered = self._jinja.from_string(prompt_template).render(
             inputs=inputs, state=state.to_dict(),
         )
+        if prompt_additions:
+            rendered = rendered + "\n\n" + prompt_additions
         schema = version.output_schemas.get(step_name, {})
 
         try:
