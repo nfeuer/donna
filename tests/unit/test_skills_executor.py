@@ -162,3 +162,227 @@ async def test_executor_handles_empty_steps():
     assert result.status == "succeeded"
     assert result.final_output == {}
     router.complete.assert_not_called()
+
+
+# --- Phase 2 multi-step tests ---
+
+from donna.skills.tool_registry import ToolRegistry
+from donna.skills.triage import TriageAgent, TriageDecision, TriageResult
+
+
+def _multistep_version(yaml_backbone: str, step_content: dict, output_schemas: dict) -> SkillVersionRow:
+    return SkillVersionRow(
+        id="v1", skill_id="s1", version_number=1,
+        yaml_backbone=yaml_backbone,
+        step_content=step_content, output_schemas=output_schemas,
+        created_by="seed", changelog=None,
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+async def test_executor_runs_two_step_skill():
+    yaml_backbone = """
+capability_name: parse_task
+version: 1
+steps:
+  - name: extract
+    kind: llm
+    prompt: steps/extract.md
+    output_schema: schemas/extract_v1.json
+  - name: classify
+    kind: llm
+    prompt: steps/classify.md
+    output_schema: schemas/classify_v1.json
+final_output: "{{ state.classify }}"
+"""
+
+    version = _multistep_version(
+        yaml_backbone,
+        step_content={
+            "extract": "Extract: {{ inputs.raw_text }}",
+            "classify": "Classify: {{ state.extract.title }}",
+        },
+        output_schemas={
+            "extract": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]},
+            "classify": {"type": "object", "properties": {"priority": {"type": "integer"}}, "required": ["priority"]},
+        },
+    )
+
+    router = AsyncMock()
+    router.complete.side_effect = [
+        ({"title": "Q2 review"}, _mock_meta(invocation_id="i1")),
+        ({"priority": 3}, _mock_meta(invocation_id="i2")),
+    ]
+
+    executor = SkillExecutor(router)
+    result = await executor.execute(
+        skill=_make_skill(), version=version,
+        inputs={"raw_text": "draft the Q2 review"},
+        user_id="nick",
+    )
+
+    assert result.status == "succeeded"
+    assert result.state["extract"]["title"] == "Q2 review"
+    assert result.state["classify"]["priority"] == 3
+    assert result.final_output == {"priority": 3}
+    assert router.complete.call_count == 2
+
+
+async def test_executor_runs_tool_step_with_for_each():
+    yaml_backbone = """
+capability_name: fetch
+version: 1
+steps:
+  - name: fetch_all
+    kind: tool
+    tools: [mock_fetch]
+    tool_invocations:
+      - for_each: "{{ inputs.urls }}"
+        as: url
+        tool: mock_fetch
+        args:
+          u: "{{ url }}"
+        store_as: "fetched_{{ loop.index0 }}"
+final_output: "{{ state.fetch_all }}"
+"""
+    version = _multistep_version(yaml_backbone, step_content={}, output_schemas={})
+
+    async def mock_fetch(u: str):
+        return {"url_fetched": u}
+
+    registry = ToolRegistry()
+    registry.register("mock_fetch", mock_fetch)
+
+    executor = SkillExecutor(AsyncMock(), tool_registry=registry)
+    result = await executor.execute(
+        skill=_make_skill(), version=version,
+        inputs={"urls": ["https://a.com", "https://b.com"]},
+        user_id="nick",
+    )
+
+    assert result.status == "succeeded"
+    assert result.state["fetch_all"]["fetched_0"] == {"url_fetched": "https://a.com"}
+    assert result.state["fetch_all"]["fetched_1"] == {"url_fetched": "https://b.com"}
+
+
+async def test_executor_escalate_signal_short_circuits_multistep():
+    yaml_backbone = """
+capability_name: parse
+version: 1
+steps:
+  - name: first
+    kind: llm
+    prompt: p.md
+    output_schema: s.json
+  - name: second
+    kind: llm
+    prompt: p2.md
+    output_schema: s2.json
+final_output: "{{ state.second }}"
+"""
+    version = _multistep_version(
+        yaml_backbone,
+        step_content={"first": "...", "second": "..."},
+        output_schemas={
+            "first": {"type": "object", "properties": {"escalate": {"type": "object"}}},
+            "second": {"type": "object"},
+        },
+    )
+
+    router = AsyncMock()
+    router.complete.return_value = (
+        {"escalate": {"reason": "insufficient context"}},
+        _mock_meta(invocation_id="i1"),
+    )
+
+    executor = SkillExecutor(router)
+    result = await executor.execute(
+        skill=_make_skill(), version=version, inputs={}, user_id="nick",
+    )
+
+    assert result.status == "escalated"
+    assert result.escalation_reason == "insufficient context"
+    assert router.complete.call_count == 1
+
+
+async def test_executor_calls_triage_on_schema_failure_then_escalates():
+    yaml_backbone = """
+capability_name: x
+version: 1
+steps:
+  - name: step1
+    kind: llm
+    prompt: p.md
+    output_schema: s.json
+final_output: "{{ state.step1 }}"
+"""
+    version = _multistep_version(
+        yaml_backbone,
+        step_content={"step1": "prompt"},
+        output_schemas={"step1": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]}},
+    )
+
+    router = AsyncMock()
+    router.complete.return_value = (
+        {"not_title": "x"},
+        _mock_meta(invocation_id="i1"),
+    )
+
+    triage = AsyncMock()
+    triage.handle_failure.return_value = TriageResult(
+        decision=TriageDecision.ESCALATE_TO_CLAUDE,
+        rationale="output shape is structurally broken",
+    )
+
+    executor = SkillExecutor(router, triage=triage)
+    result = await executor.execute(
+        skill=_make_skill(), version=version, inputs={}, user_id="nick",
+    )
+
+    assert result.status == "escalated"
+    triage.handle_failure.assert_awaited_once()
+
+
+async def test_executor_triage_skip_continues():
+    yaml_backbone = """
+capability_name: x
+version: 1
+steps:
+  - name: step1
+    kind: llm
+    prompt: p1.md
+    output_schema: s1.json
+  - name: step2
+    kind: llm
+    prompt: p2.md
+    output_schema: s2.json
+final_output: "{{ state.step2 }}"
+"""
+    version = _multistep_version(
+        yaml_backbone,
+        step_content={"step1": "p1", "step2": "p2"},
+        output_schemas={
+            "step1": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]},
+            "step2": {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]},
+        },
+    )
+
+    router = AsyncMock()
+    router.complete.side_effect = [
+        ({"not_title": "x"}, _mock_meta(invocation_id="i1")),  # step1 fails
+        ({"ok": True}, _mock_meta(invocation_id="i2")),  # step2 succeeds
+    ]
+
+    triage = AsyncMock()
+    triage.handle_failure.return_value = TriageResult(
+        decision=TriageDecision.SKIP_STEP, rationale="step1 non-essential",
+    )
+
+    executor = SkillExecutor(router, triage=triage)
+    result = await executor.execute(
+        skill=_make_skill(), version=version, inputs={}, user_id="nick",
+    )
+
+    assert result.status == "succeeded"
+    assert result.state["step1"] == {}
+    assert result.state["step2"] == {"ok": True}
