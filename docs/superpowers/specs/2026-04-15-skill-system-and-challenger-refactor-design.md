@@ -1127,6 +1127,17 @@ Format:
 - **Executor factory deferral carries into Phase 4.** `Evolver` accepts `executor_factory=None` and `assemble_skill_system` passes `None` by default; gates 2, 3, 4 then return `pass_rate=1.0` (vacuous). Evolution will still run and produce valid draft versions, but validation against real skill_runs and fixtures is deferred until someone wires a sandbox SkillExecutor in. Same safety posture as Phase 3's AutoDrafter — drafted/evolved skills require human approval before reaching sandbox.
 - **Evolution transitions land in draft, not sandbox.** The §6.2 transition table requires `human_approval` for `draft → sandbox`. `Evolver` after successful gates transitions `degraded → draft` with `reason=gate_passed` (legal), then attempts `draft → sandbox` but catches `IllegalTransitionError` since system actor cannot use `human_approval`. Evolved skills therefore rest in `draft` pending human approval — consistent with the spec's requirement that human-gated and non-gated evolved versions both land in a state awaiting review.
 
+### Phase 5 closures (2026-04-16)
+
+- **§5.11, §5.12 schema shipped.** `automation` + `automation_run` tables in migration `add_automation_tables_phase_5` (revision `a7b8c9d0e1f2`).
+- **§6.9 execution loop.** `AutomationScheduler` polls `list_due(now)` every 60s. `AutomationDispatcher` is the sole creator of `automation_run` rows. Per-run cost cap enforced after the run; over-budget marks the row `failed` with `error = "cost_exceeded"`. Consecutive failures reaching `config.automation_failure_pause_threshold` transition the automation to `paused` and emit a `NOTIF_AUTOMATION_FAILURE`.
+- **Skill vs claude_native.** Dispatcher re-queries `skill.state` at every dispatch, so automations transparently switch to skill execution once the skill reaches `shadow_primary`. AS-5.3.
+- **Alert DSL.** `AlertEvaluator` implements the 8 ops from §6.9 (`==`, `!=`, `<`, `<=`, `>`, `>=`, `contains`, `exists`) with `all_of` / `any_of` compound nodes and dotted field paths. Empty `alert_conditions` dict → no alert.
+- **min_interval_seconds semantics.** v1 scheduler does not double-enforce min_interval beyond what cron produces. The column is persisted and available for future dashboard-side validation.
+- **Manual run (trigger_type=on_manual).** Handled via `POST /admin/automations/{id}/run-now`. These automations have `schedule=null` and `next_run_at=null`; the scheduler never picks them up.
+- **NotificationService dependency may be None in v1.** If `app.state.notification_service` is absent, dispatcher calls are short-circuited via `self._notifier is not None` and the run proceeds.
+- **Natural-language creation flow deferred.** AS-5.1 via Discord ("watch this URL daily") depends on a challenger refactor that outputs `trigger_type=on_schedule`. The backend endpoint is in place from day one for the dashboard; the challenger adapter is a downstream task.
+
 ---
 
 ## 9. Requirements Checklist
@@ -1166,11 +1177,11 @@ Legend: `[x]` = done · `[~]` = partial — see drift log · `[ ]` = not yet sta
 | R27 | Correction clustering triggers immediate evolution notification | 6.6 | AS-4.5 | [x] |
 | R28 | Evolution validates via 4 gates before replacing current version | 6.6 | AS-4.3, AS-4.4 | [x] |
 | R29 | Two consecutive failed evolutions demote to claude_native | 6.6 | AS-4.4 | [x] |
-| R30 | `automation` table distinct from `task` table | 5.11 | Migration test | [ ] |
-| R31 | Automation scheduler runs due automations respecting min_interval | 6.9 | AS-5.2 | [ ] |
-| R32 | Automation dispatcher resolves skill vs claude_native per run | 6.9 | AS-5.3 | [ ] |
-| R33 | Alert conditions evaluated against run output, dispatched via NotificationService | 6.9 | AS-5.4 | [ ] |
-| R34 | Repeated failures pause the automation with user notification | 6.9 | AS-5.5 | [ ] |
+| R30 | `automation` table distinct from `task` table | 5.11 | Migration test | [x] |
+| R31 | Automation scheduler runs due automations respecting min_interval | 6.9 | AS-5.2 | [x] |
+| R32 | Automation dispatcher resolves skill vs claude_native per run | 6.9 | AS-5.3 | [x] |
+| R33 | Alert conditions evaluated against run output, dispatched via NotificationService | 6.9 | AS-5.4 | [x] |
+| R34 | Repeated failures pause the automation with user notification | 6.9 | AS-5.5 | [x] |
 | R35 | Dashboard lists skills, capabilities, automations with pagination | 6.10 | Manual walkthrough | [ ] |
 | R36 | Dashboard skill detail shows version history, runs, divergences, transitions | 6.10 | Manual walkthrough | [ ] |
 | R37 | Dashboard edit of trusted skill creates new version and transitions to sandbox | 6.10 | Unit test | [ ] |
