@@ -13,6 +13,7 @@ import structlog
 
 from donna.capabilities.models import CapabilityRow
 from donna.capabilities.registry import CapabilityRegistry
+from donna.config import SkillSystemConfig
 
 logger = structlog.get_logger()
 
@@ -35,9 +36,16 @@ class MatchResult:
 
 
 class CapabilityMatcher:
-    def __init__(self, registry: CapabilityRegistry, k: int = 5) -> None:
+    def __init__(
+        self,
+        registry: CapabilityRegistry,
+        k: int = 5,
+        config: SkillSystemConfig | None = None,
+    ) -> None:
         self._registry = registry
         self._k = k
+        self._high = config.match_confidence_high if config else HIGH_CONFIDENCE_THRESHOLD
+        self._medium = config.match_confidence_medium if config else MEDIUM_CONFIDENCE_THRESHOLD
 
     async def match(self, query: str) -> MatchResult:
         candidates = await self._registry.semantic_search(query, k=self._k)
@@ -69,10 +77,9 @@ class CapabilityMatcher:
             candidates=candidates,
         )
 
-    @staticmethod
-    def _classify_confidence(score: float) -> MatchConfidence:
-        if score >= HIGH_CONFIDENCE_THRESHOLD:
+    def _classify_confidence(self, score: float) -> MatchConfidence:
+        if score >= self._high:
             return MatchConfidence.HIGH
-        if score >= MEDIUM_CONFIDENCE_THRESHOLD:
+        if score >= self._medium:
             return MatchConfidence.MEDIUM
         return MatchConfidence.LOW

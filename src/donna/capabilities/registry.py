@@ -24,6 +24,7 @@ from donna.capabilities.models import (
     CapabilityRow,
     row_to_capability,
 )
+from donna.config import SkillSystemConfig
 
 logger = structlog.get_logger()
 
@@ -49,8 +50,15 @@ class CapabilityInput:
 class CapabilityRegistry:
     """CRUD and retrieval for user-facing capabilities."""
 
-    def __init__(self, connection: aiosqlite.Connection) -> None:
+    def __init__(
+        self,
+        connection: aiosqlite.Connection,
+        config: SkillSystemConfig | None = None,
+    ) -> None:
         self._conn = connection
+        self._similarity_threshold = (
+            config.similarity_audit_threshold if config else self.SIMILARITY_THRESHOLD
+        )
 
     async def register(
         self,
@@ -152,12 +160,12 @@ class CapabilityRegistry:
                 continue
             cap_vec = bytes_to_embedding(cap.embedding)
             sim = cosine_similarity(new_vec, cap_vec)
-            if sim >= self.SIMILARITY_THRESHOLD:
+            if sim >= self._similarity_threshold:
                 logger.warning(
                     "capability_post_creation_audit_flagged",
                     similar_to=cap.name,
                     similarity=sim,
-                    threshold=self.SIMILARITY_THRESHOLD,
+                    threshold=self._similarity_threshold,
                 )
                 return "pending_review"
 

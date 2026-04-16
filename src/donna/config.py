@@ -417,10 +417,33 @@ def load_discord_config(config_dir: Path) -> DiscordConfig:
 
 
 class SkillSystemConfig(BaseModel):
-    """Phase 1 skill system runtime configuration."""
+    """Skill system runtime configuration (Phase 1–3)."""
 
+    # Phase 1
     enabled: bool = False
     match_confidence_high: float = 0.75
     match_confidence_medium: float = 0.40
     similarity_audit_threshold: float = 0.80
     seed_skills_initial_state: str = "sandbox"
+
+    # Phase 3 additions
+    shadow_sample_rate_trusted: float = 0.05
+    sandbox_promotion_min_runs: int = 20
+    sandbox_promotion_validity_rate: float = 0.90
+    shadow_primary_promotion_min_runs: int = 100
+    shadow_primary_promotion_agreement_rate: float = 0.85
+    degradation_rolling_window: int = 30
+    degradation_ci_confidence: float = 0.95
+    auto_draft_daily_cap: int = 50
+    auto_draft_min_expected_savings_usd: float = 5.0
+    auto_draft_fixture_pass_rate: float = 0.80
+    nightly_run_hour_utc: int = 3
+
+
+def load_skill_system_config(config_dir: Path) -> SkillSystemConfig:
+    """Load skill system configuration, falling back to defaults if missing."""
+    path = config_dir / "skills.yaml"
+    if not path.exists():
+        return SkillSystemConfig()
+    data = load_yaml(path) or {}
+    return SkillSystemConfig(**data)
