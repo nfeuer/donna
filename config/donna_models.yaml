@@ -82,6 +82,8 @@ routing:
     fallback: parser
   skill_equivalence_judge:
     model: reasoner
+  skill_auto_draft:
+    model: reasoner
 
 # Cost tracking
 cost:

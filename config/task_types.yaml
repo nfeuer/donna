@@ -129,6 +129,13 @@ task_types:
     output_schema: schemas/skill_equivalence_output.json
     tools: []
 
+  skill_auto_draft:
+    description: "Claude generates a skill YAML + fixtures for a candidate capability"
+    model: reasoner
+    prompt_template: prompts/skill_auto_draft.md
+    output_schema: schemas/skill_auto_draft_output.json
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions
