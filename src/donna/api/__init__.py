@@ -199,9 +199,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # admin routes can surface `enabled` status; it no longer starts any
     # skill-system background tasks.
     #
-    # Automation subsystem wiring (dispatcher + scheduler) also moves to the
-    # orchestrator in Task 15. Until then, /admin/automations/{id}/run-now
-    # returns 503 from the API — consistent with the route's existing fallback.
+    # Automation subsystem wiring (dispatcher + scheduler) lives in the
+    # orchestrator (Wave 1 F-6 Task 15). /admin/automations/{id}/run-now is
+    # now a DB-only operation that flips ``next_run_at`` to now; the
+    # orchestrator's AutomationScheduler polls the DB and picks it up on its
+    # next tick (~15 s).
     try:
         from donna.config import load_skill_system_config
 
