@@ -10,10 +10,12 @@ Phase 1 test suite keeps passing.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import jinja2
 import structlog
@@ -35,6 +37,9 @@ from donna.skills.triage import (
     TriageResult,
 )
 from donna.skills.validation import SchemaValidationError, validate_output
+
+if TYPE_CHECKING:
+    from donna.skills.shadow import ShadowSampler
 
 logger = structlog.get_logger()
 
@@ -86,12 +91,14 @@ class SkillExecutor:
         tool_registry: ToolRegistry | None = None,
         triage: TriageAgent | None = None,
         run_repository: Any | None = None,
+        shadow_sampler: "ShadowSampler | None" = None,
     ) -> None:
         self._router = model_router
         self._tool_registry = tool_registry or ToolRegistry()
         self._tool_dispatcher = ToolDispatcher(self._tool_registry)
         self._triage = triage
         self._run_repository = run_repository  # used in Task 10
+        self._shadow_sampler = shadow_sampler
         self._jinja = jinja2.Environment(
             autoescape=False,
             undefined=jinja2.StrictUndefined,
@@ -370,6 +377,30 @@ class SkillExecutor:
             step_results=step_results,
         )
         await self._finish_run_if_repo(skill_run_id, result)
+
+        # Fire-and-forget shadow sampling — only when a run row exists to link
+        # the divergence to and the sampler is configured.
+        if self._shadow_sampler is not None and skill_run_id is not None:
+            claude_prompt = json.dumps(
+                {"capability": skill.capability_name, "inputs": inputs},
+                sort_keys=True,
+            )
+            skill_output_dict = (
+                result.final_output
+                if isinstance(result.final_output, dict)
+                else {"output": result.final_output}
+            )
+            asyncio.create_task(
+                self._shadow_sampler.sample_if_applicable(
+                    skill=skill,
+                    skill_run_id=skill_run_id,
+                    inputs=inputs,
+                    skill_output=skill_output_dict,
+                    claude_task_type=skill.capability_name,
+                    claude_prompt=claude_prompt,
+                )
+            )
+
         return result
 
     async def _persist_step_if_repo(
