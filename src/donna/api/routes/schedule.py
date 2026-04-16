@@ -5,12 +5,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import Request
 
-from donna.api.auth import CurrentUser
+from donna.api.auth import CurrentUser, user_router
 from donna.tasks.db_models import TaskStatus
 
-router = APIRouter()
+router = user_router()
 
 
 def _scheduled_task_to_dict(task: Any) -> dict[str, Any]:

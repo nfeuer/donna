@@ -10,13 +10,13 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 from pydantic import BaseModel
 
-from donna.api.auth import CurrentUser
+from donna.api.auth import CurrentUser, user_router
 from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain, TaskStatus
 
-router = APIRouter()
+router = user_router()
 
 
 class TaskResponse(BaseModel):
