@@ -11,9 +11,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import Body, HTTPException, Request
 
-router = APIRouter()
+from donna.api.auth import admin_router
+
+router = admin_router()
 
 # Allowed config files (prevent directory traversal)
 _ALLOWED_CONFIGS = {

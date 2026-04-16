@@ -284,7 +284,6 @@ def create_app() -> FastAPI:
     app.include_router(schedule.router, prefix="/schedule", tags=["schedule"])
     app.include_router(agents.router, prefix="/agents", tags=["agents"])
 
-    # Admin routes for the Management GUI (no auth required)
     app.include_router(admin_dashboard.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_logs.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_invocations.router, prefix="/admin", tags=["admin"])

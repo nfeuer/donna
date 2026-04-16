@@ -18,9 +18,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import APIRouter, Query, Request
+from fastapi import Query, Request
 
-router = APIRouter()
+from donna.api.auth import admin_router
+
+router = admin_router()
 
 
 def _days_ago(days: int) -> str:
