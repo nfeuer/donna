@@ -1,11 +1,11 @@
-# Phase 1 Skill System — Setup Notes
+# Skill System Setup Notes (Phase 1 + Phase 2)
 
 > **For Nick, to remember when activating this on the deployment machine.**
-> Last updated: 2026-04-15
+> Last updated: 2026-04-16
 > Related spec: `docs/superpowers/specs/2026-04-15-skill-system-and-challenger-refactor-design.md`
-> Related plan: `docs/superpowers/plans/2026-04-15-skill-system-phase-1-foundation.md`
+> Related plans: `docs/superpowers/plans/2026-04-15-skill-system-phase-1-foundation.md`, `docs/superpowers/plans/2026-04-15-skill-system-phase-2-execution.md`
 
-Phase 1 introduced new machinery (capability registry, skill executor, challenger refactor, dashboard routes) but deliberately ships with `skill_system.enabled = false` — no user-visible behavior change until you actively turn it on. This document lists every action you need to take to activate Phase 1 on the real deployment, plus the two bits of wiring that still need to be done in application startup code.
+Phase 1 and Phase 2 introduced new machinery (capability registry, multi-step skill executor, challenger refactor, tool dispatch, triage, run persistence, dashboard routes) but deliberately ship with the skill system disabled by default — no user-visible behavior change until you actively turn it on. This document lists every action you need to take to activate the skill system on the real deployment, plus the application startup wiring that still needs to be done manually.
 
 ---
 
@@ -26,7 +26,12 @@ Before activating Phase 1 on the deployment host:
 
 ## 2. Database migration
 
-Phase 1 added four tables: `capability`, `skill`, `skill_version`, `skill_state_transition`. A seed migration also inserts three capabilities: `parse_task`, `dedup_check`, `classify_priority`.
+The skill system added seven new tables across both phases:
+
+- **Phase 1**: `capability`, `skill`, `skill_version`, `skill_state_transition`
+- **Phase 2**: `skill_run`, `skill_step_result`, `skill_fixture`
+
+Plus two seed migrations that insert the initial capabilities.
 
 ### Standard path
 
@@ -36,9 +41,11 @@ If your `donna_tasks.db` has clean Alembic tracking, just:
 alembic upgrade head
 ```
 
-The two new migrations will apply in order:
-1. `a1b2c3d4e5f6` — creates the four tables and merges the pre-existing dual Alembic heads (`f1b8c2d4e703` and `f8b2d4e6a913`).
-2. `b2c3d4e5f6a7` — seeds the three capabilities.
+The four new migrations will apply in order:
+1. `a1b2c3d4e5f6` — Phase 1 schema tables; also merges the pre-existing dual Alembic heads (`f1b8c2d4e703` and `f8b2d4e6a913`).
+2. `b2c3d4e5f6a7` — seeds `parse_task`, `dedup_check`, `classify_priority`.
+3. `c3d4e5f6a7b8` — Phase 2 schema tables (`skill_run`, `skill_step_result`, `skill_fixture`).
+4. `d4e5f6a7b8c9` — seeds `fetch_and_summarize` (Phase 2 demo capability).
 
 ### If you hit an inconsistent Alembic state
 
@@ -62,111 +69,113 @@ During Phase 1 development (in the worktree), I found a pre-existing inconsisten
 sqlite3 donna_tasks.db "SELECT name, status FROM capability ORDER BY name;"
 ```
 
-Expected: three rows — `classify_priority|active`, `dedup_check|active`, `parse_task|active`.
+Expected: four rows — `classify_priority|active`, `dedup_check|active`, `fetch_and_summarize|active`, `parse_task|active`.
+
+```bash
+sqlite3 donna_tasks.db ".tables" | tr -s ' ' '\n' | grep -E '^skill|^capability'
+```
+
+Expected includes: `capability`, `skill`, `skill_version`, `skill_state_transition`, `skill_run`, `skill_step_result`, `skill_fixture`.
 
 ---
 
 ## 3. Config activation
 
-The skill system is gated by `config.skill_system.enabled` (defined in `src/donna/config.py` as `SkillSystemConfig`). Default is `False`.
+> **Heads up — `SkillSystemConfig` is currently dead code.** The Pydantic model exists at `src/donna/config.py:SkillSystemConfig` with fields for `enabled`, `match_confidence_high`, `match_confidence_medium`, `similarity_audit_threshold`, and `seed_skills_initial_state`, but **none of its fields are read by runtime code yet.** No top-level config class loads it, and the thresholds that matter are currently hardcoded as module constants:
+>
+> - `HIGH_CONFIDENCE_THRESHOLD` / `MEDIUM_CONFIDENCE_THRESHOLD` — `src/donna/capabilities/matcher.py:19-20`
+> - `SIMILARITY_THRESHOLD` — `src/donna/capabilities/registry.py` (inside `CapabilityRegistry`)
+> - `initial_state="sandbox"` — `src/donna/skills/startup.py`
+>
+> Tuning them means editing those module constants directly until we properly wire `SkillSystemConfig` through a config loader in a later phase.
 
-Phase 1 didn't wire this into any YAML config file — it's currently a Pydantic default. To turn it on, you have two options:
-
-### Option A: inline edit (simplest for a single-user deployment)
-
-Edit `src/donna/config.py` and change `SkillSystemConfig.enabled` default to `True`:
-
-```python
-class SkillSystemConfig(BaseModel):
-    enabled: bool = True  # flipped from False
-    ...
-```
-
-### Option B: add to a YAML config file
-
-If you want to set it via `config/donna_models.yaml` or similar, add a block:
-
-```yaml
-skill_system:
-  enabled: true
-  match_confidence_high: 0.75
-  match_confidence_medium: 0.40
-  similarity_audit_threshold: 0.80
-  seed_skills_initial_state: sandbox
-```
-
-Then extend whatever config loader reads those files to include `skill_system`. (Not done in Phase 1 because no aggregating top-level config class exists in `src/donna/config.py`.)
-
-Recommended: Option A for now, revisit when we unify config loading in a later phase.
+**To "turn on" the skill system** you don't flip a config value — you pass `skill_routing_enabled=True` to the `AgentDispatcher` constructor (see §4.2). Nothing else in the codebase reads an enabled flag.
 
 ---
 
 ## 4. Application wiring — TWO THINGS STILL NEED TO BE DONE
 
-These were scoped out of Phase 1's tasks to keep task-by-task changes tight. They are one-time startup-code edits. Both need to happen before the skill system does anything at runtime.
+These were scoped out of Phase 1 and Phase 2's tasks to keep task-by-task changes tight. They are one-time startup-code edits. Both need to happen before the skill system does anything at runtime.
 
 ### 4.1 Wire `initialize_skill_system` into application startup
 
 The startup hook `src/donna/skills/startup.py::initialize_skill_system(conn, skills_dir)` must be called once at application boot. It:
 - Generates embeddings for any capability rows with `embedding IS NULL` (uses sentence-transformers).
 - Loads any seed skills from `skills/` into the DB for capabilities that don't yet have a skill.
+- Builds and returns a `ToolRegistry` populated with built-in tools (currently `web_fetch`; add more by extending `register_default_tools` in `src/donna/skills/tools/__init__.py`).
 
-Both operations are idempotent and cheap after the first run.
+All operations are idempotent and cheap after the first run. **Capture the returned `ToolRegistry`** — the dispatcher wiring in §4.2 needs it.
 
 **Where to add the call:** find the application startup hook. Look in `src/donna/server.py` (FastAPI app lifespan) or `src/donna/cli.py` (if there's a CLI that boots the service). Expected pattern:
 
 ```python
 from pathlib import Path
 from donna.skills.startup import initialize_skill_system
-from donna.config import SkillSystemConfig  # or wherever config is loaded
 
 # Inside the startup/lifespan function, after the DB connection is established
 # and BEFORE the dispatcher starts serving traffic:
-if config.skill_system.enabled:
-    await initialize_skill_system(db_conn, Path("skills"))
+skill_tool_registry = await initialize_skill_system(db_conn, Path("skills"))
+# Store `skill_tool_registry` somewhere reachable from §4.2 (e.g., app.state).
 ```
 
-If `config.skill_system` doesn't exist yet (because the top-level config class doesn't have it), either add it to the top-level config or read `SkillSystemConfig` directly from a YAML file.
+Since `SkillSystemConfig` is not yet wired into any top-level config (see §3), there's no flag to check here. Either always call `initialize_skill_system` (it's idempotent and cheap) and decide whether to use the results in §4.2, or guard it with a local boolean constant while we defer config wiring.
 
-### 4.2 Construct the dispatcher with the new skill parameters
+### 4.2 Construct the dispatcher + skill execution stack
 
-The Phase 1 dispatcher (`src/donna/orchestrator/dispatcher.py::AgentDispatcher`) gained three optional parameters: `skill_executor`, `skill_database`, `skill_routing_enabled`. They default to `None`/`False`, so existing callers still work unchanged. To activate the skill shadow path, the caller that constructs the dispatcher must pass them.
+The Phase 1 dispatcher (`src/donna/orchestrator/dispatcher.py::AgentDispatcher`) gained three optional parameters: `skill_executor`, `skill_database`, `skill_routing_enabled`. Phase 2 added `ToolRegistry`, `TriageAgent`, and `SkillRunRepository` which the executor needs to actually do anything useful. To activate the skill shadow path, the caller that constructs the dispatcher must wire all of this together.
 
 **Where to change:** find the code that instantiates `AgentDispatcher(...)` (likely in `src/donna/server.py` or a startup initializer). Update to:
 
 ```python
-from donna.skills.executor import SkillExecutor
-from donna.skills.database import SkillDatabase
-from donna.agents.challenger_agent import ChallengerAgent
+# Capabilities layer
 from donna.capabilities.registry import CapabilityRegistry
 from donna.capabilities.matcher import CapabilityMatcher
 from donna.capabilities.input_extractor import LocalLLMInputExtractor
 
-# Build the skill system components
+# Skills layer
+from donna.skills.executor import SkillExecutor
+from donna.skills.database import SkillDatabase
+from donna.skills.run_persistence import SkillRunRepository
+from donna.skills.triage import TriageAgent
+
+# Existing agent
+from donna.agents.challenger_agent import ChallengerAgent
+
+# --- Capabilities ---
 capability_registry = CapabilityRegistry(db_conn)
 capability_matcher = CapabilityMatcher(capability_registry)
 input_extractor = LocalLLMInputExtractor(model_router)
-skill_executor = SkillExecutor(model_router)
+
+# --- Skills infrastructure ---
+# skill_tool_registry comes from initialize_skill_system() in §4.1
+triage = TriageAgent(model_router)
+skill_run_repo = SkillRunRepository(db_conn)
+skill_executor = SkillExecutor(
+    model_router,
+    tool_registry=skill_tool_registry,   # from §4.1
+    triage=triage,
+    run_repository=skill_run_repo,
+)
 skill_database = SkillDatabase(db_conn)
 
-# Make the challenger skill-aware (replaces the old no-arg construction)
+# --- Refactored challenger ---
 challenger = ChallengerAgent(matcher=capability_matcher, input_extractor=input_extractor)
 
-# Pass everything to the dispatcher
+# --- Dispatcher ---
 dispatcher = AgentDispatcher(
     agents={..., "challenger": challenger, ...},
-    tool_registry=tool_registry,
+    tool_registry=tool_registry,               # existing agent tool registry, NOT the skill one
     router=model_router,
     db=db,
     project_root=project_root,
     activity_listener=activity_listener,
-    skill_executor=skill_executor,        # NEW
-    skill_database=skill_database,         # NEW
-    skill_routing_enabled=config.skill_system.enabled,  # NEW
+    skill_executor=skill_executor,             # NEW in Phase 1
+    skill_database=skill_database,             # NEW in Phase 1
+    skill_routing_enabled=True,                # flip this to activate
 )
 ```
 
-If `config.skill_system.enabled` isn't available at that point, pass `True` directly (once you've verified the rest works) or thread the config through.
+**Important:** the agent `tool_registry` (for PM, prep, scheduler agents — existing) and the skill `tool_registry` (for the skill executor — new, returned from `initialize_skill_system`) are **different objects**. Don't conflate them. The skill executor only knows about tools registered in the skill ToolRegistry; the agents only see tools in the agent ToolRegistry.
 
 ---
 
@@ -255,15 +264,18 @@ The user-facing response should be **identical** to before — the skill runs in
 
 ## 8. Quick activation checklist
 
-- [ ] Dependencies installed (`pip install -e .`)
-- [ ] Database migration run (`alembic upgrade head`)
-- [ ] Three seed capabilities verified in DB
-- [ ] `SkillSystemConfig.enabled` flipped to `True`
-- [ ] `initialize_skill_system` wired into application startup (§4.1)
-- [ ] `AgentDispatcher` constructor updated to pass skill components (§4.2)
-- [ ] ChallengerAgent constructed with `matcher` and `input_extractor` (§4.2)
+- [ ] Dependencies installed (`pip install -e .` — pulls `sentence-transformers`, `numpy`, `httpx`)
+- [ ] Database migration run (`alembic upgrade head`) — applies all 4 new migrations
+- [ ] Four seed capabilities verified in DB (including `fetch_and_summarize`)
+- [ ] All 7 new tables exist (capability, skill, skill_version, skill_state_transition, skill_run, skill_step_result, skill_fixture)
+- [ ] `initialize_skill_system(db_conn, Path("skills"))` wired into application startup and its returned `ToolRegistry` captured (§4.1)
+- [ ] `AgentDispatcher` constructor updated with `skill_executor`, `skill_database`, `skill_routing_enabled=True` (§4.2)
+- [ ] `SkillExecutor` constructed with `tool_registry` (from startup), `triage`, and `run_repository` (§4.2)
+- [ ] `ChallengerAgent` constructed with `matcher` and `input_extractor` (§4.2)
 - [ ] App restarted
-- [ ] `/admin/capabilities` returns three rows
-- [ ] `/admin/skills` returns three sandbox skills
-- [ ] Sending a real task produces `dispatcher_skill_shadow_*` log events
+- [ ] `/admin/capabilities` returns four rows
+- [ ] `/admin/skills` returns four sandbox skills
+- [ ] `/admin/skill-runs` returns an empty list initially
+- [ ] Sending a real task produces `dispatcher_skill_shadow_*` and `skill_step_completed` log events
+- [ ] A `skill_run` row appears in the DB after each matched message
 - [ ] User-facing behavior unchanged
