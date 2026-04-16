@@ -14,11 +14,14 @@ See docs/agents.md for the agent hierarchy.
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
 
 from donna.agents.base import AgentContext, AgentResult
+from donna.capabilities.matcher import CapabilityMatcher, MatchConfidence
+from donna.capabilities.models import CapabilityRow
 from donna.models.router import ContextOverflowError
 from donna.tasks.database import TaskRow
 
@@ -28,8 +31,28 @@ _TASK_TYPE = "challenge_task"
 _TIMEOUT_SECONDS = 120  # 2 minutes
 
 
+@dataclass(slots=True)
+class ChallengerMatchResult:
+    """Result of ChallengerAgent.match_and_extract."""
+    status: str  # ready | needs_input | escalate_to_claude | ambiguous
+    capability: CapabilityRow | None = None
+    extracted_inputs: dict[str, Any] = field(default_factory=dict)
+    missing_fields: list[str] = field(default_factory=list)
+    clarifying_question: str | None = None
+    match_score: float = 0.0
+
+
 class ChallengerAgent:
     """Probes task quality and asks follow-up questions when context is thin."""
+
+    def __init__(
+        self,
+        *,
+        matcher: CapabilityMatcher | None = None,
+        input_extractor: Any | None = None,
+    ) -> None:
+        self._matcher = matcher
+        self._input_extractor = input_extractor
 
     @property
     def name(self) -> str:
@@ -42,6 +65,78 @@ class ChallengerAgent:
     @property
     def timeout_seconds(self) -> int:
         return _TIMEOUT_SECONDS
+
+    async def match_and_extract(
+        self,
+        user_message: str,
+        user_id: str,
+    ) -> ChallengerMatchResult:
+        """Match a user message against the capability registry and extract inputs."""
+        if self._matcher is None:
+            return ChallengerMatchResult(status="escalate_to_claude", match_score=0.0)
+
+        match = await self._matcher.match(user_message)
+
+        if match.confidence == MatchConfidence.LOW:
+            return ChallengerMatchResult(
+                status="escalate_to_claude",
+                capability=None,
+                match_score=match.best_score,
+            )
+
+        cap = match.best_match
+        assert cap is not None
+
+        if self._input_extractor is None:
+            return ChallengerMatchResult(
+                status="ready",
+                capability=cap,
+                match_score=match.best_score,
+            )
+
+        extracted = await self._input_extractor.extract(
+            user_message=user_message,
+            schema=cap.input_schema,
+            user_id=user_id,
+        )
+
+        required = cap.input_schema.get("required", [])
+        missing = [f for f in required if f not in extracted or extracted[f] in (None, "")]
+
+        if missing:
+            question = self._build_clarifying_question_for_fields(cap, missing)
+            status = "needs_input" if match.confidence == MatchConfidence.HIGH else "ambiguous"
+            return ChallengerMatchResult(
+                status=status,
+                capability=cap,
+                extracted_inputs=extracted,
+                missing_fields=missing,
+                clarifying_question=question,
+                match_score=match.best_score,
+            )
+
+        return ChallengerMatchResult(
+            status="ready",
+            capability=cap,
+            extracted_inputs=extracted,
+            missing_fields=[],
+            match_score=match.best_score,
+        )
+
+    def _build_clarifying_question_for_fields(
+        self, cap: CapabilityRow, missing: list[str]
+    ) -> str:
+        """Phase 1: simple templated question for missing fields."""
+        props = cap.input_schema.get("properties", {})
+        field_descriptions = []
+        for f in missing:
+            desc = props.get(f, {}).get("description", f)
+            field_descriptions.append(f"- {f}: {desc}")
+
+        return (
+            f"I need a bit more to act on this as a {cap.name}:\n"
+            + "\n".join(field_descriptions)
+        )
 
     async def execute(self, task: TaskRow, context: AgentContext) -> AgentResult:
         """Evaluate task quality and return follow-up questions if needed."""
