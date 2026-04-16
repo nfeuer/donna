@@ -51,12 +51,21 @@ def assemble_skill_system(
     budget_guard: Any,
     notifier: Callable[[str], Awaitable[None]],
     config: SkillSystemConfig,
-    executor_factory: Callable[[], Any] | None = None,
+    validation_executor_factory: Callable[[], Any] | None = None,
 ) -> SkillSystemBundle | None:
     """Wire all Phase 3 + 4 skill-system components. Returns None if disabled."""
     if not config.enabled:
         logger.info("skill_system_disabled", enabled=False)
         return None
+
+    # Default factory: real ValidationExecutor with the current router + config.
+    if validation_executor_factory is None:
+        from donna.skills.validation_executor import ValidationExecutor
+
+        def _default_validation_executor_factory() -> ValidationExecutor:
+            return ValidationExecutor(model_router=model_router, config=config)
+
+        validation_executor_factory = _default_validation_executor_factory
 
     lifecycle = SkillLifecycleManager(connection, config)
     divergence_repo = SkillDivergenceRepository(connection)
@@ -78,7 +87,7 @@ def assemble_skill_system(
         candidate_repo=candidate_repo,
         lifecycle_manager=lifecycle,
         config=config,
-        executor_factory=executor_factory,
+        executor_factory=validation_executor_factory,
     )
     degradation = DegradationDetector(
         connection=connection,
@@ -92,7 +101,7 @@ def assemble_skill_system(
         budget_guard=budget_guard,
         lifecycle_manager=lifecycle,
         config=config,
-        executor_factory=executor_factory or (lambda: None),
+        executor_factory=validation_executor_factory,
     )
     evolution_scheduler = EvolutionScheduler(
         connection=connection, evolver=evolver, config=config,

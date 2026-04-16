@@ -19,12 +19,10 @@ Validation strategy
 -------------------
 
 ``validate_against_fixtures`` needs a live ``SkillExecutor`` to run each
-fixture end-to-end. The drafter accepts an ``executor_factory`` callable —
-when ``None`` (the default for early Phase 3), validation is *deferred*:
-the drafter logs a warning and treats the draft as passing with
-``pass_rate=1.0``. Callers wiring up the nightly cron should inject a
-real executor factory as soon as the sandbox harness can run generated
-YAML safely.
+fixture end-to-end. The drafter requires an ``executor_factory`` callable
+returning a real executor (``ValidationExecutor`` in production). Wave 1
+removed the deferred / vacuous-pass path — every draft runs fixture
+validation through the sandbox.
 """
 
 from __future__ import annotations
@@ -87,7 +85,7 @@ class AutoDrafter:
         candidate_repo: SkillCandidateRepository,
         lifecycle_manager: SkillLifecycleManager,
         config: Any,
-        executor_factory: ExecutorFactory | None = None,
+        executor_factory: ExecutorFactory,
         estimated_draft_cost_usd: float = 0.50,
     ) -> None:
         self._conn = connection
@@ -402,19 +400,9 @@ class AutoDrafter:
     ) -> float:
         """Run generated fixtures through a sandbox executor.
 
-        When no ``executor_factory`` is configured, validation is deferred
-        and we return ``1.0`` so the draft path can still produce a skill
-        for manual review. The caller must log that the sandbox gate was
-        skipped.
+        The ``executor_factory`` is required (Wave 1 F-5); validation always
+        runs against a real ``ValidationExecutor``.
         """
-        if self._executor_factory is None:
-            logger.warning(
-                "skill_auto_draft_validation_deferred",
-                capability_name=capability_name,
-                reason="no executor_factory configured",
-            )
-            return 1.0
-
         fixtures = [
             Fixture(
                 case_name=str(item.get("case_name", f"case_{i}")),

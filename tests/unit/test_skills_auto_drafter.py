@@ -207,6 +207,23 @@ def _make_router(output: dict | Exception) -> MagicMock:
     return router
 
 
+def _stub_passing_executor_factory():
+    """Default factory for tests that don't care about validation details.
+
+    Produces an executor whose ``execute`` always returns a ``succeeded``
+    run — enough for ``validate_against_fixtures`` to compute a
+    ``pass_rate=1.0`` without touching a real LLM.
+    """
+    executor = MagicMock()
+    succeeded = MagicMock()
+    succeeded.status = "succeeded"
+    succeeded.final_output = {}
+    succeeded.error = None
+    succeeded.escalation_reason = None
+    executor.execute = AsyncMock(return_value=succeeded)
+    return executor
+
+
 def _make_drafter(
     db: aiosqlite.Connection,
     router: MagicMock,
@@ -219,6 +236,7 @@ def _make_drafter(
     repo = SkillCandidateRepository(db)
     cfg = config or SkillSystemConfig()
     lifecycle = SkillLifecycleManager(db, config=cfg)
+    factory = executor_factory if executor_factory is not None else _stub_passing_executor_factory
     return AutoDrafter(
         connection=db,
         model_router=router,
@@ -226,7 +244,7 @@ def _make_drafter(
         candidate_repo=repo,
         lifecycle_manager=lifecycle,
         config=cfg,
-        executor_factory=executor_factory,
+        executor_factory=factory,
         estimated_draft_cost_usd=estimated_draft_cost_usd,
     )
 
@@ -237,14 +255,14 @@ def _make_drafter(
 
 
 async def test_run_successful_draft(db: aiosqlite.Connection) -> None:
-    """Candidate → router produces well-formed output → validation passes (deferred
-    since executor_factory is None) → outcome='drafted'."""
+    """Candidate → router produces well-formed output → validation passes
+    (stub executor returns succeeded) → outcome='drafted'."""
     await _insert_capability(db, "parse_task")
     repo = SkillCandidateRepository(db)
     candidate_id = await _insert_candidate(repo, "parse_task")
 
     router = _make_router(_well_formed_output())
-    drafter = _make_drafter(db, router, executor_factory=None)
+    drafter = _make_drafter(db, router)
 
     reports = await drafter.run(remaining_budget_usd=5.0, max_drafts=1)
 
@@ -253,7 +271,7 @@ async def test_run_successful_draft(db: aiosqlite.Connection) -> None:
     assert r.outcome == "drafted"
     assert r.skill_id is not None
     assert r.candidate_id == candidate_id
-    assert r.pass_rate == 1.0  # deferred validation returns 1.0
+    assert r.pass_rate == 1.0  # stub executor always-succeeds → pass_rate 1.0
 
     # Candidate marked drafted.
     cursor = await db.execute(

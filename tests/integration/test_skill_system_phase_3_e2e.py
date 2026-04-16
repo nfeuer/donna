@@ -382,7 +382,7 @@ async def test_h3_2_budget_exhausted_stops_early(phase3_db):
         candidate_repo=candidate_repo,
         lifecycle_manager=lifecycle,
         config=config,
-        executor_factory=None,
+        executor_factory=lambda: MagicMock(),
         estimated_draft_cost_usd=5.0,
     )
 

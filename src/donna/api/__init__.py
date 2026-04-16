@@ -241,7 +241,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 budget_guard=skill_budget_guard,
                 notifier=_skill_notifier,
                 config=skill_config,
-                executor_factory=None,  # Phase 4 v1: sandbox executor not wired
+                validation_executor_factory=None,  # defaults to real ValidationExecutor
             )
             app.state.skill_system_bundle = bundle
             if bundle is not None:
