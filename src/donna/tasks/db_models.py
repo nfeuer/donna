@@ -496,7 +496,7 @@ class SkillDivergence(Base):
     overall_agreement: Mapped[float] = mapped_column(Float, nullable=False)
     diff_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     flagged_for_evolution: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
 class SkillCandidateReport(Base):
@@ -522,9 +522,9 @@ class SkillEvolutionLog(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
-    from_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    from_version_id: Mapped[str] = mapped_column(String(36), nullable=False)
     to_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    triggered_by: Mapped[str] = mapped_column(String(50), nullable=False)
+    triggered_by: Mapped[str] = mapped_column(String(30), nullable=False)
     claude_invocation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     diagnosis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     targeted_case_ids: Mapped[dict | None] = mapped_column(JSON, nullable=True)
