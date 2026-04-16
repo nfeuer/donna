@@ -18,7 +18,11 @@ from donna.automations.models import AutomationRow
 from donna.automations.repository import AutomationRepository
 from donna.config import SkillSystemConfig
 from donna.cost.budget import BudgetPausedError
-from donna.notifications.service import CHANNEL_TASKS
+from donna.notifications.service import (
+    CHANNEL_TASKS,
+    NOTIF_AUTOMATION_ALERT,
+    NOTIF_AUTOMATION_FAILURE,
+)
 
 logger = structlog.get_logger()
 
@@ -159,7 +163,7 @@ class AutomationDispatcher:
                 try:
                     if self._notifier is not None:
                         await self._notifier.dispatch(
-                            notification_type="automation_alert",
+                            notification_type=NOTIF_AUTOMATION_ALERT,
                             content=alert_content,
                             channel=CHANNEL_TASKS,
                             priority=3,
@@ -205,7 +209,7 @@ class AutomationDispatcher:
                 try:
                     if self._notifier is not None:
                         await self._notifier.dispatch(
-                            notification_type="automation_failure",
+                            notification_type=NOTIF_AUTOMATION_FAILURE,
                             content=pause_msg, channel=CHANNEL_TASKS, priority=4,
                         )
                 except Exception:
