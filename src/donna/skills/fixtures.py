@@ -19,6 +19,7 @@ class Fixture:
     case_name: str
     input: dict
     expected_output_shape: dict | None = None
+    tool_mocks: dict | None = None  # Keyed by fingerprint. See tool_fingerprint.
 
 
 @dataclass(slots=True)
@@ -53,6 +54,7 @@ class FixtureLoader:
                     case_name=file.stem,
                     input=data["input"],
                     expected_output_shape=data.get("expected_output_shape"),
+                    tool_mocks=data.get("tool_mocks"),
                 ))
             except (json.JSONDecodeError, KeyError) as exc:
                 logger.warning("fixture_load_failed", file=str(file), error=str(exc))
@@ -60,8 +62,18 @@ class FixtureLoader:
         return fixtures
 
     @staticmethod
-    def _make_fixture(case_name: str, input: dict, expected_output_shape: dict | None = None) -> Fixture:
-        return Fixture(case_name=case_name, input=input, expected_output_shape=expected_output_shape)
+    def _make_fixture(
+        case_name: str,
+        input: dict,
+        expected_output_shape: dict | None = None,
+        tool_mocks: dict | None = None,
+    ) -> Fixture:
+        return Fixture(
+            case_name=case_name,
+            input=input,
+            expected_output_shape=expected_output_shape,
+            tool_mocks=tool_mocks,
+        )
 
 
 async def validate_against_fixtures(
@@ -79,6 +91,7 @@ async def validate_against_fixtures(
             result = await executor.execute(
                 skill=skill, version=version,
                 inputs=fix.input, user_id="fixture_harness",
+                tool_mocks=fix.tool_mocks,
             )
 
             if result.status != "succeeded":

@@ -110,6 +110,7 @@ class SkillExecutor:
         version: SkillVersionRow,
         inputs: dict,
         user_id: str,
+        **_ignored_kwargs: Any,
     ) -> SkillRunResult:
         state = StateObject()
         start = time.monotonic()

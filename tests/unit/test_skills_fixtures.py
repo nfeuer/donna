@@ -103,3 +103,34 @@ async def test_validate_skill_run_failure_counts_as_failure():
     report = await validate_against_fixtures(skill, executor, fixtures, version=version)
 
     assert report.failed == 1
+
+
+def test_fixture_accepts_tool_mocks() -> None:
+    from donna.skills.fixtures import Fixture
+
+    fix = Fixture(
+        case_name="case_a",
+        input={"url": "https://example.com"},
+        expected_output_shape={"type": "object"},
+        tool_mocks={'web_fetch:{"url":"https://example.com"}': {"status": 200}},
+    )
+    assert fix.tool_mocks is not None
+    assert "web_fetch" in next(iter(fix.tool_mocks))
+
+
+def test_fixture_loader_reads_tool_mocks(tmp_path) -> None:
+    import json
+    from donna.skills.fixtures import FixtureLoader
+
+    fixture_file = tmp_path / "case_a.json"
+    fixture_file.write_text(json.dumps({
+        "input": {"url": "https://x"},
+        "expected_output_shape": {"type": "object"},
+        "tool_mocks": {'web_fetch:{"url":"https://x"}': {"status": 200}},
+    }))
+    loader = FixtureLoader()
+    fixtures = loader.load_from_directory(tmp_path)
+    assert len(fixtures) == 1
+    assert fixtures[0].tool_mocks == {
+        'web_fetch:{"url":"https://x"}': {"status": 200},
+    }
