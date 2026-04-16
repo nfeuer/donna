@@ -417,7 +417,7 @@ def load_discord_config(config_dir: Path) -> DiscordConfig:
 
 
 class SkillSystemConfig(BaseModel):
-    """Skill system runtime configuration (Phase 1–3)."""
+    """Skill system runtime configuration (Phase 1–4)."""
 
     # Phase 1
     enabled: bool = False
@@ -439,6 +439,21 @@ class SkillSystemConfig(BaseModel):
     auto_draft_fixture_pass_rate: float = 0.80
     nightly_run_hour_utc: int = 3
     degradation_agreement_threshold: float = 0.5
+
+    # Phase 4 — evolution loop
+    evolution_min_divergence_cases: int = 15
+    evolution_max_divergence_cases: int = 30
+    evolution_targeted_case_pass_rate: float = 0.80
+    evolution_fixture_regression_pass_rate: float = 0.95
+    evolution_recent_success_count: int = 20
+    evolution_recent_success_window_days: int = 30
+    evolution_max_consecutive_failures: int = 2
+    evolution_estimated_cost_usd: float = 0.75
+    evolution_daily_cap: int = 10
+
+    # Phase 4 — correction clustering
+    correction_cluster_window_runs: int = 10
+    correction_cluster_threshold: int = 2
 
 
 def load_skill_system_config(config_dir: Path) -> SkillSystemConfig:

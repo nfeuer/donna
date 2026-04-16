@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SkillEvolutionOutput",
+  "type": "object",
+  "required": ["diagnosis", "new_skill_version", "changelog", "targeted_failure_cases"],
+  "additionalProperties": false,
+  "properties": {
+    "diagnosis": {
+      "type": "object",
+      "required": ["identified_failure_step", "failure_pattern", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "identified_failure_step": {
+          "type": "string",
+          "description": "The name of the step or component where the failure was identified"
+        },
+        "failure_pattern": {
+          "type": "string",
+          "description": "Short description of the recurring failure or divergence pattern"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Confidence in the diagnosis (0.0–1.0)"
+        }
+      }
+    },
+    "new_skill_version": {
+      "type": "object",
+      "required": ["yaml_backbone", "step_content", "output_schemas"],
+      "additionalProperties": false,
+      "properties": {
+        "yaml_backbone": {
+          "type": "string",
+          "description": "Full YAML string of the regenerated skill definition"
+        },
+        "step_content": {
+          "type": "object",
+          "description": "Updated prompt markdown for each step",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "output_schemas": {
+          "type": "object",
+          "description": "JSON schema objects for each step's output",
+          "additionalProperties": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "changelog": {
+      "type": "string",
+      "description": "Short summary of changes made and rationale"
+    },
+    "targeted_failure_cases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of run IDs that this evolution targets (originally failing)"
+    },
+    "expected_improvement": {
+      "type": "string",
+      "description": "One sentence predicting the expected outcome of these changes"
+    }
+  }
+}

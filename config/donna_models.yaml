@@ -84,6 +84,8 @@ routing:
     model: reasoner
   skill_auto_draft:
     model: reasoner
+  skill_evolution:
+    model: reasoner
 
 # Cost tracking
 cost:

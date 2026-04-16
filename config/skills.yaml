@@ -21,3 +21,18 @@ auto_draft_min_expected_savings_usd: 5.0
 auto_draft_fixture_pass_rate: 0.80
 nightly_run_hour_utc: 3               # 3 AM UTC
 degradation_agreement_threshold: 0.5      # Binary threshold for Wilson-CI success counting
+
+# Phase 4 — evolution loop
+evolution_min_divergence_cases: 15
+evolution_max_divergence_cases: 30
+evolution_targeted_case_pass_rate: 0.80
+evolution_fixture_regression_pass_rate: 0.95
+evolution_recent_success_count: 20
+evolution_recent_success_window_days: 30
+evolution_max_consecutive_failures: 2      # Rejected_validation streak before -> claude_native
+evolution_estimated_cost_usd: 0.75         # Per-call budget estimate
+evolution_daily_cap: 10                    # Max evolution attempts per nightly run
+
+# Phase 4 — correction clustering
+correction_cluster_window_runs: 10
+correction_cluster_threshold: 2

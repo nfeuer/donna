@@ -136,6 +136,13 @@ task_types:
     output_schema: schemas/skill_auto_draft_output.json
     tools: []
 
+  skill_evolution:
+    description: "Claude regenerates a degraded skill with divergence case studies + correction log"
+    model: reasoner
+    prompt_template: prompts/skill_evolution.md
+    output_schema: schemas/skill_evolution_output.json
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions
