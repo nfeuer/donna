@@ -77,6 +77,9 @@ routing:
     model: local_parser
   chat_escalation:
     model: parser
+  triage_failure:
+    model: local_parser
+    fallback: parser
 
 # Cost tracking
 cost:
