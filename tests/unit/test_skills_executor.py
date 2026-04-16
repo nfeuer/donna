@@ -98,7 +98,7 @@ async def test_executor_handles_escalate_signal():
     assert result.escalation_reason == "insufficient info"
 
 
-async def test_executor_fails_on_schema_validation_error():
+async def test_executor_escalates_on_schema_validation_error():
     version = _make_version(
         step_content={"extract": "Extract: {{ inputs.raw_text }}"},
         output_schemas={"extract": {
@@ -121,8 +121,10 @@ async def test_executor_fails_on_schema_validation_error():
         user_id="nick",
     )
 
-    assert result.status == "failed"
-    assert "title" in result.error
+    assert result.status == "escalated"
+    assert result.escalation_reason.startswith("schema_validation: ")
+    assert "title" in result.escalation_reason
+    assert result.error is None
 
 
 async def test_executor_fails_on_model_exception():
@@ -142,7 +144,8 @@ async def test_executor_fails_on_model_exception():
     )
 
     assert result.status == "failed"
-    assert "model_call" in result.error
+    assert result.error.startswith("unexpected: ")
+    assert "model_unavailable" in result.error
 
 
 async def test_executor_handles_empty_steps():
