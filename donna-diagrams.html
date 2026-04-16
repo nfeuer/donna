@@ -178,6 +178,23 @@
       <span class="hint">drag to pan · wheel to zoom</span>
     </div>
   </section>
+
+  <section class="card">
+    <header>
+      <div>
+        <h2>9 · Automation Pipeline (Phase 5)</h2>
+        <p class="lede">AutomationScheduler polls for due automations, dispatcher resolves skill vs claude_native execution, cost guards enforce budgets, alert conditions fire, and repeated failures pause the automation.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-automation" data-action="in">＋</button>
+        <button data-target="stage-automation" data-action="out">－</button>
+        <button data-target="stage-automation" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-automation">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
 </main>
 
 <footer>
@@ -586,6 +603,27 @@ flowchart LR
     Log -->|2 in a row| ClaudeNative[claude_native]
 </script>
 
+<script type="text/plain" class="src" id="src-automation">
+flowchart LR
+    Scheduler[AutomationScheduler poll every 60s] --> List[repo.list_due]
+    List -->|due automations| Dispatcher[AutomationDispatcher]
+    Dispatcher --> BudgetGate{BudgetGuard check}
+    BudgetGate -->|paused| SkipBudget[skipped_budget]
+    BudgetGate -->|ok| PathDecide{skill state?}
+    PathDecide -->|shadow_primary or trusted| SkillExec[SkillExecutor]
+    PathDecide -->|else| Claude[ModelRouter.complete]
+    SkillExec --> CostCap{cost > cap?}
+    Claude --> CostCap
+    CostCap -->|yes| Failed[failed cost_exceeded]
+    CostCap -->|no| AlertCheck[AlertEvaluator]
+    AlertCheck -->|fires| Notifier[NotificationService]
+    AlertCheck -->|quiet| Persist[finish_run + advance_schedule]
+    Notifier --> Persist
+    Persist --> Paused{failure_count >= threshold?}
+    Paused -->|yes| PauseAuto[status=paused + notify]
+    Paused -->|no| Done[next_run_at advanced]
+</script>
+
 <script>
   mermaid.initialize({
     startOnLoad: false,
@@ -668,6 +706,7 @@ flowchart LR
     await renderInto('stage-shadow', 'src-shadow');
     await renderInto('stage-evolution', 'src-evolution');
     await renderInto('stage-shirt', 'src-shirt');
+    await renderInto('stage-automation', 'src-automation');
   })();
 </script>
 </body>

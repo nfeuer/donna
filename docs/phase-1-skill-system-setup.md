@@ -554,3 +554,70 @@ The updated `run_nightly_tasks` runs five sub-jobs in the following order (spec 
 
 - **Sandbox executor for fixture validation.** Both `AutoDrafter` and `Evolver` accept an `executor_factory=None` parameter. When `None`, the fixture-validation gates return `pass_rate=1.0` (vacuous pass). Drafted and evolved skills still land in `draft` state and require human approval before reaching `sandbox`, so the safety posture is unchanged.
 - **Evolution transitions rest at `draft`.** The §6.2 state-transition table requires `human_approval` for `draft → sandbox`. Auto-evolution cannot bypass that gate — an evolved skill is never promoted past `draft` without a human in the loop.
+
+---
+
+## Phase 5 — Automation Subsystem
+
+Ships schedule-driven Donna work (monitors, scheduled summaries, periodic checks) as first-class entities distinct from user to-do tasks.
+
+### P5.1 New tables
+
+- `automation` — recurring work definitions. Columns: id, user_id, name, capability_name, inputs (JSON), trigger_type, schedule (cron), alert_conditions (JSON), alert_channels (JSON), max_cost_per_run_usd, min_interval_seconds, status, last_run_at, next_run_at, run_count, failure_count, created_via.
+- `automation_run` — per-execution log. Columns: id, automation_id, started_at, finished_at, status, execution_path (skill | claude_native), skill_run_id, invocation_log_id, output (JSON), alert_sent, alert_content, error, cost_usd.
+
+Migration: `alembic/versions/add_automation_tables_phase_5.py` (revision `a7b8c9d0e1f2`).
+
+### P5.2 New components
+
+- `AutomationRepository` (`src/donna/automations/repository.py`) — sole persistence layer.
+- `CronScheduleCalculator` (`src/donna/automations/cron.py`) — next_run_at arithmetic via `croniter`.
+- `AlertEvaluator` (`src/donna/automations/alert.py`) — `alert_conditions` DSL (`all_of`, `any_of`, 8 ops, dotted paths).
+- `AutomationDispatcher` (`src/donna/automations/dispatcher.py`) — executes one due automation end-to-end.
+- `AutomationScheduler` (`src/donna/automations/scheduler.py`) — asyncio poll loop.
+
+### P5.3 Config knobs
+
+Added to `config/skills.yaml`:
+
+```yaml
+automation_poll_interval_seconds: 60
+automation_min_interval_default_seconds: 300
+automation_failure_pause_threshold: 5
+automation_max_cost_per_run_default_usd: 2.0
+```
+
+### P5.4 Dependency
+
+- `croniter>=2.0.0` (new) — pure-Python cron parser, no C extensions.
+
+### P5.5 Wiring
+
+When `skill_system.enabled = true`, the FastAPI lifespan instantiates:
+- `AutomationRepository(db.connection)`
+- `AutomationDispatcher(router, executor_factory=None, budget_guard, alert_evaluator, cron, notifier, config)`
+- `AutomationScheduler(repo, dispatcher, poll_interval_seconds)`
+
+The scheduler runs as an `asyncio.create_task(scheduler.run_forever())` alongside the existing `AsyncCronScheduler` from Phase 4. Shutdown calls `scheduler.stop()` + `task.cancel()`.
+
+### P5.6 New API routes
+
+All under `/admin/automations`:
+
+- `GET /admin/automations` — list (filters: status, capability_name, limit, offset)
+- `GET /admin/automations/{id}` — single detail
+- `POST /admin/automations` — create
+- `PATCH /admin/automations/{id}` — edit
+- `POST /admin/automations/{id}/pause` — set status=paused
+- `POST /admin/automations/{id}/resume` — set status=active + recompute next_run_at
+- `DELETE /admin/automations/{id}` — soft delete (status=deleted)
+- `POST /admin/automations/{id}/run-now` — dispatch immediately (manual + force-run)
+- `GET /admin/automations/{id}/runs` — run history
+
+### P5.7 Deferred
+
+- Event-triggered automations (`on_event`, OOS-1).
+- Automation composition / chains (OOS-3).
+- Automation sharing across users (OOS-7).
+- Dashboard UI (JSON routes only this phase).
+- Discord natural-language creation ("watch URL daily") — requires challenger refactor, tracked separately.
