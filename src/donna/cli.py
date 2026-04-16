@@ -389,8 +389,38 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
                 nightly_run_hour_utc=skill_config.nightly_run_hour_utc,
             )
 
-            # Task 15 will construct AutomationDispatcher + AutomationScheduler
-            # here and append their run_forever task.
+            # --- Automation subsystem wiring (moved from API; Wave 1 F-6 Step 6c) ---
+            try:
+                from donna.automations.alert import AlertEvaluator
+                from donna.automations.cron import CronScheduleCalculator
+                from donna.automations.dispatcher import AutomationDispatcher
+                from donna.automations.repository import AutomationRepository
+                from donna.automations.scheduler import AutomationScheduler
+
+                automation_repo = AutomationRepository(db.connection)
+                automation_dispatcher = AutomationDispatcher(
+                    connection=db.connection,
+                    repository=automation_repo,
+                    model_router=skill_router,
+                    skill_executor_factory=lambda: None,  # OOS-W1-2
+                    budget_guard=skill_budget_guard,
+                    alert_evaluator=AlertEvaluator(),
+                    cron=CronScheduleCalculator(),
+                    notifier=notification_service,
+                    config=skill_config,
+                )
+                automation_scheduler = AutomationScheduler(
+                    repository=automation_repo,
+                    dispatcher=automation_dispatcher,
+                    poll_interval_seconds=skill_config.automation_poll_interval_seconds,
+                )
+                tasks.append(asyncio.create_task(automation_scheduler.run_forever()))
+                log.info(
+                    "automation_scheduler_started",
+                    poll_interval_seconds=skill_config.automation_poll_interval_seconds,
+                )
+            except Exception:
+                log.exception("automation_scheduler_wiring_failed")
     else:
         log.info("skill_system_disabled_in_config")
 
