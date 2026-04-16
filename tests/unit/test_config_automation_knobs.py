@@ -7,7 +7,7 @@ from donna.config import SkillSystemConfig, load_skill_system_config
 
 def test_automation_defaults_on_config():
     cfg = SkillSystemConfig()
-    assert cfg.automation_poll_interval_seconds == 60
+    assert cfg.automation_poll_interval_seconds == 15
     assert cfg.automation_min_interval_default_seconds == 300
     assert cfg.automation_failure_pause_threshold == 5
     assert cfg.automation_max_cost_per_run_default_usd == 2.0
