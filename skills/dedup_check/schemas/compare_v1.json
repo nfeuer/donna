@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "relationship": {"type": "string", "enum": ["same", "related", "different"]},
+    "reason": {"type": "string"},
+    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+    "escalate": {
+      "type": "object",
+      "properties": {"reason": {"type": "string"}}
+    }
+  },
+  "required": ["relationship", "reason", "confidence"],
+  "additionalProperties": false
+}
