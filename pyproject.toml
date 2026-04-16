@@ -47,6 +47,9 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "tenacity>=8.2.0",
     "uuid6>=2024.1.12",
+    # Skill system (Phase 1)
+    "sentence-transformers>=3.0.0",
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]
