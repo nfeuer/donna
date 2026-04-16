@@ -187,9 +187,57 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.chat_engine = chat_engine
     app.state.chat_config = chat_config
 
+    from donna.api.auth.config import load as load_auth_config
+    from donna.api.auth.dependencies import AuthContext
+    from donna.api.auth.email_allowlist import sync as sync_allowlist
+    from donna.api.auth.email_allowlist import sync_loop
+    from donna.api.auth.immich import ImmichClient
+
+    auth_cfg = load_auth_config(config_dir / "auth.yaml")
+    admin_api_key = os.environ.get(auth_cfg.immich.admin_api_key_env, "").strip()
+    if not admin_api_key:
+        raise RuntimeError(
+            f"{auth_cfg.immich.admin_api_key_env} must be set before startup"
+        )
+
+    immich_client = ImmichClient(
+        internal_url=auth_cfg.immich.internal_url,
+        cache_ttl_s=auth_cfg.immich.user_cache_ttl_seconds,
+    )
+    app.state.auth_config = auth_cfg
+    app.state.auth_context = AuthContext(
+        conn=db.connection,
+        auth_config=auth_cfg,
+        immich_client=immich_client,
+    )
+
+    try:
+        await sync_allowlist(
+            db.connection,
+            internal_url=auth_cfg.immich.internal_url,
+            admin_api_key=admin_api_key,
+        )
+    except Exception as exc:
+        logger.error("auth_allowlist_initial_sync_failed", error=str(exc))
+
+    sync_task = asyncio.create_task(
+        sync_loop(
+            db.connection,
+            internal_url=auth_cfg.immich.internal_url,
+            admin_api_key=admin_api_key,
+            interval_seconds=auth_cfg.immich.allowlist_sync_interval_seconds,
+        )
+    )
+    app.state.auth_sync_task = sync_task
+
     logger.info("donna_api_started", db_path=str(db_path), port=8200)
     yield
 
+    sync_task_state = getattr(app.state, "auth_sync_task", None)
+    if sync_task_state:
+        sync_task_state.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sync_task_state
     await queue_worker.stop()
     worker_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
@@ -210,17 +258,28 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
 
-    cors_origins = os.environ.get("DONNA_CORS_ORIGINS", "*").split(",")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[o.strip() for o in cors_origins],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    cors_origins_raw = os.environ.get("DONNA_CORS_ORIGINS", "").strip()
+    if cors_origins_raw:
+        if "*" in cors_origins_raw.split(","):
+            raise RuntimeError(
+                "DONNA_CORS_ORIGINS='*' is forbidden when auth cookies are in use. "
+                "Set a concrete allowlist or unset the variable for same-origin "
+                "deployments behind Caddy."
+            )
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[o.strip() for o in cors_origins_raw.split(",")],
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+            allow_headers=["authorization", "content-type", "x-immich-token"],
+        )
     app.add_middleware(RequestLoggingMiddleware)
 
     app.include_router(health.router)
+
+    from donna.api.routes import auth_flow
+    app.include_router(auth_flow.router, prefix="/auth", tags=["auth"])
+
     app.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
     app.include_router(schedule.router, prefix="/schedule", tags=["schedule"])
     app.include_router(agents.router, prefix="/agents", tags=["agents"])
