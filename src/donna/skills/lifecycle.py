@@ -131,8 +131,7 @@ class SkillLifecycleManager:
             The from→to pair is not in the transition table, it is a self-loop,
             or the *reason* is not permitted for that pair.
         HumanGateRequiredError
-            ``skill.requires_human_gate`` is ``True``, *actor* is ``"system"``,
-            and *reason* is not ``"manual_override"``.
+            ``skill.requires_human_gate`` is ``True`` and *actor* is ``"system"``.
         """
         # 1. Load current skill row.
         cursor = await self._conn.execute(
@@ -170,11 +169,10 @@ class SkillLifecycleManager:
             )
 
         # 5. Human gate check.
-        if requires_human_gate and actor == "system" and reason != "manual_override":
+        if requires_human_gate and actor == "system":
             raise HumanGateRequiredError(
                 f"Skill {skill_id!r} requires human approval; "
-                f"actor='system' may not perform automatic promotion "
-                f"(reason={reason!r})."
+                f"actor='system' may not perform any promotion."
             )
 
         # 6. Atomic DB update + audit insert.

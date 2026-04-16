@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import pytest
 import aiosqlite
 from pathlib import Path
@@ -239,6 +240,25 @@ async def test_human_gate_allows_user_actor(db: aiosqlite.Connection) -> None:
     assert row[0] == "shadow_primary"
 
 
+async def test_human_gate_blocks_system_even_with_manual_override_reason(
+    db: aiosqlite.Connection,
+) -> None:
+    """requires_human_gate=True blocks actor=system regardless of reason.
+
+    Even reason='manual_override' must not let system bypass the gate — the gate
+    is enforced purely on actor identity, not on reason string.
+    """
+    await _insert_skill(db, state="trusted", requires_human_gate=True)
+    mgr = SkillLifecycleManager(db)
+    with pytest.raises(HumanGateRequiredError):
+        await mgr.transition(
+            "s1",
+            SkillState.CLAUDE_NATIVE,
+            reason="manual_override",
+            actor="system",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Audit trail tests
 # ---------------------------------------------------------------------------
@@ -315,6 +335,9 @@ async def test_skill_updated_at_changes_after_transition(db: aiosqlite.Connectio
     cursor = await db.execute("SELECT updated_at FROM skill WHERE id = 's1'")
     original_updated_at = (await cursor.fetchone())[0]
 
+    # Ensure a measurable time delta so the timestamps are strictly different.
+    await asyncio.sleep(0.001)
+
     mgr = SkillLifecycleManager(db)
     await mgr.transition("s1", SkillState.SANDBOX, reason="human_approval", actor="user")
 
@@ -322,6 +345,8 @@ async def test_skill_updated_at_changes_after_transition(db: aiosqlite.Connectio
     new_updated_at = (await cursor.fetchone())[0]
     # updated_at should be a fresh timestamp; at minimum it must be set
     assert new_updated_at is not None
+    # The timestamp must have actually advanced past the original value.
+    assert new_updated_at != original_updated_at
 
 
 async def test_no_audit_row_on_illegal_transition(db: aiosqlite.Connection) -> None:
