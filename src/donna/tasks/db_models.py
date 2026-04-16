@@ -431,3 +431,55 @@ class SkillStateTransition(Base):
     actor_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SkillRun(Base):
+    __tablename__ = "skill_run"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
+    skill_version_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill_version.id"), nullable=False)
+    task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    automation_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    total_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    state_object: Mapped[dict] = mapped_column(JSON, nullable=False)
+    tool_result_cache: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    final_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    escalation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SkillStepResult(Base):
+    __tablename__ = "skill_step_result"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    skill_run_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill_run.id"), nullable=False, index=True)
+    step_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    step_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    step_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    invocation_log_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    tool_calls: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    validation_status: Mapped[str] = mapped_column(String(30), nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SkillFixture(Base):
+    __tablename__ = "skill_fixture"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
+    case_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    input: Mapped[dict] = mapped_column(JSON, nullable=False)
+    expected_output_shape: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    source: Mapped[str] = mapped_column(String(30), nullable=False)
+    captured_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
