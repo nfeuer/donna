@@ -7,6 +7,8 @@ import pytest
 
 from donna.config import SkillSystemConfig
 from donna.skills.correction_cluster import CorrectionClusterDetector
+from donna.skills.lifecycle import SkillLifecycleManager
+from donna.tasks.db_models import SkillState
 
 
 @pytest.fixture
@@ -156,3 +158,44 @@ async def test_detector_idempotent_when_already_flagged(db):
     assert reports == []
     lifecycle.transition.assert_not_awaited()
     notifier.assert_not_awaited()
+
+
+async def test_detector_flags_real_shadow_primary_skill(db):
+    """Integration-style test using a real lifecycle manager — catches the
+    lifecycle transition table gap."""
+    # Extend the fixture's schema to include skill_state_transition (required
+    # by the real lifecycle manager). Use executescript to add it inline.
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS skill_state_transition (
+            id TEXT PRIMARY KEY, skill_id TEXT NOT NULL,
+            from_state TEXT NOT NULL, to_state TEXT NOT NULL,
+            reason TEXT NOT NULL, actor TEXT NOT NULL,
+            actor_id TEXT, at TEXT NOT NULL, notes TEXT
+        );
+    """)
+    await db.commit()
+
+    await _seed(db, skill_state="shadow_primary")
+    now = datetime.now(timezone.utc).isoformat()
+    for i in range(3):
+        await db.execute(
+            "INSERT INTO correction_log (id, timestamp, user_id, task_type, "
+            "task_id, input_text, field_corrected, original_value, "
+            "corrected_value) VALUES (?, ?, 'nick', 'parse_task', ?, "
+            "'x', 'title', 'a', 'b')",
+            (f"c{i}", now, f"r{i}"),
+        )
+    await db.commit()
+
+    config = SkillSystemConfig()
+    real_lifecycle = SkillLifecycleManager(db, config)
+    notifier = AsyncMock()
+    detector = CorrectionClusterDetector(
+        connection=db, lifecycle_manager=real_lifecycle,
+        notifier=notifier, config=config,
+    )
+    reports = await detector.scan_once()
+    assert len(reports) == 1
+    cursor = await db.execute("SELECT state FROM skill WHERE id = 's1'")
+    assert (await cursor.fetchone())[0] == "flagged_for_review"
+    notifier.assert_awaited_once()

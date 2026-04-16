@@ -124,6 +124,17 @@ async def test_trusted_to_flagged_for_review(db: aiosqlite.Connection) -> None:
     assert row[0] == "flagged_for_review"
 
 
+async def test_shadow_primary_to_flagged_for_review_is_legal(db_with_runs: aiosqlite.Connection) -> None:
+    await _insert_skill(db_with_runs, skill_id="s1", state="shadow_primary")
+    manager = SkillLifecycleManager(db_with_runs, SkillSystemConfig())
+    await manager.transition(
+        skill_id="s1", to_state=SkillState.FLAGGED_FOR_REVIEW,
+        reason="degradation", actor="system",
+    )
+    cursor = await db_with_runs.execute("SELECT state FROM skill WHERE id = 's1'")
+    assert (await cursor.fetchone())[0] == "flagged_for_review"
+
+
 async def test_flagged_for_review_to_trusted(db: aiosqlite.Connection) -> None:
     await _insert_skill(db, state="flagged_for_review")
     mgr = SkillLifecycleManager(db, config=SkillSystemConfig())

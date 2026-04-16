@@ -358,3 +358,35 @@ async def test_evolve_skill_not_in_degraded_state_skips(db):
     report = await evolver.evolve_one(skill_id="s1", triggered_by="manual")
     assert report.outcome == "skipped"
     router.complete.assert_not_awaited()
+
+
+async def test_evolve_includes_fixture_library_in_prompt(db):
+    await _seed_degraded_skill(db)
+    # Seed 2 fixtures for skill s1.
+    now = datetime.now(timezone.utc).isoformat()
+    for i in range(2):
+        await db.execute(
+            "INSERT INTO skill_fixture (id, skill_id, case_name, input, "
+            "expected_output_shape, source, created_at) VALUES "
+            "(?, 's1', ?, '{\"x\": 1}', '{\"type\": \"object\"}', 'seed', ?)",
+            (f"f{i}", f"case{i}", now),
+        )
+    await db.commit()
+
+    router = AsyncMock()
+    router.complete.return_value = (_valid_llm_output(), MagicMock(invocation_id="inv-x"))
+    budget_guard = AsyncMock()
+    budget_guard.check_pre_call = AsyncMock()
+    lifecycle = _mock_lifecycle()
+
+    evolver = Evolver(
+        connection=db, model_router=router, budget_guard=budget_guard,
+        lifecycle_manager=lifecycle, config=SkillSystemConfig(),
+        executor_factory=_mock_executor_always_succeeds,
+    )
+    await evolver.evolve_one(skill_id="s1", triggered_by="manual")
+
+    assert router.complete.await_count == 1
+    prompt = router.complete.await_args.kwargs["prompt"]
+    assert "Fixture library" in prompt or "fixture_library" in prompt
+    assert "case0" in prompt or "case1" in prompt

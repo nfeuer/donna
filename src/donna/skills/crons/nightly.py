@@ -96,9 +96,14 @@ async def run_nightly_tasks(deps: NightlyDeps) -> NightlyReport:
     try:
         evo_reports = await deps.evolution_scheduler.run(remaining_budget_usd=remaining_budget)
         report.evolved = [_as_dict(r) for r in evo_reports]
-        # Decrement remaining budget by approx cost per attempt.
+        # Decrement remaining budget by approx cost per attempt — only for
+        # attempts that actually called the LLM (exclude skipped/budget/error).
         per_cost = deps.config.evolution_estimated_cost_usd
-        remaining_budget = max(0.0, remaining_budget - per_cost * len(evo_reports))
+        charged = [
+            r for r in evo_reports
+            if r.outcome not in ("budget_exhausted", "skipped", "error")
+        ]
+        remaining_budget = max(0.0, remaining_budget - per_cost * len(charged))
         logger.info("nightly_evolution_done", evolved=len(report.evolved))
     except Exception as exc:
         report.errors.append({"step": "evolution_scheduler", "error": str(exc)})

@@ -371,6 +371,8 @@ class Evolver:
             f"(…showing first 10; total provided context: {len(package['divergence_cases'])})\n\n"
             f"Correction log ({len(package['correction_log'])} entries):\n"
             f"{json.dumps(package['correction_log'], indent=2)}\n\n"
+            f"Fixture library ({len(package['fixture_library'])} cases):\n"
+            f"{json.dumps(package['fixture_library'][:20], indent=2)}\n\n"
             f"Stats: {json.dumps(package['stats'], indent=2)}\n\n"
             f"Prior evolution log: {json.dumps(package['prior_evolution_log'], indent=2)}\n\n"
             "Return strict JSON matching the evolution output schema."

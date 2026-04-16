@@ -314,3 +314,30 @@ async def test_nightly_correction_cluster_failure_is_recorded() -> None:
     deps.correction_cluster.scan_once.side_effect = RuntimeError("bang")
     report = await run_nightly_tasks(deps)
     assert any(e["step"] == "correction_cluster" for e in report.errors)
+
+
+@pytest.mark.asyncio
+async def test_nightly_budget_decrement_excludes_skipped_and_error_reports() -> None:
+    """Skipped/budget_exhausted/error evolution reports must not consume budget;
+    only real LLM-calling attempts (success, rejected_validation) should."""
+    from donna.skills.evolution import EvolutionReport
+
+    # 1 success + 1 skipped + 1 budget_exhausted + 1 error = 4 reports,
+    # but only 1 should be charged.
+    evo_reports = [
+        EvolutionReport(skill_id="s1", outcome="success"),
+        EvolutionReport(skill_id="s2", outcome="skipped"),
+        EvolutionReport(skill_id="s3", outcome="budget_exhausted"),
+        EvolutionReport(skill_id="s4", outcome="error"),
+    ]
+    # daily_spent=5, daily_limit=20 → remaining=15 before evolution.
+    deps = _make_deps(evolution_reports=evo_reports, daily_spent=5.0, daily_limit=20.0)
+    config = deps.config
+    per_cost = config.evolution_estimated_cost_usd
+
+    await run_nightly_tasks(deps)
+
+    # auto_drafter.run should see remaining = 15 - per_cost * 1 (only success charged).
+    _, kwargs = deps.auto_drafter.run.call_args
+    expected = max(0.0, 15.0 - per_cost * 1)
+    assert kwargs["remaining_budget_usd"] == pytest.approx(expected)

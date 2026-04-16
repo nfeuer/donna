@@ -63,6 +63,7 @@ def _build_transitions() -> dict[tuple[SkillState, SkillState], set[str]]:
         (S.DRAFT, S.SANDBOX): {"human_approval", "manual_override"},
         (S.SANDBOX, S.SHADOW_PRIMARY): {"gate_passed", "human_approval", "manual_override"},
         (S.SHADOW_PRIMARY, S.TRUSTED): {"gate_passed", "human_approval", "manual_override"},
+        (S.SHADOW_PRIMARY, S.FLAGGED_FOR_REVIEW): {"degradation", "manual_override"},
         (S.TRUSTED, S.FLAGGED_FOR_REVIEW): {"degradation", "manual_override"},
         (S.FLAGGED_FOR_REVIEW, S.TRUSTED): {"human_approval", "manual_override"},
         (S.FLAGGED_FOR_REVIEW, S.DEGRADED): {"human_approval", "manual_override"},
