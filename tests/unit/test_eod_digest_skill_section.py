@@ -46,6 +46,14 @@ _CREATE_TABLES = """
         quality_score REAL, is_shadow INTEGER,
         eval_session_id TEXT, spot_check_queued INTEGER, user_id TEXT
     );
+    CREATE TABLE skill_evolution_log (
+        id TEXT PRIMARY KEY, skill_id TEXT NOT NULL,
+        from_version_id TEXT NOT NULL, to_version_id TEXT,
+        triggered_by TEXT NOT NULL, claude_invocation_id TEXT,
+        diagnosis TEXT, targeted_case_ids TEXT,
+        validation_results TEXT, outcome TEXT NOT NULL,
+        at TEXT NOT NULL
+    );
 """
 
 
@@ -354,3 +362,74 @@ class TestTimeWindow:
 
         data = await digest._assemble_skill_system_data(now)
         assert len(data["flagged"]) == 1
+
+
+@pytest.fixture
+def digest(db) -> EodDigest:
+    """EodDigest instance wired to the in-memory test DB."""
+    return _make_digest(db)
+
+
+class TestEvolvedSkills:
+    async def test_evolved_skills_appear_in_section(self, db, digest) -> None:
+        """A successful evolution in the last 24h is listed."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        # Seed skill + evolution log row.
+        await db.execute(
+            "INSERT INTO skill (id, capability_name, current_version_id, state, "
+            "requires_human_gate, baseline_agreement, created_at, updated_at) "
+            "VALUES ('s1', 'parse_task', 'v2', 'draft', 0, 0.9, ?, ?)",
+            (now_iso, now_iso),
+        )
+        await db.execute(
+            "INSERT INTO skill_evolution_log (id, skill_id, from_version_id, "
+            "to_version_id, triggered_by, claude_invocation_id, diagnosis, "
+            "targeted_case_ids, validation_results, outcome, at) VALUES "
+            "('e1', 's1', 'v1', 'v2', 'nightly', 'inv', NULL, NULL, NULL, "
+            "'success', ?)",
+            (now_iso,),
+        )
+        await db.commit()
+        data = await digest._assemble_skill_system_data(datetime.now(timezone.utc))
+        assert len(data["evolved"]) == 1
+        assert data["evolved"][0]["capability_name"] == "parse_task"
+        text = digest._render_skill_section(data)
+        assert "Evolved:" in text
+        assert "parse_task" in text
+
+    async def test_evolution_failed_skills_appear(self, db, digest) -> None:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db.execute(
+            "INSERT INTO skill (id, capability_name, current_version_id, state, "
+            "requires_human_gate, baseline_agreement, created_at, updated_at) "
+            "VALUES ('s1', 'parse_task', 'v1', 'degraded', 0, 0.9, ?, ?)",
+            (now_iso, now_iso),
+        )
+        await db.execute(
+            "INSERT INTO skill_evolution_log (id, skill_id, from_version_id, "
+            "to_version_id, triggered_by, claude_invocation_id, diagnosis, "
+            "targeted_case_ids, validation_results, outcome, at) VALUES "
+            "('e1', 's1', 'v1', NULL, 'nightly', 'inv', NULL, NULL, NULL, "
+            "'rejected_validation', ?)",
+            (now_iso,),
+        )
+        await db.commit()
+        data = await digest._assemble_skill_system_data(datetime.now(timezone.utc))
+        assert len(data["evolution_failed"]) == 1
+        text = digest._render_skill_section(data)
+        assert "Evolution failed:" in text
+
+    async def test_skill_evolution_cost_included(self, db, digest) -> None:
+        """Claude invocations with task_type='skill_evolution' count in the cost."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await db.execute(
+            "INSERT INTO invocation_log (id, timestamp, task_type, model_alias, "
+            "model_actual, input_hash, latency_ms, tokens_in, tokens_out, "
+            "cost_usd, user_id) VALUES "
+            "('inv1', ?, 'skill_evolution', 'reasoner', 'claude', 'h', 500, "
+            "100, 50, 0.25, 'system')",
+            (now_iso,),
+        )
+        await db.commit()
+        data = await digest._assemble_skill_system_data(datetime.now(timezone.utc))
+        assert data["skill_system_cost_usd"] == pytest.approx(0.25)

@@ -199,13 +199,48 @@ class EodDigest:
             for r in await cursor.fetchall()
         ]
 
-        # Claude spend on skill-system work (auto-draft + shadow-eq-judge + triage).
+        # Evolved today (skill_evolution_log outcome='success' in last 24h).
+        cursor = await conn.execute(
+            """
+            SELECT e.skill_id, s.capability_name, e.to_version_id, e.at
+              FROM skill_evolution_log e
+              JOIN skill s ON e.skill_id = s.id
+             WHERE e.outcome = 'success' AND e.at >= ?
+             ORDER BY e.at DESC
+            """,
+            (since_iso,),
+        )
+        evolved_rows = await cursor.fetchall()
+        evolved = [
+            {"skill_id": r[0], "capability_name": r[1],
+             "new_version_id": r[2], "at": r[3]}
+            for r in evolved_rows
+        ]
+
+        # Evolution-failed today (outcome='rejected_validation' in last 24h).
+        cursor = await conn.execute(
+            """
+            SELECT e.skill_id, s.capability_name, e.at
+              FROM skill_evolution_log e
+              JOIN skill s ON e.skill_id = s.id
+             WHERE e.outcome = 'rejected_validation' AND e.at >= ?
+             ORDER BY e.at DESC
+            """,
+            (since_iso,),
+        )
+        evolution_failed_rows = await cursor.fetchall()
+        evolution_failed = [
+            {"skill_id": r[0], "capability_name": r[1], "at": r[2]}
+            for r in evolution_failed_rows
+        ]
+
+        # Claude spend on skill-system work (auto-draft + shadow-eq-judge + triage + evolution).
         cursor = await conn.execute(
             """
             SELECT COALESCE(SUM(cost_usd), 0)
               FROM invocation_log
              WHERE timestamp >= ?
-               AND task_type IN ('skill_auto_draft', 'skill_equivalence_judge', 'triage_failure')
+               AND task_type IN ('skill_auto_draft', 'skill_equivalence_judge', 'triage_failure', 'skill_evolution')
             """,
             (since_iso,),
         )
@@ -217,6 +252,8 @@ class EodDigest:
             "drafted": drafted,
             "promoted": promoted,
             "demoted": demoted,
+            "evolved": evolved,
+            "evolution_failed": evolution_failed,
             "skill_system_cost_usd": skill_system_cost,
         }
 
@@ -257,6 +294,18 @@ class EodDigest:
             for f in skill_data["flagged"][:5]:
                 lines.append(f"  - {f['capability_name']} (reason: {f['reason']})")
 
+        if skill_data.get("evolved"):
+            lines.append("")
+            lines.append(f"Evolved: {len(skill_data['evolved'])} skill(s)")
+            for e in skill_data["evolved"][:5]:
+                lines.append(f"  - {e['capability_name']} -> v{e.get('new_version_id', '?')}")
+
+        if skill_data.get("evolution_failed"):
+            lines.append("")
+            lines.append(f"Evolution failed: {len(skill_data['evolution_failed'])} skill(s)")
+            for e in skill_data["evolution_failed"][:5]:
+                lines.append(f"  - {e['capability_name']}")
+
         lines.append("")
         lines.append(f"Skill-system Claude spend: ${skill_data['skill_system_cost_usd']:.4f}")
 
@@ -264,6 +313,7 @@ class EodDigest:
         no_activity = not (
             skill_data.get("drafted") or skill_data.get("promoted")
             or skill_data.get("demoted") or skill_data.get("flagged")
+            or skill_data.get("evolved") or skill_data.get("evolution_failed")
         )
         if no_activity and skill_data.get("skill_system_cost_usd", 0.0) == 0.0:
             return "**Skill System Changes (last 24h)**\nNo changes in the last 24 hours."
