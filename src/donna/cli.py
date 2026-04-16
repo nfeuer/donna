@@ -16,8 +16,12 @@ import os
 import sys
 
 
-def main() -> None:
-    """Main CLI entry point."""
+def _build_parser() -> argparse.ArgumentParser:
+    """Construct the top-level argparse parser with all subcommands.
+
+    Extracted from main() so unit tests can exercise argument parsing
+    without invoking any dispatch side effects.
+    """
     parser = argparse.ArgumentParser(
         prog="donna",
         description="Donna AI Personal Assistant",
@@ -100,6 +104,40 @@ def main() -> None:
         help="Show what would be configured without writing anything",
     )
 
+    # Wave 1: test-notification subcommand
+    tn_parser = subparsers.add_parser(
+        "test-notification",
+        help="Send a test notification via the live NotificationService",
+    )
+    tn_parser.add_argument("--config-dir", default="config")
+    tn_parser.add_argument(
+        "--type",
+        required=True,
+        help="Notification type (digest, automation_alert, etc.)",
+    )
+    tn_parser.add_argument(
+        "--channel",
+        default="tasks",
+        help="Channel name (tasks, digest, debug)",
+    )
+    tn_parser.add_argument(
+        "--content",
+        required=True,
+        help="Message content",
+    )
+    tn_parser.add_argument(
+        "--priority",
+        type=int,
+        default=3,
+        help="Notification priority (1-5)",
+    )
+
+    return parser
+
+
+def main() -> None:
+    """Main CLI entry point."""
+    parser = _build_parser()
     args = parser.parse_args()
 
     if args.command is None:
@@ -116,6 +154,8 @@ def main() -> None:
         asyncio.run(_backup())
     elif args.command == "setup":
         asyncio.run(_setup(args))
+    elif args.command == "test-notification":
+        asyncio.run(_test_notification(args))
 
 
 async def _run_orchestrator(args: argparse.Namespace) -> None:
@@ -501,6 +541,53 @@ async def _setup(args: argparse.Namespace) -> None:
 
     if not success:
         sys.exit(1)
+
+
+async def _test_notification(args: argparse.Namespace) -> None:
+    """Dev-only: construct bot + NotificationService, dispatch one message, exit."""
+    from pathlib import Path
+
+    from donna.config import load_calendar_config
+    from donna.integrations.discord_bot import DonnaBot
+    from donna.notifications.service import NotificationService
+
+    token = os.environ["DISCORD_BOT_TOKEN"]
+    tasks_channel_id = int(os.environ["DISCORD_TASKS_CHANNEL_ID"])
+    debug_channel_id_env = os.environ.get("DISCORD_DEBUG_CHANNEL_ID")
+    agents_channel_id_env = os.environ.get("DISCORD_AGENTS_CHANNEL_ID")
+    guild_id_env = os.environ.get("DISCORD_GUILD_ID")
+    user_id = os.environ.get("DONNA_USER_ID", "nick")
+    config_dir = Path(args.config_dir)
+
+    bot = DonnaBot(
+        input_parser=None,
+        database=None,
+        tasks_channel_id=tasks_channel_id,
+        debug_channel_id=int(debug_channel_id_env) if debug_channel_id_env else None,
+        agents_channel_id=int(agents_channel_id_env) if agents_channel_id_env else None,
+        guild_id=int(guild_id_env) if guild_id_env else None,
+    )
+    bot_task = asyncio.create_task(bot.start(token))
+    if hasattr(bot, "ready_event"):
+        await bot.ready_event.wait()
+    else:
+        # Fallback: wait up to 30s for discord.py's own wait_until_ready semantics.
+        await asyncio.wait_for(bot.wait_until_ready(), timeout=30)
+
+    notification_service = NotificationService(
+        bot=bot,
+        calendar_config=load_calendar_config(config_dir),
+        user_id=user_id,
+    )
+    sent = await notification_service.dispatch(
+        notification_type=args.type,
+        content=args.content,
+        channel=args.channel,
+        priority=args.priority,
+    )
+    print(f"dispatched={sent}")
+    await bot.close()
+    await bot_task
 
 
 if __name__ == "__main__":
