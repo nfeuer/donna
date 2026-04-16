@@ -192,6 +192,100 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.chat_engine = chat_engine
     app.state.chat_config = chat_config
 
+    # Skill system (Phase 3 + 4) — wire everything if enabled.
+    app.state.skill_system_bundle = None
+    app.state.skill_cron_scheduler = None
+    app.state.skill_cron_task = None
+    try:
+        from donna.config import (
+            load_models_config,
+            load_skill_system_config,
+            load_task_types_config,
+        )
+        from donna.cost.budget import BudgetGuard
+        from donna.cost.tracker import CostTracker
+        from donna.models.router import ModelRouter
+        from donna.skills.crons import (
+            AsyncCronScheduler,
+            NightlyDeps,
+            run_nightly_tasks,
+        )
+        from donna.skills.startup_wiring import assemble_skill_system
+
+        skill_config = load_skill_system_config(config_dir)
+        app.state.skill_system_config = skill_config
+
+        if skill_config.enabled:
+            m_cfg = load_models_config(config_dir)
+            t_cfg = load_task_types_config(config_dir)
+            project_root = Path(os.environ.get("DONNA_PROJECT_ROOT", "."))
+            skill_router = ModelRouter(m_cfg, t_cfg, project_root)
+            cost_tracker = CostTracker(db.connection)
+            skill_budget_guard = BudgetGuard(
+                tracker=cost_tracker,
+                models_config=m_cfg,
+                notifier=_debug_log_notifier,
+            )
+
+            async def _skill_notifier(message: str) -> None:
+                logger.info(
+                    "skill_system_notification",
+                    message=message,
+                    event_type="skill_system.alert",
+                )
+
+            bundle = assemble_skill_system(
+                connection=db.connection,
+                model_router=skill_router,
+                budget_guard=skill_budget_guard,
+                notifier=_skill_notifier,
+                config=skill_config,
+                executor_factory=None,  # Phase 4 v1: sandbox executor not wired
+            )
+            app.state.skill_system_bundle = bundle
+            if bundle is not None:
+                # Expose references used by the admin dashboard routes.
+                app.state.skill_lifecycle_manager = bundle.lifecycle_manager
+                app.state.auto_drafter = bundle.auto_drafter
+
+                async def _nightly_job() -> None:
+                    deps = NightlyDeps(
+                        detector=bundle.detector,
+                        auto_drafter=bundle.auto_drafter,
+                        degradation=bundle.degradation,
+                        evolution_scheduler=bundle.evolution_scheduler,
+                        correction_cluster=bundle.correction_cluster,
+                        cost_tracker=cost_tracker,
+                        daily_budget_limit_usd=m_cfg.cost.daily_pause_threshold_usd,
+                        config=skill_config,
+                    )
+                    report = await run_nightly_tasks(deps)
+                    logger.info(
+                        "nightly_skill_tasks_done",
+                        new_candidates=len(report.new_candidates),
+                        drafted=len(report.drafted),
+                        evolved=len(report.evolved),
+                        degraded=len(report.degraded),
+                        correction_flagged=len(report.correction_flagged),
+                        errors=len(report.errors),
+                    )
+
+                scheduler = AsyncCronScheduler(
+                    hour_utc=skill_config.nightly_run_hour_utc,
+                    task=_nightly_job,
+                )
+                cron_task = asyncio.create_task(scheduler.run_forever())
+                app.state.skill_cron_scheduler = scheduler
+                app.state.skill_cron_task = cron_task
+                logger.info(
+                    "skill_system_started",
+                    nightly_run_hour_utc=skill_config.nightly_run_hour_utc,
+                )
+        else:
+            logger.info("skill_system_disabled_in_config")
+    except Exception:
+        logger.warning("skill_system_wiring_failed", exc_info=True)
+
     logger.info("donna_api_started", db_path=str(db_path), port=8200)
     yield
 
@@ -199,6 +293,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     worker_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await worker_task
+
+    # Stop the skill-system cron scheduler.
+    scheduler = getattr(app.state, "skill_cron_scheduler", None)
+    cron_task = getattr(app.state, "skill_cron_task", None)
+    if scheduler is not None:
+        scheduler.stop()
+    if cron_task is not None:
+        cron_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await cron_task
+
     await ollama.close()
     await db.close()
     logger.info("donna_api_stopped")
