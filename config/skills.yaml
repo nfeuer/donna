@@ -36,3 +36,9 @@ evolution_daily_cap: 10                    # Max evolution attempts per nightly 
 # Phase 4 — correction clustering
 correction_cluster_window_runs: 10
 correction_cluster_threshold: 2
+
+# Phase 5 — automation subsystem
+automation_poll_interval_seconds: 60
+automation_min_interval_default_seconds: 300
+automation_failure_pause_threshold: 5
+automation_max_cost_per_run_default_usd: 2.0

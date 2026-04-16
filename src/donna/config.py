@@ -455,6 +455,12 @@ class SkillSystemConfig(BaseModel):
     correction_cluster_window_runs: int = 10
     correction_cluster_threshold: int = 2
 
+    # Phase 5 — automation subsystem
+    automation_poll_interval_seconds: int = 60
+    automation_min_interval_default_seconds: int = 300
+    automation_failure_pause_threshold: int = 5
+    automation_max_cost_per_run_default_usd: float = 2.0
+
 
 def load_skill_system_config(config_dir: Path) -> SkillSystemConfig:
     """Load skill system configuration, falling back to defaults if missing."""
