@@ -41,6 +41,8 @@ from donna.api.routes import (
     health,
     llm,
     schedule,
+    skill_candidates as skill_candidates_routes,
+    skill_drafts as skill_drafts_routes,
     skill_runs as skill_runs_routes,
     skills as skills_routes,
     tasks,
@@ -241,6 +243,8 @@ def create_app() -> FastAPI:
     app.include_router(capabilities_routes.router, prefix="/admin", tags=["capabilities"])
     app.include_router(skills_routes.router, prefix="/admin", tags=["skills"])
     app.include_router(skill_runs_routes.router, prefix="/admin", tags=["skill-runs"])
+    app.include_router(skill_candidates_routes.router, prefix="/admin", tags=["skill-candidates"])
+    app.include_router(skill_drafts_routes.router, prefix="/admin", tags=["skill-drafts"])
 
     # LLM gateway for homelab services
     app.include_router(llm.router, prefix="/llm", tags=["llm"])

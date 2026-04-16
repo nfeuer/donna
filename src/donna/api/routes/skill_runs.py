@@ -120,3 +120,31 @@ async def list_recent_runs(
     rows = await cursor.fetchall()
     runs = [_run_to_dict(row_to_skill_run(r)) for r in rows]
     return {"runs": runs, "count": len(runs)}
+
+
+@router.get("/skill-runs/{skill_run_id}/divergence")
+async def get_skill_run_divergence(skill_run_id: str, request: Request) -> dict:
+    """Shadow divergence details for a skill run (if any)."""
+    import json
+
+    conn = request.app.state.db.connection
+    cursor = await conn.execute(
+        "SELECT id, skill_run_id, shadow_invocation_id, overall_agreement, "
+        "diff_summary, flagged_for_evolution, created_at "
+        "FROM skill_divergence WHERE skill_run_id = ? "
+        "ORDER BY created_at DESC LIMIT 1",
+        (skill_run_id,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="no divergence recorded")
+
+    return {
+        "id": row[0],
+        "skill_run_id": row[1],
+        "shadow_invocation_id": row[2],
+        "overall_agreement": row[3],
+        "diff_summary": json.loads(row[4]) if isinstance(row[4], str) else row[4],
+        "flagged_for_evolution": bool(row[5]),
+        "created_at": row[6],
+    }
