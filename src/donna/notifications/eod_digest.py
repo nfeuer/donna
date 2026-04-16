@@ -111,6 +111,165 @@ class EodDigest:
 
         logger.info("eod_digest_sent", date=data["current_date"])
 
+    async def _assemble_skill_system_data(self, now: datetime) -> dict[str, Any]:
+        """Collect 24h skill-system changes for the digest."""
+        since_iso = (now - timedelta(hours=24)).isoformat()
+        conn = self._db.connection
+
+        # Skills flagged for review today (transitions INTO flagged_for_review).
+        cursor = await conn.execute(
+            """
+            SELECT t.skill_id, s.capability_name, t.reason, t.at
+              FROM skill_state_transition t
+              JOIN skill s ON t.skill_id = s.id
+             WHERE t.to_state = 'flagged_for_review'
+               AND t.at >= ?
+             ORDER BY t.at DESC
+            """,
+            (since_iso,),
+        )
+        flagged_rows = await cursor.fetchall()
+        flagged = [
+            {"skill_id": r[0], "capability_name": r[1], "reason": r[2], "at": r[3]}
+            for r in flagged_rows
+        ]
+
+        # Skills auto-drafted today (candidate status flipped to 'drafted' today).
+        cursor = await conn.execute(
+            """
+            SELECT id, capability_name, expected_savings_usd, resolved_at
+              FROM skill_candidate_report
+             WHERE status = 'drafted' AND resolved_at >= ?
+             ORDER BY resolved_at DESC
+            """,
+            (since_iso,),
+        )
+        drafted_rows = await cursor.fetchall()
+        drafted = [
+            {
+                "candidate_id": r[0],
+                "capability_name": r[1],
+                "expected_monthly_savings_usd": r[2],
+                "at": r[3],
+            }
+            for r in drafted_rows
+        ]
+
+        # Skills promoted (sandbox → shadow_primary OR shadow_primary → trusted).
+        cursor = await conn.execute(
+            """
+            SELECT t.skill_id, s.capability_name, t.from_state, t.to_state, t.at
+              FROM skill_state_transition t
+              JOIN skill s ON t.skill_id = s.id
+             WHERE t.at >= ?
+               AND (
+                 (t.from_state = 'sandbox' AND t.to_state = 'shadow_primary')
+                 OR (t.from_state = 'shadow_primary' AND t.to_state = 'trusted')
+               )
+             ORDER BY t.at DESC
+            """,
+            (since_iso,),
+        )
+        promoted_rows = await cursor.fetchall()
+        promoted = [
+            {
+                "skill_id": r[0],
+                "capability_name": r[1],
+                "from_state": r[2],
+                "to_state": r[3],
+                "at": r[4],
+            }
+            for r in promoted_rows
+        ]
+
+        # Skills demoted (trusted → flagged_for_review).
+        cursor = await conn.execute(
+            """
+            SELECT t.skill_id, s.capability_name, t.at
+              FROM skill_state_transition t
+              JOIN skill s ON t.skill_id = s.id
+             WHERE t.from_state = 'trusted'
+               AND t.to_state = 'flagged_for_review'
+               AND t.at >= ?
+            """,
+            (since_iso,),
+        )
+        demoted = [
+            {"skill_id": r[0], "capability_name": r[1], "at": r[2]}
+            for r in await cursor.fetchall()
+        ]
+
+        # Claude spend on skill-system work (auto-draft + shadow-eq-judge + triage).
+        cursor = await conn.execute(
+            """
+            SELECT COALESCE(SUM(cost_usd), 0)
+              FROM invocation_log
+             WHERE timestamp >= ?
+               AND task_type IN ('skill_auto_draft', 'skill_equivalence_judge', 'triage_failure')
+            """,
+            (since_iso,),
+        )
+        row = await cursor.fetchone()
+        skill_system_cost = float(row[0]) if row else 0.0
+
+        return {
+            "flagged": flagged,
+            "drafted": drafted,
+            "promoted": promoted,
+            "demoted": demoted,
+            "skill_system_cost_usd": skill_system_cost,
+        }
+
+    def _render_skill_section(self, skill_data: dict[str, Any]) -> str:
+        """Render the skill-system changes section. Empty section if no activity."""
+        if not skill_data:
+            return ""
+
+        lines = ["**Skill System Changes (last 24h)**"]
+
+        if skill_data.get("drafted"):
+            lines.append("")
+            lines.append(f"Auto-drafted: {len(skill_data['drafted'])} skill(s)")
+            for d in skill_data["drafted"][:5]:
+                lines.append(
+                    f"  - {d['capability_name']} "
+                    f"(expected monthly savings ${d['expected_monthly_savings_usd']:.2f})"
+                )
+
+        if skill_data.get("promoted"):
+            lines.append("")
+            lines.append(f"Promoted: {len(skill_data['promoted'])} skill(s)")
+            for p in skill_data["promoted"][:5]:
+                lines.append(
+                    f"  - {p['capability_name']} "
+                    f"({p['from_state']} → {p['to_state']})"
+                )
+
+        if skill_data.get("demoted"):
+            lines.append("")
+            lines.append(f"Demoted to flagged_for_review: {len(skill_data['demoted'])} skill(s)")
+            for d in skill_data["demoted"][:5]:
+                lines.append(f"  - {d['capability_name']}")
+
+        if skill_data.get("flagged"):
+            lines.append("")
+            lines.append(f"Flagged for review: {len(skill_data['flagged'])} skill(s)")
+            for f in skill_data["flagged"][:5]:
+                lines.append(f"  - {f['capability_name']} (reason: {f['reason']})")
+
+        lines.append("")
+        lines.append(f"Skill-system Claude spend: ${skill_data['skill_system_cost_usd']:.4f}")
+
+        # If no activity at all, return a short stub.
+        no_activity = not (
+            skill_data.get("drafted") or skill_data.get("promoted")
+            or skill_data.get("demoted") or skill_data.get("flagged")
+        )
+        if no_activity and skill_data.get("skill_system_cost_usd", 0.0) == 0.0:
+            return "**Skill System Changes (last 24h)**\nNo changes in the last 24 hours."
+
+        return "\n".join(lines)
+
     async def _assemble_data(self, now: datetime) -> dict[str, Any]:
         """Collect end-of-day task and cost data."""
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -149,12 +308,19 @@ class EodDigest:
         except Exception:
             logger.exception("eod_digest_cost_query_failed")
 
+        skill_system = {}
+        try:
+            skill_system = await self._assemble_skill_system_data(now)
+        except Exception:
+            logger.exception("eod_digest_skill_system_query_failed")
+
         return {
             "current_date": today_start.strftime("%Y-%m-%d"),
             "day_of_week": today_start.strftime("%A"),
             "completed_today": "\n".join(completed_today) or "None.",
             "still_open": "\n".join(still_open) or "None.",
             "today_cost": f"{today_cost:.4f}",
+            "skill_system": skill_system,
         }
 
     def _render(self, data: dict[str, Any]) -> str:
@@ -171,6 +337,11 @@ class EodDigest:
             "**Cost Today**",
             f"${data['today_cost']}",
         ]
+        # Append skill-system section if data present.
+        skill_section = self._render_skill_section(data.get("skill_system", {}))
+        if skill_section:
+            lines.append("")
+            lines.append(skill_section)
         text = "\n".join(lines)
         return text[:2000]  # Discord message limit
 
