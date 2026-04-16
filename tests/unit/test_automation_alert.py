@@ -115,3 +115,13 @@ def test_nested_compound():
     assert calc.evaluate(expr, {"price": 80, "is_sale": False, "in_stock": True}) is True
     assert calc.evaluate(expr, {"price": 200, "is_sale": True, "in_stock": True}) is True
     assert calc.evaluate(expr, {"price": 80, "is_sale": False, "in_stock": False}) is False
+
+
+def test_empty_all_of_returns_false():
+    calc = AlertEvaluator()
+    assert calc.evaluate({"all_of": []}, {"price": 100}) is False
+
+
+def test_empty_any_of_returns_false():
+    calc = AlertEvaluator()
+    assert calc.evaluate({"any_of": []}, {"price": 100}) is False

@@ -32,11 +32,15 @@ class AlertEvaluator:
             children = node["all_of"]
             if not isinstance(children, list):
                 raise InvalidAlertExpressionError("all_of must be a list")
+            if not children:
+                return False
             return all(self._check(c, output) for c in children)
         if "any_of" in node:
             children = node["any_of"]
             if not isinstance(children, list):
                 raise InvalidAlertExpressionError("any_of must be a list")
+            if not children:
+                return False
             return any(self._check(c, output) for c in children)
         if "field" in node and "op" in node:
             return self._check_leaf(node, output)

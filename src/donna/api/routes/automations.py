@@ -101,7 +101,7 @@ def _run_to_dict(row: AutomationRunRow) -> dict[str, Any]:
 
 
 def _get_cron(request: Request) -> CronScheduleCalculator:
-    return getattr(request.app.state, "cron_calculator", None) or CronScheduleCalculator()
+    return CronScheduleCalculator()
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +186,8 @@ async def create_automation(
     )
 
     row = await repo.get(auto_id)
-    assert row is not None
+    if row is None:
+        raise HTTPException(status_code=500, detail="unexpected: row missing after write")
     return _automation_to_dict(row)
 
 
@@ -236,7 +237,8 @@ async def update_automation(
         await repo.update_fields(automation_id, **fields)
 
     updated = await repo.get(automation_id)
-    assert updated is not None
+    if updated is None:
+        raise HTTPException(status_code=500, detail="unexpected: row missing after write")
     return _automation_to_dict(updated)
 
 
@@ -251,7 +253,8 @@ async def pause_automation(automation_id: str, request: Request) -> dict[str, An
 
     await repo.set_status(automation_id, "paused")
     updated = await repo.get(automation_id)
-    assert updated is not None
+    if updated is None:
+        raise HTTPException(status_code=500, detail="unexpected: row missing after write")
     return _automation_to_dict(updated)
 
 
@@ -278,7 +281,8 @@ async def resume_automation(automation_id: str, request: Request) -> dict[str, A
 
     await repo.update_fields(automation_id, **fields)
     updated = await repo.get(automation_id)
-    assert updated is not None
+    if updated is None:
+        raise HTTPException(status_code=500, detail="unexpected: row missing after write")
     return _automation_to_dict(updated)
 
 

@@ -295,36 +295,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     from donna.automations.repository import AutomationRepository
                     from donna.automations.scheduler import AutomationScheduler
 
-                    if getattr(app.state, "skill_system_bundle", None) is not None:
-                        automation_repo = AutomationRepository(db.connection)
-                        dispatcher = AutomationDispatcher(
-                            connection=db.connection,
-                            repository=automation_repo,
-                            model_router=skill_router,
-                            skill_executor_factory=lambda: None,
-                            budget_guard=skill_budget_guard,
-                            alert_evaluator=AlertEvaluator(),
-                            cron=CronScheduleCalculator(),
-                            notifier=getattr(app.state, "notification_service", None),
-                            config=skill_config,
-                        )
-                        app.state.automation_dispatcher = dispatcher
-                        app.state.automation_repository = automation_repo
+                    automation_repo = AutomationRepository(db.connection)
+                    dispatcher = AutomationDispatcher(
+                        connection=db.connection,
+                        repository=automation_repo,
+                        model_router=skill_router,
+                        skill_executor_factory=lambda: None,
+                        budget_guard=skill_budget_guard,
+                        alert_evaluator=AlertEvaluator(),
+                        cron=CronScheduleCalculator(),
+                        notifier=getattr(app.state, "notification_service", None),
+                        config=skill_config,
+                    )
+                    app.state.automation_dispatcher = dispatcher
+                    app.state.automation_repository = automation_repo
 
-                        auto_scheduler = AutomationScheduler(
-                            repository=automation_repo,
-                            dispatcher=dispatcher,
-                            poll_interval_seconds=skill_config.automation_poll_interval_seconds,
-                        )
-                        automation_task = asyncio.create_task(auto_scheduler.run_forever())
-                        app.state.automation_scheduler = auto_scheduler
-                        app.state.automation_scheduler_task = automation_task
-                        logger.info(
-                            "automation_scheduler_started",
-                            poll_interval_seconds=skill_config.automation_poll_interval_seconds,
-                        )
-                    else:
-                        logger.info("automation_scheduler_skipped_skill_system_disabled")
+                    auto_scheduler = AutomationScheduler(
+                        repository=automation_repo,
+                        dispatcher=dispatcher,
+                        poll_interval_seconds=skill_config.automation_poll_interval_seconds,
+                    )
+                    automation_task = asyncio.create_task(auto_scheduler.run_forever())
+                    app.state.automation_scheduler = auto_scheduler
+                    app.state.automation_scheduler_task = automation_task
+                    logger.info(
+                        "automation_scheduler_started",
+                        poll_interval_seconds=skill_config.automation_poll_interval_seconds,
+                    )
                 except Exception:
                     logger.warning("automation_scheduler_wiring_failed", exc_info=True)
         else:
