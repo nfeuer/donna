@@ -17,6 +17,7 @@ from sqlalchemy import (
     Enum,
     Float,
     Integer,
+    LargeBinary,
     String,
     Text,
     ForeignKey,
@@ -77,6 +78,23 @@ class ConversationStatus(str, enum.Enum):
     ACTIVE = "active"
     EXPIRED = "expired"
     COMPLETED = "completed"
+
+
+class TriggerType(str, enum.Enum):
+    ON_MESSAGE = "on_message"
+    ON_SCHEDULE = "on_schedule"
+    ON_MANUAL = "on_manual"
+
+
+class SkillState(str, enum.Enum):
+    CLAUDE_NATIVE = "claude_native"
+    SKILL_CANDIDATE = "skill_candidate"
+    DRAFT = "draft"
+    SANDBOX = "sandbox"
+    SHADOW_PRIMARY = "shadow_primary"
+    TRUSTED = "trusted"
+    FLAGGED_FOR_REVIEW = "flagged_for_review"
+    DEGRADED = "degraded"
 
 
 # === Models ===
@@ -348,3 +366,68 @@ class ChatMessageModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
+
+
+class Capability(Base):
+    """Defines what a skill can do. See docs/skills-system.md."""
+
+    __tablename__ = "capability"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    input_schema: Mapped[dict] = mapped_column(JSON, nullable=False)
+    trigger_type: Mapped[TriggerType] = mapped_column(Enum(TriggerType), nullable=False, index=True)
+    default_output_shape: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", index=True)
+    embedding: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(20), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Skill(Base):
+    """Represents a skill implementation for a capability. See docs/skills-system.md."""
+
+    __tablename__ = "skill"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    capability_name: Mapped[str] = mapped_column(String(200), ForeignKey("capability.name"), nullable=False, unique=True)
+    current_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    state: Mapped[SkillState] = mapped_column(Enum(SkillState), nullable=False, index=True)
+    requires_human_gate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    baseline_agreement: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SkillVersion(Base):
+    """Version history for a skill implementation. See docs/skills-system.md."""
+
+    __tablename__ = "skill_version"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    yaml_backbone: Mapped[str] = mapped_column(Text, nullable=False)
+    step_content: Mapped[dict] = mapped_column(JSON, nullable=False)
+    output_schemas: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(20), nullable=False)
+    changelog: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SkillStateTransition(Base):
+    """Audit log of skill state changes. See docs/skills-system.md."""
+
+    __tablename__ = "skill_state_transition"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
+    from_state: Mapped[str] = mapped_column(String(30), nullable=False)
+    to_state: Mapped[str] = mapped_column(String(30), nullable=False)
+    reason: Mapped[str] = mapped_column(String(50), nullable=False)
+    actor: Mapped[str] = mapped_column(String(20), nullable=False)
+    actor_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
