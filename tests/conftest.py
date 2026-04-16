@@ -304,6 +304,15 @@ async def auth_test_app(tmp_path):
             expires_at DATETIME NOT NULL,
             revoked_at DATETIME, revoked_by TEXT
         );
+        CREATE TABLE llm_gateway_callers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            caller_id TEXT NOT NULL UNIQUE,
+            key_hash TEXT NOT NULL,
+            monthly_budget_usd REAL NOT NULL DEFAULT 0.0,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            revoked_at DATETIME, revoke_reason TEXT
+        );
         INSERT INTO allowed_emails (email, immich_user_id, name, is_admin, synced_at)
         VALUES ('nick@example.com', 'imm_nick', 'Nick', 1, CURRENT_TIMESTAMP);
         """
@@ -355,3 +364,41 @@ async def auth_test_app(tmp_path):
     yield app, conn, gmail_mock, immich_mock
 
     await conn.close()
+
+
+@pytest.fixture
+async def auth_test_app_with_admin(auth_test_app):
+    """Admin-authorised variant of `auth_test_app`.
+
+    Overrides the admin dependency to resolve to a fixed admin user_id so
+    route handlers run without needing a full IP-gate + Immich-bearer
+    round trip. The admin dep is tested separately in
+    `test_auth_dependencies.py`.
+    """
+    from donna.api.auth.router_factory import _admin_dep
+
+    app, conn, _gmail, _immich = auth_test_app
+    app.dependency_overrides[_admin_dep] = lambda: "admin_user"
+    yield app, conn
+
+
+@pytest.fixture
+async def auth_test_app_user_only(auth_test_app):
+    """Non-admin variant of `auth_test_app`.
+
+    Overrides the admin dependency to raise 403 so we can assert that
+    admin-only routes reject non-admin callers.
+    """
+    from fastapi import HTTPException, status
+
+    from donna.api.auth.router_factory import _admin_dep
+
+    def _deny() -> str:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "admin_role_required"},
+        )
+
+    app, conn, _gmail, _immich = auth_test_app
+    app.dependency_overrides[_admin_dep] = _deny
+    yield app, conn

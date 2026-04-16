@@ -27,6 +27,7 @@ from donna.api.routes import (
     admin_agents as admin_agents_routes,
 )
 from donna.api.routes import (
+    admin_access,
     admin_config,
     admin_dashboard,
     admin_health,
@@ -293,6 +294,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_shadow.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_preferences.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_health.router, prefix="/admin", tags=["admin"])
+    app.include_router(admin_access.router, prefix="/admin", tags=["admin"])
 
     # LLM gateway for homelab services
     app.include_router(llm.router, prefix="/llm", tags=["llm"])
