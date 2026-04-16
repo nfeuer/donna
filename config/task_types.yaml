@@ -122,6 +122,13 @@ task_types:
     output_schema: ""
     tools: []
 
+  skill_equivalence_judge:
+    description: "Compare two skill outputs for semantic equivalence during shadow sampling"
+    model: reasoner
+    prompt_template: prompts/skill_equivalence_judge.md
+    output_schema: schemas/skill_equivalence_output.json
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions
