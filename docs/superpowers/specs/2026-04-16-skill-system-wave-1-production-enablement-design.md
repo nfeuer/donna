@@ -522,7 +522,7 @@ Legend: `[x]` = done · `[~]` = partial — see drift log · `[ ]` = not yet sta
 | W1-R14 | E2E scenario 2: automation tick → run + alert | 6.5 | `test_wave1_smoke::test_automation_tick_alerts` | [x] |
 | W1-R15 | E2E scenario 3: sandbox → shadow_primary auto-promotion | 6.5 | `test_wave1_smoke::test_sandbox_promotes_to_shadow` | [x] |
 | W1-R16 | E2E scenario 4: trusted → flagged_for_review on degradation | 6.5 | `test_wave1_smoke::test_trusted_degrades_to_flagged` | [x] |
-| W1-R17 | Existing full test suite passes | 7 acceptance | AS-W1.6 | [ ] |
+| W1-R17 | Existing full test suite passes | 7 acceptance | AS-W1.6 | [x] |
 | W1-R18 | Followups doc ticks F-1/F-5/F-6/F-14 | 7 | Doc update | [x] |
 
 ---
