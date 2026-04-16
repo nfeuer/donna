@@ -1,4 +1,4 @@
-"""Tests for the nightly cron orchestrator (Task 13).
+"""Tests for the nightly cron orchestrator (Task 13 + Task 9 Phase 4).
 
 All external collaborators are replaced with AsyncMock / MagicMock so no
 database or LLM calls are made.
@@ -25,6 +25,8 @@ def _make_deps(
     detector_new: list[str] | None = None,
     drafter_reports: list | None = None,
     degradation_reports: list | None = None,
+    evolution_reports: list | None = None,
+    correction_flagged: list | None = None,
     daily_spent: float = 5.0,
     daily_limit: float = 20.0,
     auto_draft_cap: int = 10,
@@ -39,6 +41,12 @@ def _make_deps(
     degradation = AsyncMock()
     degradation.run.return_value = degradation_reports or []
 
+    evolution = AsyncMock()
+    evolution.run.return_value = evolution_reports or []
+
+    correction = AsyncMock()
+    correction.scan_once.return_value = correction_flagged or []
+
     cost_tracker = AsyncMock()
     daily_summary = MagicMock()
     daily_summary.total_usd = daily_spent
@@ -50,6 +58,8 @@ def _make_deps(
         detector=detector,
         auto_drafter=drafter,
         degradation=degradation,
+        evolution_scheduler=evolution,
+        correction_cluster=correction,
         cost_tracker=cost_tracker,
         daily_budget_limit_usd=daily_limit,
         config=config,
@@ -57,7 +67,7 @@ def _make_deps(
 
 
 # ---------------------------------------------------------------------------
-# Tests
+# Original Phase 3 tests (unchanged)
 # ---------------------------------------------------------------------------
 
 
@@ -216,3 +226,91 @@ async def test_nightly_skipped_when_disabled() -> None:
     deps.detector.run.assert_not_called()
     deps.auto_drafter.run.assert_not_called()
     deps.degradation.run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 new tests: evolution + correction cluster
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_nightly_calls_evolution_before_drafter() -> None:
+    """Evolution should be called before auto-drafting (spec §6.5)."""
+    deps = _make_deps()
+    call_order: list[str] = []
+
+    async def _detector_run(*a, **kw):
+        call_order.append("detector")
+        return []
+
+    async def _evolution_run(*a, **kw):
+        call_order.append("evolution")
+        return []
+
+    async def _drafter_run(*a, **kw):
+        call_order.append("drafter")
+        return []
+
+    async def _degradation_run(*a, **kw):
+        call_order.append("degradation")
+        return []
+
+    async def _correction_scan(*a, **kw):
+        call_order.append("correction")
+        return []
+
+    deps.detector.run = _detector_run
+    deps.evolution_scheduler.run = _evolution_run
+    deps.auto_drafter.run = _drafter_run
+    deps.degradation.run = _degradation_run
+    deps.correction_cluster.scan_once = _correction_scan
+
+    await run_nightly_tasks(deps)
+    assert call_order.index("detector") < call_order.index("evolution")
+    assert call_order.index("evolution") < call_order.index("drafter")
+    assert call_order.index("drafter") < call_order.index("degradation")
+    assert call_order.index("degradation") < call_order.index("correction")
+
+
+@pytest.mark.asyncio
+async def test_nightly_records_evolution_reports() -> None:
+    """Evolution report objects are serialized into report.evolved."""
+    from donna.skills.evolution import EvolutionReport
+
+    deps = _make_deps(
+        evolution_reports=[
+            EvolutionReport(skill_id="s1", outcome="success", new_version_id="v2"),
+            EvolutionReport(skill_id="s2", outcome="rejected_validation"),
+        ],
+    )
+    report = await run_nightly_tasks(deps)
+    assert len(report.evolved) == 2
+    assert report.evolved[0]["outcome"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_nightly_records_correction_flagged() -> None:
+    """correction_cluster hits are stored verbatim in report.correction_flagged."""
+    flagged = [{"skill_id": "s3", "capability_name": "x", "correction_count": 4}]
+    deps = _make_deps(correction_flagged=flagged)
+    report = await run_nightly_tasks(deps)
+    assert report.correction_flagged == flagged
+
+
+@pytest.mark.asyncio
+async def test_nightly_evolution_failure_still_runs_drafter() -> None:
+    """A failed evolution step must be recorded but auto-drafting still runs."""
+    deps = _make_deps()
+    deps.evolution_scheduler.run.side_effect = RuntimeError("boom")
+    report = await run_nightly_tasks(deps)
+    assert any(e["step"] == "evolution_scheduler" for e in report.errors)
+    deps.auto_drafter.run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_nightly_correction_cluster_failure_is_recorded() -> None:
+    """A correction cluster failure must be recorded in report.errors."""
+    deps = _make_deps()
+    deps.correction_cluster.scan_once.side_effect = RuntimeError("bang")
+    report = await run_nightly_tasks(deps)
+    assert any(e["step"] == "correction_cluster" for e in report.errors)
