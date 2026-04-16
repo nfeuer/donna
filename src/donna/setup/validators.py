@@ -363,18 +363,6 @@ async def validate_nvidia_gpu(env: dict[str, str]) -> ValidatorResult:
         return ValidatorResult(False, f"Error checking GPU: {exc}")
 
 
-async def validate_firebase(env: dict[str, str]) -> ValidatorResult:
-    """Basic format check on Firebase config."""
-    project_id = env.get("FIREBASE_PROJECT_ID", "")
-    if not project_id:
-        return ValidatorResult(False, "FIREBASE_PROJECT_ID is empty")
-    if not re.match(r"^[a-z0-9-]+$", project_id):
-        return ValidatorResult(
-            False, f"Invalid project ID format: {project_id!r} (lowercase, digits, hyphens only)"
-        )
-    return ValidatorResult(True, f"Firebase project: {project_id}")
-
-
 async def validate_docker(env: dict[str, str]) -> ValidatorResult:
     """Check Docker is installed and running."""
     if not shutil.which("docker"):
@@ -410,6 +398,5 @@ VALIDATORS: dict[str, type[object] | object] = {
     "validate_calendar_ids": validate_calendar_ids,
     "validate_supabase": validate_supabase,
     "validate_nvidia_gpu": validate_nvidia_gpu,
-    "validate_firebase": validate_firebase,
     "validate_docker": validate_docker,
 }

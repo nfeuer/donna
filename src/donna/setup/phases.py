@@ -324,36 +324,6 @@ OLLAMA_GPU = SetupStep(
 )
 
 # ---------------------------------------------------------------------------
-# Phase 4 — Mobile App
-# ---------------------------------------------------------------------------
-
-FIREBASE = SetupStep(
-    id="firebase",
-    name="Firebase Authentication",
-    phase=4,
-    required=False,
-    help_text=(
-        "Firebase project for mobile app auth.\n"
-        "Create a project at https://console.firebase.google.com"
-    ),
-    prompts=[
-        StepPrompt(env_var="FIREBASE_PROJECT_ID", label="Firebase project ID"),
-        StepPrompt(
-            env_var="DONNA_DEFAULT_USER_ID",
-            label="Default user ID",
-            default="nick",
-        ),
-        StepPrompt(
-            env_var="DONNA_AUTH_DISABLED",
-            label="Disable auth (dev mode)",
-            default="true",
-            help_hint="Set to 'false' in production",
-        ),
-    ],
-    validator="validate_firebase",
-)
-
-# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -370,14 +340,13 @@ ALL_STEPS: list[SetupStep] = [
     GOOGLE_CALENDARS,
     SUPABASE,
     OLLAMA_GPU,
-    FIREBASE,
 ]
 
 PHASES: dict[int, str] = {
     1: "Core (Claude + Discord)",
     2: "Notifications (Twilio + Google + Supabase)",
     3: "Local LLM (Ollama)",
-    4: "Mobile App (Firebase)",
+    4: "Mobile App (Immich-gated access)",
 }
 
 
