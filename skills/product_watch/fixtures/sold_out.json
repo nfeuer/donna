@@ -1,0 +1,24 @@
+{
+  "case_name": "sold_out",
+  "input": {
+    "url": "https://example-shop.com/hoodie-red",
+    "max_price_usd": null,
+    "required_size": null
+  },
+  "expected_output_shape": {
+    "type": "object",
+    "required": ["ok", "in_stock", "triggers_alert"],
+    "properties": {
+      "ok": {"type": "boolean"},
+      "in_stock": {"type": "boolean"},
+      "triggers_alert": {"type": "boolean"}
+    }
+  },
+  "tool_mocks": {
+    "web_fetch:{\"url\":\"https://example-shop.com/hoodie-red\"}": {
+      "status": 200,
+      "body": "<html><body><h1>Red Hoodie</h1><span class='price'>$65.00</span><div class='stock'>Sold out</div></body></html>",
+      "headers": {}
+    }
+  }
+}
