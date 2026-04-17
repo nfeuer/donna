@@ -69,4 +69,6 @@ class ValidationExecutor:
             model_router=self._router,
             tool_registry=tool_registry,
             run_sink=sink,
+            config=self._config,
+            task_type_prefix="skill_validation",
         )

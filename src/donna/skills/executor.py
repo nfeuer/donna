@@ -93,6 +93,8 @@ class SkillExecutor:
         run_repository: Any | None = None,
         run_sink: Any | None = None,
         shadow_sampler: "ShadowSampler | None" = None,
+        config: Any | None = None,               # Wave 2: SkillSystemConfig for validation timeouts
+        task_type_prefix: str | None = None,     # Wave 2: override "skill_step" default
     ) -> None:
         self._router = model_router
         self._tool_registry = tool_registry or ToolRegistry()
@@ -100,6 +102,9 @@ class SkillExecutor:
         self._triage = triage
         # run_sink overrides run_repository when both are provided.
         self._run_repository = run_sink if run_sink is not None else run_repository
+        self._run_sink = run_sink
+        self._config = config
+        self._task_type_prefix = task_type_prefix
         self._shadow_sampler = shadow_sampler
         self._jinja = jinja2.Environment(
             autoescape=False,
@@ -448,11 +453,25 @@ class SkillExecutor:
         if prompt_additions:
             rendered = rendered + "\n\n" + prompt_additions
 
-        output, meta = await self._router.complete(
-            prompt=rendered,
-            task_type=f"skill_step::{skill.capability_name}::{step_name}",
-            user_id=user_id,
-        )
+        prefix = self._task_type_prefix or "skill_step"
+        task_type = f"{prefix}::{skill.capability_name}::{step_name}"
+
+        if self._run_sink is not None and self._config is not None:
+            timeout_s = getattr(self._config, "validation_per_step_timeout_s", 60)
+            output, meta = await asyncio.wait_for(
+                self._router.complete(
+                    prompt=rendered,
+                    task_type=task_type,
+                    user_id=user_id,
+                ),
+                timeout=timeout_s,
+            )
+        else:
+            output, meta = await self._router.complete(
+                prompt=rendered,
+                task_type=task_type,
+                user_id=user_id,
+            )
 
         return output, meta.invocation_id, getattr(meta, "cost_usd", 0.0)
 
