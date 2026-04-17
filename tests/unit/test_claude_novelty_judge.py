@@ -1,9 +1,18 @@
 """ClaudeNoveltyJudge — Claude call for no-match escalations."""
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from donna.agents.claude_novelty_judge import ClaudeNoveltyJudge, NoveltyVerdict
+
+
+_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[2] / "schemas" / "claude_novelty.json"
+)
+_SCHEMA = json.loads(_SCHEMA_PATH.read_text())
 
 
 class _FakeRouter:
@@ -15,9 +24,12 @@ class _FakeRouter:
         self.calls.append(task_type)
         return self._response, {"cost_usd": 0.002, "latency_ms": 800}
 
+    def get_output_schema(self, task_type: str) -> dict:
+        return _SCHEMA
 
-class _FakeDb:
-    async def list_capabilities(self):
+
+class _FakeMatcher:
+    async def list_all(self):
         return []
 
 
@@ -36,7 +48,7 @@ async def test_judge_returns_automation_verdict_with_polling_suggestion() -> Non
         "clarifying_question": None,
     }
     router = _FakeRouter(response)
-    judge = ClaudeNoveltyJudge(model_router=router, database=_FakeDb())
+    judge = ClaudeNoveltyJudge(model_router=router, matcher=_FakeMatcher())
     verdict = await judge.evaluate("when I get an email from jane@x.com, message me", user_id="u1")
     assert isinstance(verdict, NoveltyVerdict)
     assert verdict.intent_kind == "automation"
@@ -61,6 +73,6 @@ async def test_judge_marks_non_candidate() -> None:
         "clarifying_question": None,
     }
     router = _FakeRouter(response)
-    judge = ClaudeNoveltyJudge(model_router=router, database=_FakeDb())
+    judge = ClaudeNoveltyJudge(model_router=router, matcher=_FakeMatcher())
     verdict = await judge.evaluate("every Sunday review tax prep folder", user_id="u1")
     assert verdict.skill_candidate is False

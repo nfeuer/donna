@@ -14,6 +14,9 @@ from typing import Any
 import jinja2
 import structlog
 
+from donna.capabilities.matcher import CapabilityMatcher
+from donna.models.validation import validate_output
+
 logger = structlog.get_logger()
 
 
@@ -38,9 +41,14 @@ class ClaudeNoveltyJudge:
 
     _TASK_TYPE = "claude_novelty"
 
-    def __init__(self, *, model_router: Any, database: Any) -> None:
+    def __init__(
+        self,
+        *,
+        model_router: Any,
+        matcher: CapabilityMatcher | None = None,
+    ) -> None:
         self._router = model_router
-        self._db = database
+        self._matcher = matcher
         self._env = jinja2.Environment(
             loader=jinja2.FileSystemLoader("prompts"),
             autoescape=False,
@@ -49,15 +57,14 @@ class ClaudeNoveltyJudge:
     async def evaluate(self, user_message: str, user_id: str) -> NoveltyVerdict:
         """Evaluate a no-match user message and return a NoveltyVerdict.
 
-        The injected ``database`` handle is expected to expose a
-        ``list_capabilities`` coroutine returning an iterable of capability
-        rows (with ``name`` and ``description`` attributes). This wrapper is
-        provided by the caller (e.g., DiscordIntentDispatcher) and typically
-        delegates to :meth:`CapabilityRegistry.list_all` under the hood.
+        Renders the active capability snapshot (via ``matcher.list_all``) into
+        the prompt so Claude sees the concrete set the message failed to match
+        against. When no matcher is injected (e.g., unit tests), falls back to
+        an empty snapshot.
         """
         caps: list[Any] = []
-        if hasattr(self._db, "list_capabilities"):
-            caps = list(await self._db.list_capabilities())
+        if self._matcher is not None and hasattr(self._matcher, "list_all"):
+            caps = list(await self._matcher.list_all())
 
         template = self._env.get_template("claude_novelty.md")
         prompt = template.render(
@@ -70,6 +77,12 @@ class ClaudeNoveltyJudge:
             task_type=self._TASK_TYPE,
             user_id=user_id,
         )
+
+        # Validate the LLM response against schemas/claude_novelty.json before
+        # relying on any of its fields. Mirrors the pattern used by
+        # prep_agent.py / decomposition.py / rule_extractor.py.
+        schema = self._router.get_output_schema(self._TASK_TYPE)
+        parsed = validate_output(parsed, schema)
 
         deadline: datetime | None = None
         raw_deadline = parsed.get("deadline")
