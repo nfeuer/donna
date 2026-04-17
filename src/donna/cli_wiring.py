@@ -490,8 +490,11 @@ async def wire_discord(
     constructed — this helper logs `discord_bot_disabled` and returns a
     handle with `bot=None`.
 
-    The Wave-3 Task-8 intent dispatcher is not yet wired; the returned
-    handle exposes `intent_dispatcher=None`.
+    Wave 3 Task 13: constructs a DiscordIntentDispatcher from the
+    ChallengerAgent + ClaudeNoveltyJudge + PendingDraftRegistry +
+    CadencePolicy + lifecycle adapter + candidate-report writer, and
+    wires it onto the running `DonnaBot` so `on_message` routes new
+    utterances through the Wave 3 intent pipeline.
     """
     log = ctx.log
 
@@ -503,6 +506,19 @@ async def wire_discord(
         return DiscordHandle(
             bot=None, notification_service=None, intent_dispatcher=None,
         )
+
+    # Wave 3: construct the intent dispatcher. Failure here is logged
+    # but non-fatal — the bot falls back to the legacy InputParser path.
+    intent_dispatcher = await _build_intent_dispatcher(
+        ctx, skill_h, automation_h, log,
+    )
+    if intent_dispatcher is not None:
+        # Attach to the already-constructed DonnaBot so `on_message`
+        # routes via the Wave 3 path. automation_repo is needed for the
+        # AutomationConfirmationView approval coordinator.
+        ctx.bot._intent_dispatcher = intent_dispatcher
+        ctx.bot._automation_repo = automation_h.repository
+        log.info("discord_intent_dispatcher_wired")
 
     bot = ctx.bot
     # Load Discord config and register slash commands if enabled.
@@ -557,5 +573,148 @@ async def wire_discord(
     return DiscordHandle(
         bot=bot,
         notification_service=ctx.notification_service,
-        intent_dispatcher=None,  # Wave 3 Task 8 will wire this.
+        intent_dispatcher=intent_dispatcher,
     )
+
+
+# ---------------------------------------------------------------------------
+# Wave 3 intent-dispatcher construction
+# ---------------------------------------------------------------------------
+
+
+class _SkillLifecycleStateAdapter:
+    """Expose `async current_state(capability_name) -> str` over the skill table.
+
+    DiscordIntentDispatcher uses this to decide the cadence clamp via
+    CadencePolicy. When no skill row exists for a capability (e.g., the
+    capability is claude-native-only), returns ``"claude_native"`` so
+    CadencePolicy applies the most conservative clamp.
+    """
+
+    def __init__(self, connection: Any) -> None:
+        self._conn = connection
+
+    async def current_state(self, capability_name: str) -> str:
+        try:
+            cursor = await self._conn.execute(
+                "SELECT state FROM skill WHERE capability_name = ? "
+                "ORDER BY updated_at DESC LIMIT 1",
+                (capability_name,),
+            )
+            row = await cursor.fetchone()
+        except Exception:  # noqa: BLE001 — defensive; fall back to claude_native
+            return "claude_native"
+        if row is None:
+            return "claude_native"
+        return row[0]
+
+
+class _TasksDbAdapter:
+    """Adapt `Database.create_task` to the dispatcher's `insert_task` surface.
+
+    DiscordIntentDispatcher passes (user_id, title, inputs, deadline,
+    capability_name) — we persist via `Database.create_task` and return
+    the new task id. `inputs` / `capability_name` are recorded in the
+    task's tags + notes so they aren't lost before a richer task schema
+    lands.
+    """
+
+    def __init__(self, database: Any) -> None:
+        self._db = database
+
+    async def insert_task(
+        self,
+        *,
+        user_id: str,
+        title: str,
+        inputs: dict[str, Any] | None = None,
+        deadline: Any | None = None,
+        capability_name: str | None = None,
+    ) -> str:
+        import json as _json
+
+        from donna.tasks.db_models import InputChannel
+
+        notes: list[str] = []
+        if capability_name:
+            notes.append(f"capability: {capability_name}")
+        if inputs:
+            notes.append(f"inputs: {_json.dumps(inputs)}")
+
+        row = await self._db.create_task(
+            user_id=user_id,
+            title=title,
+            deadline=deadline,
+            notes=notes or None,
+            created_via=InputChannel.DISCORD,
+        )
+        return row.id
+
+
+async def _build_intent_dispatcher(
+    ctx: StartupContext,
+    skill_h: SkillSystemHandle,
+    automation_h: AutomationHandle,
+    log: Any,
+) -> Any | None:
+    """Construct a DiscordIntentDispatcher from live handles.
+
+    Returns ``None`` on any construction failure so the bot falls back
+    to the legacy InputParser flow instead of crashing at startup.
+    """
+    try:
+        from donna.agents.challenger_agent import ChallengerAgent
+        from donna.agents.claude_novelty_judge import ClaudeNoveltyJudge
+        from donna.automations.cadence_policy import CadencePolicy
+        from donna.capabilities.matcher import CapabilityMatcher
+        from donna.capabilities.registry import CapabilityRegistry
+        from donna.integrations.discord_pending_drafts import (
+            PendingDraftRegistry,
+        )
+        from donna.orchestrator.discord_intent_dispatcher import (
+            DiscordIntentDispatcher,
+        )
+
+        registry = CapabilityRegistry(ctx.db.connection, ctx.skill_config)
+        matcher = CapabilityMatcher(registry, config=ctx.skill_config)
+
+        challenger = ChallengerAgent(
+            matcher=matcher, model_router=skill_h.skill_router,
+        )
+        novelty = ClaudeNoveltyJudge(
+            model_router=skill_h.skill_router, matcher=matcher,
+        )
+        pending = PendingDraftRegistry()
+
+        cadence_path = ctx.config_dir / "automations.yaml"
+        policy = (
+            CadencePolicy.load(cadence_path)
+            if cadence_path.exists()
+            else None
+        )
+
+        lifecycle_adapter = _SkillLifecycleStateAdapter(ctx.db.connection)
+        tasks_adapter = _TasksDbAdapter(ctx.db)
+
+        candidate_writer = (
+            skill_h.bundle.candidate_repo if skill_h.bundle is not None else None
+        )
+
+        dispatcher = DiscordIntentDispatcher(
+            challenger=challenger,
+            novelty_judge=novelty,
+            pending_drafts=pending,
+            tasks_db=tasks_adapter,
+            cadence_policy=policy,
+            lifecycle_lookup=lifecycle_adapter,
+            candidate_report_writer=candidate_writer,
+        )
+        log.info(
+            "discord_intent_dispatcher_built",
+            cadence_policy=policy is not None,
+            candidate_writer=candidate_writer is not None,
+        )
+        return dispatcher
+    except Exception:
+        log.exception("discord_intent_dispatcher_build_failed")
+        return None

@@ -68,6 +68,8 @@ class DonnaBot(discord.Client):
         dispatcher: AgentDispatcher | None = None,
         chat_channel_id: int | None = None,
         chat_engine: Any | None = None,
+        intent_dispatcher: Any | None = None,
+        automation_repo: Any | None = None,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -83,6 +85,9 @@ class DonnaBot(discord.Client):
         self._dispatcher = dispatcher
         self._chat_channel_id = chat_channel_id
         self._chat_engine = chat_engine
+        # Wave 3: DiscordIntentDispatcher-driven routing.
+        self._intent_dispatcher = intent_dispatcher
+        self._automation_repo = automation_repo
         # Command tree for slash commands (may fail if Client not fully initialized).
         try:
             self.tree = app_commands.CommandTree(self)
@@ -280,6 +285,13 @@ class DonnaBot(discord.Client):
         if message.channel.id != self._tasks_channel_id:
             return
 
+        # Wave 3: if the intent dispatcher is wired, route the message through
+        # it instead of the legacy InputParser flow. Dedup / field-update
+        # handling is owned by the legacy path only.
+        if self._intent_dispatcher is not None:
+            await self._handle_tasks_channel_via_dispatcher(message)
+            return
+
         correlation_id = str(uuid.uuid4())
         user_id = str(message.author.id)
         raw_text = message.content.strip()
@@ -408,6 +420,164 @@ class DonnaBot(discord.Client):
             await message.channel.send(
                 "Captured your message. I'll parse it properly when my brain"
                 " comes back online."
+            )
+
+    # ------------------------------------------------------------------
+    # Wave 3: DiscordIntentDispatcher routing
+    # ------------------------------------------------------------------
+
+    async def _handle_tasks_channel_via_dispatcher(
+        self, message: discord.Message
+    ) -> None:
+        """Route a tasks-channel message through the DiscordIntentDispatcher.
+
+        Branches on DispatchResult.kind:
+          - task_created → confirmation reply
+          - clarification_posted → thread + question
+          - automation_confirmation_needed → post the AutomationConfirmationView
+          - chat / no_action → return
+        """
+        log = logger.bind(
+            user_id=str(message.author.id),
+            channel="discord",
+        )
+
+        # Build a minimal duck-typed message for the dispatcher.
+        thread_id: int | None = None
+        thread_obj = getattr(message, "thread", None)
+        if thread_obj is not None and hasattr(thread_obj, "id"):
+            try:
+                thread_id = int(thread_obj.id)
+            except (TypeError, ValueError):
+                thread_id = None
+
+        class _Msg:
+            content = message.content
+            author_id = str(message.author.id)
+
+        _Msg.thread_id = thread_id  # type: ignore[attr-defined]
+
+        try:
+            result = await self._intent_dispatcher.dispatch(_Msg())
+        except Exception:
+            log.exception("intent_dispatch_failed")
+            await message.channel.send(
+                "Something went wrong routing that message. Try again in a moment."
+            )
+            return
+
+        kind = getattr(result, "kind", "no_action")
+
+        if kind == "task_created":
+            task_id = getattr(result, "task_id", None) or "?"
+            await message.channel.send(f"Task captured (`{task_id}`).")
+            return
+
+        if kind == "clarification_posted":
+            question = (
+                getattr(result, "clarifying_question", None) or "Need more info."
+            )
+            try:
+                thread = await message.create_thread(name="Clarification")
+                await thread.send(question)
+            except Exception:
+                log.exception("clarification_thread_create_failed")
+                await message.channel.send(question)
+            return
+
+        if kind == "automation_confirmation_needed":
+            draft = getattr(result, "draft_automation", None)
+            if draft is None:
+                log.warning("automation_confirmation_missing_draft")
+                return
+            await self._send_automation_confirmation(message, draft, log)
+            return
+
+        if kind == "chat":
+            return
+
+        if kind == "no_action":
+            log.info(
+                "on_message_no_action",
+                content_preview=(message.content or "")[:60],
+            )
+            return
+
+        log.warning("on_message_unknown_dispatch_kind", kind=kind)
+
+    async def _send_automation_confirmation(
+        self,
+        message: discord.Message,
+        draft: Any,
+        log: Any,
+    ) -> None:
+        """Post the AutomationConfirmationView and await user decision."""
+        from donna.integrations.discord_views import AutomationConfirmationView
+
+        name = _suggest_automation_name(draft)
+        view = AutomationConfirmationView(draft=draft, name=name)
+        try:
+            await message.channel.send(embed=view.build_embed(), view=view)
+        except Exception:
+            log.exception("automation_confirmation_send_failed")
+            return
+
+        # Wait for the user to click Approve/Edit/Cancel (or view to time out).
+        # discord.py runs views on its own task scheduler — awaiting here only
+        # blocks this on_message coroutine, not the bot's event loop.
+        try:
+            await view.wait()
+        except Exception:
+            log.exception("automation_confirmation_wait_failed")
+            return
+
+        decision = getattr(view, "result", None)
+        if decision == "approve":
+            await self._approve_automation_draft(message, view, log)
+        elif decision == "edit":
+            log.info(
+                "automation_edit_requested",
+                user_id=str(message.author.id),
+            )
+        elif decision == "cancel":
+            # View already replaced itself with a "Cancelled" message.
+            return
+        else:
+            log.info("automation_confirmation_timeout")
+
+    async def _approve_automation_draft(
+        self,
+        message: discord.Message,
+        view: Any,
+        log: Any,
+    ) -> None:
+        """Persist an approved DraftAutomation via AutomationCreationPath."""
+        if self._automation_repo is None:
+            log.warning("automation_approve_no_repo")
+            await message.channel.send(
+                "Automation flow isn't fully wired yet — nothing saved."
+            )
+            return
+
+        from donna.automations.creation_flow import AutomationCreationPath
+
+        creation = AutomationCreationPath(repository=self._automation_repo)
+        try:
+            automation_id = await creation.approve(view.draft, name=view.name)
+        except Exception:
+            log.exception("automation_creation_failed", name=view.name)
+            await message.channel.send(
+                f"Couldn't create automation `{view.name}`."
+            )
+            return
+
+        if automation_id:
+            await message.channel.send(
+                f"Automation created (`{automation_id}`)."
+            )
+        else:
+            await message.channel.send(
+                f"Automation `{view.name}` already exists."
             )
 
     async def _handle_dedup_reply(
@@ -654,6 +824,22 @@ class DonnaBot(discord.Client):
             await message.channel.send(
                 "Something went wrong. Try again in a moment."
             )
+
+
+# ------------------------------------------------------------------
+# Automation name suggestion
+# ------------------------------------------------------------------
+
+
+def _suggest_automation_name(draft: Any) -> str:
+    """Simple deterministic name: capability + first meaningful input token."""
+    cap = getattr(draft, "capability_name", None) or "claude_native"
+    inputs = getattr(draft, "inputs", None) or {}
+    first_input = next(iter(inputs.values()), None) if inputs else None
+    if first_input:
+        token = str(first_input).split("/")[-1][:20]
+        return f"{cap}_{token}"
+    return cap
 
 
 # ------------------------------------------------------------------
