@@ -8,6 +8,37 @@ This is a backlog, not a roadmap. Priority suggestions are opinions — use them
 
 ---
 
+## Wave 3 entry points (read first)
+
+Wave 3 focus: **F-3 Discord natural-language automation creation** (see F-3 entry below). Wave 2 closed all F-W1-* items except F-W1-A (P2, degradation-threshold semantics — still unresolved, see below). Wave 2 also surfaced 6 new follow-ups from its own code review (F-W2-* entries below) — none blocking, but worth folding into Wave 3 or Wave 4 planning.
+
+Predecessor specs for context:
+- Wave 1: `docs/superpowers/specs/2026-04-16-skill-system-wave-1-production-enablement-design.md` (PR #44).
+- Wave 2: `docs/superpowers/specs/2026-04-17-skill-system-wave-2-first-capability-design.md` (PR #46, depends on #44).
+- Original skill-system: `docs/superpowers/specs/2026-04-15-skill-system-and-challenger-refactor-design.md`.
+
+---
+
+## New follow-ups surfaced during Wave 2 code review (2026-04-17)
+
+None are ship-blockers. Captured so a fresh session has the full picture.
+
+- **F-W2-A — `SeedCapabilityLoader` vs seed-migration overlap.** *(Priority P3.)* `src/donna/cli.py` runs `SeedCapabilityLoader.load_and_upsert(config/capabilities.yaml)` on every startup AFTER the seed migration has also inserted the same row. UPSERT handles duplication, but description/input_schema drift between the migration's hardcoded blob and the YAML is silently overwritten by the loader on each boot. Fix options: (a) log a diff when the loader changes rows, (b) have the migration insert a placeholder and rely on the loader for semantic fields, (c) remove the loader and re-run migration-style seeding on every startup. Not blocking today because only one capability exists.
+
+- **F-W2-B — `DEFAULT_TOOL_REGISTRY` thread-safety and test isolation.** *(Priority P3.)* `src/donna/skills/tools/__init__.py` holds a module-level `ToolRegistry()` instance mutated by `register_default_tools` at orchestrator boot. Two risks: (1) test isolation — once populated in one test, state persists across tests; no `clear()` method or pytest reset fixture. (2) Thread-safety — `dict` mutation isn't atomic; safe today because registration happens once before dispatch, but should be documented as a boot-time-only contract. Low priority until either risk manifests; consider adding `ToolRegistry.clear()` + a conftest fixture for long-term hygiene.
+
+- **F-W2-C — E2E doesn't exercise the default-tool-registry wiring.** *(Priority P2.)* `tests/e2e/test_wave2_product_watch.py` covers the claude_native path only (skill state = sandbox), so `SkillExecutor` never dispatches. `tests/integration/test_cli_wires_tools_and_capabilities.py` proves `register_default_tools` is called, but NOT that `SkillExecutor(model_router=fake)` without explicit `tool_registry` ends up dispatching through `DEFAULT_TOOL_REGISTRY`. Add a unit test: construct `SkillExecutor(model_router=fake)` and assert `executor._tool_registry is DEFAULT_TOOL_REGISTRY`. Also revisit once a skill promotes to `shadow_primary` and the skill path actually fires in production — that's when a wiring gap would manifest.
+
+- **F-W2-D — `on_failure` DSL is unimplemented.** *(Priority P2.)* Wave 2 removed `on_failure: fail_step` from `product_watch/skill.yaml` because no consumer reads it — `ToolDispatcher.run_invocation` ignores the key, and the existing behavior (exhausted retries → exception propagates → executor catches → escalate) is what `fail_step` would have meant anyway. But the spec's §6.3 DSL describes `on_failure: escalate | continue | fail_step | fail_skill`. `continue` and `fail_skill` have no current equivalent. Implement when a real skill needs them; today `product_watch` works fine without.
+
+- **F-W2-E — `cli.py` is 770 lines.** *(Priority P3.)* `_run_orchestrator` is ~330 lines of imperative startup wiring. Extract `wire_skill_system()`, `wire_automation_subsystem()`, `wire_discord()` helpers — each takes a shared `StartupContext`/mini-state object. Clean target for a focused refactor commit, especially if Wave 3's Discord challenger refactor adds more wiring.
+
+- **F-W2-F — `url_404.json` fixture could be stricter.** *(Priority P3.)* The fixture's `expected_output_shape` permits `ok` and `in_stock` but doesn't pin `triggers_alert`. A buggy skill that returns `triggers_alert: true` on a 404 would still validate. Tighten to `"required": ["ok", "in_stock", "triggers_alert"]` and add `"triggers_alert": {"enum": [false]}` for this case.
+
+- **F-W2-G — Product_watch skill never exercised by E2E SkillExecutor path.** *(Priority P2 — coupled to F-W2-C.)* Wave 2 ships the skill in `sandbox` state; `AutomationDispatcher` routes `sandbox` skills to `claude_native`. The skill only runs on real traffic if it promotes to `shadow_primary` via the lifecycle gate. That requires 20 schema-valid shadow runs, which requires the skill system's shadow sampler to actually execute the skill in parallel with Claude — and THAT path depends on F-W2-C's gap being closed. Until the skill runs in shadow, no `tool_mocks` get exercised in production and evolution will never trigger. Unblock by writing the E2E gap in F-W2-C, then verifying shadow sampling fires at least one skill run.
+
+---
+
 ## Completed — Wave 2 (2026-04-17)
 
 - **F-W1-B** EvolutionGates now thread `tool_mocks` through all three gates. New `mock_synthesis.py` helper shared between runtime and migration. See `docs/superpowers/specs/2026-04-17-skill-system-wave-2-first-capability-design.md`.
