@@ -77,6 +77,15 @@ class CapabilityMatcher:
             candidates=candidates,
         )
 
+    async def list_all(self, *, status: str = "active") -> list[CapabilityRow]:
+        """Return all capabilities in the registry filtered by status.
+
+        Thin passthrough to :meth:`CapabilityRegistry.list_all`. Used by
+        ``ChallengerAgent`` to snapshot the registry for the parse prompt
+        so the LLM can see the full set of known capability names.
+        """
+        return await self._registry.list_all(status=status)
+
     def _classify_confidence(self, score: float) -> MatchConfidence:
         if score >= self._high:
             return MatchConfidence.HIGH

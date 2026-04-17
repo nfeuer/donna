@@ -138,6 +138,37 @@ async def test_match_and_extract_returns_automation_result_from_llm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_match_and_extract_escalates_when_llm_hallucinates_capability() -> None:
+    """LLM returns a capability name that isn't in the snapshot → force
+    escalate_to_claude and leave capability=None. Previously the status
+    ladder would set status=ready with capability=None, which downstream
+    consumers cannot act on safely.
+    """
+    router_response = {
+        "intent_kind": "task",
+        "capability_name": "totally_made_up_capability",
+        "match_score": 0.88,
+        "confidence": 0.91,
+        "extracted_inputs": {},
+        "schedule": None,
+        "deadline": None,
+        "alert_conditions": None,
+        "missing_fields": [],
+        "clarifying_question": None,
+        "low_quality_signals": [],
+    }
+    router = _FakeRouter(router_response)
+    agent = ChallengerAgent(
+        matcher=_FakeMatcher(), input_extractor=None, model_router=router
+    )
+
+    result = await agent.match_and_extract("do the made-up thing", "u1")
+
+    assert result.status == "escalate_to_claude"
+    assert result.capability is None
+
+
+@pytest.mark.asyncio
 async def test_match_and_extract_needs_input_when_missing_fields() -> None:
     router_response = {
         "intent_kind": "automation",

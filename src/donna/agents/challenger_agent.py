@@ -13,6 +13,8 @@ See docs/agents.md for the agent hierarchy.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -24,7 +26,8 @@ import structlog
 from donna.agents.base import AgentContext, AgentResult
 from donna.capabilities.matcher import CapabilityMatcher, MatchConfidence
 from donna.capabilities.models import CapabilityRow
-from donna.models.router import ContextOverflowError
+from donna.cost.budget import BudgetPausedError
+from donna.models.router import ContextOverflowError, RoutingError
 from donna.tasks.database import TaskRow
 
 logger = structlog.get_logger()
@@ -102,21 +105,36 @@ class ChallengerAgent:
             current_date_iso=datetime.now(timezone.utc).isoformat(),
         )
 
+        # Narrow transport-style failures that are safe to fall back on.
+        # Anything else (template bugs, schema mismatches, float() parse
+        # failures inside _build_result_from_parse, etc.) must surface so
+        # dev regressions are visible instead of silently masked.
         try:
             result_json, _meta = await self._router.complete(
                 prompt,
                 task_type="challenge_task",
                 user_id=user_id,
             )
-        except ContextOverflowError:
+        except (ContextOverflowError, BudgetPausedError):
+            # Propagate: caller/state machine decides how to handle these.
             raise
-        except Exception as exc:
-            logger.error(
+        except (asyncio.TimeoutError, json.JSONDecodeError, RoutingError) as exc:
+            logger.exception(
                 "challenger_parse_llm_failed",
                 user_id=user_id,
                 error=str(exc),
+                error_type=type(exc).__name__,
             )
-            # Fall back to legacy path if the LLM path fails.
+            # Fall back to legacy path on transport-ish errors only.
+            return await self._legacy_match_and_extract(user_message, user_id)
+        except OSError as exc:
+            # Network / aiohttp / httpx transport errors all inherit OSError.
+            logger.exception(
+                "challenger_parse_llm_transport_error",
+                user_id=user_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             return await self._legacy_match_and_extract(user_message, user_id)
 
         return self._build_result_from_parse(result_json, caps)
@@ -234,7 +252,24 @@ class ChallengerAgent:
         match_score = float(parse.get("match_score", 0.0))
         intent_kind = parse.get("intent_kind", "task")
 
-        if intent_kind in ("chat", "question"):
+        # Hallucination guard: the LLM returned a capability name but it
+        # doesn't exist in the snapshot we rendered into the prompt.
+        # Without this guard the status ladder (`not name`) treats a
+        # hallucinated name as a valid match and returns status=ready
+        # with capability=None — downstream consumers then try to act
+        # on a ghost capability. Force escalation instead.
+        hallucinated = name is not None and cap is None
+        if hallucinated:
+            logger.warning(
+                "challenger_parse_hallucinated_capability",
+                llm_capability_name=name,
+                available_capabilities=[getattr(c, "name", None) for c in caps],
+            )
+            cap = None
+
+        if hallucinated:
+            status = "escalate_to_claude"
+        elif intent_kind in ("chat", "question"):
             status = "ready"
         elif not name or match_score < 0.4:
             status = "escalate_to_claude"
