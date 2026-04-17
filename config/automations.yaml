@@ -1,0 +1,13 @@
+cadence_policy:
+  claude_native:
+    min_interval_seconds: 43200
+  sandbox:
+    min_interval_seconds: 43200
+  shadow_primary:
+    min_interval_seconds: 3600
+  trusted:
+    min_interval_seconds: 900
+  degraded:
+    min_interval_seconds: 43200
+  flagged_for_review:
+    pause: true
