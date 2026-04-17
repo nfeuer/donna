@@ -447,12 +447,9 @@ class SkillExecutor:
         )
         if prompt_additions:
             rendered = rendered + "\n\n" + prompt_additions
-        schema = version.output_schemas.get(step_name, {})
 
         output, meta = await self._router.complete(
             prompt=rendered,
-            schema=schema,
-            model_alias="local_parser",
             task_type=f"skill_step::{skill.capability_name}::{step_name}",
             user_id=user_id,
         )
