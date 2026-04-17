@@ -5,6 +5,7 @@ Returns a DispatchResult indicating what action the caller should take.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -30,7 +31,7 @@ class DraftAutomation:
     alert_conditions: dict[str, Any] | None
     target_cadence_cron: str
     active_cadence_cron: str
-    skill_candidate: bool = True
+    skill_candidate: bool = False
     skill_candidate_reasoning: str | None = None
 
 
@@ -55,23 +56,22 @@ class DiscordIntentDispatcher:
         challenger: ChallengerAgent,
         novelty_judge: ClaudeNoveltyJudge,
         pending_drafts: PendingDraftRegistry,
-        automation_repo: Any,
         tasks_db: Any,
-        notifier: Any,
     ) -> None:
         self._challenger = challenger
         self._novelty = novelty_judge
         self._drafts = pending_drafts
-        self._repo = automation_repo
         self._tasks = tasks_db
-        self._notifier = notifier
+
+    def _fallback_key(self, msg: _HasContent) -> int | str:
+        return msg.thread_id if msg.thread_id is not None else f"dm:{msg.author_id}"
 
     async def dispatch(self, msg: _HasContent) -> DispatchResult:
         # Thread-resume path
-        if msg.thread_id is not None:
-            existing = self._drafts.get_by_thread(msg.thread_id)
-            if existing is not None:
-                return await self._resume(msg, existing)
+        key = self._fallback_key(msg)
+        existing = self._drafts.get_by_thread(key)
+        if existing is not None:
+            return await self._resume(msg, existing)
 
         result = await self._challenger.match_and_extract(msg.content, msg.author_id)
         logger.info(
@@ -87,18 +87,23 @@ class DiscordIntentDispatcher:
         if result.status == "escalate_to_claude":
             return await self._handle_escalate(msg)
 
-        if result.intent_kind == "task":
-            return await self._create_task(result, msg)
-        if result.intent_kind == "automation":
-            return self._build_automation_draft(result, msg)
-        return DispatchResult(kind="chat")
+        if result.status == "ready":
+            if result.intent_kind == "task":
+                return await self._create_task(result, msg)
+            if result.intent_kind == "automation":
+                return self._build_automation_draft(result, msg)
+            if result.intent_kind in ("chat", "question"):
+                return DispatchResult(kind="chat")
+
+        logger.warning("intent_dispatch_unknown_status", status=result.status)
+        return DispatchResult(kind="no_action")
 
     def _handle_needs_input(
         self, result: ChallengerMatchResult, msg: _HasContent
     ) -> DispatchResult:
         draft = PendingDraft(
             user_id=msg.author_id,
-            thread_id=msg.thread_id or 0,
+            thread_id=self._fallback_key(msg),
             draft_kind=result.intent_kind,
             partial={
                 "extracted_inputs": result.extracted_inputs,
@@ -118,9 +123,21 @@ class DiscordIntentDispatcher:
         if verdict.clarifying_question:
             draft = PendingDraft(
                 user_id=msg.author_id,
-                thread_id=msg.thread_id or 0,
+                thread_id=self._fallback_key(msg),
                 draft_kind=verdict.intent_kind,
-                partial={"verdict": verdict},
+                partial={
+                    "extracted_inputs": verdict.extracted_inputs,
+                    "capability_name": None,
+                    "missing_fields": [],
+                    "verdict_snapshot": {
+                        "trigger_type": verdict.trigger_type,
+                        "schedule": verdict.schedule,
+                        "alert_conditions": verdict.alert_conditions,
+                        "polling_interval_suggestion": verdict.polling_interval_suggestion,
+                        "skill_candidate": verdict.skill_candidate,
+                        "skill_candidate_reasoning": verdict.skill_candidate_reasoning,
+                    },
+                },
             )
             self._drafts.set(draft)
             return DispatchResult(
@@ -196,8 +213,16 @@ class DiscordIntentDispatcher:
         self, msg: _HasContent, existing: PendingDraft
     ) -> DispatchResult:
         # Merge the user's reply into the partial context and re-parse.
-        existing_inputs = existing.partial.get("extracted_inputs", {}) if isinstance(existing.partial, dict) else {}
-        merged_message = f"{existing_inputs}\n{msg.content}"
+        existing_inputs = (
+            existing.partial.get("extracted_inputs") or {}
+            if isinstance(existing.partial, dict)
+            else {}
+        )
+        merged_message = (
+            f"Previous context (capability={existing.capability_name}): "
+            f"{json.dumps(existing_inputs)}\n"
+            f"User reply: {msg.content}"
+        )
         result = await self._challenger.match_and_extract(merged_message, msg.author_id)
         self._drafts.discard(existing.thread_id)
         if result.status == "ready":
@@ -208,7 +233,7 @@ class DiscordIntentDispatcher:
         if result.status in ("needs_input", "ambiguous"):
             self._drafts.set(PendingDraft(
                 user_id=msg.author_id,
-                thread_id=msg.thread_id or 0,
+                thread_id=self._fallback_key(msg),
                 draft_kind=result.intent_kind,
                 partial={"extracted_inputs": result.extracted_inputs,
                          "capability_name": result.capability.name if result.capability else None,

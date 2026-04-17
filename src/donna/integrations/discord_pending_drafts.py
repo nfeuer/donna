@@ -14,7 +14,7 @@ from typing import Any
 @dataclass
 class PendingDraft:
     user_id: str
-    thread_id: int
+    thread_id: int | str
     draft_kind: str  # task | automation
     partial: dict[str, Any]
     capability_name: str | None = None
@@ -24,13 +24,13 @@ class PendingDraft:
 class PendingDraftRegistry:
     def __init__(self, *, ttl_seconds: int = 1800) -> None:
         self._ttl = ttl_seconds
-        self._drafts: dict[int, PendingDraft] = {}
+        self._drafts: dict[int | str, PendingDraft] = {}
 
     def set(self, draft: PendingDraft) -> None:
         draft.created_at = time.time()
         self._drafts[draft.thread_id] = draft
 
-    def get_by_thread(self, thread_id: int) -> PendingDraft | None:
+    def get_by_thread(self, thread_id: int | str) -> PendingDraft | None:
         draft = self._drafts.get(thread_id)
         if draft is None:
             return None
@@ -47,7 +47,7 @@ class PendingDraftRegistry:
             if d.user_id == user_id and now - d.created_at <= self._ttl
         ]
 
-    def discard(self, thread_id: int) -> None:
+    def discard(self, thread_id: int | str) -> None:
         self._drafts.pop(thread_id, None)
 
     async def sweep_expired(self) -> int:
