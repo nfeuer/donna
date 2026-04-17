@@ -36,7 +36,7 @@ _CREATE_TABLES = """
     CREATE TABLE skill_candidate_report (
         id TEXT PRIMARY KEY, capability_name TEXT, task_pattern_hash TEXT,
         expected_savings_usd REAL, volume_30d INTEGER, variance_score REAL,
-        status TEXT, reported_at TEXT, resolved_at TEXT
+        status TEXT, reported_at TEXT, resolved_at TEXT, reasoning TEXT
     );
     CREATE TABLE invocation_log (
         id TEXT PRIMARY KEY, timestamp TEXT, task_type TEXT,

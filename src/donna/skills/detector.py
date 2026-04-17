@@ -9,7 +9,10 @@ import aiosqlite
 import structlog
 
 from donna.config import SkillSystemConfig
-from donna.skills.candidate_report import SkillCandidateRepository
+from donna.skills.candidate_report import (
+    SkillCandidateRepository,
+    fingerprint_message,
+)
 
 logger = structlog.get_logger()
 
@@ -65,6 +68,15 @@ class SkillCandidateDetector:
             return []
 
         existing_capability_names = await self._existing_open_candidate_capabilities()
+        # Fingerprint-level skip: dispatcher's _persist_claude_native_pattern
+        # writes rows keyed on fingerprint_message(user_message) with
+        # capability_name=NULL. The capability-name skip above doesn't catch
+        # those rows, so we also fingerprint our proposed task_type here.
+        # This is best-effort — collisions only happen when a prior user
+        # utterance normalizes to the same string as the detector's task_type.
+        existing_fingerprints = (
+            await self._repo.list_claude_native_registered_fingerprints()
+        )
 
         created: list[str] = []
         for task_type, volume_raw, avg_cost_raw in rows:
@@ -75,6 +87,14 @@ class SkillCandidateDetector:
             if expected_savings < self._config.auto_draft_min_expected_savings_usd:
                 continue
             if task_type in existing_capability_names:
+                continue
+            task_type_fp = fingerprint_message(task_type)
+            if task_type_fp in existing_fingerprints:
+                logger.info(
+                    "detector_skip_claude_native_fingerprint",
+                    task_type=task_type,
+                    fingerprint=task_type_fp,
+                )
                 continue
 
             variance_score = await self._compute_variance_for_task_type(

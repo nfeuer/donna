@@ -18,7 +18,10 @@ import aiosqlite
 import pytest
 
 from donna.config import SkillSystemConfig
-from donna.skills.candidate_report import SkillCandidateRepository
+from donna.skills.candidate_report import (
+    SkillCandidateRepository,
+    fingerprint_message,
+)
 from donna.skills.detector import SkillCandidateDetector
 
 
@@ -65,6 +68,7 @@ async def db(tmp_path: Path):
             status TEXT NOT NULL,
             reported_at TEXT NOT NULL,
             resolved_at TEXT,
+            reasoning TEXT,
             pattern_fingerprint TEXT
         );
     """)
@@ -198,8 +202,55 @@ async def test_repo_upsert_claude_native_registered_is_idempotent(db):
 
     # Second call's reasoning persisted.
     cursor = await db.execute(
-        "SELECT task_pattern_hash FROM skill_candidate_report WHERE id = ?",
+        "SELECT reasoning FROM skill_candidate_report WHERE id = ?",
         (id1,),
     )
     row = await cursor.fetchone()
     assert row[0] == "Tax prep — updated reasoning"
+
+
+@pytest.mark.asyncio
+async def test_detector_skips_when_fingerprint_matches_registered_row(db):
+    """End-to-end: dispatcher writes row via upsert_claude_native_registered
+    keyed on fingerprint_message(task_type); detector consults
+    list_claude_native_registered_fingerprints() and skips the matching row
+    even though capability_name is NULL (which the capability-name skip
+    cannot catch).
+    """
+    task_type = "novel_pattern"
+
+    # 1. Seed enough invocations for the detector to propose this task_type.
+    for _ in range(200):
+        await _seed_invocation(db, task_type, cost=0.10)
+
+    # 2. Dispatcher writes a claude_native_registered row whose
+    #    pattern_fingerprint is fingerprint_message(task_type). This simulates
+    #    the case where a prior utterance normalised to the same string as
+    #    the detector's task_type (rare, but the guard targets exactly this).
+    repo = SkillCandidateRepository(db)
+    dispatcher_written_id = await repo.upsert_claude_native_registered(
+        fingerprint=fingerprint_message(task_type),
+        reasoning="Claude decided this is one-off / user-specific.",
+    )
+
+    # Sanity: capability_name IS NULL on the row, so the capability-name
+    # skip would NOT catch it on its own.
+    cursor = await db.execute(
+        "SELECT capability_name FROM skill_candidate_report WHERE id = ?",
+        (dispatcher_written_id,),
+    )
+    (cap_name,) = await cursor.fetchone()
+    assert cap_name is None
+
+    # 3. Detector runs — must skip the task_type via the fingerprint guard.
+    detector = _make_detector(db, min_savings=5.0)
+    created = await detector.run()
+
+    assert created == []
+
+    # Only the dispatcher's row exists for this fingerprint; no new 'new' rows.
+    cursor = await db.execute(
+        "SELECT COUNT(*) FROM skill_candidate_report WHERE status = 'new'"
+    )
+    (new_count,) = await cursor.fetchone()
+    assert new_count == 0

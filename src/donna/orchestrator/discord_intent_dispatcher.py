@@ -111,7 +111,11 @@ class DiscordIntentDispatcher:
         return msg.thread_id if msg.thread_id is not None else f"dm:{msg.author_id}"
 
     async def _persist_claude_native_pattern(
-        self, user_message: str, reasoning: str
+        self,
+        user_message: str,
+        reasoning: str,
+        *,
+        user_id: int | str | None = None,
     ) -> None:
         """Record that Claude decided this pattern is NOT a skill candidate.
 
@@ -127,11 +131,12 @@ class DiscordIntentDispatcher:
                 fingerprint=fingerprint,
                 reasoning=reasoning,
             )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "claude_native_pattern_persist_failed",
+        except Exception:  # noqa: BLE001
+            # logger.exception includes the full traceback by default.
+            logger.exception(
+                "claude_native_pattern_write_failed",
                 fingerprint=fingerprint,
-                error=str(exc),
+                user_id=user_id,
             )
 
     async def dispatch(self, msg: _HasContent) -> DispatchResult:
@@ -190,7 +195,9 @@ class DiscordIntentDispatcher:
         verdict = await self._novelty.evaluate(msg.content, msg.author_id)
         if not verdict.skill_candidate:
             await self._persist_claude_native_pattern(
-                msg.content, verdict.skill_candidate_reasoning
+                msg.content,
+                verdict.skill_candidate_reasoning,
+                user_id=msg.author_id,
             )
         if verdict.clarifying_question:
             draft = PendingDraft(

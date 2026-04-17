@@ -27,12 +27,13 @@ async def test_wave3_migrations_apply_and_rollback(tmp_path: Path) -> None:
     cfg = _cfg(db)
 
     # Forward: all the way to Wave 3's final head.
-    command.upgrade(cfg, "a3b4c5d6e7f8")
+    command.upgrade(cfg, "c5d6e7f8a9b0")
 
     # Confirm new columns / indexes landed.
     async with aiosqlite.connect(db) as conn:
         cols = {row[1] async for row in await conn.execute("PRAGMA table_info(skill_candidate_report)")}
         assert "pattern_fingerprint" in cols
+        assert "reasoning" in cols
 
         idx = {row[1] async for row in await conn.execute("PRAGMA index_list(skill_candidate_report)")}
         assert "ix_skill_candidate_report_pattern_fingerprint" in idx

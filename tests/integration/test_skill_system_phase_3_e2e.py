@@ -94,7 +94,7 @@ _PHASE3_SCHEMA = """
         task_pattern_hash TEXT, expected_savings_usd REAL NOT NULL,
         volume_30d INTEGER NOT NULL, variance_score REAL,
         status TEXT NOT NULL, reported_at TEXT NOT NULL,
-        resolved_at TEXT
+        resolved_at TEXT, reasoning TEXT, pattern_fingerprint TEXT
     );
     CREATE TABLE invocation_log (
         id TEXT PRIMARY KEY, timestamp TEXT NOT NULL, task_type TEXT NOT NULL,

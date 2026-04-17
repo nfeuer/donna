@@ -19,7 +19,8 @@ async def db(tmp_path: Path):
             variance_score REAL,
             status TEXT NOT NULL,
             reported_at TEXT NOT NULL,
-            resolved_at TEXT
+            resolved_at TEXT,
+            reasoning TEXT
         );
     """)
     await conn.commit()

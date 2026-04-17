@@ -16,7 +16,7 @@ logger = structlog.get_logger()
 SKILL_CANDIDATE_REPORT_COLUMNS = (
     "id", "capability_name", "task_pattern_hash",
     "expected_savings_usd", "volume_30d", "variance_score",
-    "status", "reported_at", "resolved_at",
+    "status", "reported_at", "resolved_at", "reasoning",
 )
 SELECT_SKILL_CANDIDATE_REPORT = ", ".join(SKILL_CANDIDATE_REPORT_COLUMNS)
 
@@ -43,6 +43,7 @@ class SkillCandidateReportRow:
     status: str
     reported_at: datetime
     resolved_at: datetime | None
+    reasoning: str | None = None
 
 
 def row_to_candidate_report(row: tuple) -> SkillCandidateReportRow:
@@ -56,6 +57,7 @@ def row_to_candidate_report(row: tuple) -> SkillCandidateReportRow:
         status=row[6],
         reported_at=_parse_dt(row[7]),
         resolved_at=_parse_dt(row[8]) if row[8] is not None else None,
+        reasoning=row[9] if len(row) > 9 else None,
     )
 
 
@@ -78,12 +80,12 @@ class SkillCandidateRepository:
         await self._conn.execute(
             f"""
             INSERT INTO skill_candidate_report ({SELECT_SKILL_CANDIDATE_REPORT})
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 candidate_id, capability_name, task_pattern_hash,
                 expected_savings_usd, volume_30d, variance_score,
-                "new", now, None,
+                "new", now, None, None,
             ),
         )
         await self._conn.commit()
@@ -149,7 +151,7 @@ class SkillCandidateRepository:
             candidate_id = existing[0]
             await self._conn.execute(
                 "UPDATE skill_candidate_report "
-                "SET resolved_at = ?, task_pattern_hash = ? "
+                "SET resolved_at = ?, reasoning = ? "
                 "WHERE id = ?",
                 (now, reasoning, candidate_id),
             )
@@ -157,25 +159,31 @@ class SkillCandidateRepository:
             return candidate_id
 
         candidate_id = str(uuid6.uuid7())
-        # Store the reasoning in task_pattern_hash since there's no dedicated
-        # reasoning column; the column is already a free-text hash field and
-        # Wave-3 reuse keeps us from adding a new column.
+        # pattern_fingerprint hashes the user utterance; detector skip is
+        # best-effort — fingerprint collisions across different utterances are
+        # rare. The detector also computes fingerprint_message(task_type) and
+        # consults list_claude_native_registered_fingerprints() before inserting
+        # a new row, so task_type strings that happen to fingerprint identically
+        # to a previously-registered user message will also be skipped.
+        # task_pattern_hash stays NULL here — it was never a meaningful hash on
+        # these rows; reasoning lives in its own column.
         await self._conn.execute(
             f"""
             INSERT INTO skill_candidate_report
                 ({SELECT_SKILL_CANDIDATE_REPORT}, pattern_fingerprint)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 candidate_id,
                 None,  # capability_name — unknown at escalate time
-                reasoning,  # stored in task_pattern_hash for Wave-3 reuse
+                None,  # task_pattern_hash — leave NULL; reasoning has its own col
                 0.0,
                 0,
                 None,
                 "claude_native_registered",
                 now,
                 now,  # resolved_at set immediately (terminal status)
+                reasoning,
                 fingerprint,
             ),
         )
