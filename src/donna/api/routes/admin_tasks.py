@@ -10,9 +10,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import HTTPException, Query, Request
 
-router = APIRouter()
+from donna.api.auth import admin_router
+
+router = admin_router()
 
 
 @router.get("/tasks")

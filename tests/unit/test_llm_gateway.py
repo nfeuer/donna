@@ -133,3 +133,186 @@ class TestQueueItem:
         with pytest.raises(HTTPException) as exc_info:
             await llm_queue_item(999, request)
         assert exc_info.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Fail-closed auth tests for /llm/completions (service_router gate).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def llm_auth_app(tmp_path):
+    """FastAPI app with /llm routes mounted and one seeded caller key."""
+    import ipaddress
+
+    import aiosqlite
+    from fastapi import FastAPI
+
+    from donna.api.auth import dependencies as auth_deps
+    from donna.api.auth import service_keys
+    from donna.api.auth.config import (
+        AuthConfig,
+        BootstrapSettings,
+        DeviceTokenSettings,
+        EmailSettings,
+        IPGateConfig,
+        ImmichSettings,
+        RateLimit,
+    )
+    from donna.api.routes import llm as llm_routes
+
+    db_path = tmp_path / "llm_gw.db"
+    conn = await aiosqlite.connect(str(db_path))
+    conn.row_factory = aiosqlite.Row
+    await conn.executescript(
+        """
+        CREATE TABLE llm_gateway_callers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            caller_id TEXT NOT NULL UNIQUE,
+            key_hash TEXT NOT NULL,
+            monthly_budget_usd REAL NOT NULL DEFAULT 0.0,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            revoked_at DATETIME, revoke_reason TEXT
+        );
+        """
+    )
+    await conn.commit()
+    raw_key = await service_keys.seed_or_rotate(
+        conn, caller_id="homebox", monthly_budget_usd=5.0,
+    )
+
+    cfg = AuthConfig(
+        ip_gate=IPGateConfig(
+            default_trust_duration="30d",
+            durations_allowed=["24h", "7d", "30d", "90d"],
+            rate_limit_request_access=RateLimit(max=100, window_seconds=3600),
+            rate_limit_verify=RateLimit(max=100, window_seconds=600),
+        ),
+        trusted_proxies=[ipaddress.ip_network("127.0.0.0/8")],
+        internal_cidrs=[ipaddress.ip_network("172.18.0.0/16")],
+        immich=ImmichSettings(
+            internal_url="http://immich:2283",
+            external_url="https://immich.example",
+            admin_api_key_env="IMMICH_ADMIN_API_KEY",
+            user_cache_ttl_seconds=60,
+            allowlist_sync_interval_seconds=900,
+            allowlist_stale_tolerance_seconds=86400,
+        ),
+        device_tokens=DeviceTokenSettings(
+            sliding_window_days=90, absolute_max_days=365, max_per_user=10,
+        ),
+        email=EmailSettings(
+            from_addr="donna@example",
+            subject="Donna verify",
+            verify_base_url="https://donna.example/auth/verify",
+            token_expiry_minutes=15,
+        ),
+        bootstrap=BootstrapSettings(admin_email_env="DONNA_BOOTSTRAP_ADMIN_EMAIL"),
+    )
+
+    app = FastAPI()
+    app.state.auth_config = cfg
+    app.state.auth_context = auth_deps.AuthContext(
+        conn=conn, auth_config=cfg, immich_client=None,
+    )
+    app.state.llm_queue = None
+    app.state.rate_limiter = None
+    app.state.llm_gateway_config = None
+    app.state.models_config = None
+    app.state.ollama = None
+    app.include_router(llm_routes.router, prefix="/llm")
+
+    yield app, raw_key
+    await conn.close()
+
+
+def _internal_transport(app):
+    from httpx import ASGITransport
+    return ASGITransport(app=app, client=("172.18.0.99", 40000))
+
+
+def _external_transport(app):
+    from httpx import ASGITransport
+    return ASGITransport(app=app, client=("203.0.113.7", 40000))
+
+
+@pytest.mark.asyncio
+async def test_llm_completions_rejected_without_key(llm_auth_app):
+    """Missing X-Donna-Service-Key must fail closed with 401."""
+    from httpx import AsyncClient
+
+    app, _ = llm_auth_app
+    async with AsyncClient(transport=_internal_transport(app), base_url="http://t") as c:
+        resp = await c.post("/llm/completions", json={"prompt": "hi"})
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["error"] == "service_key_invalid"
+
+
+@pytest.mark.asyncio
+async def test_llm_completions_rejected_when_caddy_proxied(llm_auth_app):
+    """Valid key but X-Forwarded-Host present (Caddy-proxied) → 401."""
+    from httpx import AsyncClient
+
+    app, raw_key = llm_auth_app
+    async with AsyncClient(transport=_internal_transport(app), base_url="http://t") as c:
+        resp = await c.post(
+            "/llm/completions",
+            json={"prompt": "hi"},
+            headers={
+                "x-donna-service-key": raw_key,
+                "x-forwarded-host": "donna.houseoffeuer.com",
+            },
+        )
+    assert resp.status_code == 401
+    assert resp.json()["detail"]["error"] == "service_key_invalid"
+
+
+@pytest.mark.asyncio
+async def test_llm_completions_rejected_from_external_ip(llm_auth_app):
+    """Valid key but source IP outside internal CIDR → 401."""
+    from httpx import AsyncClient
+
+    app, raw_key = llm_auth_app
+    async with AsyncClient(transport=_external_transport(app), base_url="http://t") as c:
+        resp = await c.post(
+            "/llm/completions",
+            json={"prompt": "hi"},
+            headers={"x-donna-service-key": raw_key},
+        )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_llm_completions_rejected_with_wrong_key(llm_auth_app):
+    """Random non-matching key is rejected even from an internal IP."""
+    from httpx import AsyncClient
+
+    app, _ = llm_auth_app
+    async with AsyncClient(transport=_internal_transport(app), base_url="http://t") as c:
+        resp = await c.post(
+            "/llm/completions",
+            json={"prompt": "hi"},
+            headers={"x-donna-service-key": "not-the-real-key"},
+        )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_llm_completions_accepts_valid_internal_caller(llm_auth_app):
+    """Valid key from internal CIDR with no X-Forwarded-Host passes the gate.
+
+    The handler then returns 503 (no queue worker initialised) which
+    proves authentication succeeded — otherwise the dependency would
+    have short-circuited with 401 first.
+    """
+    from httpx import AsyncClient
+
+    app, raw_key = llm_auth_app
+    async with AsyncClient(transport=_internal_transport(app), base_url="http://t") as c:
+        resp = await c.post(
+            "/llm/completions",
+            json={"prompt": "hi"},
+            headers={"x-donna-service-key": raw_key},
+        )
+    assert resp.status_code == 503

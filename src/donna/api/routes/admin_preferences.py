@@ -10,10 +10,12 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import HTTPException, Query, Request
 from pydantic import BaseModel
 
-router = APIRouter()
+from donna.api.auth import admin_router
+
+router = admin_router()
 
 
 class RuleToggleBody(BaseModel):

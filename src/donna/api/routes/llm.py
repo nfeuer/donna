@@ -12,28 +12,16 @@ import json
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from donna.api.auth import CurrentServiceCaller, service_router
 from donna.llm.queue import QueueFullError
 
 logger = structlog.get_logger()
 
-router = APIRouter()
-
-
-def _require_api_key(
-    request: Request,
-    x_api_key: str | None = Header(None),
-) -> None:
-    """Validate API key from gateway config."""
-    config = getattr(request.app.state, "llm_gateway_config", None)
-    api_key = config.api_key if config else ""
-    if not api_key:
-        return
-    if x_api_key != api_key:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+router = service_router()
 
 
 class CompletionRequest(BaseModel):
@@ -144,12 +132,18 @@ async def llm_queue_stream(request: Request) -> StreamingResponse:
     )
 
 
-@router.post("/completions", dependencies=[Depends(_require_api_key)])
+@router.post("/completions")
 async def llm_completion(
     body: CompletionRequest,
     request: Request,
+    caller: CurrentServiceCaller,
 ) -> CompletionResponse:
     """Enqueue a completion request. Blocks until result is ready."""
+    logger.info(
+        "llm_completion_request",
+        caller_id=caller["caller_id"],
+        event_type="llm_gateway.completion_requested",
+    )
     queue = getattr(request.app.state, "llm_queue", None)
     if queue is None:
         raise HTTPException(503, "Queue worker not initialised")

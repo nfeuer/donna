@@ -3,7 +3,7 @@
 # Send is disabled by default — all outbound messages are drafted only.
 
 # Feature flags
-send_enabled: false  # Set to true to allow Donna to send emails directly.
+send_enabled: true  # Required for /auth magic-link delivery.
 
 # Email address Donna monitors for forwarded messages to turn into tasks.
 monitor_alias: "donna-tasks@example.com"

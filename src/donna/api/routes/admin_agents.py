@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import HTTPException, Request
 
-router = APIRouter()
+from donna.api.auth import admin_router
+
+router = admin_router()
 
 
 def _load_yaml(path: Path) -> Any:

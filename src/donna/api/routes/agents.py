@@ -9,11 +9,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import Request
 
-from donna.api.auth import CurrentUser
+from donna.api.auth import CurrentUser, user_router
 
-router = APIRouter()
+router = user_router()
 
 # Hard-coded budget limits; these mirror the values in docs/model-layer.md.
 # The orchestrator enforces these via the BudgetGuard; the API surfaces them
