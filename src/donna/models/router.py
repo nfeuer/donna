@@ -112,9 +112,22 @@ class ModelRouter:
     def _resolve_route(self, task_type: str) -> tuple[ModelProvider, str, str]:
         """Resolve task_type → (provider instance, model ID, model alias).
 
-        Raises RoutingError if the task type or alias is unknown.
+        Exact-key match takes precedence. When no exact key matches, fall back
+        to longest-prefix match on the "::"-separated task_type. Lets callers
+        pass dynamic task_types like ``skill_step::<cap>::<step>`` without
+        registering every combination in donna_models.yaml.
+
+        Raises RoutingError if neither exact nor any prefix match.
         """
         routing = self._models_config.routing.get(task_type)
+        if routing is None:
+            # Prefix fallback — try progressively shorter prefixes on "::".
+            parts = task_type.split("::")
+            for i in range(len(parts) - 1, 0, -1):
+                candidate = "::".join(parts[:i])
+                routing = self._models_config.routing.get(candidate)
+                if routing is not None:
+                    break
         if routing is None:
             raise RoutingError(f"Unknown task type: {task_type!r}")
 
