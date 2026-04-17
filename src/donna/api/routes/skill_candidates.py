@@ -53,65 +53,32 @@ async def dismiss_candidate(candidate_id: str, request: Request) -> dict:
     return {"candidate_id": candidate_id, "status": "dismissed"}
 
 
-@router.post("/skill-candidates/{candidate_id}/draft-now")
+@router.post("/skill-candidates/{candidate_id}/draft-now", status_code=202)
 async def draft_candidate_now(candidate_id: str, request: Request) -> dict:
-    """Trigger immediate auto-draft for this candidate (bypass nightly cron).
+    """Schedule the candidate for immediate drafting.
 
-    After Wave 1 (F-6 process migration), ``auto_drafter`` lives only in the
-    orchestrator process. The API can no longer invoke it directly. The
-    endpoint returns 501 until a follow-up implements an IPC path (see
-    followup F-W1-D in docs/superpowers/followups/...md).
+    Sets skill_candidate_report.manual_draft_at to now. The orchestrator's
+    ManualDraftPoller picks it up on its 15s poll and runs AutoDrafter.
+    Returns 202 Accepted — the actual draft runs asynchronously.
 
-    Existing callers can either (a) wait for the nightly cron, or (b) run
-    ``donna draft --candidate-id <id>`` from the orchestrator (a future
-    subcommand).
-
-    Tests that provide their own ``request.app.state.auto_drafter`` (in-
-    process doubles) continue to work — the 501 path is reached only when
-    no drafter is present, which is the production state post-Wave 1.
+    After Wave 2 F-W1-D — see docs/superpowers/specs/2026-04-17-skill-system-wave-2-first-capability-design.md.
     """
+    from datetime import datetime, timezone
+
     conn = request.app.state.db.connection
-    auto_drafter = getattr(request.app.state, "auto_drafter", None)
-
-    if auto_drafter is None:
-        raise HTTPException(
-            status_code=501,
-            detail=(
-                "draft-now runs in the orchestrator process after Wave 1 F-6 "
-                "and has no HTTP trigger yet; see followup F-W1-D. Wait for "
-                "the nightly cron or invoke from the orchestrator."
-            ),
-        )
-
-    # Load the candidate.
+    now_iso = datetime.now(tz=timezone.utc).isoformat()
     cursor = await conn.execute(
-        "SELECT id, capability_name, task_pattern_hash, expected_savings_usd, "
-        "volume_30d, variance_score, status, reported_at, resolved_at "
-        "FROM skill_candidate_report WHERE id = ?",
-        (candidate_id,),
+        "UPDATE skill_candidate_report SET manual_draft_at = ? "
+        "WHERE id = ? AND status = 'new'",
+        (now_iso, candidate_id),
     )
-    row = await cursor.fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="candidate not found")
-
-    if row[6] != "new":
+    if cursor.rowcount == 0:
         raise HTTPException(
-            status_code=409,
-            detail=f"candidate status must be 'new' (is '{row[6]}')",
+            status_code=404,
+            detail="candidate not found or not in 'new' status",
         )
-
-    from donna.skills.candidate_report import row_to_candidate_report
-
-    candidate = row_to_candidate_report(row)
-
-    report = await auto_drafter.draft_one(candidate)
-    return {
-        "candidate_id": candidate_id,
-        "outcome": report.outcome,
-        "skill_id": report.skill_id,
-        "pass_rate": report.pass_rate,
-        "rationale": report.rationale,
-    }
+    await conn.commit()
+    return {"status": "scheduled", "manual_draft_at": now_iso}
 
 
 def _row_to_candidate_dict(row) -> dict:

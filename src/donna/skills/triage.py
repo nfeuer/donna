@@ -77,8 +77,6 @@ class TriageAgent:
         try:
             output, _meta = await self._router.complete(
                 prompt=prompt,
-                schema=TRIAGE_OUTPUT_SCHEMA,
-                model_alias="local_parser",
                 task_type="triage_failure",
                 user_id=input_.user_id,
             )

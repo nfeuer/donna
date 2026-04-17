@@ -85,13 +85,14 @@ async def db(tmp_path: Path):
             skill_version_id TEXT, status TEXT NOT NULL,
             state_object TEXT NOT NULL, final_output TEXT,
             user_id TEXT NOT NULL, started_at TEXT NOT NULL,
-            finished_at TEXT
+            finished_at TEXT, tool_result_cache TEXT
         );
         CREATE TABLE skill_fixture (
             id TEXT PRIMARY KEY, skill_id TEXT NOT NULL,
             case_name TEXT NOT NULL, input TEXT NOT NULL,
             expected_output_shape TEXT, source TEXT NOT NULL,
-            captured_run_id TEXT, created_at TEXT NOT NULL
+            captured_run_id TEXT, created_at TEXT NOT NULL,
+            tool_mocks TEXT
         );
     """)
     await conn.commit()

@@ -99,10 +99,11 @@ class AutomationDispatcher:
                 executor = self._skill_executor_factory()
                 if executor is None:
                     raise RuntimeError("skill path selected but executor_factory returned None")
-                result = await self._execute_skill(executor, automation)
+                result = await self._execute_skill(executor, automation, automation_run_id=run_id)
                 output = result.final_output if isinstance(result.final_output, dict) else None
                 cost_usd = float(getattr(result, "total_cost_usd", 0.0) or 0.0)
                 run_status = result.status
+                skill_run_id = getattr(result, "run_id", None)
                 if result.status != "succeeded":
                     error = getattr(result, "error", None) or getattr(result, "escalation_reason", None)
             else:
@@ -237,7 +238,10 @@ class AutomationDispatcher:
             return "skill"
         return "claude_native"
 
-    async def _execute_skill(self, executor: Any, automation: AutomationRow) -> Any:
+    async def _execute_skill(
+        self, executor: Any, automation: AutomationRow,
+        automation_run_id: str | None = None,
+    ) -> Any:
         cursor = await self._conn.execute(
             "SELECT id, capability_name, current_version_id, state, "
             "requires_human_gate, baseline_agreement, created_at, updated_at "
@@ -266,6 +270,7 @@ class AutomationDispatcher:
             skill=skill, version=version,
             inputs=automation.inputs,
             user_id=automation.user_id,
+            automation_run_id=automation_run_id,
         )
 
     def _compute_next_run(self, automation: AutomationRow, now: datetime) -> datetime | None:

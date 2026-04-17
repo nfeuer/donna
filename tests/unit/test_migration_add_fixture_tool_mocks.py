@@ -109,7 +109,8 @@ async def test_migration_downgrade_drops_column(tmp_path: Path) -> None:
     db_path = tmp_path / "downgrade.db"
     cfg = _alembic_config(db_path)
     command.upgrade(cfg, "head")
-    command.downgrade(cfg, "-1")
+    # Downgrade past this migration specifically (target = its down_revision).
+    command.downgrade(cfg, "a7b8c9d0e1f2")
 
     async with aiosqlite.connect(db_path) as conn:
         cursor = await conn.execute("PRAGMA table_info(skill_fixture)")

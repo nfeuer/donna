@@ -58,16 +58,27 @@ class FakeClaude:
 
 
 class FakeRouter:
-    """Route based on task_type to Ollama fake or Claude fake."""
+    """Route based on task_type to Ollama fake or Claude fake.
+
+    Signature matches ``ModelRouter.complete`` exactly — no ``**kwargs`` — so
+    drift in caller kwargs (e.g. leftover ``schema=``/``model_alias=``) blows
+    up tests instead of being silently swallowed. See F-W1-C.
+    """
 
     def __init__(self, ollama: FakeOllama, claude: FakeClaude) -> None:
         self._ollama = ollama
         self._claude = claude
 
-    async def complete(self, *, task_type: str, **kw) -> tuple[dict, Any]:
+    async def complete(
+        self,
+        prompt: str,
+        task_type: str,
+        task_id: str | None = None,
+        user_id: str = "system",
+    ) -> tuple[dict, Any]:
         if task_type.startswith("skill_validation::") or task_type.startswith("chat_"):
-            return await self._ollama.complete(task_type=task_type, **kw)
-        return await self._claude.complete(task_type=task_type, **kw)
+            return await self._ollama.complete(task_type=task_type, prompt=prompt)
+        return await self._claude.complete(task_type=task_type, prompt=prompt)
 
 
 class FakeDonnaBot:

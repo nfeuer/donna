@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "required": ["ok", "in_stock", "size_available", "triggers_alert"],
+  "properties": {
+    "ok": {"type": "boolean"},
+    "price_usd": {"type": ["number", "null"]},
+    "currency": {"type": "string"},
+    "in_stock": {"type": "boolean"},
+    "size_available": {"type": "boolean"},
+    "triggers_alert": {"type": "boolean"},
+    "title": {"type": "string"}
+  }
+}

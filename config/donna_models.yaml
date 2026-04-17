@@ -87,6 +87,16 @@ routing:
   skill_evolution:
     model: reasoner
 
+  # Wave 2: prefix-routing for dynamic skill + validation task_types.
+  skill_step:
+    model: parser
+    fallback: reasoner
+    confidence_threshold: 0.7
+  skill_validation:
+    model: parser
+    fallback: reasoner
+    confidence_threshold: 0.7
+
 # Cost tracking
 cost:
   monthly_budget_usd: 100.00

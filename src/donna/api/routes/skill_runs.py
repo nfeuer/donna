@@ -148,3 +148,54 @@ async def get_skill_run_divergence(skill_run_id: str, request: Request) -> dict:
         "flagged_for_evolution": bool(row[5]),
         "created_at": row[6],
     }
+
+
+@router.post("/skill-runs/{run_id}/capture-fixture", status_code=201)
+async def capture_fixture(run_id: str, request: Request) -> dict:
+    """Capture a succeeded skill_run into a reusable skill_fixture row.
+
+    Reads the run's final_output + tool_result_cache, infers a structural
+    expected_output_shape via json_to_schema, synthesizes tool_mocks via
+    cache_to_mocks, and inserts a skill_fixture(source='captured_from_run')
+    row pointing at the run.
+    """
+    import json
+    from donna.skills.schema_inference import json_to_schema
+    from donna.skills.mock_synthesis import cache_to_mocks
+    from donna.skills.auto_drafter import _persist_fixture
+
+    conn = request.app.state.db.connection
+    cursor = await conn.execute(
+        "SELECT id, skill_id, status, final_output, tool_result_cache, state_object "
+        "FROM skill_run WHERE id = ?",
+        (run_id,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="skill_run not found")
+    if row[2] != "succeeded":
+        raise HTTPException(
+            status_code=409,
+            detail="can only capture fixtures from succeeded runs",
+        )
+
+    final_output = json.loads(row[3]) if row[3] else {}
+    cache = json.loads(row[4]) if row[4] else {}
+    state_obj = json.loads(row[5]) if row[5] else {}
+    inputs = state_obj.get("inputs", {}) if isinstance(state_obj, dict) else {}
+
+    expected_shape = json_to_schema(final_output)
+    tool_mocks = cache_to_mocks(cache)
+
+    fixture_id = await _persist_fixture(
+        conn=conn,
+        skill_id=row[1],
+        case_name=f"captured_from_{run_id[:8]}",
+        input_=inputs,
+        expected_output_shape=expected_shape,
+        tool_mocks=tool_mocks if tool_mocks else None,
+        source="captured_from_run",
+        captured_run_id=run_id,
+    )
+    await conn.commit()
+    return {"fixture_id": fixture_id, "source": "captured_from_run"}

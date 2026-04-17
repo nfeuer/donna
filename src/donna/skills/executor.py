@@ -77,6 +77,7 @@ class SkillRunResult:
     total_cost_usd: float = 0.0
     step_results: list[StepResultRecord] = field(default_factory=list)
     tool_result_cache: dict = field(default_factory=dict)
+    run_id: str | None = None  # Wave 2 F-2: populated from SkillRunRepository.start_run
 
 
 _WHOLE_EXPR_RE = re.compile(r"^\s*\{\{\s*(.+?)\s*\}\}\s*$")
@@ -93,13 +94,25 @@ class SkillExecutor:
         run_repository: Any | None = None,
         run_sink: Any | None = None,
         shadow_sampler: "ShadowSampler | None" = None,
+        config: Any | None = None,               # Wave 2: SkillSystemConfig for validation timeouts
+        task_type_prefix: str | None = None,     # Wave 2: override "skill_step" default
     ) -> None:
         self._router = model_router
-        self._tool_registry = tool_registry or ToolRegistry()
+        if tool_registry is not None:
+            self._tool_registry = tool_registry
+        else:
+            # Wave 2: fall through to the module-level default registry that
+            # the orchestrator populates at startup via register_default_tools.
+            # Tests that pass an explicit registry keep their own isolation.
+            from donna.skills.tools import DEFAULT_TOOL_REGISTRY
+            self._tool_registry = DEFAULT_TOOL_REGISTRY
         self._tool_dispatcher = ToolDispatcher(self._tool_registry)
         self._triage = triage
         # run_sink overrides run_repository when both are provided.
         self._run_repository = run_sink if run_sink is not None else run_repository
+        self._run_sink = run_sink
+        self._config = config
+        self._task_type_prefix = task_type_prefix
         self._shadow_sampler = shadow_sampler
         self._jinja = jinja2.Environment(
             autoescape=False,
@@ -112,6 +125,8 @@ class SkillExecutor:
         version: SkillVersionRow,
         inputs: dict,
         user_id: str,
+        task_id: str | None = None,
+        automation_run_id: str | None = None,
         **_ignored_kwargs: Any,
     ) -> SkillRunResult:
         state = StateObject()
@@ -132,7 +147,7 @@ class SkillExecutor:
             skill_run_id = await self._run_repository.start_run(
                 skill_id=skill.id, skill_version_id=version.id,
                 inputs=inputs, user_id=user_id,
-                task_id=None, automation_run_id=None,
+                task_id=task_id, automation_run_id=automation_run_id,
             )
 
         step_results: list[StepResultRecord] = []
@@ -419,6 +434,10 @@ class SkillExecutor:
     async def _finish_run_if_repo(
         self, skill_run_id: str | None, result: SkillRunResult,
     ) -> None:
+        # Wave 2 F-2: expose the persisted skill_run.id back on the result so
+        # callers (e.g. AutomationDispatcher) can populate automation_run.skill_run_id.
+        if skill_run_id is not None:
+            result.run_id = skill_run_id
         if skill_run_id is None or self._run_repository is None:
             return
         try:
@@ -447,15 +466,26 @@ class SkillExecutor:
         )
         if prompt_additions:
             rendered = rendered + "\n\n" + prompt_additions
-        schema = version.output_schemas.get(step_name, {})
 
-        output, meta = await self._router.complete(
-            prompt=rendered,
-            schema=schema,
-            model_alias="local_parser",
-            task_type=f"skill_step::{skill.capability_name}::{step_name}",
-            user_id=user_id,
-        )
+        prefix = self._task_type_prefix or "skill_step"
+        task_type = f"{prefix}::{skill.capability_name}::{step_name}"
+
+        if self._run_sink is not None and self._config is not None:
+            timeout_s = getattr(self._config, "validation_per_step_timeout_s", 60)
+            output, meta = await asyncio.wait_for(
+                self._router.complete(
+                    prompt=rendered,
+                    task_type=task_type,
+                    user_id=user_id,
+                ),
+                timeout=timeout_s,
+            )
+        else:
+            output, meta = await self._router.complete(
+                prompt=rendered,
+                task_type=task_type,
+                user_id=user_id,
+            )
 
         return output, meta.invocation_id, getattr(meta, "cost_usd", 0.0)
 

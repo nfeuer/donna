@@ -1,0 +1,36 @@
+capability_name: product_watch
+version: 1
+description: |
+  Monitor a product URL for price and availability. Extract price,
+  currency, in-stock flag, available sizes, and title. Compute whether
+  the configured alert should fire given the user's price and size
+  constraints.
+
+inputs:
+  schema_ref: capabilities/product_watch/input_schema.json
+
+steps:
+  - name: fetch_page
+    kind: tool
+    tools: [web_fetch]
+    tool_invocations:
+      - tool: web_fetch
+        args:
+          url: "{{ inputs.url }}"
+          timeout_s: 15
+        retry:
+          max_attempts: 2
+          backoff_s: [2, 5]
+        store_as: page
+
+  - name: extract_product_info
+    kind: llm
+    prompt: steps/extract_product_info.md
+    output_schema: schemas/extract_product_info_v1.json
+
+  - name: format_output
+    kind: llm
+    prompt: steps/format_output.md
+    output_schema: schemas/format_output_v1.json
+
+final_output: "{{ state.format_output }}"

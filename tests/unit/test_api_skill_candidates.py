@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import aiosqlite
 import pytest
@@ -20,7 +20,8 @@ SCHEMA = """
         variance_score REAL,
         status TEXT NOT NULL,
         reported_at TEXT NOT NULL,
-        resolved_at TEXT
+        resolved_at TEXT,
+        manual_draft_at TEXT
     );
 """
 
@@ -121,41 +122,43 @@ async def test_dismiss_candidate_404(db_with_candidates):
     assert excinfo.value.status_code == 404
 
 
-async def test_draft_now_501_when_autodrafter_not_configured(db_with_candidates):
-    """After Wave 1 F-6, auto_drafter lives in orchestrator only.
-    Without an in-process drafter (the production state), the endpoint
-    returns 501 Not Implemented with a pointer to follow-up F-W1-D.
+async def test_draft_now_202_sets_manual_draft_at(db_with_candidates):
+    """After Wave 2 F-W1-D, draft-now returns 202 and sets manual_draft_at.
+    The orchestrator's ManualDraftPoller picks it up async.
     """
     from donna.api.routes.skill_candidates import draft_candidate_now
 
     request = _make_request(db_with_candidates)
-    # Do NOT set auto_drafter on app.state — that's the production state.
-    del request.app.state.auto_drafter
+    # Do NOT set auto_drafter on app.state — not required anymore post-Wave-2.
+    if hasattr(request.app.state, "auto_drafter"):
+        del request.app.state.auto_drafter
 
-    with pytest.raises(HTTPException) as excinfo:
-        await draft_candidate_now(candidate_id="c1", request=request)
-    assert excinfo.value.status_code == 501
-    assert "F-W1-D" in str(excinfo.value.detail)
+    result = await draft_candidate_now(candidate_id="c1", request=request)
+    assert result["status"] == "scheduled"
+    assert "manual_draft_at" in result
+
+    cursor = await db_with_candidates.execute(
+        "SELECT manual_draft_at FROM skill_candidate_report WHERE id = 'c1'"
+    )
+    row = await cursor.fetchone()
+    assert row[0] is not None
 
 
 async def test_draft_now_404_for_missing_candidate(db_with_candidates):
     from donna.api.routes.skill_candidates import draft_candidate_now
 
     request = _make_request(db_with_candidates)
-    request.app.state.auto_drafter = AsyncMock()
 
     with pytest.raises(HTTPException) as excinfo:
         await draft_candidate_now(candidate_id="nonexistent", request=request)
     assert excinfo.value.status_code == 404
 
 
-async def test_draft_now_409_for_non_new_candidate(db_with_candidates):
+async def test_draft_now_404_for_non_new_candidate(db_with_candidates):
     from donna.api.routes.skill_candidates import draft_candidate_now
 
     request = _make_request(db_with_candidates)
-    request.app.state.auto_drafter = AsyncMock()
-
-    # c3 is "dismissed", not "new"
+    # c3 is 'dismissed', not 'new'
     with pytest.raises(HTTPException) as excinfo:
         await draft_candidate_now(candidate_id="c3", request=request)
-    assert excinfo.value.status_code == 409
+    assert excinfo.value.status_code == 404

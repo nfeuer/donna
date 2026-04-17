@@ -261,6 +261,7 @@ async def test_as_5_3_skill_path_when_shadow_primary(phase5_db):
     skill_result.status = "succeeded"
     skill_result.final_output = {"price_usd": 42}
     skill_result.total_cost_usd = 0.0
+    skill_result.run_id = None
 
     executor = MagicMock()
     executor.execute = AsyncMock(return_value=skill_result)

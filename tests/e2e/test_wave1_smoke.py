@@ -201,10 +201,9 @@ async def test_automation_tick_alerts(runtime) -> None:
         "in_stock": True,
     }
 
-    await _insert_capability(
-        conn, name="product_watch", description="Watch a product URL",
-        trigger_type="on_schedule",
-    )
+    # product_watch capability is seeded by the seed_product_watch_capability
+    # migration (alembic rev d0e1f2a3b4c5). No need to insert it here — doing
+    # so would trip the UNIQUE(capability.name) constraint.
     await conn.commit()
 
     repo = AutomationRepository(conn)
