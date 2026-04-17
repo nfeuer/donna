@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -18,6 +19,17 @@ SKILL_CANDIDATE_REPORT_COLUMNS = (
     "status", "reported_at", "resolved_at",
 )
 SELECT_SKILL_CANDIDATE_REPORT = ", ".join(SKILL_CANDIDATE_REPORT_COLUMNS)
+
+
+def fingerprint_message(message: str) -> str:
+    """Return a stable short hash for a user message.
+
+    Whitespace is collapsed and the message is lowercased before hashing so
+    that "every sunday review tax prep folder" and
+    "  Every Sunday review tax prep folder  " map to the same fingerprint.
+    """
+    normalized = " ".join(message.lower().split())
+    return hashlib.sha256(normalized.encode()).hexdigest()[:32]
 
 
 @dataclass(slots=True)
@@ -91,6 +103,89 @@ class SkillCandidateRepository:
         )
         rows = await cursor.fetchall()
         return [row_to_candidate_report(r) for r in rows]
+
+    async def list_claude_native_registered_capabilities(self) -> set[str]:
+        """Return capability_name values for rows flagged claude_native_registered.
+
+        These rows represent patterns that Claude has explicitly decided are
+        NOT skill candidates (e.g. one-off, user-specific). The detector uses
+        this set to avoid re-surfacing the same capability as a new candidate.
+        """
+        cursor = await self._conn.execute(
+            "SELECT capability_name FROM skill_candidate_report "
+            "WHERE status = 'claude_native_registered'"
+        )
+        return {row[0] for row in await cursor.fetchall() if row[0]}
+
+    async def list_claude_native_registered_fingerprints(self) -> set[str]:
+        """Return pattern_fingerprint values flagged claude_native_registered."""
+        cursor = await self._conn.execute(
+            "SELECT pattern_fingerprint FROM skill_candidate_report "
+            "WHERE status = 'claude_native_registered' "
+            "AND pattern_fingerprint IS NOT NULL"
+        )
+        return {row[0] for row in await cursor.fetchall() if row[0]}
+
+    async def upsert_claude_native_registered(
+        self,
+        *,
+        fingerprint: str,
+        reasoning: str,
+    ) -> str:
+        """Insert or update a claude_native_registered row keyed by fingerprint.
+
+        Idempotent: calling twice for the same fingerprint updates the
+        existing row's reasoning/resolved_at rather than creating a duplicate.
+        Returns the row id (either the newly-created one or the existing one).
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = await self._conn.execute(
+            "SELECT id FROM skill_candidate_report "
+            "WHERE pattern_fingerprint = ? AND status = 'claude_native_registered'",
+            (fingerprint,),
+        )
+        existing = await cursor.fetchone()
+        if existing is not None:
+            candidate_id = existing[0]
+            await self._conn.execute(
+                "UPDATE skill_candidate_report "
+                "SET resolved_at = ?, task_pattern_hash = ? "
+                "WHERE id = ?",
+                (now, reasoning, candidate_id),
+            )
+            await self._conn.commit()
+            return candidate_id
+
+        candidate_id = str(uuid6.uuid7())
+        # Store the reasoning in task_pattern_hash since there's no dedicated
+        # reasoning column; the column is already a free-text hash field and
+        # Wave-3 reuse keeps us from adding a new column.
+        await self._conn.execute(
+            f"""
+            INSERT INTO skill_candidate_report
+                ({SELECT_SKILL_CANDIDATE_REPORT}, pattern_fingerprint)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                candidate_id,
+                None,  # capability_name — unknown at escalate time
+                reasoning,  # stored in task_pattern_hash for Wave-3 reuse
+                0.0,
+                0,
+                None,
+                "claude_native_registered",
+                now,
+                now,  # resolved_at set immediately (terminal status)
+                fingerprint,
+            ),
+        )
+        await self._conn.commit()
+        logger.info(
+            "claude_native_pattern_registered",
+            candidate_id=candidate_id,
+            fingerprint=fingerprint,
+        )
+        return candidate_id
 
     async def mark_drafted(self, candidate_id: str) -> None:
         """Update status to 'drafted' and set resolved_at=now."""

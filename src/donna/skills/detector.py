@@ -122,10 +122,18 @@ class SkillCandidateDetector:
         return sorted(claude_native)
 
     async def _existing_open_candidate_capabilities(self) -> set[str]:
-        """Return capability names that already have a 'new' or 'drafted' candidate."""
+        """Return capability names the detector must NOT re-surface.
+
+        Includes capabilities with an open ('new'/'drafted') report AND
+        capabilities Claude has already decided are NOT skill candidates
+        ('claude_native_registered'). The latter is a permanent veto — once
+        Claude has said "this is one-off / user-specific / low-value", the
+        detector stops proposing the same task_type until the row is
+        manually flipped.
+        """
         cursor = await self._conn.execute(
             "SELECT capability_name FROM skill_candidate_report "
-            "WHERE status IN ('new', 'drafted')"
+            "WHERE status IN ('new', 'drafted', 'claude_native_registered')"
         )
         return {row[0] for row in await cursor.fetchall() if row[0]}
 

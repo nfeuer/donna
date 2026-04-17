@@ -22,8 +22,17 @@ from donna.integrations.discord_pending_drafts import (
     PendingDraft,
     PendingDraftRegistry,
 )
+from donna.skills.candidate_report import fingerprint_message
 
 logger = structlog.get_logger()
+
+
+class _CandidateReportWriter(Protocol):
+    """Minimal interface used by the dispatcher to persist non-candidate patterns."""
+
+    async def upsert_claude_native_registered(
+        self, *, fingerprint: str, reasoning: str
+    ) -> str: ...
 
 
 @dataclass
@@ -64,6 +73,7 @@ class DiscordIntentDispatcher:
         tasks_db: Any,
         cadence_policy: CadencePolicy | None = None,
         lifecycle_lookup: Any | None = None,
+        candidate_report_writer: _CandidateReportWriter | None = None,
     ) -> None:
         self._challenger = challenger
         self._novelty = novelty_judge
@@ -71,6 +81,7 @@ class DiscordIntentDispatcher:
         self._tasks = tasks_db
         self._policy = cadence_policy
         self._lifecycle = lifecycle_lookup
+        self._candidate_report_writer = candidate_report_writer
 
     async def _resolve_active_cadence(
         self, target_cron: str, capability_name: str | None
@@ -98,6 +109,30 @@ class DiscordIntentDispatcher:
 
     def _fallback_key(self, msg: _HasContent) -> int | str:
         return msg.thread_id if msg.thread_id is not None else f"dm:{msg.author_id}"
+
+    async def _persist_claude_native_pattern(
+        self, user_message: str, reasoning: str
+    ) -> None:
+        """Record that Claude decided this pattern is NOT a skill candidate.
+
+        The row is keyed on a fingerprint of the user's message so the
+        SkillCandidateDetector will skip re-proposing the same task_type
+        until the row is manually flipped.
+        """
+        if self._candidate_report_writer is None:
+            return
+        fingerprint = fingerprint_message(user_message)
+        try:
+            await self._candidate_report_writer.upsert_claude_native_registered(
+                fingerprint=fingerprint,
+                reasoning=reasoning,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "claude_native_pattern_persist_failed",
+                fingerprint=fingerprint,
+                error=str(exc),
+            )
 
     async def dispatch(self, msg: _HasContent) -> DispatchResult:
         # Thread-resume path
@@ -153,6 +188,10 @@ class DiscordIntentDispatcher:
 
     async def _handle_escalate(self, msg: _HasContent) -> DispatchResult:
         verdict = await self._novelty.evaluate(msg.content, msg.author_id)
+        if not verdict.skill_candidate:
+            await self._persist_claude_native_pattern(
+                msg.content, verdict.skill_candidate_reasoning
+            )
         if verdict.clarifying_question:
             draft = PendingDraft(
                 user_id=msg.author_id,

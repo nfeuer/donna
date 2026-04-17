@@ -243,6 +243,111 @@ async def test_unknown_status_returns_no_action() -> None:
     assert out.kind == "no_action"
 
 
+class _FakeCandidateReportWriter:
+    def __init__(self) -> None:
+        self.upserts: list[dict] = []
+
+    async def upsert_claude_native_registered(
+        self, *, fingerprint: str, reasoning: str
+    ) -> str:
+        self.upserts.append({"fingerprint": fingerprint, "reasoning": reasoning})
+        return f"rpt-{len(self.upserts)}"
+
+
+@pytest.mark.asyncio
+async def test_escalate_with_non_candidate_persists_pattern() -> None:
+    """When the novelty judge says skill_candidate=False, the dispatcher
+    should upsert a claude_native_registered row via the writer."""
+    challenger_result = ChallengerMatchResult(status="escalate_to_claude")
+    verdict = NoveltyVerdict(
+        intent_kind="automation",
+        trigger_type="on_schedule",
+        extracted_inputs={},
+        schedule={"cron": "0 10 * * 0", "human_readable": "sundays at 10"},
+        deadline=None,
+        alert_conditions=None,
+        polling_interval_suggestion="0 10 * * 0",
+        skill_candidate=False,
+        skill_candidate_reasoning="Tax prep — user-specific, low frequency",
+        clarifying_question=None,
+    )
+    writer = _FakeCandidateReportWriter()
+    dispatcher = DiscordIntentDispatcher(
+        challenger=_FakeChallenger(challenger_result),
+        novelty_judge=_FakeNovelty(verdict),
+        pending_drafts=_FakePendingDrafts(),
+        tasks_db=_FakeTasksDb(),
+        candidate_report_writer=writer,
+    )
+    out = await dispatcher.dispatch(
+        _Msg(content="every sunday review tax prep folder")
+    )
+
+    assert out.kind == "automation_confirmation_needed"
+    # Writer was called exactly once with the judge's reasoning.
+    assert len(writer.upserts) == 1
+    assert writer.upserts[0]["reasoning"].startswith("Tax prep")
+    assert len(writer.upserts[0]["fingerprint"]) == 32  # sha256[:32]
+    # The draft still carries skill_candidate=False downstream.
+    assert out.draft_automation is not None
+    assert out.draft_automation.skill_candidate is False
+
+
+@pytest.mark.asyncio
+async def test_escalate_with_skill_candidate_does_not_persist() -> None:
+    """When skill_candidate=True, the dispatcher should NOT persist."""
+    challenger_result = ChallengerMatchResult(status="escalate_to_claude")
+    verdict = NoveltyVerdict(
+        intent_kind="automation",
+        trigger_type="on_schedule",
+        extracted_inputs={},
+        schedule={"cron": "0 */1 * * *", "human_readable": "hourly"},
+        deadline=None,
+        alert_conditions=None,
+        polling_interval_suggestion="0 */1 * * *",
+        skill_candidate=True,
+        skill_candidate_reasoning="Looks like a reusable email-triage pattern",
+        clarifying_question=None,
+    )
+    writer = _FakeCandidateReportWriter()
+    dispatcher = DiscordIntentDispatcher(
+        challenger=_FakeChallenger(challenger_result),
+        novelty_judge=_FakeNovelty(verdict),
+        pending_drafts=_FakePendingDrafts(),
+        tasks_db=_FakeTasksDb(),
+        candidate_report_writer=writer,
+    )
+    await dispatcher.dispatch(_Msg(content="watch for emails from jane@x.com"))
+    assert writer.upserts == []
+
+
+@pytest.mark.asyncio
+async def test_escalate_without_writer_does_not_crash() -> None:
+    """The writer is optional — dispatch must not crash when it's absent."""
+    challenger_result = ChallengerMatchResult(status="escalate_to_claude")
+    verdict = NoveltyVerdict(
+        intent_kind="automation",
+        trigger_type="on_schedule",
+        extracted_inputs={},
+        schedule={"cron": "0 10 * * 0"},
+        deadline=None,
+        alert_conditions=None,
+        polling_interval_suggestion="0 10 * * 0",
+        skill_candidate=False,
+        skill_candidate_reasoning="One-off",
+        clarifying_question=None,
+    )
+    dispatcher = DiscordIntentDispatcher(
+        challenger=_FakeChallenger(challenger_result),
+        novelty_judge=_FakeNovelty(verdict),
+        pending_drafts=_FakePendingDrafts(),
+        tasks_db=_FakeTasksDb(),
+        # candidate_report_writer omitted on purpose
+    )
+    out = await dispatcher.dispatch(_Msg(content="once-off thing"))
+    assert out.kind == "automation_confirmation_needed"
+
+
 @pytest.mark.asyncio
 async def test_dm_fallback_key_is_per_user() -> None:
     """Without a thread_id, the fallback key must include the user id so two
