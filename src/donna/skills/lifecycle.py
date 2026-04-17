@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from typing import Awaitable, Callable
 
 import aiosqlite
 import structlog
@@ -17,6 +18,34 @@ from donna.config import SkillSystemConfig
 from donna.tasks.db_models import SkillState
 
 logger = structlog.get_logger()
+
+
+class _AfterStateChangeHook:
+    """Fan-out hook fired after every successful skill state transition.
+
+    Subscribers receive ``(capability_name, new_state)`` where ``new_state`` is
+    the string value of the destination :class:`SkillState`. Subscriber
+    exceptions are caught and logged so a bad subscriber never breaks the
+    underlying state transition.
+    """
+
+    def __init__(self) -> None:
+        self._subscribers: list[Callable[[str, str], Awaitable[None]]] = []
+
+    def register(self, fn: Callable[[str, str], Awaitable[None]]) -> None:
+        self._subscribers.append(fn)
+
+    async def fire(self, capability_name: str, new_state: str) -> None:
+        for fn in self._subscribers:
+            try:
+                await fn(capability_name, new_state)
+            except Exception as exc:  # noqa: BLE001 — deliberate: don't break transition
+                logger.exception(
+                    "after_state_change_subscriber_failed",
+                    error=str(exc),
+                    capability=capability_name,
+                    new_state=new_state,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +128,9 @@ class SkillLifecycleManager:
     def __init__(self, connection: aiosqlite.Connection, config: SkillSystemConfig) -> None:
         self._conn = connection
         self._config = config
+        # Fan-out hook, fired after every successful state transition. Wave 3
+        # uses this to keep automation cadences in sync with skill lifecycle.
+        self.after_state_change = _AfterStateChangeHook()
 
     async def transition(
         self,
@@ -139,14 +171,14 @@ class SkillLifecycleManager:
         """
         # 1. Load current skill row.
         cursor = await self._conn.execute(
-            "SELECT state, requires_human_gate FROM skill WHERE id = ?",
+            "SELECT state, requires_human_gate, capability_name FROM skill WHERE id = ?",
             (skill_id,),
         )
         row = await cursor.fetchone()
         if row is None:
             raise SkillNotFoundError(f"Skill not found: {skill_id!r}")
 
-        current_state_value, requires_human_gate_int = row
+        current_state_value, requires_human_gate_int, capability_name = row
         current_state = SkillState(current_state_value)
         requires_human_gate = bool(requires_human_gate_int)
 
@@ -216,6 +248,10 @@ class SkillLifecycleManager:
             actor=actor,
             actor_id=actor_id,
         )
+
+        # 7. Fire the after-state-change hook. Subscriber failures are swallowed
+        #    inside the hook so they never break the transition.
+        await self.after_state_change.fire(capability_name, to_state.value)
 
     # ---------------------------------------------------------------------------
     # Auto-promotion gates

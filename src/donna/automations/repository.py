@@ -111,6 +111,30 @@ class AutomationRepository:
         rows = await cursor.fetchall()
         return [row_to_automation(r) for r in rows]
 
+    async def list_by_capability(self, capability_name: str) -> list[AutomationRow]:
+        cursor = await self._conn.execute(
+            f"SELECT {SELECT_AUTOMATION} FROM automation WHERE capability_name = ?",
+            (capability_name,),
+        )
+        rows = await cursor.fetchall()
+        return [row_to_automation(r) for r in rows]
+
+    async def update_active_cadence(
+        self,
+        automation_id: str,
+        active_cadence_cron: str | None,
+        next_run_at: datetime | None,
+    ) -> None:
+        """Atomically set active_cadence_cron + next_run_at on an automation row."""
+        iso = next_run_at.isoformat() if next_run_at is not None else None
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await self._conn.execute(
+            "UPDATE automation SET active_cadence_cron = ?, next_run_at = ?, "
+            "updated_at = ? WHERE id = ?",
+            (active_cadence_cron, iso, now_iso, automation_id),
+        )
+        await self._conn.commit()
+
     async def list_due(self, now: datetime) -> list[AutomationRow]:
         cursor = await self._conn.execute(
             f"SELECT {SELECT_AUTOMATION} FROM automation "
