@@ -27,7 +27,12 @@ The user's message was NOT matched against any of these (all ranked below the co
 - `extracted_inputs`: best-effort extraction
 - `schedule`: {cron, human_readable} for recurring intents (see polling guidance)
 - `deadline`: ISO-8601 when task has a deadline
-- `alert_conditions`: {expression, channels} when automation has an alert
+- `alert_conditions`: alert DSL describing when the automation should DM on skill output.
+  - Terminal: `{"field": "<dotted.path>", "op": "<op>", "value": <any>}` where
+    `op` is one of `==`, `!=`, `<`, `<=`, `>`, `>=`, `contains`, `exists`.
+  - Composite: `{"all_of": [<node>, ...]}` or `{"any_of": [<node>, ...]}`.
+  - Leave `null` when no alert is needed. Do NOT emit `{expression, channels}` — that
+    shape is ignored by the alert evaluator.
 - `polling_interval_suggestion`: cron string for "when X happens" intents that can only be polled
 - `skill_candidate`: true if this is a reusable pattern worth drafting a skill for; false if one-off/too-specific/low-frequency
 - `skill_candidate_reasoning`: one sentence explaining the judgment

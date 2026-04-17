@@ -24,12 +24,17 @@ class AutomationCreationPath:
 
     async def approve(self, draft: DraftAutomation, *, name: str) -> str | None:
         """Create the automation row. Returns its id or ``None`` on duplicate."""
+        # Wave 3 bug-fix: the automation table has NOT NULL + FK on
+        # capability_name. Drafts from the novelty/polling path have
+        # capability_name=None (no registry match). We substitute the
+        # seeded "claude_native" placeholder capability so the FK holds.
+        capability_name = draft.capability_name or "claude_native"
         try:
             automation_id = await self._repo.create(
                 user_id=draft.user_id,
                 name=name,
                 description=None,
-                capability_name=draft.capability_name or "",
+                capability_name=capability_name,
                 inputs=draft.inputs,
                 trigger_type="on_schedule",
                 schedule=draft.schedule_cron,

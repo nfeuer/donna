@@ -17,10 +17,7 @@
     "deadline": {"type": ["string", "null"], "format": "date-time"},
     "alert_conditions": {
       "type": ["object", "null"],
-      "properties": {
-        "expression": {"type": "string"},
-        "channels": {"type": "array", "items": {"type": "string"}}
-      }
+      "description": "Alert DSL understood by AlertEvaluator: terminal nodes shaped {field, op, value} (op in ==, !=, <, <=, >, >=, contains, exists) or composite nodes shaped {all_of:[...]} / {any_of:[...]}. Null when no alert is needed."
     },
     "missing_fields": {"type": "array", "items": {"type": "string"}},
     "clarifying_question": {"type": ["string", "null"]},

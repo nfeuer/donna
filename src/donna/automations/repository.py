@@ -72,9 +72,15 @@ class AutomationRepository:
                 ),
             )
         except aiosqlite.IntegrityError as exc:
-            raise AlreadyExistsError(
-                f"automation {user_id}/{name} already exists"
-            ) from exc
+            # Narrow the catch: only UNIQUE collisions indicate duplicate
+            # (user_id, name). FK / NOT NULL violations are genuine bugs
+            # and must propagate so the caller sees them instead of a
+            # mislabelled AlreadyExistsError (Wave 3 bug-fix).
+            if "UNIQUE constraint" in str(exc):
+                raise AlreadyExistsError(
+                    f"automation {user_id}/{name} already exists"
+                ) from exc
+            raise
         await self._conn.commit()
         return auto_id
 

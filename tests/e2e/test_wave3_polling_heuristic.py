@@ -10,7 +10,7 @@ Flow:
 4. Dispatcher emits kind=automation_confirmation_needed with
    capability_name=None, target cadence = the suggested cron.
 5. Approve via AutomationCreationPath → automation row is persisted with
-   capability_name="" (no capability).
+   capability_name="claude_native" (placeholder for no-match drafts).
 6. skill_candidate_report shows NO claude_native_registered row for this
    fingerprint (because skill_candidate=True means the judge wants to
    surface this pattern for future skill drafting — not register it as
@@ -81,35 +81,21 @@ async def test_when_x_phrase_creates_polling_automation(runtime) -> None:
     assert draft.skill_candidate is True
     assert draft.skill_candidate_reasoning.startswith("Email-triage")
 
-    # 4. Attempt approval.
-    #
-    # BUG (documented): AutomationCreationPath.approve passes
-    # ``capability_name=draft.capability_name or ""`` to the repository, but
-    # the automation schema declares ``capability_name`` as NOT NULL with a
-    # FOREIGN KEY to capability.name (see add_automation_tables_phase_5.py).
-    # An empty string violates the FK and the repo raises
-    # aiosqlite.IntegrityError, which the creation flow catches and re-labels
-    # as AlreadyExistsError → approve() returns None.
-    #
-    # Net effect: polling / claude-native-only drafts (capability_name=None)
-    # cannot be persisted via the current AutomationCreationPath. The
-    # dispatcher produces the correct DraftAutomation, but the persistence
-    # step silently fails.
-    #
-    # TODO(wave-3): make the automation table accept NULL capability_name
-    # (or change AutomationCreationPath.approve to insert a synthetic
-    # capability row for claude-native automations before calling
-    # repository.create). When that lands, flip the assertion below to
-    # ``assert automation_id is not None`` and drop the BUG note.
+    # 4. Approve — AutomationCreationPath substitutes "claude_native" for
+    #    drafts whose capability_name is None, so the FK + NOT NULL on
+    #    automation.capability_name is satisfied by the seeded placeholder
+    #    capability row (see alembic d6e7f8a9b0c1).
     automation_id = await runtime.creation_path.approve(
         draft, name="email watcher jane"
     )
-    assert automation_id is None, (
-        "persistence of claude-native-only automations is blocked by the "
-        "FK/NOT NULL on automation.capability_name — see the BUG note above"
+    assert automation_id is not None
+    cursor = await conn.execute(
+        "SELECT capability_name FROM automation WHERE id = ?",
+        (automation_id,),
     )
-    cursor = await conn.execute("SELECT COUNT(*) FROM automation")
-    assert (await cursor.fetchone())[0] == 0
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row[0] == "claude_native"
 
     # 5. skill_candidate_report: because skill_candidate=True, the dispatcher
     #    does NOT register a claude_native_registered row for this fingerprint.

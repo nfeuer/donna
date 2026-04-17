@@ -22,7 +22,13 @@ Analyze the user's message and emit JSON matching this schema:
 - `extracted_inputs`: object of fields from the capability's input schema
 - `schedule`: {cron, human_readable} when intent is automation with a clear schedule
 - `deadline`: ISO-8601 datetime when intent is task with a deadline
-- `alert_conditions`: {expression, channels} when automation has an alert trigger
+- `alert_conditions`: alert DSL describing when the automation should DM on skill output.
+  - Terminal: `{"field": "<dotted.path>", "op": "<op>", "value": <any>}` where
+    `op` is one of `==`, `!=`, `<`, `<=`, `>`, `>=`, `contains`, `exists`.
+  - Composite: `{"all_of": [<node>, <node>, ...]}` or `{"any_of": [<node>, ...]}` — nodes may
+    themselves be terminal or composite.
+  - Leave `null` when no alert is needed. Do NOT emit `{expression, channels}` — that
+    shape is ignored by the alert evaluator.
 - `missing_fields`: required input schema fields the user did not supply
 - `clarifying_question`: a single question asking the user for missing info
 - `low_quality_signals`: array of strings flagging ambiguity (e.g., "malformed_url", "ambiguous_date")

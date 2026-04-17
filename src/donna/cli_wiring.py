@@ -425,6 +425,29 @@ async def wire_skill_system(ctx: StartupContext) -> SkillSystemHandle:
 # ---------------------------------------------------------------------------
 
 
+class _ReclamperSchedulerAdapter:
+    """Thin wrapper exposing ``compute_next_run(cron)`` for CadenceReclamper.
+
+    CadenceReclamper calls ``scheduler.compute_next_run(cron_str)`` to
+    recompute ``next_run_at`` when active_cadence_cron changes. The real
+    AutomationScheduler has no such method, so we adapt the raw
+    CronScheduleCalculator here. Mirrors the harness's
+    _SchedulerComputeNextRun.
+    """
+
+    def __init__(self) -> None:
+        from donna.automations.cron import CronScheduleCalculator
+
+        self._cron = CronScheduleCalculator()
+
+    async def compute_next_run(self, cron: str) -> Any:
+        from datetime import datetime, timezone
+
+        return self._cron.next_run(
+            expression=cron, after=datetime.now(timezone.utc),
+        )
+
+
 async def wire_automation_subsystem(
     ctx: StartupContext, skill_h: SkillSystemHandle,
 ) -> AutomationHandle:
@@ -436,6 +459,8 @@ async def wire_automation_subsystem(
     """
     log = ctx.log
     from donna.automations.alert import AlertEvaluator
+    from donna.automations.cadence_policy import CadencePolicy
+    from donna.automations.cadence_reclamper import CadenceReclamper
     from donna.automations.cron import CronScheduleCalculator
 
     try:
@@ -461,6 +486,30 @@ async def wire_automation_subsystem(
             "automation_scheduler_started",
             poll_interval_seconds=ctx.skill_config.automation_poll_interval_seconds,
         )
+
+        # Wave 3 Bug-fix: register CadenceReclamper on the skill lifecycle hook
+        # so promoting a skill (sandbox → shadow_primary → trusted) recomputes
+        # active_cadence_cron for every automation bound to that capability.
+        # The harness at tests/e2e/harness.py registers the reclamper for E2E
+        # tests; production wiring must do the same or cadence-uplift is inert.
+        bundle = skill_h.bundle
+        if bundle is not None:
+            cadence_path = ctx.config_dir / "automations.yaml"
+            if cadence_path.exists():
+                try:
+                    policy = CadencePolicy.load(cadence_path)
+                    reclamper = CadenceReclamper(
+                        repo=automation_repo,
+                        policy=policy,
+                        scheduler=_ReclamperSchedulerAdapter(),
+                    )
+                    bundle.lifecycle_manager.after_state_change.register(
+                        reclamper.reclamp_for_capability,
+                    )
+                    log.info("cadence_reclamper_registered")
+                except Exception:
+                    log.exception("cadence_reclamper_wiring_failed")
+
         return AutomationHandle(
             repository=automation_repo,
             dispatcher=automation_dispatcher,

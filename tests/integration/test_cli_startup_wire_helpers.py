@@ -113,6 +113,33 @@ async def test_wire_automation_subsystem_returns_handle(
 
 
 @pytest.mark.asyncio
+async def test_wire_automation_subsystem_registers_cadence_reclamper(
+    minimal_env, skill_enabled_config_dir, tmp_path,
+) -> None:
+    """Bug-fix regression: CadenceReclamper must be registered on the skill
+    lifecycle hook in production wiring. Harness used to be the only caller
+    doing this, leaving cadence-uplift inert in prod.
+    """
+    args = _args_for(tmp_path, skill_enabled_config_dir)
+    ctx = await build_startup_context(args)
+    try:
+        skill_h = await wire_skill_system(ctx)
+        # If the skill bundle is disabled there's nothing to register against.
+        assert skill_h.bundle is not None, (
+            "skill_system must be enabled for this regression — check fixture"
+        )
+        _ = await wire_automation_subsystem(ctx, skill_h)
+        subscribers = skill_h.bundle.lifecycle_manager.after_state_change._subscribers
+        names = [getattr(fn, "__qualname__", repr(fn)) for fn in subscribers]
+        assert any("reclamp_for_capability" in n for n in names), (
+            f"CadenceReclamper.reclamp_for_capability not registered; "
+            f"got subscribers: {names}"
+        )
+    finally:
+        await ctx.db.close()
+
+
+@pytest.mark.asyncio
 async def test_wire_discord_returns_handle(
     minimal_env, skill_enabled_config_dir, tmp_path,
 ) -> None:
