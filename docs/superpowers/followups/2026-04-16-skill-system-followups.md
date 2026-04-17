@@ -8,6 +8,22 @@ This is a backlog, not a roadmap. Priority suggestions are opinions — use them
 
 ---
 
+## Completed — Wave 2 (2026-04-17)
+
+- **F-W1-B** EvolutionGates now thread `tool_mocks` through all three gates. New `mock_synthesis.py` helper shared between runtime and migration. See `docs/superpowers/specs/2026-04-17-skill-system-wave-2-first-capability-design.md`.
+- **F-W1-C** Router kwargs mismatch resolved; executor + triage drop unsupported kwargs. `FakeRouter` in the E2E harness tightened to match `ModelRouter.complete` signature (catches future drift).
+- **F-W1-D** Draft-now via `skill_candidate_report.manual_draft_at` + `ManualDraftPoller` (15s poll). API endpoint returns 202.
+- **F-W1-E** Validation-mode per-step timeout wired (`validation_per_step_timeout_s`; fires only when `run_sink` + `config` are both set).
+- **F-W1-F** `POST /admin/skill-runs/{id}/capture-fixture` endpoint using `json_to_schema` + `cache_to_mocks`.
+- **F-W1-G** Validation LLM calls tagged with `skill_validation::<cap>::<step>` prefix via `ValidationExecutor`'s `task_type_prefix`.
+- **F-W1-H** Automation subsystem runs independent of `skill_system.enabled`.
+- **F-2** `automation_run.skill_run_id` ↔ `skill_run.automation_run_id` populated both directions via `SkillRunResult.run_id` + dispatcher plumbing.
+- **F-7** `CorrectionClusterDetector.scan_for_capability` fires synchronously from `log_correction` write path.
+- **F-11** `product_watch` capability + skill + 4 fixtures with `tool_mocks` seeded via Alembic migration. `SeedCapabilityLoader` syncs `config/capabilities.yaml` on orchestrator startup. `web_fetch` registered on module-level default registry.
+- **Task 0 (Wave 2 prerequisite)** `ModelRouter._resolve_route` gained longest-prefix match fallback so dynamic `skill_step::*` and `skill_validation::*` task_types resolve without per-entry config.
+
+Wave 3 plan: **F-3** Discord natural-language automation creation (OOS-W2-1 from Wave 2 spec).
+
 ## Completed — Wave 1 (2026-04-16)
 
 - **F-1** Sandbox SkillExecutor → shipped as `ValidationExecutor`. See `docs/superpowers/specs/2026-04-16-skill-system-wave-1-production-enablement-design.md`.

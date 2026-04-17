@@ -800,28 +800,28 @@ After Wave 2 merges:
 
 | # | Requirement | Section | Verified by | ✓ |
 |---|---|---|---|---|
-| W2-R1 | `ModelRouter.complete` called with only its declared kwargs from executor+triage | 6.1 | AS-W2.2 + unit test using `MagicMock(spec=ModelRouter)` | [ ] |
-| W2-R2 | `EvolutionGates` Gate 3 passes `tool_mocks` from `skill_fixture.tool_mocks` | 6.2 | AS-W2.3 + unit test | [ ] |
-| W2-R3 | `EvolutionGates` Gate 2 + 4 synthesize mocks via `mock_synthesis.cache_to_mocks` | 6.2 | unit test | [ ] |
-| W2-R4 | `mock_synthesis.py` shared between runtime and migration (with documented divergence) | 6.2 | inspection + unit test | [ ] |
-| W2-R5 | Per-step timeout fires in validation runs when step exceeds `validation_per_step_timeout_s` | 6.3 | unit test using monkeypatched slow router | [ ] |
-| W2-R6 | Per-step timeout does NOT fire in production runs | 6.3 | unit test with `run_sink=None` | [ ] |
-| W2-R7 | `ValidationExecutor` tags LLM calls `skill_validation::<cap>::<step>` | 6.4 | unit test | [ ] |
-| W2-R8 | `config/task_types.yaml` routes both `skill_step::*` and `skill_validation::*` to local_parser | 6.4 | inspection + unit test of router resolution | [ ] |
-| W2-R9 | Automation subsystem runs with `skill_config.enabled=false` | 6.5 | integration test `test_automation_runs_with_skill_system_disabled` | [ ] |
-| W2-R10 | `skill_candidate_report.manual_draft_at` column exists with index | 6.6 | migration test | [ ] |
-| W2-R11 | `POST /admin/skill-candidates/{id}/draft-now` returns 202 and sets `manual_draft_at` | 6.6 | integration test | [ ] |
-| W2-R12 | `ManualDraftPoller.run_once` picks up and clears `manual_draft_at` rows | 6.6 | unit test | [ ] |
-| W2-R13 | `POST /admin/skill-runs/{id}/capture-fixture` creates a `captured_from_run` fixture | 6.7 | integration test | [ ] |
-| W2-R14 | `automation_run.skill_run_id` populated on skill-path dispatch | 6.8 | unit + integration test | [ ] |
-| W2-R15 | `skill_run.automation_run_id` populated when triggered via automation | 6.8 | unit + integration test | [ ] |
-| W2-R16 | `CorrectionClusterDetector.scan_for_skill` fires synchronously from `record_correction` | 6.9 | integration test AS-W2.6 | [ ] |
-| W2-R17 | `product_watch` capability row exists with input_schema | 6.10 | migration test | [ ] |
-| W2-R18 | `product_watch` skill exists in `sandbox` lifecycle state after seed | 6.10 | migration test | [ ] |
-| W2-R19 | 4 seed fixtures with `tool_mocks` exist for `product_watch` | 6.10 | migration test | [ ] |
-| W2-R20 | E2E `test_wave2_product_watch.py` passes in <10s | 6.10 | AS-W2.7 | [ ] |
-| W2-R21 | Full existing suite green | 7 | AS-W2.8 | [ ] |
-| W2-R22 | Spec checklist + followups doc updated | 7 | Doc update | [ ] |
+| W2-R1 | `ModelRouter.complete` called with only its declared kwargs from executor+triage | 6.1 | AS-W2.2 + unit test using `MagicMock(spec=ModelRouter)` | [x] |
+| W2-R2 | `EvolutionGates` Gate 3 passes `tool_mocks` from `skill_fixture.tool_mocks` | 6.2 | AS-W2.3 + unit test | [x] |
+| W2-R3 | `EvolutionGates` Gate 2 + 4 synthesize mocks via `mock_synthesis.cache_to_mocks` | 6.2 | unit test | [x] |
+| W2-R4 | `mock_synthesis.py` shared between runtime and migration (with documented divergence) | 6.2 | inspection + unit test | [x] |
+| W2-R5 | Per-step timeout fires in validation runs when step exceeds `validation_per_step_timeout_s` | 6.3 | unit test using monkeypatched slow router | [x] |
+| W2-R6 | Per-step timeout does NOT fire in production runs | 6.3 | unit test with `run_sink=None` | [x] |
+| W2-R7 | `ValidationExecutor` tags LLM calls `skill_validation::<cap>::<step>` | 6.4 | unit test | [x] |
+| W2-R8 | `config/task_types.yaml` routes both `skill_step::*` and `skill_validation::*` to local_parser | 6.4 | inspection + unit test of router resolution | [x] |
+| W2-R9 | Automation subsystem runs with `skill_config.enabled=false` | 6.5 | integration test `test_automation_runs_with_skill_system_disabled` | [x] |
+| W2-R10 | `skill_candidate_report.manual_draft_at` column exists with index | 6.6 | migration test | [x] |
+| W2-R11 | `POST /admin/skill-candidates/{id}/draft-now` returns 202 and sets `manual_draft_at` | 6.6 | integration test | [x] |
+| W2-R12 | `ManualDraftPoller.run_once` picks up and clears `manual_draft_at` rows | 6.6 | unit test | [x] |
+| W2-R13 | `POST /admin/skill-runs/{id}/capture-fixture` creates a `captured_from_run` fixture | 6.7 | integration test | [x] |
+| W2-R14 | `automation_run.skill_run_id` populated on skill-path dispatch | 6.8 | unit + integration test | [x] |
+| W2-R15 | `skill_run.automation_run_id` populated when triggered via automation | 6.8 | unit + integration test | [x] |
+| W2-R16 | `CorrectionClusterDetector.scan_for_skill` fires synchronously from `record_correction` | 6.9 | integration test AS-W2.6 | [x] |
+| W2-R17 | `product_watch` capability row exists with input_schema | 6.10 | migration test | [x] |
+| W2-R18 | `product_watch` skill exists in `sandbox` lifecycle state after seed | 6.10 | migration test | [x] |
+| W2-R19 | 4 seed fixtures with `tool_mocks` exist for `product_watch` | 6.10 | migration test | [x] |
+| W2-R20 | E2E `test_wave2_product_watch.py` passes in <10s | 6.10 | AS-W2.7 | [x] |
+| W2-R21 | Full existing suite green | 7 | AS-W2.8 | [x] |
+| W2-R22 | Spec checklist + followups doc updated | 7 | Doc update | [x] |
 
 ---
 
