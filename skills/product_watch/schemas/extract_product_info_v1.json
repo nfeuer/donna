@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "required": ["in_stock", "available_sizes"],
+  "properties": {
+    "price_usd": {"type": ["number", "null"]},
+    "currency": {"type": "string"},
+    "in_stock": {"type": "boolean"},
+    "available_sizes": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "title": {"type": "string"}
+  }
+}
