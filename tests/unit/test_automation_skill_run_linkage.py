@@ -114,21 +114,24 @@ async def test_dispatcher_writes_skill_run_id_into_automation_run(tmp_path, monk
     command.upgrade(cfg, "head")
 
     async with aiosqlite.connect(db) as conn:
-        # Seed capability + skill in shadow_primary + active automation.
+        # Use a unique capability name to avoid collision with Wave 2's
+        # seeded `product_watch` (state=sandbox) — this test needs
+        # shadow_primary to exercise the skill path.
         now = datetime.now(timezone.utc).isoformat()
+        capability_name = "test_cap_linkage"
         await conn.execute(
             "INSERT INTO capability (id, name, description, input_schema, "
             "trigger_type, status, created_at, created_by) "
-            "VALUES (?, 'product_watch', '', '{}', 'on_schedule', 'active', ?, 'seed')",
-            (str(uuid.uuid4()), now),
+            "VALUES (?, ?, '', '{}', 'on_schedule', 'active', ?, 'seed')",
+            (str(uuid.uuid4()), capability_name, now),
         )
         skill_id = str(uuid.uuid4())
         version_id = str(uuid.uuid4())
         await conn.execute(
             "INSERT INTO skill (id, capability_name, current_version_id, state, "
             "requires_human_gate, created_at, updated_at) "
-            "VALUES (?, 'product_watch', ?, 'shadow_primary', 0, ?, ?)",
-            (skill_id, version_id, now, now),
+            "VALUES (?, ?, ?, 'shadow_primary', 0, ?, ?)",
+            (skill_id, capability_name, version_id, now, now),
         )
         await conn.execute(
             "INSERT INTO skill_version (id, skill_id, version_number, yaml_backbone, "
@@ -143,10 +146,10 @@ async def test_dispatcher_writes_skill_run_id_into_automation_run(tmp_path, monk
             "alert_conditions, alert_channels, max_cost_per_run_usd, "
             "min_interval_seconds, status, last_run_at, next_run_at, "
             "run_count, failure_count, created_at, updated_at, created_via) "
-            "VALUES (?, 'nick', 'watch', NULL, 'product_watch', '{}', "
+            "VALUES (?, 'nick', 'watch', NULL, ?, '{}', "
             "'on_schedule', '0 * * * *', '{}', '[]', 1.0, 300, 'active', NULL, ?, "
             "0, 0, ?, ?, 'dashboard')",
-            (automation_id, now, now, now),
+            (automation_id, capability_name, now, now, now),
         )
         await conn.commit()
 
