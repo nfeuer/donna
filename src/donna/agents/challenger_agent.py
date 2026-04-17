@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
+import jinja2
 import structlog
 
 from donna.agents.base import AgentContext, AgentResult
@@ -58,9 +59,15 @@ class ChallengerAgent:
         *,
         matcher: CapabilityMatcher | None = None,
         input_extractor: Any | None = None,
+        model_router: Any | None = None,
     ) -> None:
         self._matcher = matcher
         self._input_extractor = input_extractor
+        self._router = model_router
+        self._env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader("prompts"),
+            autoescape=False,
+        )
 
     @property
     def name(self) -> str:
@@ -79,7 +86,47 @@ class ChallengerAgent:
         user_message: str,
         user_id: str,
     ) -> ChallengerMatchResult:
-        """Match a user message against the capability registry and extract inputs."""
+        """Match a user message against the capability registry and extract inputs.
+
+        Prefers the unified LLM parse path when ``model_router`` is configured.
+        Falls back to the legacy matcher + input_extractor pipeline otherwise.
+        """
+        if self._router is None:
+            return await self._legacy_match_and_extract(user_message, user_id)
+
+        caps = await self._snapshot_capabilities()
+        template = self._env.get_template("challenger_parse.md")
+        prompt = template.render(
+            capabilities=caps,
+            user_message=user_message,
+            current_date_iso=datetime.now(timezone.utc).isoformat(),
+        )
+
+        try:
+            result_json, _meta = await self._router.complete(
+                prompt,
+                task_type="challenge_task",
+                user_id=user_id,
+            )
+        except ContextOverflowError:
+            raise
+        except Exception as exc:
+            logger.error(
+                "challenger_parse_llm_failed",
+                user_id=user_id,
+                error=str(exc),
+            )
+            # Fall back to legacy path if the LLM path fails.
+            return await self._legacy_match_and_extract(user_message, user_id)
+
+        return self._build_result_from_parse(result_json, caps)
+
+    async def _legacy_match_and_extract(
+        self,
+        user_message: str,
+        user_id: str,
+    ) -> ChallengerMatchResult:
+        """Legacy matcher + input extractor path (retained for backward compat)."""
         if self._matcher is None:
             return ChallengerMatchResult(status="escalate_to_claude", match_score=0.0)
 
@@ -144,6 +191,88 @@ class ChallengerAgent:
         return (
             f"I need a bit more to act on this as a {cap.name}:\n"
             + "\n".join(field_descriptions)
+        )
+
+    async def _snapshot_capabilities(self) -> list[CapabilityRow]:
+        """Return the active capability set for inclusion in the parse prompt.
+
+        Returns an empty list when no matcher is configured or when the matcher
+        does not expose a ``list_all`` method.
+        """
+        if self._matcher is None or not hasattr(self._matcher, "list_all"):
+            return []
+        try:
+            rows = await self._matcher.list_all()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("challenger_capabilities_snapshot_failed", error=str(exc))
+            return []
+        return list(rows)
+
+    def _build_result_from_parse(
+        self,
+        parse: dict,
+        caps: list[CapabilityRow],
+    ) -> ChallengerMatchResult:
+        """Convert the LLM's JSON parse into a ChallengerMatchResult.
+
+        This method is synchronous — it resolves the capability by name from
+        the in-memory ``caps`` snapshot captured before the LLM call, so it
+        never awaits. If the snapshot is empty (e.g., caller passed a matcher
+        without ``list_all``), ``capability`` remains None and downstream
+        consumers must handle name-based lookups themselves.
+        """
+        name = parse.get("capability_name")
+        cap: CapabilityRow | None = None
+        if name:
+            for row in caps:
+                if getattr(row, "name", None) == name:
+                    cap = row
+                    break
+
+        missing = list(parse.get("missing_fields") or [])
+        confidence = float(parse.get("confidence", 0.0))
+        match_score = float(parse.get("match_score", 0.0))
+        intent_kind = parse.get("intent_kind", "task")
+
+        if intent_kind in ("chat", "question"):
+            status = "ready"
+        elif not name or match_score < 0.4:
+            status = "escalate_to_claude"
+        elif missing:
+            status = "needs_input"
+        elif confidence < 0.7:
+            status = "ambiguous"
+        else:
+            status = "ready"
+
+        deadline: datetime | None = None
+        raw_deadline = parse.get("deadline")
+        if raw_deadline:
+            # PRESERVE tz-awareness. datetime.fromisoformat in 3.11+ parses 'Z'
+            # directly; older versions require an explicit fallback.
+            try:
+                deadline = datetime.fromisoformat(raw_deadline)
+            except ValueError:
+                if raw_deadline.endswith("Z"):
+                    deadline = datetime.fromisoformat(raw_deadline[:-1]).replace(
+                        tzinfo=timezone.utc
+                    )
+                else:
+                    deadline = None
+
+        return ChallengerMatchResult(
+            status=status,
+            intent_kind=intent_kind,
+            capability=cap,
+            extracted_inputs=parse.get("extracted_inputs") or {},
+            missing_fields=missing,
+            clarifying_question=parse.get("clarifying_question"),
+            match_score=match_score,
+            schedule=parse.get("schedule"),
+            deadline=deadline,
+            alert_conditions=parse.get("alert_conditions"),
+            confidence=confidence,
+            low_quality_signals=list(parse.get("low_quality_signals") or []),
         )
 
     async def execute(self, task: TaskRow, context: AgentContext) -> AgentResult:
