@@ -44,6 +44,33 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 
+class StepFailedError(Exception):
+    """Raised when a tool_invocation's ``on_failure=fail_step`` policy fires.
+
+    Executor treats the step as terminally failed — subsequent steps are
+    skipped and the skill run completes with status=``failed``. No triage
+    or Claude escalation is attempted.
+    """
+
+    def __init__(self, step_name: str, cause: Exception | None = None) -> None:
+        super().__init__(f"step failed: {step_name}")
+        self.step_name = step_name
+        self.cause = cause
+
+
+class SkillFailedError(Exception):
+    """Raised when a tool_invocation's ``on_failure=fail_skill`` policy fires.
+
+    Executor aborts the entire skill run with status=``failed``. No triage
+    or Claude escalation is attempted.
+    """
+
+    def __init__(self, step_name: str, cause: Exception | None = None) -> None:
+        super().__init__(f"skill failed at step: {step_name}")
+        self.step_name = step_name
+        self.cause = cause
+
+
 @dataclass(slots=True)
 class StepResultRecord:
     """In-memory per-step record for the SkillRunResult."""
@@ -271,6 +298,58 @@ class SkillExecutor:
                 # Step succeeded — advance to the next step.
                 idx += 1
                 prompt_additions = None
+
+            except StepFailedError as exc:
+                # on_failure=fail_step — terminally fail the step, skip the
+                # rest of the skill, no triage/escalation.
+                cause_msg = str(exc.cause) if exc.cause else "step failed"
+                record.error = cause_msg
+                record.validation_status = "step_failed"
+                record.output = {"tool_error": cause_msg}
+                record.latency_ms = int((time.monotonic() - step_start) * 1000)
+                step_results.append(record)
+                await self._persist_step_if_repo(skill_run_id, record)
+                state[step_name] = {"tool_error": cause_msg}
+                logger.info(
+                    "skill_step_failed_terminal",
+                    skill_id=skill.id, step=step_name, error=cause_msg,
+                )
+                result = SkillRunResult(
+                    status="failed", state=state.to_dict(),
+                    error=f"step_failed: {cause_msg}",
+                    invocation_ids=invocation_ids,
+                    total_latency_ms=int((time.monotonic() - start) * 1000),
+                    total_cost_usd=total_cost,
+                    step_results=step_results,
+                )
+                await self._finish_run_if_repo(skill_run_id, result)
+                return result
+
+            except SkillFailedError as exc:
+                # on_failure=fail_skill — abort the whole skill run, no
+                # triage/escalation.
+                cause_msg = str(exc.cause) if exc.cause else "skill failed"
+                record.error = cause_msg
+                record.validation_status = "skill_failed"
+                record.output = {"tool_error": cause_msg}
+                record.latency_ms = int((time.monotonic() - step_start) * 1000)
+                step_results.append(record)
+                await self._persist_step_if_repo(skill_run_id, record)
+                logger.info(
+                    "skill_run_failed_abort",
+                    skill_id=skill.id, step=step_name, error=cause_msg,
+                )
+                result = SkillRunResult(
+                    status="failed", state=state.to_dict(),
+                    final_output={"tool_error": cause_msg},
+                    error=f"skill_failed: {cause_msg}",
+                    invocation_ids=invocation_ids,
+                    total_latency_ms=int((time.monotonic() - start) * 1000),
+                    total_cost_usd=total_cost,
+                    step_results=step_results,
+                )
+                await self._finish_run_if_repo(skill_run_id, result)
+                return result
 
             except (SchemaValidationError, ToolInvocationError, DSLError, jinja2.UndefinedError) as exc:
                 record.error = str(exc)
@@ -506,6 +585,7 @@ class SkillExecutor:
                     args=raw_spec.get("args", {}),
                     store_as=raw_spec.get("store_as", "result"),
                     retry=raw_spec.get("retry", {}),
+                    on_failure=raw_spec.get("on_failure", "escalate"),
                 )]
 
             for spec in specs:

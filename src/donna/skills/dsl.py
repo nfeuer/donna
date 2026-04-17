@@ -69,6 +69,7 @@ def expand_for_each(
             args=rendered_args,
             store_as=rendered_store,
             retry=block.get("retry", {}),
+            on_failure=block.get("on_failure", "escalate"),
         ))
 
     return specs
