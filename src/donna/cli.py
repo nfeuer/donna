@@ -393,6 +393,27 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
                 "skill_system_started",
                 nightly_run_hour_utc=skill_config.nightly_run_hour_utc,
             )
+
+            # Wave 2 F-W1-D: poll skill_candidate_report.manual_draft_at for
+            # manual draft triggers from the API process.
+            from donna.skills.manual_draft_poller import ManualDraftPoller
+
+            manual_draft_poller = ManualDraftPoller(
+                connection=db.connection,
+                auto_drafter=bundle.auto_drafter,
+                candidate_repo=bundle.candidate_repo,
+            )
+
+            async def _manual_draft_loop() -> None:
+                while True:
+                    try:
+                        await manual_draft_poller.run_once()
+                    except Exception:
+                        log.exception("manual_draft_poller_tick_failed")
+                    await asyncio.sleep(skill_config.automation_poll_interval_seconds)
+
+            tasks.append(asyncio.create_task(_manual_draft_loop()))
+            log.info("manual_draft_poller_started")
     else:
         log.info("skill_system_disabled_in_config")
 
