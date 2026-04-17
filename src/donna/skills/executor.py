@@ -77,6 +77,7 @@ class SkillRunResult:
     total_cost_usd: float = 0.0
     step_results: list[StepResultRecord] = field(default_factory=list)
     tool_result_cache: dict = field(default_factory=dict)
+    run_id: str | None = None  # Wave 2 F-2: populated from SkillRunRepository.start_run
 
 
 _WHOLE_EXPR_RE = re.compile(r"^\s*\{\{\s*(.+?)\s*\}\}\s*$")
@@ -117,6 +118,8 @@ class SkillExecutor:
         version: SkillVersionRow,
         inputs: dict,
         user_id: str,
+        task_id: str | None = None,
+        automation_run_id: str | None = None,
         **_ignored_kwargs: Any,
     ) -> SkillRunResult:
         state = StateObject()
@@ -137,7 +140,7 @@ class SkillExecutor:
             skill_run_id = await self._run_repository.start_run(
                 skill_id=skill.id, skill_version_id=version.id,
                 inputs=inputs, user_id=user_id,
-                task_id=None, automation_run_id=None,
+                task_id=task_id, automation_run_id=automation_run_id,
             )
 
         step_results: list[StepResultRecord] = []
@@ -424,6 +427,10 @@ class SkillExecutor:
     async def _finish_run_if_repo(
         self, skill_run_id: str | None, result: SkillRunResult,
     ) -> None:
+        # Wave 2 F-2: expose the persisted skill_run.id back on the result so
+        # callers (e.g. AutomationDispatcher) can populate automation_run.skill_run_id.
+        if skill_run_id is not None:
+            result.run_id = skill_run_id
         if skill_run_id is None or self._run_repository is None:
             return
         try:

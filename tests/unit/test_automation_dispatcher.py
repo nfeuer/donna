@@ -173,6 +173,7 @@ async def test_skill_path_is_used_when_skill_is_trusted(db):
         status="succeeded", final_output={"price_usd": 42},
         invocation_ids=["inv-skill"],
         total_cost_usd=0.0,
+        run_id=None,
     ))
     dispatcher, repo, *_ = _make_dispatcher(
         db, skill_executor_factory=lambda: executor,
