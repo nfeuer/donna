@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["intent_kind", "skill_candidate", "skill_candidate_reasoning"],
+  "properties": {
+    "intent_kind": {"enum": ["task", "automation", "question", "chat"]},
+    "trigger_type": {"enum": ["on_schedule", "on_manual", "on_message", null]},
+    "extracted_inputs": {"type": "object"},
+    "schedule": {"type": ["object", "null"]},
+    "deadline": {"type": ["string", "null"], "format": "date-time"},
+    "alert_conditions": {"type": ["object", "null"]},
+    "polling_interval_suggestion": {"type": ["string", "null"]},
+    "skill_candidate": {"type": "boolean"},
+    "skill_candidate_reasoning": {"type": "string"},
+    "clarifying_question": {"type": ["string", "null"]}
+  }
+}

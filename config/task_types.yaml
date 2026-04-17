@@ -143,6 +143,13 @@ task_types:
     output_schema: schemas/skill_evolution_output.json
     tools: []
 
+  claude_novelty:
+    description: "Claude judges no-capability-match messages and emits execution-ready intent + skill reuse verdict"
+    model: reasoner
+    prompt_template: prompts/claude_novelty.md
+    output_schema: schemas/claude_novelty.json
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions
