@@ -318,28 +318,33 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
 
     skill_config = load_skill_system_config(config_dir)
 
+    # Pre-define for automation subsystem regardless of skill-system state.
+    # The automation dispatcher tolerates a None budget_guard (see
+    # AutomationDispatcher._run_one which guards `if self._budget_guard is not None`).
+    skill_router = ModelRouter(models_config, task_types_config, project_root)
+    skill_budget_guard: BudgetGuard | None = None
+
+    async def _skill_system_notifier(message: str) -> None:
+        if notification_service is None:
+            log.info(
+                "skill_system_notification_no_service",
+                message=message,
+            )
+            return
+        from donna.notifications.service import (
+            CHANNEL_TASKS,
+            NOTIF_AUTOMATION_FAILURE,
+        )
+
+        await notification_service.dispatch(
+            notification_type=NOTIF_AUTOMATION_FAILURE,
+            content=message,
+            channel=CHANNEL_TASKS,
+            priority=4,
+        )
+
     if skill_config.enabled:
-        skill_router = ModelRouter(models_config, task_types_config, project_root)
         cost_tracker = CostTracker(db.connection)
-
-        async def _skill_system_notifier(message: str) -> None:
-            if notification_service is None:
-                log.info(
-                    "skill_system_notification_no_service",
-                    message=message,
-                )
-                return
-            from donna.notifications.service import (
-                CHANNEL_TASKS,
-                NOTIF_AUTOMATION_FAILURE,
-            )
-
-            await notification_service.dispatch(
-                notification_type=NOTIF_AUTOMATION_FAILURE,
-                content=message,
-                channel=CHANNEL_TASKS,
-                priority=4,
-            )
 
         skill_budget_guard = BudgetGuard(
             tracker=cost_tracker,
@@ -388,41 +393,41 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
                 "skill_system_started",
                 nightly_run_hour_utc=skill_config.nightly_run_hour_utc,
             )
-
-            # --- Automation subsystem wiring (moved from API; Wave 1 F-6 Step 6c) ---
-            try:
-                from donna.automations.alert import AlertEvaluator
-                from donna.automations.cron import CronScheduleCalculator
-                from donna.automations.dispatcher import AutomationDispatcher
-                from donna.automations.repository import AutomationRepository
-                from donna.automations.scheduler import AutomationScheduler
-
-                automation_repo = AutomationRepository(db.connection)
-                automation_dispatcher = AutomationDispatcher(
-                    connection=db.connection,
-                    repository=automation_repo,
-                    model_router=skill_router,
-                    skill_executor_factory=lambda: None,  # OOS-W1-2
-                    budget_guard=skill_budget_guard,
-                    alert_evaluator=AlertEvaluator(),
-                    cron=CronScheduleCalculator(),
-                    notifier=notification_service,
-                    config=skill_config,
-                )
-                automation_scheduler = AutomationScheduler(
-                    repository=automation_repo,
-                    dispatcher=automation_dispatcher,
-                    poll_interval_seconds=skill_config.automation_poll_interval_seconds,
-                )
-                tasks.append(asyncio.create_task(automation_scheduler.run_forever()))
-                log.info(
-                    "automation_scheduler_started",
-                    poll_interval_seconds=skill_config.automation_poll_interval_seconds,
-                )
-            except Exception:
-                log.exception("automation_scheduler_wiring_failed")
     else:
         log.info("skill_system_disabled_in_config")
+
+    # --- Automation subsystem wiring (F-W1-H: independent of skill_config.enabled) ---
+    try:
+        from donna.automations.alert import AlertEvaluator
+        from donna.automations.cron import CronScheduleCalculator
+        from donna.automations.dispatcher import AutomationDispatcher
+        from donna.automations.repository import AutomationRepository
+        from donna.automations.scheduler import AutomationScheduler
+
+        automation_repo = AutomationRepository(db.connection)
+        automation_dispatcher = AutomationDispatcher(
+            connection=db.connection,
+            repository=automation_repo,
+            model_router=skill_router,
+            skill_executor_factory=lambda: None,  # OOS-W1-2
+            budget_guard=skill_budget_guard,
+            alert_evaluator=AlertEvaluator(),
+            cron=CronScheduleCalculator(),
+            notifier=notification_service,
+            config=skill_config,
+        )
+        automation_scheduler = AutomationScheduler(
+            repository=automation_repo,
+            dispatcher=automation_dispatcher,
+            poll_interval_seconds=skill_config.automation_poll_interval_seconds,
+        )
+        tasks.append(asyncio.create_task(automation_scheduler.run_forever()))
+        log.info(
+            "automation_scheduler_started",
+            poll_interval_seconds=skill_config.automation_poll_interval_seconds,
+        )
+    except Exception:
+        log.exception("automation_scheduler_wiring_failed")
 
     try:
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
