@@ -91,13 +91,15 @@ class SkillExecutor:
         tool_registry: ToolRegistry | None = None,
         triage: TriageAgent | None = None,
         run_repository: Any | None = None,
+        run_sink: Any | None = None,
         shadow_sampler: "ShadowSampler | None" = None,
     ) -> None:
         self._router = model_router
         self._tool_registry = tool_registry or ToolRegistry()
         self._tool_dispatcher = ToolDispatcher(self._tool_registry)
         self._triage = triage
-        self._run_repository = run_repository  # used in Task 10
+        # run_sink overrides run_repository when both are provided.
+        self._run_repository = run_sink if run_sink is not None else run_repository
         self._shadow_sampler = shadow_sampler
         self._jinja = jinja2.Environment(
             autoescape=False,
@@ -110,6 +112,7 @@ class SkillExecutor:
         version: SkillVersionRow,
         inputs: dict,
         user_id: str,
+        **_ignored_kwargs: Any,
     ) -> SkillRunResult:
         state = StateObject()
         start = time.monotonic()

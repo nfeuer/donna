@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import aiosqlite
 import pytest
@@ -72,10 +72,9 @@ async def db(tmp_path: Path):
     await conn.close()
 
 
-def _make_request(conn, dispatcher=None):
+def _make_request(conn):
     request = MagicMock()
     request.app.state.db.connection = conn
-    request.app.state.automation_dispatcher = dispatcher
     # No cron_calculator on state → routes fall back to CronScheduleCalculator()
     del request.app.state.cron_calculator
     return request
@@ -323,37 +322,43 @@ async def test_delete_soft_deletes(db):
 
 
 # ===========================================================================
-# 13. POST /automations/{id}/run-now — dispatches immediately
+# 13. POST /automations/{id}/run-now — sets next_run_at (F-6 Task 16)
 # ===========================================================================
 
-async def test_post_run_now_dispatches_immediately(db):
+async def test_post_run_now_sets_next_run_at(db):
+    """The endpoint updates next_run_at to now and returns 202 body."""
     auto_id = await _seed_automation(db)
+    request = _make_request(db)
 
-    # Build a fake DispatchReport-shaped object
-    fake_report = MagicMock()
-    fake_report.automation_id = auto_id
-    fake_report.run_id = "run-xyz"
-    fake_report.outcome = "succeeded"
-    fake_report.alert_sent = False
-    fake_report.error = None
-
-    dispatcher = AsyncMock()
-    dispatcher.dispatch = AsyncMock(return_value=fake_report)
-
-    request = _make_request(db, dispatcher=dispatcher)
     response = await run_now(automation_id=auto_id, request=request)
 
-    dispatcher.dispatch.assert_called_once()
-    assert response["outcome"] == "succeeded"
-    assert response["run_id"] == "run-xyz"
+    assert response["status"] == "scheduled"
+    assert "next_run_at" in response
+    assert response["next_run_at"] is not None
+
+    # Verify the row was persisted with an updated next_run_at.
+    repo = AutomationRepository(db)
+    row = await repo.get(auto_id)
+    assert row is not None
+    assert row.next_run_at is not None
+    # next_run_at in the response should match what the DB stored.
+    assert row.next_run_at.isoformat() == response["next_run_at"]
 
 
-async def test_post_run_now_503_when_no_dispatcher(db):
-    auto_id = await _seed_automation(db)
-    request = _make_request(db, dispatcher=None)
+async def test_post_run_now_404_when_automation_missing(db):
+    request = _make_request(db)
+    with pytest.raises(HTTPException) as exc_info:
+        await run_now(automation_id="does-not-exist", request=request)
+    assert exc_info.value.status_code == 404
+
+
+async def test_post_run_now_404_when_automation_paused(db):
+    """Paused automations are not eligible for immediate run."""
+    auto_id = await _seed_automation(db, status="paused")
+    request = _make_request(db)
     with pytest.raises(HTTPException) as exc_info:
         await run_now(automation_id=auto_id, request=request)
-    assert exc_info.value.status_code == 503
+    assert exc_info.value.status_code == 404
 
 
 # ===========================================================================

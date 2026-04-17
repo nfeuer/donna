@@ -21,9 +21,9 @@ import discord
 import structlog
 
 from donna.config import CalendarConfig
+from donna.notifications.bot_protocol import BotProtocol
 
 if TYPE_CHECKING:
-    from donna.integrations.discord_bot import DonnaBot
     from donna.integrations.gmail import GmailClient
     from donna.integrations.twilio_sms import TwilioSMS
 
@@ -53,11 +53,11 @@ class NotificationService:
 
     def __init__(
         self,
-        bot: DonnaBot,
+        bot: BotProtocol,
         calendar_config: CalendarConfig,
         user_id: str,
-        sms: TwilioSMS | None = None,
-        gmail: GmailClient | None = None,
+        sms: "TwilioSMS | None" = None,
+        gmail: "GmailClient | None" = None,
     ) -> None:
         self._bot = bot
         self._tw = calendar_config.time_windows

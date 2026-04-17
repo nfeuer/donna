@@ -112,9 +112,20 @@ async def transition_skill_state(
 ) -> dict:
     """User-initiated state transition via SkillLifecycleManager."""
     conn = request.app.state.db.connection
+
+    # Post Task 14: skill-system background components live in the orchestrator
+    # process. SkillLifecycleManager is cheap (just `conn + config`), so build
+    # one per request. Tests may still inject their own on app.state.
     lifecycle = getattr(request.app.state, "skill_lifecycle_manager", None)
     if lifecycle is None:
-        raise HTTPException(status_code=503, detail="lifecycle manager not configured")
+        from donna.skills.lifecycle import SkillLifecycleManager
+
+        skill_config = getattr(request.app.state, "skill_system_config", None)
+        if skill_config is None:
+            raise HTTPException(
+                status_code=503, detail="skill_system_config not loaded"
+            )
+        lifecycle = SkillLifecycleManager(conn, skill_config)
 
     from donna.skills.lifecycle import (
         HumanGateRequiredError,

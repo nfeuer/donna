@@ -299,27 +299,34 @@ async def delete_automation(automation_id: str, request: Request) -> dict[str, A
     return {"id": automation_id, "status": "deleted"}
 
 
-@router.post("/automations/{automation_id}/run-now")
+@router.post("/automations/{automation_id}/run-now", status_code=202)
 async def run_now(automation_id: str, request: Request) -> dict[str, Any]:
+    """Schedule the automation to run immediately.
+
+    The API process no longer owns an :class:`AutomationDispatcher` (moved to
+    the orchestrator in F-6 Task 15). This endpoint therefore performs a pure
+    DB update: it sets ``automation.next_run_at = now()`` so the
+    orchestrator-side :class:`AutomationScheduler` picks the row up on its
+    next poll tick (~15 s by default). Returns ``202 Accepted`` — it does not
+    wait for the run to complete.
+
+    Returns ``404`` if the automation does not exist or is not ``active``
+    (paused/deleted rows are not eligible for immediate run).
+    """
     conn = request.app.state.db.connection
-    repo = AutomationRepository(conn)
-
-    row = await repo.get(automation_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"Automation '{automation_id}' not found")
-
-    dispatcher = getattr(request.app.state, "automation_dispatcher", None)
-    if dispatcher is None:
-        raise HTTPException(status_code=503, detail="automation_dispatcher not configured")
-
-    report = await dispatcher.dispatch(row)
-    return {
-        "automation_id": report.automation_id,
-        "run_id": report.run_id,
-        "outcome": report.outcome,
-        "alert_sent": report.alert_sent,
-        "error": report.error,
-    }
+    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    cursor = await conn.execute(
+        "UPDATE automation SET next_run_at = ?, updated_at = ? "
+        "WHERE id = ? AND status = 'active'",
+        (now_iso, now_iso, automation_id),
+    )
+    if cursor.rowcount == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="automation not found or not active",
+        )
+    await conn.commit()
+    return {"status": "scheduled", "next_run_at": now_iso}
 
 
 @router.get("/automations/{automation_id}/runs")

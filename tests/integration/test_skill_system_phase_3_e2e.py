@@ -105,6 +105,13 @@ _PHASE3_SCHEMA = """
         is_shadow INTEGER DEFAULT 0, eval_session_id TEXT,
         spot_check_queued INTEGER DEFAULT 0, user_id TEXT NOT NULL
     );
+    CREATE TABLE skill_fixture (
+        id TEXT PRIMARY KEY, skill_id TEXT NOT NULL,
+        case_name TEXT NOT NULL, input TEXT NOT NULL,
+        expected_output_shape TEXT, source TEXT NOT NULL,
+        captured_run_id TEXT, created_at TEXT NOT NULL,
+        tool_mocks TEXT
+    );
 """
 
 
@@ -382,7 +389,7 @@ async def test_h3_2_budget_exhausted_stops_early(phase3_db):
         candidate_repo=candidate_repo,
         lifecycle_manager=lifecycle,
         config=config,
-        executor_factory=None,
+        executor_factory=lambda: MagicMock(),
         estimated_draft_cost_usd=5.0,
     )
 

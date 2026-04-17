@@ -152,10 +152,15 @@ async def test_post_state_transition_happy_path(db_with_skill):
     lifecycle.transition.assert_called_once()
 
 
-async def test_post_state_transition_503_when_no_lifecycle(db_with_skill):
+async def test_post_state_transition_503_when_no_config(db_with_skill):
+    """Post Task 14: if lifecycle isn't pre-wired the route constructs one on
+    demand from ``app.state.skill_system_config``. Only when BOTH are missing
+    does the route return 503."""
     from donna.api.routes.skills import TransitionRequest, transition_skill_state
 
     request = _make_request(db_with_skill, lifecycle=None)
+    # Explicitly clear the auto-constructed MagicMock attribute.
+    request.app.state.skill_system_config = None
     body = TransitionRequest(to_state="shadow_primary", reason="gate_passed")
 
     with pytest.raises(HTTPException) as excinfo:

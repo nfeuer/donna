@@ -19,12 +19,10 @@ Validation strategy
 -------------------
 
 ``validate_against_fixtures`` needs a live ``SkillExecutor`` to run each
-fixture end-to-end. The drafter accepts an ``executor_factory`` callable —
-when ``None`` (the default for early Phase 3), validation is *deferred*:
-the drafter logs a warning and treats the draft as passing with
-``pass_rate=1.0``. Callers wiring up the nightly cron should inject a
-real executor factory as soon as the sandbox harness can run generated
-YAML safely.
+fixture end-to-end. The drafter requires an ``executor_factory`` callable
+returning a real executor (``ValidationExecutor`` in production). Wave 1
+removed the deferred / vacuous-pass path — every draft runs fixture
+validation through the sandbox.
 """
 
 from __future__ import annotations
@@ -87,7 +85,7 @@ class AutoDrafter:
         candidate_repo: SkillCandidateRepository,
         lifecycle_manager: SkillLifecycleManager,
         config: Any,
-        executor_factory: ExecutorFactory | None = None,
+        executor_factory: ExecutorFactory,
         estimated_draft_cost_usd: float = 0.50,
     ) -> None:
         self._conn = connection
@@ -262,6 +260,12 @@ class AutoDrafter:
             notes=f"auto-drafted from candidate {candidate.id}",
         )
 
+        # Persist the generated fixtures (with tool_mocks) so validation
+        # and later evolution gates can replay them. See Wave 1 §5.1.
+        await self._persist_generated_fixtures(
+            skill_id=skill_id, fixtures_data=fixtures_data
+        )
+
         await self._repo.mark_drafted(candidate.id)
 
         logger.info(
@@ -353,14 +357,27 @@ class AutoDrafter:
             "1. A skill YAML backbone with 1-3 `llm` steps.\n"
             "2. Per-step prompts (markdown) keyed by step name.\n"
             "3. Per-step output schemas (JSON Schema) keyed by step name.\n"
-            "4. 3-5 fixture test cases with `input` and `expected_output_shape`.\n\n"
+            "4. 3-5 fixture test cases. Each fixture must include:\n"
+            "   - \"case_name\": short identifier (snake_case).\n"
+            "   - \"input\": an object matching the capability's input schema.\n"
+            "   - \"expected_output_shape\": a STRUCTURAL JSON Schema for the\n"
+            "     final output — field names, types, required fields, and\n"
+            "     nesting only; do NOT pin values except for closed enums\n"
+            "     (e.g., {\"status\": {\"enum\": [\"in_stock\", \"sold_out\"]}}).\n"
+            "   - \"tool_mocks\": a JSON object mapping tool-invocation\n"
+            "     fingerprints to result blobs. Fingerprint format is\n"
+            "     \"<tool_name>:<canonical-sorted-JSON>\". For tools with\n"
+            "     specific rules (web_fetch keys only on {\"url\": ...};\n"
+            "     gmail_read keys only on {\"message_id\": ...}), compose the\n"
+            "     fingerprint from those args only. Fixtures for pure-LLM\n"
+            "     skills (no tool steps) may set tool_mocks to {}.\n\n"
             "Your response MUST be strict JSON matching this shape:\n"
             "{\n"
             '  "skill_yaml": "<YAML string>",\n'
             '  "step_prompts": {"<step_name>": "<prompt markdown>"},\n'
             '  "output_schemas": {"<step_name>": {<JSON schema>}},\n'
             '  "fixtures": [{"case_name": "...", "input": {...}, '
-            '"expected_output_shape": {...}}]\n'
+            '"expected_output_shape": {...}, "tool_mocks": {...}}]\n'
             "}\n"
         )
 
@@ -402,24 +419,15 @@ class AutoDrafter:
     ) -> float:
         """Run generated fixtures through a sandbox executor.
 
-        When no ``executor_factory`` is configured, validation is deferred
-        and we return ``1.0`` so the draft path can still produce a skill
-        for manual review. The caller must log that the sandbox gate was
-        skipped.
+        The ``executor_factory`` is required (Wave 1 F-5); validation always
+        runs against a real ``ValidationExecutor``.
         """
-        if self._executor_factory is None:
-            logger.warning(
-                "skill_auto_draft_validation_deferred",
-                capability_name=capability_name,
-                reason="no executor_factory configured",
-            )
-            return 1.0
-
         fixtures = [
             Fixture(
                 case_name=str(item.get("case_name", f"case_{i}")),
                 input=dict(item.get("input", {})),
                 expected_output_shape=item.get("expected_output_shape"),
+                tool_mocks=item.get("tool_mocks"),
             )
             for i, item in enumerate(fixtures_data)
             if isinstance(item, dict)
@@ -518,3 +526,66 @@ class AutoDrafter:
         )
         await self._conn.commit()
         return skill_id
+
+    async def _persist_generated_fixtures(
+        self,
+        *,
+        skill_id: str,
+        fixtures_data: list,
+    ) -> None:
+        """Write each Claude-generated fixture row to ``skill_fixture``.
+
+        ``tool_mocks`` is threaded through per fixture item. Fixtures that
+        omit the key (pure-LLM skills) store NULL. See Wave 1 spec §5.1.
+        """
+        for i, item in enumerate(fixtures_data):
+            if not isinstance(item, dict):
+                continue
+            await _persist_fixture(
+                conn=self._conn,
+                skill_id=skill_id,
+                case_name=str(item.get("case_name", f"case_{i}")),
+                input_=dict(item.get("input", {})),
+                expected_output_shape=item.get("expected_output_shape"),
+                tool_mocks=item.get("tool_mocks"),
+                source="claude_generated",
+            )
+        await self._conn.commit()
+
+
+async def _persist_fixture(
+    *,
+    conn: aiosqlite.Connection,
+    skill_id: str,
+    case_name: str,
+    input_: dict,
+    expected_output_shape: dict | None,
+    tool_mocks: dict | None,
+    source: str,
+    captured_run_id: str | None = None,
+) -> str:
+    """Insert a ``skill_fixture`` row; return the new id.
+
+    ``tool_mocks`` is a fingerprint-keyed dict of mocked tool results,
+    JSON-serialized. See
+    docs/superpowers/specs/2026-04-16-skill-system-wave-1-production-enablement-design.md §5.1.
+    """
+    fixture_id = str(uuid6.uuid7())
+    await conn.execute(
+        "INSERT INTO skill_fixture "
+        "(id, skill_id, case_name, input, expected_output_shape, "
+        " source, captured_run_id, created_at, tool_mocks) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            fixture_id,
+            skill_id,
+            case_name,
+            json.dumps(input_),
+            json.dumps(expected_output_shape) if expected_output_shape else None,
+            source,
+            captured_run_id,
+            datetime.now(tz=timezone.utc).isoformat(),
+            json.dumps(tool_mocks) if tool_mocks else None,
+        ),
+    )
+    return fixture_id
