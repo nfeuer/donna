@@ -16,7 +16,7 @@
   },
   "tool_mocks": {
     "web_fetch:{\"url\":\"https://example-shop.com/hoodie-red\"}": {
-      "status": 200,
+      "status_code": 200,
       "body": "<html><body><h1>Red Hoodie</h1><span class='price'>$65.00</span><div class='stock'>Sold out</div></body></html>",
       "headers": {}
     }

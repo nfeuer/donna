@@ -1,8 +1,10 @@
 You are extracting product information from the HTML of a product page.
 
-Inputs you can use:
-- state.fetch_page.body: the HTML of the page
-- state.fetch_page.status: HTTP status code
+Inputs you can use (keys on the `state` object below):
+- state.fetch_page.page.body: the HTML of the page
+- state.fetch_page.page.status_code: HTTP status code (200, 404, etc.)
+- state.fetch_page.page.headers: response headers
+- state.fetch_page.page.truncated: true if body was truncated to fit context
 
 Return a JSON object matching this schema:
 - price_usd: number — normalized to USD. If the page shows a non-USD price,

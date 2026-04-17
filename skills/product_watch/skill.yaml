@@ -12,6 +12,7 @@ inputs:
 steps:
   - name: fetch_page
     kind: tool
+    tools: [web_fetch]
     tool_invocations:
       - tool: web_fetch
         args:
@@ -20,7 +21,6 @@ steps:
         retry:
           max_attempts: 2
           backoff_s: [2, 5]
-        on_failure: fail_step
         store_as: page
 
   - name: extract_product_info

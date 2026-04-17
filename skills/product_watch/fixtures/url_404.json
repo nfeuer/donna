@@ -14,7 +14,7 @@
   },
   "tool_mocks": {
     "web_fetch:{\"url\":\"https://example-shop.com/deleted-product\"}": {
-      "status": 404,
+      "status_code": 404,
       "body": "<html><body>Not found</body></html>",
       "headers": {}
     }

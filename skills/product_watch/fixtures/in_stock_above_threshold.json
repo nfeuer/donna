@@ -17,7 +17,7 @@
   },
   "tool_mocks": {
     "web_fetch:{\"url\":\"https://example-shop.com/coat-grey\"}": {
-      "status": 200,
+      "status_code": 200,
       "body": "<html><body><h1>Grey Coat</h1><span class='price'>$189.00</span><div class='sizes'>S, M, L</div><div class='stock'>In stock</div></body></html>",
       "headers": {}
     }
