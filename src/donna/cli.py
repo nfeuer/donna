@@ -324,6 +324,18 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     skill_router = ModelRouter(models_config, task_types_config, project_root)
     skill_budget_guard: BudgetGuard | None = None
 
+    # Wave 2 Task 16: register default tools (web_fetch, etc.) on the module-level
+    # registry so SkillExecutor instances without an explicit registry can dispatch.
+    # Must happen before assemble_skill_system, because the bundle will construct
+    # SkillExecutor instances that look up the default registry.
+    from donna.skills import tools as _skill_tools_module
+
+    _skill_tools_module.register_default_tools(_skill_tools_module.DEFAULT_TOOL_REGISTRY)
+    log.info(
+        "default_tools_registered",
+        tools=_skill_tools_module.DEFAULT_TOOL_REGISTRY.list_tool_names(),
+    )
+
     async def _skill_system_notifier(message: str) -> None:
         if notification_service is None:
             log.info(
@@ -344,6 +356,21 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         )
 
     if skill_config.enabled:
+        # Wave 2 Task 16: sync capability rows from config/capabilities.yaml on
+        # every startup. Redundant for rows already seeded by Alembic, but
+        # lets Nick add capabilities via YAML edit + restart without a new
+        # migration. Idempotent (UPSERT).
+        from donna.skills.seed_capabilities import SeedCapabilityLoader
+
+        cap_yaml = config_dir / "capabilities.yaml"
+        if cap_yaml.exists():
+            try:
+                loader = SeedCapabilityLoader(connection=db.connection)
+                count = await loader.load_and_upsert(cap_yaml)
+                log.info("capabilities_loader_ran", upserted=count)
+            except Exception:
+                log.exception("capabilities_loader_failed")
+
         cost_tracker = CostTracker(db.connection)
 
         skill_budget_guard = BudgetGuard(

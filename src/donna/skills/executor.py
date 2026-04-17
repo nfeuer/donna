@@ -98,7 +98,14 @@ class SkillExecutor:
         task_type_prefix: str | None = None,     # Wave 2: override "skill_step" default
     ) -> None:
         self._router = model_router
-        self._tool_registry = tool_registry or ToolRegistry()
+        if tool_registry is not None:
+            self._tool_registry = tool_registry
+        else:
+            # Wave 2: fall through to the module-level default registry that
+            # the orchestrator populates at startup via register_default_tools.
+            # Tests that pass an explicit registry keep their own isolation.
+            from donna.skills.tools import DEFAULT_TOOL_REGISTRY
+            self._tool_registry = DEFAULT_TOOL_REGISTRY
         self._tool_dispatcher = ToolDispatcher(self._tool_registry)
         self._triage = triage
         # run_sink overrides run_repository when both are provided.
