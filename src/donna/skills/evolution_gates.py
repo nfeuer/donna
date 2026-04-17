@@ -21,6 +21,7 @@ import structlog
 import yaml
 
 from donna.config import SkillSystemConfig
+from donna.skills.mock_synthesis import cache_to_mocks
 from donna.skills.models import SkillRow, SkillVersionRow
 
 logger = structlog.get_logger()
@@ -134,13 +135,15 @@ class EvolutionGates:
         version = _synthetic_version(skill_id, new_version)
 
         for run_id in targeted_case_ids:
-            inputs = await self._load_inputs_for_run(run_id)
-            if inputs is None:
+            loaded = await self._load_inputs_and_mocks_for_run(run_id)
+            if loaded is None:
                 continue
+            inputs, tool_mocks = loaded
             try:
                 result = await self._executor.execute(
                     skill=skill, version=version,
                     inputs=inputs, user_id="evolution_harness",
+                    tool_mocks=tool_mocks,
                 )
                 if result.status == "succeeded":
                     pass_count += 1
@@ -163,7 +166,7 @@ class EvolutionGates:
         skill_id: str,
     ) -> GateResult:
         cursor = await self._conn.execute(
-            "SELECT id, input FROM skill_fixture WHERE skill_id = ?",
+            "SELECT id, input, tool_mocks FROM skill_fixture WHERE skill_id = ?",
             (skill_id,),
         )
         rows = await cursor.fetchall()
@@ -179,18 +182,22 @@ class EvolutionGates:
         version = _synthetic_version(skill_id, new_version)
 
         for row in rows:
+            fixture_id = row[0]
             fixture_input = json.loads(row[1]) if row[1] else {}
+            mocks_json = row[2]
+            tool_mocks = json.loads(mocks_json) if mocks_json else None
             try:
                 result = await self._executor.execute(
                     skill=skill, version=version,
                     inputs=fixture_input, user_id="evolution_harness",
+                    tool_mocks=tool_mocks,
                 )
                 if result.status == "succeeded":
                     pass_count += 1
             except Exception:
                 logger.warning(
                     "evolution_fixture_raised",
-                    skill_id=skill_id, fixture_id=row[0],
+                    skill_id=skill_id, fixture_id=fixture_id,
                 )
 
         rate = pass_count / len(rows)
@@ -210,7 +217,7 @@ class EvolutionGates:
             - timedelta(days=self._config.evolution_recent_success_window_days)
         ).isoformat()
         cursor = await self._conn.execute(
-            "SELECT id, state_object FROM skill_run "
+            "SELECT id, state_object, tool_result_cache FROM skill_run "
             "WHERE skill_id = ? AND status = 'succeeded' "
             "AND started_at >= ? "
             "ORDER BY started_at DESC LIMIT ?",
@@ -227,19 +234,31 @@ class EvolutionGates:
         skill = _synthetic_skill(skill_id, new_version)
         version = _synthetic_version(skill_id, new_version)
         for row in rows:
+            run_id = row[0]
             state = json.loads(row[1]) if row[1] else {}
             inputs = state.get("inputs", {}) if isinstance(state, dict) else {}
+            cache_json = row[2]
+            cache = json.loads(cache_json) if cache_json else {}
+            try:
+                tool_mocks = cache_to_mocks(cache) if cache else {}
+            except Exception as exc:
+                logger.warning(
+                    "evolution_gate_mock_synthesis_failed",
+                    skill_id=skill_id, run_id=run_id, error=str(exc),
+                )
+                tool_mocks = {}
             try:
                 result = await self._executor.execute(
                     skill=skill, version=version,
                     inputs=inputs, user_id="evolution_harness",
+                    tool_mocks=tool_mocks,
                 )
                 if result.status == "succeeded":
                     pass_count += 1
             except Exception:
                 logger.warning(
                     "evolution_recent_success_raised",
-                    skill_id=skill_id, run_id=row[0],
+                    skill_id=skill_id, run_id=run_id,
                 )
 
         rate = pass_count / len(rows)
@@ -249,16 +268,29 @@ class EvolutionGates:
             details={"pass_rate": rate, "total": len(rows), "passed": pass_count},
         )
 
-    async def _load_inputs_for_run(self, run_id: str) -> dict | None:
+    async def _load_inputs_and_mocks_for_run(
+        self, run_id: str,
+    ) -> tuple[dict, dict] | None:
         cursor = await self._conn.execute(
-            "SELECT state_object FROM skill_run WHERE id = ?",
+            "SELECT state_object, tool_result_cache FROM skill_run WHERE id = ?",
             (run_id,),
         )
         row = await cursor.fetchone()
         if row is None:
             return None
         state = json.loads(row[0]) if row[0] else {}
-        return state.get("inputs", {}) if isinstance(state, dict) else {}
+        inputs = state.get("inputs", {}) if isinstance(state, dict) else {}
+        cache_json = row[1]
+        cache = json.loads(cache_json) if cache_json else {}
+        try:
+            tool_mocks = cache_to_mocks(cache) if cache else {}
+        except Exception as exc:
+            logger.warning(
+                "evolution_gate_mock_synthesis_failed",
+                run_id=run_id, error=str(exc),
+            )
+            tool_mocks = {}
+        return inputs, tool_mocks
 
 
 def _synthetic_skill(skill_id: str, new_version: dict) -> SkillRow:
