@@ -1,0 +1,40 @@
+capability_name: fetch_and_summarize
+version: 1
+description: |
+  Fetch a URL and return a short summary of its content.
+  Demonstrates the multi-step Phase 2 executor with an LLM planning
+  step, a tool-only fetch step, and an LLM summarization step.
+
+inputs:
+  schema:
+    type: object
+    properties:
+      url:
+        type: string
+    required: [url]
+
+steps:
+  - name: plan
+    kind: llm
+    prompt: steps/plan.md
+    output_schema: schemas/plan_v1.json
+
+  - name: fetch
+    kind: tool
+    tools: [web_fetch]
+    tool_invocations:
+      - tool: web_fetch
+        args:
+          url: "{{ inputs.url }}"
+          timeout_s: 10
+        retry:
+          max_attempts: 2
+          backoff_s: [1, 3]
+        store_as: page
+
+  - name: summarize
+    kind: llm
+    prompt: steps/summarize.md
+    output_schema: schemas/summarize_v1.json
+
+final_output: "{{ state.summarize }}"

@@ -10,9 +10,11 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import Query, Request
 
-router = APIRouter()
+from donna.api.auth import admin_router
+
+router = admin_router()
 
 
 def _invocation_dict(row: tuple, columns: list[str]) -> dict[str, Any]:

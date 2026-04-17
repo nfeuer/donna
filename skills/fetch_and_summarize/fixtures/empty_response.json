@@ -1,0 +1,10 @@
+{
+  "input": {"url": "https://example.com/empty"},
+  "expected_output_shape": {
+    "type": "object",
+    "properties": {
+      "summary": {"type": "string"}
+    },
+    "required": ["summary"]
+  }
+}

@@ -411,3 +411,65 @@ def load_discord_config(config_dir: Path) -> DiscordConfig:
     """Load Discord integration configuration."""
     data = load_yaml(config_dir / "discord.yaml")
     return DiscordConfig(**data.get("discord", {}))
+
+
+# === Skill System Config ===
+
+
+class SkillSystemConfig(BaseModel):
+    """Skill system runtime configuration (Phase 1–4)."""
+
+    # Phase 1
+    enabled: bool = False
+    match_confidence_high: float = 0.75
+    match_confidence_medium: float = 0.40
+    similarity_audit_threshold: float = 0.80
+    seed_skills_initial_state: str = "sandbox"
+
+    # Phase 3 additions
+    shadow_sample_rate_trusted: float = 0.05
+    sandbox_promotion_min_runs: int = 20
+    sandbox_promotion_validity_rate: float = 0.90
+    shadow_primary_promotion_min_runs: int = 100
+    shadow_primary_promotion_agreement_rate: float = 0.85
+    degradation_rolling_window: int = 30
+    degradation_ci_confidence: float = 0.95
+    auto_draft_daily_cap: int = 50
+    auto_draft_min_expected_savings_usd: float = 5.0
+    auto_draft_fixture_pass_rate: float = 0.80
+    nightly_run_hour_utc: int = 3
+    degradation_agreement_threshold: float = 0.5
+
+    # Phase 4 — evolution loop
+    evolution_min_divergence_cases: int = 15
+    evolution_max_divergence_cases: int = 30
+    evolution_targeted_case_pass_rate: float = 0.80
+    evolution_fixture_regression_pass_rate: float = 0.95
+    evolution_recent_success_count: int = 20
+    evolution_recent_success_window_days: int = 30
+    evolution_max_consecutive_failures: int = 2
+    evolution_estimated_cost_usd: float = 0.75
+    evolution_daily_cap: int = 10
+
+    # Phase 4 — correction clustering
+    correction_cluster_window_runs: int = 10
+    correction_cluster_threshold: int = 2
+
+    # Phase 5 — automation subsystem
+    automation_poll_interval_seconds: int = 15
+    automation_min_interval_default_seconds: int = 300
+    automation_failure_pause_threshold: int = 5
+    automation_max_cost_per_run_default_usd: float = 2.0
+
+    # Wave 1 — validation executor
+    validation_per_step_timeout_s: int = 60
+    validation_per_run_timeout_s: int = 300
+
+
+def load_skill_system_config(config_dir: Path) -> SkillSystemConfig:
+    """Load skill system configuration, falling back to defaults if missing."""
+    path = config_dir / "skills.yaml"
+    if not path.exists():
+        return SkillSystemConfig()
+    data = load_yaml(path) or {}
+    return SkillSystemConfig(**data)

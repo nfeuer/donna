@@ -77,6 +77,25 @@ routing:
     model: local_parser
   chat_escalation:
     model: parser
+  triage_failure:
+    model: local_parser
+    fallback: parser
+  skill_equivalence_judge:
+    model: reasoner
+  skill_auto_draft:
+    model: reasoner
+  skill_evolution:
+    model: reasoner
+
+  # Wave 2: prefix-routing for dynamic skill + validation task_types.
+  skill_step:
+    model: parser
+    fallback: reasoner
+    confidence_threshold: 0.7
+  skill_validation:
+    model: parser
+    fallback: reasoner
+    confidence_threshold: 0.7
 
 # Cost tracking
 cost:

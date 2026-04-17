@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SkillEquivalenceOutput",
+  "type": "object",
+  "required": ["agreement", "rationale"],
+  "additionalProperties": false,
+  "properties": {
+    "agreement": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "0.0 (disagree) to 1.0 (fully equivalent)"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Short justification of the agreement score"
+    }
+  }
+}

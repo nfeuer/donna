@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import Body, Depends, HTTPException, Request
 
+from donna.api.auth import CurrentUser, user_router
 from donna.chat.types import ChatResponse
 
-router = APIRouter()
+router = user_router()
 
 
 def get_chat_engine(request: Request) -> Any:
@@ -29,24 +30,36 @@ def get_database(request: Request) -> Any:
     return request.app.state.db
 
 
+async def _require_session_owner(db: Any, session_id: str, user_id: str) -> Any:
+    session = await db.get_chat_session(session_id)
+    if session is None or session.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
 @router.post("/sessions/{session_id}/messages")
 async def send_message(
     session_id: str,
+    user_id: CurrentUser,
     body: dict[str, Any] = Body(...),
     engine: Any = Depends(get_chat_engine),
+    db: Any = Depends(get_database),
 ) -> dict[str, Any]:
     """Send a message and receive a response.
 
-    If session_id is "new", creates a new session.
+    If session_id is "new", creates a new session owned by the caller.
     """
     text = body.get("text", "")
     if not text.strip():
         raise HTTPException(status_code=400, detail="text is required")
 
-    user_id = body.get("user_id", "nick")  # TODO: extract from JWT
     channel = body.get("channel", "api")
 
-    sid = session_id if session_id != "new" else None
+    if session_id == "new":
+        sid = None
+    else:
+        await _require_session_owner(db, session_id, user_id)
+        sid = session_id
 
     resp: ChatResponse = await engine.handle_message(
         session_id=sid,
@@ -69,13 +82,11 @@ async def send_message(
 @router.get("/sessions/{session_id}")
 async def get_session(
     session_id: str,
+    user_id: CurrentUser,
     db: Any = Depends(get_database),
 ) -> dict[str, Any]:
     """Get session details and recent messages."""
-    session = await db.get_chat_session(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Session not found")
-
+    session = await _require_session_owner(db, session_id, user_id)
     messages = await db.list_chat_messages(session_id, limit=50)
 
     return {
@@ -107,11 +118,13 @@ async def get_session(
 @router.get("/sessions/{session_id}/messages")
 async def list_messages(
     session_id: str,
+    user_id: CurrentUser,
     limit: int = 50,
     offset: int = 0,
     db: Any = Depends(get_database),
 ) -> dict[str, Any]:
     """List messages in a session with pagination."""
+    await _require_session_owner(db, session_id, user_id)
     messages = await db.list_chat_messages(session_id, limit=limit, offset=offset)
     return {
         "messages": [
@@ -131,13 +144,16 @@ async def list_messages(
 @router.post("/sessions/{session_id}/pin")
 async def pin_session(
     session_id: str,
+    user_id: CurrentUser,
     body: dict[str, Any] = Body(...),
     engine: Any = Depends(get_chat_engine),
+    db: Any = Depends(get_database),
 ) -> dict[str, str]:
     """Pin a session to a task."""
     task_id = body.get("task_id")
     if not task_id:
         raise HTTPException(status_code=400, detail="task_id is required")
+    await _require_session_owner(db, session_id, user_id)
     await engine.pin_session(session_id=session_id, task_id=task_id)
     return {"status": "pinned", "task_id": task_id}
 
@@ -145,9 +161,12 @@ async def pin_session(
 @router.delete("/sessions/{session_id}/pin")
 async def unpin_session(
     session_id: str,
+    user_id: CurrentUser,
     engine: Any = Depends(get_chat_engine),
+    db: Any = Depends(get_database),
 ) -> dict[str, str]:
     """Unpin a session from its task."""
+    await _require_session_owner(db, session_id, user_id)
     await engine.unpin_session(session_id=session_id)
     return {"status": "unpinned"}
 
@@ -155,10 +174,12 @@ async def unpin_session(
 @router.post("/sessions/{session_id}/escalate")
 async def approve_escalation(
     session_id: str,
+    user_id: CurrentUser,
     engine: Any = Depends(get_chat_engine),
+    db: Any = Depends(get_database),
 ) -> dict[str, Any]:
     """Approve a pending Claude escalation."""
-    user_id = "nick"  # TODO: extract from JWT
+    await _require_session_owner(db, session_id, user_id)
     resp: ChatResponse = await engine.handle_escalation(
         session_id=session_id, user_id=user_id
     )
@@ -173,8 +194,11 @@ async def approve_escalation(
 @router.delete("/sessions/{session_id}")
 async def close_session(
     session_id: str,
+    user_id: CurrentUser,
     engine: Any = Depends(get_chat_engine),
+    db: Any = Depends(get_database),
 ) -> dict[str, Any]:
     """Close a session and generate a summary."""
+    await _require_session_owner(db, session_id, user_id)
     summary = await engine.close_session(session_id=session_id)
     return {"status": "closed", "summary": summary}

@@ -1,0 +1,22 @@
+capability_name: dedup_check
+version: 1
+description: |
+  Determine whether two task candidates represent the same work item.
+
+inputs:
+  schema:
+    type: object
+    properties:
+      task_a:
+        type: object
+      task_b:
+        type: object
+    required: [task_a, task_b]
+
+steps:
+  - name: compare
+    kind: llm
+    prompt: steps/compare.md
+    output_schema: schemas/compare_v1.json
+
+final_output: "{{ state.compare }}"

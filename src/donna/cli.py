@@ -16,8 +16,12 @@ import os
 import sys
 
 
-def main() -> None:
-    """Main CLI entry point."""
+def _build_parser() -> argparse.ArgumentParser:
+    """Construct the top-level argparse parser with all subcommands.
+
+    Extracted from main() so unit tests can exercise argument parsing
+    without invoking any dispatch side effects.
+    """
     parser = argparse.ArgumentParser(
         prog="donna",
         description="Donna AI Personal Assistant",
@@ -100,6 +104,40 @@ def main() -> None:
         help="Show what would be configured without writing anything",
     )
 
+    # Wave 1: test-notification subcommand
+    tn_parser = subparsers.add_parser(
+        "test-notification",
+        help="Send a test notification via the live NotificationService",
+    )
+    tn_parser.add_argument("--config-dir", default="config")
+    tn_parser.add_argument(
+        "--type",
+        required=True,
+        help="Notification type (digest, automation_alert, etc.)",
+    )
+    tn_parser.add_argument(
+        "--channel",
+        default="tasks",
+        help="Channel name (tasks, digest, debug)",
+    )
+    tn_parser.add_argument(
+        "--content",
+        required=True,
+        help="Message content",
+    )
+    tn_parser.add_argument(
+        "--priority",
+        type=int,
+        default=3,
+        help="Notification priority (1-5)",
+    )
+
+    return parser
+
+
+def main() -> None:
+    """Main CLI entry point."""
+    parser = _build_parser()
     args = parser.parse_args()
 
     if args.command is None:
@@ -116,6 +154,8 @@ def main() -> None:
         asyncio.run(_backup())
     elif args.command == "setup":
         asyncio.run(_setup(args))
+    elif args.command == "test-notification":
+        asyncio.run(_test_notification(args))
 
 
 async def _run_orchestrator(args: argparse.Namespace) -> None:
@@ -175,6 +215,7 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     guild_id_str = os.environ.get("DISCORD_GUILD_ID")
     user_id = os.environ.get("DONNA_USER_ID", "nick")
 
+    notification_service = None
     if discord_token and tasks_channel_id_str:
         from donna.integrations.discord_bot import DonnaBot
 
@@ -186,6 +227,25 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
             agents_channel_id=int(agents_channel_id_str) if agents_channel_id_str else None,
             guild_id=int(guild_id_str) if guild_id_str else None,
         )
+
+        # Wave 1 (F-6 Step 6a): construct NotificationService with the live bot.
+        # Tasks 14 and 15 will wire this into the skill-system bundle and the
+        # AutomationDispatcher. SMS/Gmail wiring is Wave 2+.
+        from donna.config import load_calendar_config
+        from donna.notifications.service import NotificationService
+
+        try:
+            calendar_config = load_calendar_config(config_dir)
+            notification_service = NotificationService(
+                bot=bot,
+                calendar_config=calendar_config,
+                user_id=user_id,
+                sms=None,
+                gmail=None,
+            )
+            log.info("notification_service_wired")
+        except Exception:
+            log.exception("notification_service_init_failed")
 
         # Load Discord config and register slash commands if enabled.
         try:
@@ -240,6 +300,182 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
             "discord_bot_disabled",
             reason="DISCORD_BOT_TOKEN or DISCORD_TASKS_CHANNEL_ID not set",
         )
+
+    # --- Skill-system wiring (moved from API; Wave 1 F-6 Step 6b / Task 14) ---
+    # The nightly cron + auto-drafter + lifecycle manager run in the
+    # orchestrator, not the API. notification_service may be None if Discord
+    # isn't configured — in that case the alert path logs instead of
+    # dispatching.
+    from donna.config import load_skill_system_config
+    from donna.cost.budget import BudgetGuard
+    from donna.cost.tracker import CostTracker
+    from donna.skills.crons import (
+        AsyncCronScheduler,
+        NightlyDeps,
+        run_nightly_tasks,
+    )
+    from donna.skills.startup_wiring import assemble_skill_system
+
+    skill_config = load_skill_system_config(config_dir)
+
+    # Pre-define for automation subsystem regardless of skill-system state.
+    # The automation dispatcher tolerates a None budget_guard (see
+    # AutomationDispatcher._run_one which guards `if self._budget_guard is not None`).
+    skill_router = ModelRouter(models_config, task_types_config, project_root)
+    skill_budget_guard: BudgetGuard | None = None
+
+    # Wave 2 Task 16: register default tools (web_fetch, etc.) on the module-level
+    # registry so SkillExecutor instances without an explicit registry can dispatch.
+    # Must happen before assemble_skill_system, because the bundle will construct
+    # SkillExecutor instances that look up the default registry.
+    from donna.skills import tools as _skill_tools_module
+
+    _skill_tools_module.register_default_tools(_skill_tools_module.DEFAULT_TOOL_REGISTRY)
+    log.info(
+        "default_tools_registered",
+        tools=_skill_tools_module.DEFAULT_TOOL_REGISTRY.list_tool_names(),
+    )
+
+    async def _skill_system_notifier(message: str) -> None:
+        if notification_service is None:
+            log.info(
+                "skill_system_notification_no_service",
+                message=message,
+            )
+            return
+        from donna.notifications.service import (
+            CHANNEL_TASKS,
+            NOTIF_AUTOMATION_FAILURE,
+        )
+
+        await notification_service.dispatch(
+            notification_type=NOTIF_AUTOMATION_FAILURE,
+            content=message,
+            channel=CHANNEL_TASKS,
+            priority=4,
+        )
+
+    if skill_config.enabled:
+        # Wave 2 Task 16: sync capability rows from config/capabilities.yaml on
+        # every startup. Redundant for rows already seeded by Alembic, but
+        # lets Nick add capabilities via YAML edit + restart without a new
+        # migration. Idempotent (UPSERT).
+        from donna.skills.seed_capabilities import SeedCapabilityLoader
+
+        cap_yaml = config_dir / "capabilities.yaml"
+        if cap_yaml.exists():
+            try:
+                loader = SeedCapabilityLoader(connection=db.connection)
+                count = await loader.load_and_upsert(cap_yaml)
+                log.info("capabilities_loader_ran", upserted=count)
+            except Exception:
+                log.exception("capabilities_loader_failed")
+
+        cost_tracker = CostTracker(db.connection)
+
+        skill_budget_guard = BudgetGuard(
+            tracker=cost_tracker,
+            models_config=models_config,
+            notifier=lambda channel, message: _skill_system_notifier(message),
+        )
+
+        bundle = assemble_skill_system(
+            connection=db.connection,
+            model_router=skill_router,
+            budget_guard=skill_budget_guard,
+            notifier=_skill_system_notifier,
+            config=skill_config,
+            validation_executor_factory=None,  # default real ValidationExecutor
+        )
+
+        if bundle is not None:
+            async def _nightly_job() -> None:
+                deps = NightlyDeps(
+                    detector=bundle.detector,
+                    auto_drafter=bundle.auto_drafter,
+                    degradation=bundle.degradation,
+                    evolution_scheduler=bundle.evolution_scheduler,
+                    correction_cluster=bundle.correction_cluster,
+                    cost_tracker=cost_tracker,
+                    daily_budget_limit_usd=models_config.cost.daily_pause_threshold_usd,
+                    config=skill_config,
+                )
+                report = await run_nightly_tasks(deps)
+                log.info(
+                    "nightly_skill_tasks_done",
+                    new_candidates=len(report.new_candidates),
+                    drafted=len(report.drafted),
+                    evolved=len(report.evolved),
+                    degraded=len(report.degraded),
+                    correction_flagged=len(report.correction_flagged),
+                    errors=len(report.errors),
+                )
+
+            scheduler = AsyncCronScheduler(
+                hour_utc=skill_config.nightly_run_hour_utc,
+                task=_nightly_job,
+            )
+            tasks.append(asyncio.create_task(scheduler.run_forever()))
+            log.info(
+                "skill_system_started",
+                nightly_run_hour_utc=skill_config.nightly_run_hour_utc,
+            )
+
+            # Wave 2 F-W1-D: poll skill_candidate_report.manual_draft_at for
+            # manual draft triggers from the API process.
+            from donna.skills.manual_draft_poller import ManualDraftPoller
+
+            manual_draft_poller = ManualDraftPoller(
+                connection=db.connection,
+                auto_drafter=bundle.auto_drafter,
+                candidate_repo=bundle.candidate_repo,
+            )
+
+            async def _manual_draft_loop() -> None:
+                while True:
+                    try:
+                        await manual_draft_poller.run_once()
+                    except Exception:
+                        log.exception("manual_draft_poller_tick_failed")
+                    await asyncio.sleep(skill_config.automation_poll_interval_seconds)
+
+            tasks.append(asyncio.create_task(_manual_draft_loop()))
+            log.info("manual_draft_poller_started")
+    else:
+        log.info("skill_system_disabled_in_config")
+
+    # --- Automation subsystem wiring (F-W1-H: independent of skill_config.enabled) ---
+    try:
+        from donna.automations.alert import AlertEvaluator
+        from donna.automations.cron import CronScheduleCalculator
+        from donna.automations.dispatcher import AutomationDispatcher
+        from donna.automations.repository import AutomationRepository
+        from donna.automations.scheduler import AutomationScheduler
+
+        automation_repo = AutomationRepository(db.connection)
+        automation_dispatcher = AutomationDispatcher(
+            connection=db.connection,
+            repository=automation_repo,
+            model_router=skill_router,
+            skill_executor_factory=lambda: None,  # OOS-W1-2
+            budget_guard=skill_budget_guard,
+            alert_evaluator=AlertEvaluator(),
+            cron=CronScheduleCalculator(),
+            notifier=notification_service,
+            config=skill_config,
+        )
+        automation_scheduler = AutomationScheduler(
+            repository=automation_repo,
+            dispatcher=automation_dispatcher,
+            poll_interval_seconds=skill_config.automation_poll_interval_seconds,
+        )
+        tasks.append(asyncio.create_task(automation_scheduler.run_forever()))
+        log.info(
+            "automation_scheduler_started",
+            poll_interval_seconds=skill_config.automation_poll_interval_seconds,
+        )
+    except Exception:
+        log.exception("automation_scheduler_wiring_failed")
 
     try:
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -481,6 +717,53 @@ async def _setup(args: argparse.Namespace) -> None:
 
     if not success:
         sys.exit(1)
+
+
+async def _test_notification(args: argparse.Namespace) -> None:
+    """Dev-only: construct bot + NotificationService, dispatch one message, exit."""
+    from pathlib import Path
+
+    from donna.config import load_calendar_config
+    from donna.integrations.discord_bot import DonnaBot
+    from donna.notifications.service import NotificationService
+
+    token = os.environ["DISCORD_BOT_TOKEN"]
+    tasks_channel_id = int(os.environ["DISCORD_TASKS_CHANNEL_ID"])
+    debug_channel_id_env = os.environ.get("DISCORD_DEBUG_CHANNEL_ID")
+    agents_channel_id_env = os.environ.get("DISCORD_AGENTS_CHANNEL_ID")
+    guild_id_env = os.environ.get("DISCORD_GUILD_ID")
+    user_id = os.environ.get("DONNA_USER_ID", "nick")
+    config_dir = Path(args.config_dir)
+
+    bot = DonnaBot(
+        input_parser=None,
+        database=None,
+        tasks_channel_id=tasks_channel_id,
+        debug_channel_id=int(debug_channel_id_env) if debug_channel_id_env else None,
+        agents_channel_id=int(agents_channel_id_env) if agents_channel_id_env else None,
+        guild_id=int(guild_id_env) if guild_id_env else None,
+    )
+    bot_task = asyncio.create_task(bot.start(token))
+    if hasattr(bot, "ready_event"):
+        await bot.ready_event.wait()
+    else:
+        # Fallback: wait up to 30s for discord.py's own wait_until_ready semantics.
+        await asyncio.wait_for(bot.wait_until_ready(), timeout=30)
+
+    notification_service = NotificationService(
+        bot=bot,
+        calendar_config=load_calendar_config(config_dir),
+        user_id=user_id,
+    )
+    sent = await notification_service.dispatch(
+        notification_type=args.type,
+        content=args.content,
+        channel=args.channel,
+        priority=args.priority,
+    )
+    print(f"dispatched={sent}")
+    await bot.close()
+    await bot_task
 
 
 if __name__ == "__main__":

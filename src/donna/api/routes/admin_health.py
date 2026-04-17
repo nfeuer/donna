@@ -15,10 +15,12 @@ from typing import Any
 
 import aiohttp
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import Request
+
+from donna.api.auth import admin_router
 
 logger = structlog.get_logger()
-router = APIRouter()
+router = admin_router()
 
 _start_time = time.monotonic()
 _LOKI_URL = os.environ.get("DONNA_LOKI_URL", "http://donna-loki:3100")

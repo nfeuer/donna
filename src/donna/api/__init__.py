@@ -27,6 +27,7 @@ from donna.api.routes import (
     admin_agents as admin_agents_routes,
 )
 from donna.api.routes import (
+    admin_access,
     admin_config,
     admin_dashboard,
     admin_health,
@@ -36,10 +37,16 @@ from donna.api.routes import (
     admin_shadow,
     admin_tasks,
     agents,
+    automations as automations_routes,
+    capabilities as capabilities_routes,
     chat as chat_routes,
     health,
     llm,
     schedule,
+    skill_candidates as skill_candidates_routes,
+    skill_drafts as skill_drafts_routes,
+    skill_runs as skill_runs_routes,
+    skills as skills_routes,
     tasks,
 )
 from donna.chat.config import get_chat_config
@@ -91,8 +98,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Open DB connection on startup; close on shutdown."""
     setup_logging(
-        service_name="api",
-        dev_mode=os.environ.get("DONNA_DEV_MODE", "").lower() == "true",
+        log_level=os.environ.get("DONNA_LOG_LEVEL", "INFO"),
+        json_output=os.environ.get("DONNA_DEV_MODE", "").lower() != "true",
     )
 
     config_dir = Path(os.environ.get("DONNA_CONFIG_DIR", "config"))
@@ -187,13 +194,84 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.chat_engine = chat_engine
     app.state.chat_config = chat_config
 
+    from donna.api.auth.config import load as load_auth_config
+    from donna.api.auth.dependencies import AuthContext
+    from donna.api.auth.email_allowlist import sync as sync_allowlist
+    from donna.api.auth.email_allowlist import sync_loop
+    from donna.api.auth.immich import ImmichClient
+
+    auth_cfg = load_auth_config(config_dir / "auth.yaml")
+    admin_api_key = os.environ.get(auth_cfg.immich.admin_api_key_env, "").strip()
+    if not admin_api_key:
+        raise RuntimeError(
+            f"{auth_cfg.immich.admin_api_key_env} must be set before startup"
+        )
+
+    immich_client = ImmichClient(
+        internal_url=auth_cfg.immich.internal_url,
+        cache_ttl_s=auth_cfg.immich.user_cache_ttl_seconds,
+    )
+    app.state.auth_config = auth_cfg
+    app.state.auth_context = AuthContext(
+        conn=db.connection,
+        auth_config=auth_cfg,
+        immich_client=immich_client,
+    )
+
+    try:
+        await sync_allowlist(
+            db.connection,
+            internal_url=auth_cfg.immich.internal_url,
+            admin_api_key=admin_api_key,
+        )
+    except Exception as exc:
+        logger.error("auth_allowlist_initial_sync_failed", error=str(exc))
+
+    sync_task = asyncio.create_task(
+        sync_loop(
+            db.connection,
+            internal_url=auth_cfg.immich.internal_url,
+            admin_api_key=admin_api_key,
+            interval_seconds=auth_cfg.immich.allowlist_sync_interval_seconds,
+        )
+    )
+    app.state.auth_sync_task = sync_task
+
+    # Skill-system background work (nightly cron, auto-drafter, lifecycle
+    # manager) lives in the orchestrator (donna-orchestrator) process. See
+    # Wave 1 spec §6.4 / F-6 Tasks 14-15. The API only loads the config so
+    # admin routes can surface `enabled` status; it no longer starts any
+    # skill-system background tasks.
+    #
+    # Automation subsystem wiring (dispatcher + scheduler) lives in the
+    # orchestrator (Wave 1 F-6 Task 15). /admin/automations/{id}/run-now is
+    # now a DB-only operation that flips ``next_run_at`` to now; the
+    # orchestrator's AutomationScheduler polls the DB and picks it up on its
+    # next tick (~15 s).
+    try:
+        from donna.config import load_skill_system_config
+
+        app.state.skill_system_config = load_skill_system_config(config_dir)
+    except Exception:
+        logger.warning("skill_system_config_load_failed", exc_info=True)
+        app.state.skill_system_config = None
+
     logger.info("donna_api_started", db_path=str(db_path), port=8200)
     yield
 
+    sync_task_state = getattr(app.state, "auth_sync_task", None)
+    if sync_task_state:
+        sync_task_state.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sync_task_state
     await queue_worker.stop()
     worker_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await worker_task
+
+    # Skill-system and automation background tasks are owned by the orchestrator
+    # process (Wave 1 F-6 Tasks 14-15) — no shutdown cleanup required here.
+
     await ollama.close()
     await db.close()
     logger.info("donna_api_stopped")
@@ -210,22 +288,32 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
 
-    cors_origins = os.environ.get("DONNA_CORS_ORIGINS", "*").split(",")
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[o.strip() for o in cors_origins],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    cors_origins_raw = os.environ.get("DONNA_CORS_ORIGINS", "").strip()
+    if cors_origins_raw:
+        if "*" in cors_origins_raw.split(","):
+            raise RuntimeError(
+                "DONNA_CORS_ORIGINS='*' is forbidden when auth cookies are in use. "
+                "Set a concrete allowlist or unset the variable for same-origin "
+                "deployments behind Caddy."
+            )
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[o.strip() for o in cors_origins_raw.split(",")],
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+            allow_headers=["authorization", "content-type", "x-immich-token"],
+        )
     app.add_middleware(RequestLoggingMiddleware)
 
     app.include_router(health.router)
+
+    from donna.api.routes import auth_flow
+    app.include_router(auth_flow.router, prefix="/auth", tags=["auth"])
+
     app.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
     app.include_router(schedule.router, prefix="/schedule", tags=["schedule"])
     app.include_router(agents.router, prefix="/agents", tags=["agents"])
 
-    # Admin routes for the Management GUI (no auth required)
     app.include_router(admin_dashboard.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_logs.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_invocations.router, prefix="/admin", tags=["admin"])
@@ -235,6 +323,13 @@ def create_app() -> FastAPI:
     app.include_router(admin_shadow.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_preferences.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_health.router, prefix="/admin", tags=["admin"])
+    app.include_router(admin_access.router, prefix="/admin", tags=["admin"])
+    app.include_router(capabilities_routes.router, prefix="/admin", tags=["capabilities"])
+    app.include_router(skills_routes.router, prefix="/admin", tags=["skills"])
+    app.include_router(skill_runs_routes.router, prefix="/admin", tags=["skill-runs"])
+    app.include_router(skill_candidates_routes.router, prefix="/admin", tags=["skill-candidates"])
+    app.include_router(skill_drafts_routes.router, prefix="/admin", tags=["skill-drafts"])
+    app.include_router(automations_routes.router, prefix="/admin", tags=["automations"])
 
     # LLM gateway for homelab services
     app.include_router(llm.router, prefix="/llm", tags=["llm"])

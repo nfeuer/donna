@@ -48,6 +48,7 @@ def mock_db() -> AsyncMock:
 def client(mock_engine: AsyncMock, mock_db: AsyncMock) -> TestClient:
     from fastapi import FastAPI
 
+    from donna.api.auth.router_factory import _user_dep
     from donna.api.routes.chat import get_chat_engine, router
 
     app = FastAPI()
@@ -55,8 +56,9 @@ def client(mock_engine: AsyncMock, mock_db: AsyncMock) -> TestClient:
     app.state.chat_engine = mock_engine
     app.include_router(router, prefix="/chat")
 
-    # Override the dependency
+    # Override deps: chat engine + user auth (mock session is owned by "nick").
     app.dependency_overrides[get_chat_engine] = lambda: mock_engine
+    app.dependency_overrides[_user_dep] = lambda: "nick"
 
     return TestClient(app)
 

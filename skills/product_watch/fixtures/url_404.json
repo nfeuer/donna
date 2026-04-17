@@ -1,0 +1,22 @@
+{
+  "case_name": "url_404",
+  "input": {
+    "url": "https://example-shop.com/deleted-product",
+    "max_price_usd": null,
+    "required_size": null
+  },
+  "expected_output_shape": {
+    "type": "object",
+    "properties": {
+      "ok": {"type": "boolean"},
+      "in_stock": {"type": "boolean"}
+    }
+  },
+  "tool_mocks": {
+    "web_fetch:{\"url\":\"https://example-shop.com/deleted-product\"}": {
+      "status_code": 404,
+      "body": "<html><body>Not found</body></html>",
+      "headers": {}
+    }
+  }
+}

@@ -1,0 +1,25 @@
+capability_name: classify_priority
+version: 1
+description: |
+  Assign a priority (1-5) to a task based on its content, deadline,
+  and any context from related tasks.
+
+inputs:
+  schema:
+    type: object
+    properties:
+      title:
+        type: string
+      description:
+        type: string
+      deadline:
+        type: ["string", "null"]
+    required: [title]
+
+steps:
+  - name: classify
+    kind: llm
+    prompt: steps/classify.md
+    output_schema: schemas/classify_v1.json
+
+final_output: "{{ state.classify }}"

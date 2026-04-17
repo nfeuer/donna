@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 if TYPE_CHECKING:
+    from donna.skills.correction_cluster import CorrectionClusterDetector
     from donna.tasks.database import Database
 
 logger = structlog.get_logger()
@@ -47,8 +48,16 @@ async def log_correction(
     original: str,
     corrected: str,
     input_text: str = "",
+    cluster_detector: CorrectionClusterDetector | None = None,
 ) -> None:
     """Record a user correction to a task field in the correction_log table.
+
+    When ``cluster_detector`` is provided (typically wired at orchestrator
+    startup), fire a synchronous ``scan_for_capability(task_type)`` after the
+    INSERT commits. This is the F-7 fast path — users waiting for a
+    correction cluster to flag a skill see the transition within seconds
+    instead of waiting for the nightly cron invocation of
+    :meth:`CorrectionClusterDetector.scan_once`.
 
     Args:
         db: Active database connection.
@@ -62,6 +71,10 @@ async def log_correction(
         corrected: The value after the correction.
         input_text: The raw user input that triggered the correction (e.g.
                     the Discord message text). Empty string if not applicable.
+        cluster_detector: Optional detector used to fire a synchronous
+                          per-capability scan after the row is committed.
+                          Failures from the scan are logged but never raised
+                          — the correction is persisted regardless.
     """
     conn = db.connection
     await conn.execute(
@@ -94,3 +107,13 @@ async def log_correction(
         original=original,
         corrected=corrected,
     )
+
+    if cluster_detector is not None:
+        try:
+            await cluster_detector.scan_for_capability(task_type)
+        except Exception:
+            logger.exception(
+                "correction_cluster_scan_failed",
+                task_id=task_id,
+                task_type=task_type,
+            )

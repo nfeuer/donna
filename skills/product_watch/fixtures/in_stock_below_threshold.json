@@ -1,0 +1,26 @@
+{
+  "case_name": "in_stock_below_threshold",
+  "input": {
+    "url": "https://example-shop.com/shirt-blue",
+    "max_price_usd": 100.0,
+    "required_size": "L"
+  },
+  "expected_output_shape": {
+    "type": "object",
+    "required": ["ok", "in_stock", "size_available", "triggers_alert", "price_usd"],
+    "properties": {
+      "ok": {"type": "boolean"},
+      "price_usd": {"type": ["number", "null"]},
+      "in_stock": {"type": "boolean"},
+      "size_available": {"type": "boolean"},
+      "triggers_alert": {"type": "boolean"}
+    }
+  },
+  "tool_mocks": {
+    "web_fetch:{\"url\":\"https://example-shop.com/shirt-blue\"}": {
+      "status_code": 200,
+      "body": "<html><body><h1>Blue Shirt</h1><span class='price'>$79.00</span><div class='sizes'>S, M, L, XL</div><div class='stock'>In stock</div></body></html>",
+      "headers": {"content-type": "text/html"}
+    }
+  }
+}
