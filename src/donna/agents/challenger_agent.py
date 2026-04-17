@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 import structlog
@@ -35,11 +36,18 @@ _TIMEOUT_SECONDS = 120  # 2 minutes
 class ChallengerMatchResult:
     """Result of ChallengerAgent.match_and_extract."""
     status: str  # ready | needs_input | escalate_to_claude | ambiguous
+    intent_kind: str = "task"  # task | automation | question | chat
     capability: CapabilityRow | None = None
     extracted_inputs: dict[str, Any] = field(default_factory=dict)
     missing_fields: list[str] = field(default_factory=list)
     clarifying_question: str | None = None
     match_score: float = 0.0
+    # Wave 3 extensions
+    schedule: dict[str, Any] | None = None  # {cron, human_readable} when intent_kind=automation
+    deadline: datetime | None = None  # when intent_kind=task
+    alert_conditions: dict[str, Any] | None = None  # {expression, channels}
+    confidence: float = 0.0  # LLM self-assessed confidence 0..1
+    low_quality_signals: list[str] = field(default_factory=list)
 
 
 class ChallengerAgent:
