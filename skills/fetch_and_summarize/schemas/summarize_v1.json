@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "summary": {"type": "string", "minLength": 1},
+    "answers": {"type": "object"},
+    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+    "escalate": {"type": "object"}
+  },
+  "required": ["summary", "answers", "confidence"],
+  "additionalProperties": false
+}

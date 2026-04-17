@@ -37,10 +37,16 @@ from donna.api.routes import (
     admin_shadow,
     admin_tasks,
     agents,
+    automations as automations_routes,
+    capabilities as capabilities_routes,
     chat as chat_routes,
     health,
     llm,
     schedule,
+    skill_candidates as skill_candidates_routes,
+    skill_drafts as skill_drafts_routes,
+    skill_runs as skill_runs_routes,
+    skills as skills_routes,
     tasks,
 )
 from donna.chat.config import get_chat_config
@@ -92,8 +98,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Open DB connection on startup; close on shutdown."""
     setup_logging(
-        service_name="api",
-        dev_mode=os.environ.get("DONNA_DEV_MODE", "").lower() == "true",
+        log_level=os.environ.get("DONNA_LOG_LEVEL", "INFO"),
+        json_output=os.environ.get("DONNA_DEV_MODE", "").lower() != "true",
     )
 
     config_dir = Path(os.environ.get("DONNA_CONFIG_DIR", "config"))
@@ -231,6 +237,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.auth_sync_task = sync_task
 
+    # Skill-system background work (nightly cron, auto-drafter, lifecycle
+    # manager) lives in the orchestrator (donna-orchestrator) process. See
+    # Wave 1 spec §6.4 / F-6 Tasks 14-15. The API only loads the config so
+    # admin routes can surface `enabled` status; it no longer starts any
+    # skill-system background tasks.
+    #
+    # Automation subsystem wiring (dispatcher + scheduler) lives in the
+    # orchestrator (Wave 1 F-6 Task 15). /admin/automations/{id}/run-now is
+    # now a DB-only operation that flips ``next_run_at`` to now; the
+    # orchestrator's AutomationScheduler polls the DB and picks it up on its
+    # next tick (~15 s).
+    try:
+        from donna.config import load_skill_system_config
+
+        app.state.skill_system_config = load_skill_system_config(config_dir)
+    except Exception:
+        logger.warning("skill_system_config_load_failed", exc_info=True)
+        app.state.skill_system_config = None
+
     logger.info("donna_api_started", db_path=str(db_path), port=8200)
     yield
 
@@ -243,6 +268,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     worker_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await worker_task
+
+    # Skill-system and automation background tasks are owned by the orchestrator
+    # process (Wave 1 F-6 Tasks 14-15) — no shutdown cleanup required here.
+
     await ollama.close()
     await db.close()
     logger.info("donna_api_stopped")
@@ -295,6 +324,12 @@ def create_app() -> FastAPI:
     app.include_router(admin_preferences.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_health.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_access.router, prefix="/admin", tags=["admin"])
+    app.include_router(capabilities_routes.router, prefix="/admin", tags=["capabilities"])
+    app.include_router(skills_routes.router, prefix="/admin", tags=["skills"])
+    app.include_router(skill_runs_routes.router, prefix="/admin", tags=["skill-runs"])
+    app.include_router(skill_candidates_routes.router, prefix="/admin", tags=["skill-candidates"])
+    app.include_router(skill_drafts_routes.router, prefix="/admin", tags=["skill-drafts"])
+    app.include_router(automations_routes.router, prefix="/admin", tags=["automations"])
 
     # LLM gateway for homelab services
     app.include_router(llm.router, prefix="/llm", tags=["llm"])

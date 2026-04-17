@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "expected_content_type": {"type": "string", "enum": ["article", "product_page", "documentation", "other"]},
+    "key_questions": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 3},
+    "escalate": {"type": "object"}
+  },
+  "required": ["expected_content_type", "key_questions"],
+  "additionalProperties": false
+}

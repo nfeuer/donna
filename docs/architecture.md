@@ -23,6 +23,15 @@ Central orchestrator manages all task routing, scheduling, and agent coordinatio
 | Agent Worker Pool | Linux Server (Docker) | Sandboxed agent execution. Each agent type isolated with defined tool access. |
 | Web/Mobile App | Firebase Hosting + Flutter | Dashboard UI and chat interface. Phase 4. See [App Architecture](#app-architecture-phase-4) below. |
 
+### Process responsibilities (post Wave 1)
+
+| Process | Owns |
+|---|---|
+| `donna-orchestrator` (port 8100) | DonnaBot, NotificationService, AutomationScheduler, AutomationDispatcher, nightly skill-system cron (auto-drafter, evolver, correction-cluster detector). All background / long-running work. |
+| `donna-api` (port 8200) | FastAPI REST for the Flutter dashboard. CRUD only; no schedulers. Reads `skill_system_config.enabled` for admin reporting. |
+
+Cross-process coordination uses the shared SQLite DB. Example: `POST /admin/automations/{id}/run-now` sets `next_run_at=now()` on the automation row; the orchestrator's AutomationScheduler picks it up on its next poll (~15s default).
+
 ## Data Flow
 
 1. All inputs (SMS, Discord, email forwarding) → normalized into task schema by **Input Parser**.

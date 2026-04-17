@@ -38,6 +38,8 @@ dependencies = [
     "fastmcp>=3.0.0",
     # Supabase sync
     "supabase>=2.0.0",
+    # Automation subsystem (Phase 5)
+    "croniter>=2.0.0",
     # Twilio (SMS/Voice)
     "twilio>=9.0.0",
     # Interactive CLI
@@ -46,6 +48,11 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "tenacity>=8.2.0",
     "uuid6>=2024.1.12",
+    # Skill system (Phase 1)
+    "sentence-transformers>=3.0.0",
+    "numpy>=1.26.0",
+    # Skill system (Phase 2)
+    "httpx>=0.27.0",
 ]
 
 [project.optional-dependencies]

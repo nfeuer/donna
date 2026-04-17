@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Donna — Feature Map & Data Flow</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a22;
+    --border: #252b36;
+    --text: #e6e8ec;
+    --muted: #8b93a3;
+    --accent: #7dd3fc;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header.top { padding: 24px 32px 12px; border-bottom: 1px solid var(--border); }
+  header.top h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: 0.2px; }
+  header.top p { margin: 0; color: var(--muted); font-size: 13px; }
+  main { padding: 20px 32px 48px; display: flex; flex-direction: column; gap: 28px; }
+  section.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  section.card header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  section.card h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 1.2px; }
+  section.card p.lede { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+  .controls { display: flex; gap: 6px; }
+  .controls button { background: #1f2531; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; font-family: inherit; }
+  .controls button:hover { background: #2a3142; }
+  .stage { position: relative; height: 640px; background: #0c0e13; border-top: 1px solid var(--border); overflow: hidden; }
+  .stage svg { width: 100% !important; height: 100% !important; display: block; }
+  .hint { position: absolute; right: 12px; bottom: 10px; font-size: 11px; color: var(--muted); background: rgba(0,0,0,0.45); padding: 4px 8px; border-radius: 4px; pointer-events: none; }
+  footer { padding: 12px 32px 28px; color: var(--muted); font-size: 12px; }
+  code { background: #1f2531; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .src { display: none; }
+  .err { padding: 16px; color: #ff9a9a; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Donna — Feature Map &amp; Data Flow</h1>
+  <p>Drawn from <code>src/donna/</code> on branch <code>claude/blissful-tereshkova</code>. Drag to pan · mouse wheel to zoom · buttons for discrete steps.</p>
+</header>
+
+<main>
+  <section class="card">
+    <header>
+      <div>
+        <h2>1 · Feature Map</h2>
+        <p class="lede">Input channels → orchestrator → agents → scheduling → outbound. Model layer and observability spine underneath.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-feature" data-action="in">＋</button>
+        <button data-target="stage-feature" data-action="out">－</button>
+        <button data-target="stage-feature" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-feature">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <header>
+      <div>
+        <h2>2 · Data Flow — inbound message to user action</h2>
+        <p class="lede">One Discord message traced end-to-end: parse, dedup, state transition, agent dispatch, scheduling, reminder, escalation.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-flow" data-action="in">＋</button>
+        <button data-target="stage-flow" data-action="out">－</button>
+        <button data-target="stage-flow" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-flow">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <header>
+      <div>
+        <h2>3 · Skill System Architecture (proposed)</h2>
+        <p class="lede">Capability registry, challenger match flow, skill lifecycle, auto-drafting, evolution, triage, and the automation subsystem from the 2026-04-15 design spec.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-skills" data-action="in">＋</button>
+        <button data-target="stage-skills" data-action="out">－</button>
+        <button data-target="stage-skills" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-skills">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <header>
+      <div>
+        <h2>4 · Skill Lifecycle State Machine (Phase 3)</h2>
+        <p class="lede">All states a skill can occupy, the gates between them, and the degradation / evolution paths back to draft or claude_native.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-lifecycle" data-action="in">＋</button>
+        <button data-target="stage-lifecycle" data-action="out">－</button>
+        <button data-target="stage-lifecycle" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-lifecycle">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <header>
+      <div>
+        <h2>5 · Nightly Cron Flow (Phase 3)</h2>
+        <p class="lede">What runs_nightly_tasks does at 3 AM UTC: candidate detection, auto-drafting within budget, and degradation flagging via Wilson CI.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-nightly" data-action="in">＋</button>
+        <button data-target="stage-nightly" data-action="out">－</button>
+        <button data-target="stage-nightly" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-nightly">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <header>
+      <div>
+        <h2>6 · Shadow Sampling Flow (Phase 3)</h2>
+        <p class="lede">How SkillExecutor fires a non-blocking shadow call after each trusted-skill run, feeds EquivalenceJudge, and auto-promotes when thresholds are met.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-shadow" data-action="in">＋</button>
+        <button data-target="stage-shadow" data-action="out">－</button>
+        <button data-target="stage-shadow" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-shadow">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <header>
+      <div>
+        <h2>7 · Evolution Pipeline (Phase 4)</h2>
+        <p class="lede">How a degraded skill flows through EvolutionScheduler, EvolutionInputBuilder, Claude, and the 4 validation gates before landing back in draft or reverting to claude_native.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-evolution" data-action="in">＋</button>
+        <button data-target="stage-evolution" data-action="out">－</button>
+        <button data-target="stage-evolution" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-evolution">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <header>
+      <div>
+        <h2>8 · Shirt Monitor — end-to-end flow (proposed)</h2>
+        <p class="lede">The motivating example traced from Discord message through challenger, capability creation, automation scheduling, and alert dispatch when the price drops.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-shirt" data-action="in">＋</button>
+        <button data-target="stage-shirt" data-action="out">－</button>
+        <button data-target="stage-shirt" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-shirt">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <header>
+      <div>
+        <h2>9 · Automation Pipeline (Phase 5)</h2>
+        <p class="lede">AutomationScheduler polls for due automations, dispatcher resolves skill vs claude_native execution, cost guards enforce budgets, alert conditions fire, and repeated failures pause the automation.</p>
+      </div>
+      <div class="controls">
+        <button data-target="stage-automation" data-action="in">＋</button>
+        <button data-target="stage-automation" data-action="out">－</button>
+        <button data-target="stage-automation" data-action="reset">reset</button>
+      </div>
+    </header>
+    <div class="stage" id="stage-automation">
+      <span class="hint">drag to pan · wheel to zoom</span>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Open this file directly in a browser. Mermaid and svg-pan-zoom load from CDN.
+</footer>
+
+<script type="text/plain" class="src" id="src-feature">
+flowchart LR
+    subgraph IN["Input Channels"]
+        D["Discord bot"]
+        G["Gmail"]
+        S["SMS and Voice"]
+        C["Chat engine"]
+    end
+
+    subgraph CORE["Orchestrator"]
+        IP["InputParser"]
+        DD["Deduplicator"]
+        DISP["AgentDispatcher"]
+    end
+
+    subgraph AG["Agents"]
+        PM["PM Agent"]
+        CH["Challenger - local LLM"]
+        PR["Prep Agent"]
+        SA["Scheduler Agent"]
+    end
+
+    subgraph SCH["Scheduling"]
+        SCHED["Scheduler"]
+        PRI["PriorityEngine"]
+        CAL["Google Calendar"]
+    end
+
+    subgraph STATE["State and Storage"]
+        SM["StateMachine"]
+        DB[("donna_tasks.db")]
+        LOG[("donna_logs.db")]
+    end
+
+    subgraph LLM["Model Layer - routed by task_type"]
+        MR["ModelRouter"]
+        ANT["Claude - parse, reason, prep, decompose"]
+        OLL["Ollama local - nudges, reminders, challenge, chat, digest"]
+    end
+
+    subgraph OUT["Outbound - default channel is Discord"]
+        NS["NotificationService"]
+        REM["Reminders 15m pre-start"]
+        OV["Overdue detector"]
+        DIG["EOD and Weekly digest"]
+    end
+
+    subgraph ESCL["Escalation ladder - overdue and no ack"]
+        T1["Tier 1 - Discord thread"]
+        T2["Tier 2 - SMS"]
+        T3["Tier 3 - Email ACTION REQUIRED"]
+        T4["Tier 4 - Voice TTS - flagged"]
+        T1 -->|wait tier1| T2
+        T2 -->|wait tier2| T3
+        T3 -->|wait tier3| T4
+    end
+
+    subgraph OBS["Cost and Observability"]
+        IL["InvocationLogger"]
+        CT["CostTracker"]
+        BG["BudgetGuard"]
+    end
+
+    D --> IP
+    G --> IP
+    S --> IP
+    C --> IP
+    IP --> DD --> DB
+    DB --> DISP
+    DISP --> PM
+    DISP --> CH
+    DISP --> PR
+    DISP --> SA
+    SA --> SCHED
+    SCHED --> PRI
+    SCHED --> CAL
+    SCHED --> DB
+    DB --> SM
+    DISP --> MR
+    IP --> MR
+    MR --> ANT
+    MR --> OLL
+    MR --> IL --> LOG
+
+    DB --> NS
+    NS --> REM
+    NS --> OV
+    NS --> DIG
+    REM --> D
+    DIG --> D
+    OV --> T1
+    T1 --> D
+    T2 --> S
+    T3 --> G
+    T4 --> S
+
+    D -->|ack or busy reply| NS
+    S -->|ack reply| NS
+
+    LOG --> CT --> BG --> NS
+</script>
+
+<script type="text/plain" class="src" id="src-flow">
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant Disc as Discord
+    participant IP as InputParser
+    participant MR as ModelRouter
+    participant Claude as Claude
+    participant Dedup as Deduplicator
+    participant DB as TasksDB
+    participant Disp as Dispatcher
+    participant PM as PMAgent
+    participant Chall as Challenger
+    participant Sched as Scheduler
+    participant GCal as GCalendar
+    participant NS as Notify
+    participant IL as InvLogger
+
+    U->>Disc: draft the Q2 review by Friday
+    Disc->>IP: parse raw_text
+    IP->>MR: complete parse_task
+    MR->>Claude: structured call
+    Claude-->>MR: TaskParseResult
+    MR->>IL: log tokens cost latency
+    MR-->>IP: result
+    IP->>Dedup: fuzzy and semantic check
+    Dedup-->>IP: unique
+    IP->>DB: insert status backlog
+
+    DB->>Disp: dispatch task
+    Disp->>PM: assess completeness
+    PM-->>Disp: complete
+    Disp->>Chall: probe clarity local
+    Chall-->>Disp: ok or questions
+    Disp->>Sched: schedule_task
+    Sched->>GCal: create event
+    GCal-->>Sched: event_id
+    Sched->>DB: backlog to scheduled
+
+    Note over DB,NS: Cron tick fires later
+    DB->>NS: reminder 15m pre start
+    NS->>Disc: embed in donna-tasks
+    Disc-->>U: starts in 15
+
+    alt User does not ack
+        NS->>NS: OverdueDetector tier up
+        NS->>U: SMS T2 then Email T3 then Voice T4
+    end
+
+    Note over IL,NS: BudgetGuard pauses autonomous work at 20 per day
+</script>
+
+<script type="text/plain" class="src" id="src-skills">
+flowchart LR
+    subgraph INGRESS["Ingress"]
+        MSG["Discord message"]
+        PT["parse_task"]
+    end
+
+    subgraph CHLR["Challenger - local LLM"]
+        CM["CapabilityMatcher"]
+        EX["Input extractor"]
+        QG["Question generator"]
+    end
+
+    subgraph REG["Capability registry"]
+        CR[("capability table")]
+        VIDX["vector index"]
+        AUD["Post-creation audit"]
+    end
+
+    subgraph NOV["Claude novelty judgment"]
+        NJ["match_existing or create_new"]
+    end
+
+    subgraph EXEC["Skill execution"]
+        SE["SkillExecutor"]
+        SO["State object"]
+        TC["ToolResultCache"]
+        TD["Tool dispatch - 2c"]
+        DSL["DSL - for_each retry escalate"]
+        TRI["Triage agent"]
+    end
+
+    subgraph LIFE["Skill lifecycle"]
+        CN["claude_native"]
+        SC["skill_candidate"]
+        DR["draft"]
+        SB["sandbox"]
+        SP["shadow_primary"]
+        TR["trusted"]
+        FR["flagged_for_review"]
+        DG["degraded"]
+    end
+
+    subgraph AUTO["Auto-drafting - end of day batch"]
+        DET["Candidate detector"]
+        DRAFT["Claude skill generator"]
+        FIX["Fixture validator"]
+    end
+
+    subgraph EVO["Evolution loop - nightly batch"]
+        DEG["Degradation detector - Wilson CI"]
+        CORR["Correction clustering"]
+        EVOCALL["Claude evolution call"]
+        VAL["4-gate validation"]
+    end
+
+    subgraph AUTOM["Automation subsystem"]
+        SCHED["Automation scheduler"]
+        DISP["Dispatcher"]
+        ALERT["Alert evaluator"]
+        ATBL[("automation table")]
+        ARTBL[("automation_run")]
+    end
+
+    subgraph OBS["Observability"]
+        IL[("invocation_log")]
+        SRTBL[("skill_run")]
+        DIGEST["EOD digest"]
+        DASH["Dashboard"]
+    end
+
+    MSG --> PT --> CM
+    CM <--> VIDX
+    CM --> CR
+    CM -->|high confidence| EX
+    CM -->|low confidence| NJ
+    EX --> QG
+    QG -->|missing fields| MSG
+    EX -->|complete inputs| SE
+    NJ --> CR
+    CR --> AUD
+    NJ -->|claude_native for now| SE
+
+    SE --> SO
+    SE --> TD
+    TD --> TC
+    SE --> DSL
+    SE -->|failure| TRI
+    TRI -->|retry| SE
+    TRI -->|escalate| NJ
+    TRI -->|alert| DIGEST
+
+    SE --> SRTBL
+    SE --> IL
+
+    CN --> SC --> DR --> SB --> SP --> TR
+    TR --> FR
+    FR --> TR
+    FR --> DG
+    DG --> DR
+    DG --> CN
+
+    SRTBL --> DET
+    DET --> SC
+    DET --> DRAFT
+    DRAFT --> FIX
+    FIX --> DR
+    FIX --> DIGEST
+
+    SRTBL --> DEG
+    DEG --> FR
+    CORR --> FR
+    FR --> EVOCALL
+    EVOCALL --> VAL
+    VAL --> DR
+    VAL --> CN
+
+    ATBL --> SCHED
+    SCHED --> DISP
+    DISP -->|skill exists| SE
+    DISP -->|no skill| NJ
+    SE --> ARTBL
+    ARTBL --> ALERT
+    ALERT --> DIGEST
+
+    DIGEST --> MSG
+    DASH <--> CR
+    DASH <--> SRTBL
+    DASH <--> ATBL
+    DASH <--> LIFE
+
+    classDef data fill:#1b2433,stroke:#3b4a63,color:#e6e8ec
+    classDef claude fill:#2a1f2e,stroke:#6b4b5e,color:#e6e8ec
+    class CR,SRTBL,ATBL,ARTBL,IL data
+    class NJ,DRAFT,EVOCALL claude
+</script>
+
+<script type="text/plain" class="src" id="src-lifecycle">
+stateDiagram-v2
+    [*] --> claude_native
+    claude_native --> skill_candidate : gate_passed
+    skill_candidate --> draft : gate_passed
+    draft --> sandbox : human_approval
+    sandbox --> shadow_primary : gate_passed
+    shadow_primary --> trusted : gate_passed
+    trusted --> flagged_for_review : degradation
+    flagged_for_review --> trusted : human_approval
+    flagged_for_review --> degraded : human_approval
+    degraded --> draft : gate_passed
+    degraded --> claude_native : evolution_failed
+</script>
+
+<script type="text/plain" class="src" id="src-nightly">
+flowchart LR
+    Cron["Nightly 3AM UTC"] --> Det["SkillCandidateDetector"]
+    Det -->|new candidates| Draft["AutoDrafter"]
+    Draft -->|within budget| Persist["skill row + state_transition"]
+    Cron --> Deg["DegradationDetector"]
+    Deg -->|Wilson CI fail| Flag["flagged_for_review"]
+    Cron --> Digest["EOD digest section"]
+</script>
+
+<script type="text/plain" class="src" id="src-shadow">
+flowchart LR
+    Exec["SkillExecutor"] -->|after success| TaskGroup["asyncio.create_task"]
+    TaskGroup --> Sampler["ShadowSampler"]
+    Sampler -->|rate check| Skip{"skip?"}
+    Skip -->|no| ClaudeCall["Claude via ModelRouter"]
+    ClaudeCall --> Judge["EquivalenceJudge"]
+    Judge --> Divergence["skill_divergence row"]
+    Divergence --> Check["check_and_promote_if_eligible"]
+</script>
+
+<script type="text/plain" class="src" id="src-shirt">
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant Disc as Discord
+    participant PT as parse_task
+    participant Chall as Challenger
+    participant Reg as CapabilityRegistry
+    participant Claude as Claude
+    participant Auto as Automation
+    participant Sched as Scheduler
+    participant Disp as Dispatcher
+    participant CN as ClaudeNative
+    participant Alert as AlertDispatcher
+    participant Det as CandidateDetector
+    participant Draft as AutoDrafter
+    participant Skill as SkillExecutor
+
+    U->>Disc: monitor cos.com/shirt size L under 100 daily
+    Disc->>PT: parse raw text
+    PT-->>Chall: TaskParseResult
+    Chall->>Reg: semantic_search top 5
+    Reg-->>Chall: confidence 0.1 - no match
+    Chall->>Claude: novelty judgment - full registry context
+    Claude-->>Chall: create_new product_watch with input schema
+    Chall->>Reg: register product_watch - post audit passes
+    Chall->>Chall: extract url size threshold - all present
+    Chall->>Auto: create automation row
+    Note over Auto: capability=product_watch skill_id=null status=active
+
+    Sched->>Auto: next_run_at reached
+    Auto->>Disp: execute run
+    Disp->>Reg: skill for product_watch?
+    Reg-->>Disp: none
+    Disp->>CN: run via claude_native
+    CN-->>Disp: price 120 in_stock true
+    Disp->>Alert: evaluate conditions
+    Alert-->>Disp: false - above threshold
+    Note over Auto: run logged no alert
+
+    Note over Det,Draft: days pass - detector sees product_watch candidate
+    Det->>Draft: end of day queue - savings 15 per month
+    Draft->>Claude: generate skill - full registry and task spec
+    Claude-->>Draft: YAML + steps + schemas
+    Draft->>Draft: fixture validation passes
+    Draft-->>U: EOD digest - new draft for review
+    U->>Draft: approve draft to sandbox
+    Note over Draft: 20 runs later auto promotes to shadow_primary
+    Note over Draft: 100 runs later at 88 percent agreement auto promotes to trusted
+
+    Sched->>Auto: next run
+    Auto->>Disp: execute
+    Disp->>Reg: skill state?
+    Reg-->>Disp: trusted
+    Disp->>Skill: execute product_watch
+    Skill->>Skill: fetch resolve extract format
+    Skill-->>Disp: price 87 in_stock true size L
+    Disp->>Alert: evaluate
+    Alert-->>Disp: true - price under 100
+    Alert->>U: Discord DM - cos shirt on sale at 87
+</script>
+
+<script type="text/plain" class="src" id="src-evolution">
+flowchart LR
+    Flagged[flagged_for_review] -->|user approves| Degraded[degraded]
+    Degraded --> Scheduler[EvolutionScheduler]
+    Scheduler -->|per skill| Builder[EvolutionInputBuilder]
+    Builder --> Claude[Claude evolution call]
+    Claude --> Gates[4 gates]
+    Gates -->|pass| NewVersion[new skill_version]
+    Gates -->|fail| Log[rejected_validation log]
+    NewVersion --> Draft[draft]
+    Log -->|2 in a row| ClaudeNative[claude_native]
+</script>
+
+<script type="text/plain" class="src" id="src-automation">
+flowchart LR
+    Scheduler[AutomationScheduler poll every 60s] --> List[repo.list_due]
+    List -->|due automations| Dispatcher[AutomationDispatcher]
+    Dispatcher --> BudgetGate{BudgetGuard check}
+    BudgetGate -->|paused| SkipBudget[skipped_budget]
+    BudgetGate -->|ok| PathDecide{skill state?}
+    PathDecide -->|shadow_primary or trusted| SkillExec[SkillExecutor]
+    PathDecide -->|else| Claude[ModelRouter.complete]
+    SkillExec --> CostCap{cost > cap?}
+    Claude --> CostCap
+    CostCap -->|yes| Failed[failed cost_exceeded]
+    CostCap -->|no| AlertCheck[AlertEvaluator]
+    AlertCheck -->|fires| Notifier[NotificationService]
+    AlertCheck -->|quiet| Persist[finish_run + advance_schedule]
+    Notifier --> Persist
+    Persist --> Paused{failure_count >= threshold?}
+    Paused -->|yes| PauseAuto[status=paused + notify]
+    Paused -->|no| Done[next_run_at advanced]
+</script>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'dark',
+    themeVariables: {
+      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+      primaryColor: '#1b2433',
+      primaryTextColor: '#e6e8ec',
+      primaryBorderColor: '#3b4a63',
+      lineColor: '#6a7d99',
+      secondaryColor: '#22303c',
+      tertiaryColor: '#0f1115',
+      noteBkgColor: '#22303c',
+      noteTextColor: '#e6e8ec',
+      noteBorderColor: '#3b4a63'
+    },
+    flowchart: { curve: 'basis', padding: 16, htmlLabels: true },
+    sequence: { mirrorActors: false, actorMargin: 60 }
+  });
+
+  const panZoomInstances = {};
+
+  function showError(stage, err) {
+    const pre = document.createElement('pre');
+    pre.className = 'err';
+    pre.textContent = 'Mermaid error:\n' + (err && err.message ? err.message : String(err));
+    stage.appendChild(pre);
+  }
+
+  async function renderInto(stageId, sourceId) {
+    const stage = document.getElementById(stageId);
+    const source = document.getElementById(sourceId).textContent;
+    try {
+      const { svg } = await mermaid.render(stageId + '-svg', source);
+      const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml');
+      const svgEl = parsed.documentElement;
+      if (svgEl.nodeName.toLowerCase() !== 'svg') {
+        throw new Error('Parsed root is not <svg>');
+      }
+      const imported = document.importNode(svgEl, true);
+      imported.setAttribute('width', '100%');
+      imported.setAttribute('height', '100%');
+      imported.style.maxWidth = 'none';
+      imported.style.maxHeight = 'none';
+      stage.appendChild(imported);
+
+      const pz = svgPanZoom(imported, {
+        zoomEnabled: true,
+        controlIconsEnabled: false,
+        fit: true,
+        center: true,
+        minZoom: 0.3,
+        maxZoom: 8,
+        zoomScaleSensitivity: 0.35
+      });
+      panZoomInstances[stageId] = pz;
+      window.addEventListener('resize', () => { pz.resize(); pz.fit(); pz.center(); });
+    } catch (err) {
+      console.error(err);
+      showError(stage, err);
+    }
+  }
+
+  document.querySelectorAll('.controls button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pz = panZoomInstances[btn.dataset.target];
+      if (!pz) return;
+      if (btn.dataset.action === 'in') pz.zoomIn();
+      else if (btn.dataset.action === 'out') pz.zoomOut();
+      else if (btn.dataset.action === 'reset') { pz.resetZoom(); pz.center(); pz.fit(); }
+    });
+  });
+
+  (async () => {
+    await renderInto('stage-feature', 'src-feature');
+    await renderInto('stage-flow', 'src-flow');
+    await renderInto('stage-skills', 'src-skills');
+    await renderInto('stage-lifecycle', 'src-lifecycle');
+    await renderInto('stage-nightly', 'src-nightly');
+    await renderInto('stage-shadow', 'src-shadow');
+    await renderInto('stage-evolution', 'src-evolution');
+    await renderInto('stage-shirt', 'src-shirt');
+    await renderInto('stage-automation', 'src-automation');
+  })();
+</script>
+</body>
+</html>
