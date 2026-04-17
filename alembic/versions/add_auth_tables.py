@@ -112,6 +112,7 @@ def upgrade() -> None:
         "device_tokens",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("token_hash", sa.String(200), nullable=False, unique=True),
+        sa.Column("token_lookup", sa.String(64), nullable=False, unique=True),
         sa.Column("user_id", sa.String(100), nullable=False),
         sa.Column("label", sa.String(200), nullable=True),
         sa.Column("user_agent", sa.String(500), nullable=True),
@@ -129,6 +130,9 @@ def upgrade() -> None:
     )
     op.create_index("idx_device_tokens_user", "device_tokens", ["user_id"])
     op.create_index("idx_device_tokens_expires", "device_tokens", ["expires_at"])
+    op.create_index(
+        "idx_device_tokens_lookup", "device_tokens", ["token_lookup"], unique=True
+    )
 
     op.create_table(
         "llm_gateway_callers",

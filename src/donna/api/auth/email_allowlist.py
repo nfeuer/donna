@@ -26,6 +26,10 @@ def is_valid_email(raw: str) -> bool:
     return bool(_EMAIL_RE.match(normalized))
 
 
+class EmptyAllowlistError(RuntimeError):
+    """Immich returned zero users — refuse to wipe the allowlist."""
+
+
 async def sync(
     conn: aiosqlite.Connection,
     *,
@@ -35,6 +39,9 @@ async def sync(
     """Replace `allowed_emails` with the current Immich user list.
 
     Returns the number of users synced. Raises on network error.
+    Raises `EmptyAllowlistError` if Immich returns zero users, because
+    applying an empty response would lock everyone out until the next
+    successful sync.
     """
     headers = {"x-api-key": admin_api_key}
     async with aiohttp.ClientSession() as session:
@@ -46,8 +53,14 @@ async def sync(
             resp.raise_for_status()
             users = await resp.json()
 
+    if not users:
+        raise EmptyAllowlistError(
+            "Immich returned zero users; refusing to wipe allowed_emails"
+        )
+
     now_iso = datetime.utcnow().isoformat()
-    async with conn.execute("BEGIN"):
+    await conn.execute("BEGIN")
+    try:
         await conn.execute("DELETE FROM allowed_emails")
         for u in users:
             await conn.execute(
@@ -62,6 +75,9 @@ async def sync(
                     now_iso,
                 ),
             )
+    except Exception:
+        await conn.rollback()
+        raise
     await conn.commit()
     logger.info("email_allowlist_synced", count=len(users))
     return len(users)

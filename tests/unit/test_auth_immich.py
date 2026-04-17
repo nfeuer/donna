@@ -46,3 +46,21 @@ async def test_cache_hits_within_ttl():
     assert first is not None
     assert second is not None
     assert first.immich_user_id == second.immich_user_id
+
+
+@pytest.mark.asyncio
+async def test_cache_evicts_oldest_when_full():
+    client = immich.ImmichClient(
+        internal_url="http://immich:2283", cache_ttl_s=60, cache_max_entries=2,
+    )
+    with aioresponses() as m:
+        for i in range(3):
+            m.get(
+                "http://immich:2283/api/users/me",
+                status=200,
+                payload={"id": f"u{i}", "email": f"u{i}@x", "name": None, "isAdmin": False},
+            )
+        await client.resolve(bearer="a")
+        await client.resolve(bearer="b")
+        await client.resolve(bearer="c")
+    assert len(client._cache) == 2

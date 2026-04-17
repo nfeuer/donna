@@ -297,6 +297,7 @@ async def auth_test_app(tmp_path):
         CREATE TABLE device_tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             token_hash TEXT NOT NULL UNIQUE,
+            token_lookup TEXT NOT NULL UNIQUE,
             user_id TEXT NOT NULL,
             label TEXT, user_agent TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

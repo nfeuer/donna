@@ -60,3 +60,22 @@ async def test_normalization_strips_and_lowercases(db):
         )
         await ea.sync(db, internal_url="http://immich:2283", admin_api_key="secret")
     assert await ea.is_allowed(db, "  NICK@example.com  ")
+
+
+@pytest.mark.asyncio
+async def test_sync_refuses_empty_response(db):
+    """Empty Immich response must not wipe the allowlist."""
+    with aioresponses() as m:
+        m.get(
+            "http://immich:2283/api/admin/users",
+            status=200,
+            payload=[{"id": "u1", "email": "nick@example.com", "name": "Nick", "isAdmin": True}],
+        )
+        await ea.sync(db, internal_url="http://immich:2283", admin_api_key="secret")
+
+    with aioresponses() as m:
+        m.get("http://immich:2283/api/admin/users", status=200, payload=[])
+        with pytest.raises(ea.EmptyAllowlistError):
+            await ea.sync(db, internal_url="http://immich:2283", admin_api_key="secret")
+
+    assert await ea.is_allowed(db, "nick@example.com")

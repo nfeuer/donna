@@ -10,7 +10,7 @@ import hashlib
 
 import structlog
 from fastapi import APIRouter, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from donna.api.auth import (
@@ -82,22 +82,21 @@ async def request_access(body: RequestAccessBody, request: Request) -> dict:
     return _GENERIC_ACCEPTED
 
 
-@router.post("/verify")
-async def verify(body: VerifyBody, request: Request) -> dict:
+async def _consume_verification_token(request: Request, token: str) -> tuple[bool, dict]:
+    """Validate + burn the magic-link token and trust the client IP.
+
+    Returns (ok, payload). `ok=False` means the token was invalid/expired
+    and `payload` is the error body.
+    """
     ctx = request.app.state.auth_context
     cfg = request.app.state.auth_config
 
     client_host = trusted_proxies.client_ip(request, trusted_proxies=cfg.trusted_proxies)
-    record = await verification_tokens.validate(
-        ctx.conn, token=body.token, ip=client_host,
-    )
+    record = await verification_tokens.validate(ctx.conn, token=token, ip=client_host)
     if record is None:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "token_invalid_or_expired"},
-        )
+        return False, {"error": "token_invalid_or_expired"}
 
-    await verification_tokens.mark_used(ctx.conn, token=body.token)
+    await verification_tokens.mark_used(ctx.conn, token=token)
     await ip_gate.insert_pending_ip(ctx.conn, client_host)
     await ip_gate.trust_ip(
         ctx.conn,
@@ -106,7 +105,45 @@ async def verify(body: VerifyBody, request: Request) -> dict:
         trust_duration=record["trust_duration"],
         verified_by=record["email"],
     )
-    return {"trusted": True, "next": "immich_login"}
+    return True, {"trusted": True, "next": "immich_login"}
+
+
+@router.post("/verify")
+async def verify(body: VerifyBody, request: Request):
+    ok, payload = await _consume_verification_token(request, body.token)
+    if not ok:
+        return JSONResponse(status_code=400, content=payload)
+    return payload
+
+
+@router.get("/verify")
+async def verify_from_email(token: str, request: Request):
+    """Email magic-link target (GET).
+
+    Users click the link directly from their inbox — serve a minimal HTML
+    confirmation so a browser can render the result. The token itself is
+    single-use and IP-bound; redirecting or rendering nothing would leave
+    the user confused about what happened.
+    """
+    ok, _payload = await _consume_verification_token(request, token)
+    if not ok:
+        return HTMLResponse(
+            status_code=400,
+            content=(
+                "<!doctype html><meta charset=utf-8>"
+                "<title>Donna — link expired</title>"
+                "<h1>Link expired or already used</h1>"
+                "<p>Request a new verification link.</p>"
+            ),
+        )
+    return HTMLResponse(
+        content=(
+            "<!doctype html><meta charset=utf-8>"
+            "<title>Donna — verified</title>"
+            "<h1>This device is now trusted.</h1>"
+            "<p>Sign in to Immich to finish linking your identity.</p>"
+        ),
+    )
 
 
 @router.get("/status")

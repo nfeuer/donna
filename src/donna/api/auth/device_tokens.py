@@ -10,6 +10,7 @@ Sliding window: every successful validate() bumps expires_at by
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 from datetime import datetime, timedelta
 from typing import Any
@@ -32,6 +33,16 @@ def _verify(hashed: str, raw: str) -> bool:
         return False
 
 
+def _lookup(raw: str) -> str:
+    """Fast indexable lookup digest for a raw token.
+
+    sha256 is used only for equality lookup; the authoritative credential
+    check remains argon2id. Raw tokens are 256-bit random so preimage
+    search is infeasible — this doesn't weaken the at-rest protection.
+    """
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 async def issue(
     conn: aiosqlite.Connection,
     *,
@@ -48,10 +59,19 @@ async def issue(
     expires_at = (now + timedelta(days=sliding_window_days)).isoformat()
     await conn.execute(
         """INSERT INTO device_tokens
-               (token_hash, user_id, label, user_agent,
+               (token_hash, token_lookup, user_id, label, user_agent,
                 last_seen, last_seen_ip, expires_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (_hash(raw), user_id, label, user_agent, now.isoformat(), ip, expires_at),
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            _hash(raw),
+            _lookup(raw),
+            user_id,
+            label,
+            user_agent,
+            now.isoformat(),
+            ip,
+            expires_at,
+        ),
     )
     await conn.commit()
     return raw
@@ -70,29 +90,31 @@ async def validate(
     cursor = await conn.execute(
         """SELECT id, token_hash, user_id, created_at, expires_at, revoked_at
            FROM device_tokens
-           WHERE revoked_at IS NULL AND expires_at > ?""",
-        (now.isoformat(),),
+           WHERE token_lookup=? AND revoked_at IS NULL AND expires_at > ?""",
+        (_lookup(token), now.isoformat()),
     )
-    rows = await cursor.fetchall()
+    row = await cursor.fetchone()
     await cursor.close()
+    if row is None:
+        return None
 
-    for row in rows:
-        row_dict = dict(row)
-        if _verify(row_dict["token_hash"], token):
-            new_expires = now + timedelta(days=sliding_window_days)
-            created = datetime.fromisoformat(row_dict["created_at"])
-            absolute_cap = created + timedelta(days=absolute_max_days)
-            if new_expires > absolute_cap:
-                new_expires = absolute_cap
-            await conn.execute(
-                """UPDATE device_tokens
-                   SET last_seen=?, last_seen_ip=?, expires_at=?
-                   WHERE id=?""",
-                (now.isoformat(), ip, new_expires.isoformat(), row_dict["id"]),
-            )
-            await conn.commit()
-            return row_dict
-    return None
+    row_dict = dict(row)
+    if not _verify(row_dict["token_hash"], token):
+        return None
+
+    new_expires = now + timedelta(days=sliding_window_days)
+    created = datetime.fromisoformat(row_dict["created_at"])
+    absolute_cap = created + timedelta(days=absolute_max_days)
+    if new_expires > absolute_cap:
+        new_expires = absolute_cap
+    await conn.execute(
+        """UPDATE device_tokens
+           SET last_seen=?, last_seen_ip=?, expires_at=?
+           WHERE id=?""",
+        (now.isoformat(), ip, new_expires.isoformat(), row_dict["id"]),
+    )
+    await conn.commit()
+    return row_dict
 
 
 async def revoke(

@@ -64,6 +64,27 @@ def test_verify_marks_ip_trusted_and_burns_token(auth_test_app):
     assert resp2.status_code == 400
 
 
+def test_verify_get_from_email_trusts_ip(auth_test_app):
+    """Clicking the magic link (GET) trusts the IP and returns HTML."""
+    from donna.api.auth import verification_tokens as vt
+
+    app, conn, gmail, immich = auth_test_app
+    app.include_router(auth_flow.router, prefix="/auth")
+    client = TestClient(app)
+
+    raw = asyncio.get_event_loop().run_until_complete(
+        vt.create(conn, ip="testclient", email="nick@example.com", expiry_minutes=15)
+    )
+
+    resp = client.get(f"/auth/verify?token={raw}")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "trusted" in resp.text.lower()
+
+    resp2 = client.get(f"/auth/verify?token={raw}")
+    assert resp2.status_code == 400
+
+
 def test_status_reflects_ip_trust_state(auth_test_app):
     app, conn, gmail, immich = auth_test_app
     app.include_router(auth_flow.router, prefix="/auth")
