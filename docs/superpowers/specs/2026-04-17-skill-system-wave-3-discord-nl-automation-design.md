@@ -426,31 +426,31 @@ Skill transitions to `flagged_for_review`. `CadenceReclamper` sets `active_caden
 
 | # | Requirement | Section | Scenario | Status |
 |---|---|---|---|---|
-| W3-R1 | `ChallengerMatchResult` output schema includes `intent_kind`, `schedule`, `deadline`, `alert_conditions`, `confidence`, `low_quality_signals`. | §4.2 | AS-W3.1, AS-W3.2 | [ ] |
-| W3-R2 | Parser prompt unifies intent classification + extraction in one local-LLM call. | §4.2 | AS-W3.1 | [ ] |
-| W3-R3 | When `status=needs_input`, bot posts clarifying question to a thread; reply resumes the draft. | §4.2 | AS-W3.3 | [ ] |
-| W3-R4 | `ClaudeNoveltyJudge` outputs `{trigger_type, inputs, schedule, alert_conditions, skill_candidate, polling_interval_suggestion}`. | §4.3 | AS-W3.4, AS-W3.8 | [ ] |
-| W3-R5 | "When X" phrasings route to `on_schedule` with inferred polling interval. | §4.2 | AS-W3.4 | [ ] |
-| W3-R6 | Automation creation requires explicit user approval via confirmation card. | §4.2 | AS-W3.1, AS-W3.5 | [ ] |
-| W3-R7 | `PendingDraftRegistry` holds task OR automation drafts; 30-min TTL; thread_id keyed. | §4.3 | AS-W3.3 | [ ] |
-| W3-R8 | `AutomationRepository.create` enforces `(user_id, name)` idempotency. | §4.9 | AS-W3.6 | [ ] |
-| W3-R9 | `skill_candidate_report.status='claude_native_registered'` persists Claude's non-candidate verdict; detector short-circuits on `pattern_fingerprint` match. | §4.4 | AS-W3.8 | [ ] |
-| W3-R10 | `cli.py` refactored into `StartupContext` + three wire helpers; `_run_orchestrator` ≤ 100 lines. (F-W2-E) | §4.7 | Structural | [ ] |
-| W3-R11 | `SkillExecutor(model_router=fake)` without `tool_registry` uses `DEFAULT_TOOL_REGISTRY`. (F-W2-C) | §4.7 | Structural | [ ] |
-| W3-R12 | `product_watch` promoted to `shadow_primary` in E2E fires skill path (not claude_native); `automation_run.skill_run_id` populated. (F-W2-G) | §4.7 | AS-W3.9 | [ ] |
-| W3-R13 | `on_failure` DSL supports `escalate | continue | fail_step | fail_skill` with schema validation + per-value unit tests. (F-W2-D) | §4.7 | AS-W3.10 | [ ] |
-| W3-R14 | Original-spec R4: challenger matches user intent against registry with confidence scoring. | — | AS-W3.1 | [ ] |
-| W3-R15 | Original-spec R5: challenger extracts inputs against matched capability's input schema. | — | AS-W3.1 | [ ] |
-| W3-R16 | Original-spec R6: challenger asks clarifying questions via Discord thread. | — | AS-W3.3 | [ ] |
-| W3-R17 | Original-spec R7: challenger escalates low-confidence matches to Claude. | — | AS-W3.4 | [ ] |
-| W3-R18 | Original-spec R8: Claude novelty returns `match_existing | create_new` with full registry context. | — | AS-W3.4, AS-W3.8 | [ ] |
-| W3-R19 | All NL-created automations log `created_via='discord'`. | §4.4 | AS-W3.1 | [ ] |
-| W3-R20 | E2E: NL "watch X daily" → automation → scheduled run → Discord alert DM. | §4.2 | AS-W3.1, AS-W3.9 | [ ] |
-| W3-R21 | `active_cadence_cron` computed from `target_cadence_cron` + lifecycle policy; dispatcher schedules from active. | §4.5 | AS-W3.11 | [ ] |
-| W3-R22 | Confirmation card shows target vs active cadence when they differ + auto-uplift rationale. | §4.6 | AS-W3.11 | [ ] |
-| W3-R23 | `SkillLifecycleService` state transitions reclamp all affected automations atomically. | §4.6 | AS-W3.11 | [ ] |
-| W3-R24 | `flagged_for_review` lifecycle state pauses automation scheduling. | §4.5 | AS-W3.12 | [ ] |
-| W3-R25 | F-10: `min_interval_seconds` enforced at dispatch time via active cadence. | §4.7 | AS-W3.11 | [ ] |
+| W3-R1 | `ChallengerMatchResult` output schema includes `intent_kind`, `schedule`, `deadline`, `alert_conditions`, `confidence`, `low_quality_signals`. | §4.2 | AS-W3.1, AS-W3.2 | [x] |
+| W3-R2 | Parser prompt unifies intent classification + extraction in one local-LLM call. | §4.2 | AS-W3.1 | [x] |
+| W3-R3 | When `status=needs_input`, bot posts clarifying question to a thread; reply resumes the draft. | §4.2 | AS-W3.3 | [x] |
+| W3-R4 | `ClaudeNoveltyJudge` outputs `{trigger_type, inputs, schedule, alert_conditions, skill_candidate, polling_interval_suggestion}`. | §4.3 | AS-W3.4, AS-W3.8 | [x] |
+| W3-R5 | "When X" phrasings route to `on_schedule` with inferred polling interval. | §4.2 | AS-W3.4 | [x] |
+| W3-R6 | Automation creation requires explicit user approval via confirmation card. | §4.2 | AS-W3.1, AS-W3.5 | [x] |
+| W3-R7 | `PendingDraftRegistry` holds task OR automation drafts; 30-min TTL; thread_id keyed. | §4.3 | AS-W3.3 | [x] |
+| W3-R8 | `AutomationRepository.create` enforces `(user_id, name)` idempotency. | §4.9 | AS-W3.6 | [x] |
+| W3-R9 | `skill_candidate_report.status='claude_native_registered'` persists Claude's non-candidate verdict; detector short-circuits on `pattern_fingerprint` match. | §4.4 | AS-W3.8 | [x] |
+| W3-R10 | `cli.py` refactored into `StartupContext` + three wire helpers; `_run_orchestrator` ≤ 100 lines. (F-W2-E) | §4.7 | Structural | [x] |
+| W3-R11 | `SkillExecutor(model_router=fake)` without `tool_registry` uses `DEFAULT_TOOL_REGISTRY`. (F-W2-C) | §4.7 | Structural | [x] |
+| W3-R12 | `product_watch` promoted to `shadow_primary` in E2E fires skill path (not claude_native); `automation_run.skill_run_id` populated. (F-W2-G) | §4.7 | AS-W3.9 | [x] |
+| W3-R13 | `on_failure` DSL supports `escalate | continue | fail_step | fail_skill` with schema validation + per-value unit tests. (F-W2-D) | §4.7 | AS-W3.10 | [x] |
+| W3-R14 | Original-spec R4: challenger matches user intent against registry with confidence scoring. | — | AS-W3.1 | [x] |
+| W3-R15 | Original-spec R5: challenger extracts inputs against matched capability's input schema. | — | AS-W3.1 | [x] |
+| W3-R16 | Original-spec R6: challenger asks clarifying questions via Discord thread. | — | AS-W3.3 | [x] |
+| W3-R17 | Original-spec R7: challenger escalates low-confidence matches to Claude. | — | AS-W3.4 | [x] |
+| W3-R18 | Original-spec R8: Claude novelty returns `match_existing | create_new` with full registry context. | — | AS-W3.4, AS-W3.8 | [x] |
+| W3-R19 | All NL-created automations log `created_via='discord'`. | §4.4 | AS-W3.1 | [x] |
+| W3-R20 | E2E: NL "watch X daily" → automation → scheduled run → Discord alert DM. | §4.2 | AS-W3.1, AS-W3.9 | [x] |
+| W3-R21 | `active_cadence_cron` computed from `target_cadence_cron` + lifecycle policy; dispatcher schedules from active. | §4.5 | AS-W3.11 | [x] |
+| W3-R22 | Confirmation card shows target vs active cadence when they differ + auto-uplift rationale. | §4.6 | AS-W3.11 | [x] |
+| W3-R23 | `SkillLifecycleService` state transitions reclamp all affected automations atomically. | §4.6 | AS-W3.11 | [x] |
+| W3-R24 | `flagged_for_review` lifecycle state pauses automation scheduling. | §4.5 | AS-W3.12 | [x] |
+| W3-R25 | F-10: `min_interval_seconds` enforced at dispatch time via active cadence. | §4.7 | AS-W3.11 | [x] |
 
 ---
 

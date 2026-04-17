@@ -39,6 +39,34 @@ None are ship-blockers. Captured so a fresh session has the full picture.
 
 ---
 
+## Completed — Wave 3 (2026-04-17)
+
+- **F-3** Discord natural-language automation creation. ChallengerAgent now does unified intent-parse + capability-match + input-extraction in a single local-Ollama call. ClaudeNoveltyJudge handles no-match escalations. DiscordIntentDispatcher routes parse results; AutomationConfirmationView + AutomationCreationPath close the loop. See `docs/superpowers/specs/2026-04-17-skill-system-wave-3-discord-nl-automation-design.md`.
+- **F-W2-C** Unit test for SkillExecutor default-tool-registry wiring.
+- **F-W2-D** on_failure DSL (escalate|continue|fail_step|fail_skill) implemented in ToolDispatcher + executor.
+- **F-W2-E** cli.py refactored into StartupContext + wire_skill_system/wire_automation_subsystem/wire_discord helpers.
+- **F-W2-G** E2E proves product_watch runs via SkillExecutor at shadow_primary (not claude_native).
+- **F-10** min_interval_seconds enforced via cadence clamping (CadencePolicy + CadenceReclamper + SkillLifecycleManager.after_state_change hook).
+- **New: CadenceReclamper registered in production cli_wiring** (was previously test-harness only).
+- **New: claude_native placeholder capability** seeded so polling automations with capability_name=None can persist.
+- **New: alert_conditions DSL alignment** between parse/novelty schemas/prompts and runtime AlertEvaluator.
+
+## Follow-ups surfaced during Wave 3 (2026-04-17)
+
+Captured during Wave 3 code reviews. Not blockers; document for planning.
+
+- **F-W3-A — CadencePolicy override precedence.** *(P3.)* Override dict can introduce new lifecycle states the base policy doesn't know about. Order fix: validate state is known before checking override. Low priority; current caller paths can't exercise this.
+- **F-W3-B — PendingDraftRegistry sweeper race condition.** *(P3.)* When the async sweeper runs concurrently with set(), a newly-reset draft can be evicted. Re-check TTL at pop time to fix. Important once the sweeper is wired to a background task.
+- **F-W3-C — Legacy dedup_pending + field-update handlers unreachable when intent_dispatcher wired.** *(P2.)* DonnaBot.on_message puts Wave-3 dispatcher before the legacy dedup/field-update branches. Silent functional regression: "merge"/"keep" dedup replies and "change priority to 3" commands go through Claude novelty judge. Fix: move legacy stateful handlers above the Wave-3 dispatcher branch, OR migrate them into dispatcher intents.
+- **F-W3-D — DonnaBot _TasksDbAdapter stuffs capability_name + inputs into notes JSON.** *(P2.)* Awaiting a tasks-schema migration that adds first-class columns. Currently unwindable only by parsing notes.
+- **F-W3-E — AutomationConfirmationView approval coroutine holds 30-min timeout in on_message.** *(P3.)* Not blocking at single-user scale. Consider asyncio.create_task fire-and-forget for scale.
+- **F-W3-F — AutomationConfirmationView edit branch is log-only.** *(P2.)* Card's "Edit" button prompts "What do you want to change?" but no thread is opened and nothing listens for the reply. UX regression risk.
+- **F-W3-G — Challenger parse schema + prompt have drift risk.** *(P3.)* Prompt field list duplicates schema; no test asserts parity. Add a schema-keys-in-prompt check.
+- **F-W3-H — Challenger parse schema validation not invoked on LLM response.** *(P3.)* Challenger calls router.complete but doesn't validate output against schemas/challenger_parse.json (ClaudeNoveltyJudge does via Task 6 fix). Harmonize.
+- **F-W3-I — DiscordHandle.notification_service duplication.** *(P3.)* Delete the duplicated field once Task 8-style wiring is confirmed not to need it.
+- **F-W3-J — SkillSystemHandle.skill_router naming misleading.** *(P3.)* The "skill_router" is also used by automation wiring. Rename or relocate.
+- **F-W3-K — Challenger parse snapshot_capabilities is un-cached.** *(P3.)* Full CapabilityMatcher.list_all on every Discord message. Add TTL cache when volume matters.
+
 ## Completed — Wave 2 (2026-04-17)
 
 - **F-W1-B** EvolutionGates now thread `tool_mocks` through all three gates. New `mock_synthesis.py` helper shared between runtime and migration. See `docs/superpowers/specs/2026-04-17-skill-system-wave-2-first-capability-design.md`.
@@ -53,7 +81,7 @@ None are ship-blockers. Captured so a fresh session has the full picture.
 - **F-11** `product_watch` capability + skill + 4 fixtures with `tool_mocks` seeded via Alembic migration. `SeedCapabilityLoader` syncs `config/capabilities.yaml` on orchestrator startup. `web_fetch` registered on module-level default registry.
 - **Task 0 (Wave 2 prerequisite)** `ModelRouter._resolve_route` gained longest-prefix match fallback so dynamic `skill_step::*` and `skill_validation::*` task_types resolve without per-entry config.
 
-Wave 3 plan: **F-3** Discord natural-language automation creation (OOS-W2-1 from Wave 2 spec).
+Wave 3 shipped **F-3** Discord natural-language automation creation — see the "Completed — Wave 3" section above.
 
 ## Completed — Wave 1 (2026-04-16)
 
