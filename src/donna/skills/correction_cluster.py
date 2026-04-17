@@ -58,6 +58,27 @@ class CorrectionClusterDetector:
                 flagged.append(fired)
         return flagged
 
+    async def scan_for_capability(
+        self, capability_name: str,
+    ) -> dict[str, Any] | None:
+        """Scan recent corrections for any trusted/shadow_primary skill for
+        this capability. Fires urgent flag+notification if the threshold is
+        exceeded. Called synchronously from the correction-log write path
+        (F-7 fast path) in addition to the nightly :meth:`scan_once`.
+        """
+        placeholders = ",".join("?" * len(ELIGIBLE_STATES))
+        cursor = await self._conn.execute(
+            f"SELECT id FROM skill WHERE capability_name = ? "
+            f"AND state IN ({placeholders})",
+            (capability_name, *ELIGIBLE_STATES),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return await self._check_skill(
+            skill_id=row[0], capability_name=capability_name,
+        )
+
     async def _check_skill(
         self, skill_id: str, capability_name: str,
     ) -> dict[str, Any] | None:
