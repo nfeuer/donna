@@ -41,7 +41,8 @@ async def test_downgrade_drops_column(tmp_path: Path) -> None:
     db = tmp_path / "t3.db"
     cfg = _cfg(db)
     command.upgrade(cfg, "head")
-    command.downgrade(cfg, "-1")
+    # Downgrade past this migration specifically (target = its down_revision).
+    command.downgrade(cfg, "b8c9d0e1f2a3")
     async with aiosqlite.connect(db) as conn:
         cursor = await conn.execute("PRAGMA table_info(skill_candidate_report)")
         cols = {r[1] for r in await cursor.fetchall()}
