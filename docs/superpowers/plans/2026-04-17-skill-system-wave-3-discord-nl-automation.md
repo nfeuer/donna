@@ -79,15 +79,16 @@ Execute tasks in the numbered order below. Each task ends with a commit.
 ## Task 1: Alembic Migrations
 
 **Files:**
-- Create: `alembic/versions/c9d0e1f2a3b4_skill_candidate_status_claude_native.py`
-- Create: `alembic/versions/d0e1f2a3b4c5_automation_active_cadence.py`
+- Create: `alembic/versions/e1f2a3b4c5d6_merge_heads_for_wave3.py`
+- Create: `alembic/versions/f2a3b4c5d6e7_skill_candidate_status_claude_native.py`
+- Create: `alembic/versions/a3b4c5d6e7f8_automation_active_cadence.py`
 - Test: `tests/unit/test_migration_wave3.py`
 
-**Note:** Confirm the current Alembic head before writing these migrations:
-```bash
-alembic heads
-```
-If the head is not `b8c9d0e1f2a3`, update `down_revision` on the first migration to the actual head.
+**Note:** At merge time the repo has **two Alembic heads** that must be consolidated first:
+- `c2d3e4f5a6b7` (merge_auth_and_skill_system_heads)
+- `d0e1f2a3b4c5` (seed_product_watch_capability — Wave 2's final migration)
+
+Wave 3 must (1) merge these heads, (2) then add its own two migrations off the merge revision. Run `alembic heads` to confirm before starting and adjust if the state has changed.
 
 - [ ] **Step 1: Write migration test**
 
@@ -107,8 +108,10 @@ def test_wave3_migrations_apply_and_rollback(tmp_path: pathlib.Path) -> None:
     db_path = tmp_path / "test.db"
     env = {"DONNA_DB_PATH": str(db_path)}
 
-    subprocess.check_call(["alembic", "upgrade", "d0e1f2a3b4c5"], env={**env, **_env_inherit()})
-    subprocess.check_call(["alembic", "downgrade", "b8c9d0e1f2a3"], env={**env, **_env_inherit()})
+    subprocess.check_call(["alembic", "upgrade", "a3b4c5d6e7f8"], env={**env, **_env_inherit()})
+    subprocess.check_call(["alembic", "downgrade", "e1f2a3b4c5d6"], env={**env, **_env_inherit()})
+    # Rollback past the merge head to the two pre-Wave-3 heads.
+    subprocess.check_call(["alembic", "downgrade", "d0e1f2a3b4c5"], env={**env, **_env_inherit()})
 
 
 def _env_inherit() -> dict[str, str]:
@@ -123,15 +126,43 @@ pytest tests/unit/test_migration_wave3.py -v
 ```
 Expected: FAIL with `alembic.util.exc.CommandError: Can't locate revision identified by 'd0e1f2a3b4c5'`.
 
-- [ ] **Step 3: Write first migration**
+- [ ] **Step 3a: Write merge-heads migration**
 
 ```python
-# alembic/versions/c9d0e1f2a3b4_skill_candidate_status_claude_native.py
+# alembic/versions/e1f2a3b4c5d6_merge_heads_for_wave3.py
+"""merge c2d3e4f5a6b7 + d0e1f2a3b4c5 heads before Wave 3
+
+Revision ID: e1f2a3b4c5d6
+Revises: c2d3e4f5a6b7, d0e1f2a3b4c5
+Create Date: 2026-04-17 00:00:00.000000
+"""
+from __future__ import annotations
+
+from typing import Sequence, Union
+
+revision: str = "e1f2a3b4c5d6"
+down_revision: Union[str, Sequence[str], None] = ("c2d3e4f5a6b7", "d0e1f2a3b4c5")
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    pass
+
+
+def downgrade() -> None:
+    pass
+```
+
+- [ ] **Step 3b: Write first Wave 3 migration**
+
+```python
+# alembic/versions/f2a3b4c5d6e7_skill_candidate_status_claude_native.py
 """add claude_native_registered status + pattern_fingerprint
 
-Revision ID: c9d0e1f2a3b4
-Revises: b8c9d0e1f2a3
-Create Date: 2026-04-17 00:00:00.000000
+Revision ID: f2a3b4c5d6e7
+Revises: e1f2a3b4c5d6
+Create Date: 2026-04-17 00:00:01.000000
 """
 from __future__ import annotations
 
@@ -140,8 +171,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "c9d0e1f2a3b4"
-down_revision: Union[str, None] = "b8c9d0e1f2a3"
+revision: str = "f2a3b4c5d6e7"
+down_revision: Union[str, None] = "e1f2a3b4c5d6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -177,15 +208,15 @@ def downgrade() -> None:
         batch_op.drop_column("pattern_fingerprint")
 ```
 
-- [ ] **Step 4: Write second migration**
+- [ ] **Step 4: Write second Wave 3 migration**
 
 ```python
-# alembic/versions/d0e1f2a3b4c5_automation_active_cadence.py
+# alembic/versions/a3b4c5d6e7f8_automation_active_cadence.py
 """add automation.active_cadence_cron + capability.cadence_policy_override
 
-Revision ID: d0e1f2a3b4c5
-Revises: c9d0e1f2a3b4
-Create Date: 2026-04-17 00:00:01.000000
+Revision ID: a3b4c5d6e7f8
+Revises: f2a3b4c5d6e7
+Create Date: 2026-04-17 00:00:02.000000
 """
 from __future__ import annotations
 
@@ -194,8 +225,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "d0e1f2a3b4c5"
-down_revision: Union[str, None] = "c9d0e1f2a3b4"
+revision: str = "a3b4c5d6e7f8"
+down_revision: Union[str, None] = "f2a3b4c5d6e7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -229,15 +260,16 @@ Expected: PASS.
 ```bash
 alembic heads
 ```
-Expected: `d0e1f2a3b4c5 (head)`.
+Expected: `a3b4c5d6e7f8 (head)` (single head).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add alembic/versions/c9d0e1f2a3b4_skill_candidate_status_claude_native.py \
-        alembic/versions/d0e1f2a3b4c5_automation_active_cadence.py \
+git add alembic/versions/e1f2a3b4c5d6_merge_heads_for_wave3.py \
+        alembic/versions/f2a3b4c5d6e7_skill_candidate_status_claude_native.py \
+        alembic/versions/a3b4c5d6e7f8_automation_active_cadence.py \
         tests/unit/test_migration_wave3.py
-git commit -m "feat(migrations): skill_candidate_report + automation cadence schema (Wave 3)"
+git commit -m "feat(migrations): merge heads + skill_candidate + automation cadence (Wave 3)"
 ```
 
 ---
