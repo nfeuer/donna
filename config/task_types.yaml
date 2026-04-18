@@ -77,7 +77,12 @@ task_types:
     description: "Evaluate task quality and generate follow-up questions"
     model: local_parser
     prompt_template: prompts/challenge_task.md
-    output_schema: schemas/challenge_output.json
+    # F-W3-H: schema points at challenger_parse.json (the Wave 3 unified
+    # intent + capability parse shape). ChallengerAgent.execute's legacy
+    # {needs_clarification, questions, reasoning} output reads the raw
+    # LLM response directly and does not run through validate_output, so
+    # this swap does not affect that path.
+    output_schema: schemas/challenger_parse.json
     tools: []
 
   generate_weekly_digest:
@@ -141,6 +146,13 @@ task_types:
     model: reasoner
     prompt_template: prompts/skill_evolution.md
     output_schema: schemas/skill_evolution_output.json
+    tools: []
+
+  claude_novelty:
+    description: "Claude judges no-capability-match messages and emits execution-ready intent + skill reuse verdict"
+    model: reasoner
+    prompt_template: prompts/claude_novelty.md
+    output_schema: schemas/claude_novelty.json
     tools: []
 
 # Schema versioning: output schemas use semantic versioning

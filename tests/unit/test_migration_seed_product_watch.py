@@ -75,7 +75,7 @@ async def test_seed_creates_four_fixtures_with_tool_mocks(tmp_path: Path) -> Non
 async def test_seed_downgrade_removes_capability(tmp_path: Path) -> None:
     db = tmp_path / "t5.db"
     cfg = _cfg(db)
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "d0e1f2a3b4c5")
     command.downgrade(cfg, "-1")
     async with aiosqlite.connect(db) as conn:
         cursor = await conn.execute(

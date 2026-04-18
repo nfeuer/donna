@@ -23,6 +23,20 @@ class ToolInvocationError(Exception):
     """Raised when a tool invocation fails (including after retries)."""
 
 
+# Valid values for a tool invocation's ``on_failure`` DSL field (F-W2-D).
+# - ``escalate`` (default): raise ToolInvocationError; executor consults triage
+#   or escalates to Claude.
+# - ``continue``: swallow the error, log it, and return ``{store_as: {"tool_error": ...}}``
+#   so downstream steps can observe the failure.
+# - ``fail_step``: raise StepFailedError; executor marks the step terminally
+#   failed, skips remaining steps with no escalation.
+# - ``fail_skill``: raise SkillFailedError; executor aborts the whole run
+#   with status=failed, no escalation.
+ON_FAILURE_VALUES = frozenset(
+    ("escalate", "continue", "fail_step", "fail_skill")
+)
+
+
 @dataclass(slots=True)
 class ToolInvocationSpec:
     """A single tool call declared in a skill YAML step."""
@@ -30,6 +44,14 @@ class ToolInvocationSpec:
     args: dict[str, Any]
     store_as: str = "result"
     retry: dict[str, Any] = field(default_factory=dict)
+    on_failure: str = "escalate"
+
+    def __post_init__(self) -> None:
+        if self.on_failure not in ON_FAILURE_VALUES:
+            raise ValueError(
+                f"invalid on_failure={self.on_failure!r}; "
+                f"expected one of {sorted(ON_FAILURE_VALUES)}"
+            )
 
 
 class ToolDispatcher:
@@ -43,7 +65,31 @@ class ToolDispatcher:
         inputs: dict,
         allowed_tools: list[str],
     ) -> dict:
-        """Run a single tool invocation; return {store_as_key: tool_result}."""
+        """Run a single tool invocation; return {store_as_key: tool_result}.
+
+        If the invocation fails (after retries) the ``spec.on_failure`` DSL
+        value determines the behavior:
+
+        - ``escalate`` (default): raise ``ToolInvocationError``.
+        - ``continue``: log and return ``{spec.store_as: {"tool_error": ...}}``.
+        - ``fail_step``: raise ``StepFailedError``.
+        - ``fail_skill``: raise ``SkillFailedError``.
+        """
+        try:
+            return await self._dispatch_with_retry(
+                spec=spec, state=state, inputs=inputs,
+                allowed_tools=allowed_tools,
+            )
+        except ToolInvocationError as exc:
+            return self._apply_on_failure(spec, exc)
+
+    async def _dispatch_with_retry(
+        self,
+        spec: ToolInvocationSpec,
+        state: dict,
+        inputs: dict,
+        allowed_tools: list[str],
+    ) -> dict:
         try:
             resolved_args = render_value(
                 spec.args,
@@ -89,3 +135,25 @@ class ToolDispatcher:
             error=str(last_err) if last_err else "unknown",
         )
         raise ToolInvocationError(str(last_err)) from last_err
+
+    def _apply_on_failure(
+        self, spec: ToolInvocationSpec, exc: ToolInvocationError,
+    ) -> dict:
+        """Translate a ToolInvocationError into the configured on_failure action."""
+        on_failure = spec.on_failure
+        if on_failure == "continue":
+            logger.warning(
+                "tool_failure_continue",
+                tool=spec.tool, store_as=spec.store_as, error=str(exc),
+            )
+            return {spec.store_as: {"tool_error": str(exc)}}
+        if on_failure == "fail_step":
+            # Import lazily to avoid an executor <-> dispatcher import cycle.
+            from donna.skills.executor import StepFailedError
+            raise StepFailedError(step_name=spec.store_as, cause=exc) from exc
+        if on_failure == "fail_skill":
+            from donna.skills.executor import SkillFailedError
+            raise SkillFailedError(step_name=spec.store_as, cause=exc) from exc
+        # Default: escalate — re-raise so the executor's triage/escalation
+        # path handles it as before.
+        raise exc

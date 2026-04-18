@@ -24,6 +24,7 @@ import discord
 from discord import app_commands
 import structlog
 
+from donna.integrations.discord_pending_drafts import PendingDraft
 from donna.orchestrator.input_parser import DuplicateDetectedError, InputParser
 from donna.preferences.correction_logger import log_correction
 from donna.tasks.database import Database, TaskRow
@@ -68,6 +69,8 @@ class DonnaBot(discord.Client):
         dispatcher: AgentDispatcher | None = None,
         chat_channel_id: int | None = None,
         chat_engine: Any | None = None,
+        intent_dispatcher: Any | None = None,
+        automation_repo: Any | None = None,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -83,6 +86,9 @@ class DonnaBot(discord.Client):
         self._dispatcher = dispatcher
         self._chat_channel_id = chat_channel_id
         self._chat_engine = chat_engine
+        # Wave 3: DiscordIntentDispatcher-driven routing.
+        self._intent_dispatcher = intent_dispatcher
+        self._automation_repo = automation_repo
         # Command tree for slash commands (may fail if Client not fully initialized).
         try:
             self.tree = app_commands.CommandTree(self)
@@ -290,6 +296,11 @@ class DonnaBot(discord.Client):
             channel="discord",
         )
 
+        # Stateful pre-checks that must short-circuit before the Wave 3
+        # intent dispatcher branch. These handle in-flight conversations
+        # (merge/keep/update replies, field-update commands) and must not
+        # be re-routed through Claude's novelty judge.
+
         # Route pending dedup decisions: user is replying to a duplicate prompt.
         if user_id in self._dedup_pending:
             await self._handle_dedup_reply(message, user_id, log)
@@ -299,6 +310,13 @@ class DonnaBot(discord.Client):
         field_update = _detect_field_update(raw_text)
         if field_update is not None:
             await self._handle_field_update(message, user_id, raw_text, field_update, log)
+            return
+
+        # Wave 3: if the intent dispatcher is wired, route the message through
+        # it instead of the legacy InputParser flow. The stateful pre-checks
+        # above always take precedence.
+        if self._intent_dispatcher is not None:
+            await self._handle_tasks_channel_via_dispatcher(message)
             return
 
         log.info("discord_message_received", raw_text=raw_text[:200])
@@ -408,6 +426,216 @@ class DonnaBot(discord.Client):
             await message.channel.send(
                 "Captured your message. I'll parse it properly when my brain"
                 " comes back online."
+            )
+
+    # ------------------------------------------------------------------
+    # Wave 3: DiscordIntentDispatcher routing
+    # ------------------------------------------------------------------
+
+    async def _handle_tasks_channel_via_dispatcher(
+        self, message: discord.Message
+    ) -> None:
+        """Route a tasks-channel message through the DiscordIntentDispatcher.
+
+        Branches on DispatchResult.kind:
+          - task_created → confirmation reply
+          - clarification_posted → thread + question
+          - automation_confirmation_needed → post the AutomationConfirmationView
+          - chat / no_action → return
+        """
+        log = logger.bind(
+            user_id=str(message.author.id),
+            channel="discord",
+        )
+
+        # Build a minimal duck-typed message for the dispatcher.
+        thread_id: int | None = None
+        thread_obj = getattr(message, "thread", None)
+        if thread_obj is not None and hasattr(thread_obj, "id"):
+            try:
+                thread_id = int(thread_obj.id)
+            except (TypeError, ValueError):
+                thread_id = None
+
+        class _Msg:
+            content = message.content
+            author_id = str(message.author.id)
+
+        _Msg.thread_id = thread_id  # type: ignore[attr-defined]
+
+        try:
+            result = await self._intent_dispatcher.dispatch(_Msg())
+        except Exception:
+            log.exception("intent_dispatch_failed")
+            await message.channel.send(
+                "Something went wrong routing that message. Try again in a moment."
+            )
+            return
+
+        kind = getattr(result, "kind", "no_action")
+
+        if kind == "task_created":
+            task_id = getattr(result, "task_id", None) or "?"
+            await message.channel.send(f"Task captured (`{task_id}`).")
+            return
+
+        if kind == "clarification_posted":
+            question = (
+                getattr(result, "clarifying_question", None) or "Need more info."
+            )
+            try:
+                thread = await message.create_thread(name="Clarification")
+                await thread.send(question)
+            except Exception:
+                log.exception("clarification_thread_create_failed")
+                await message.channel.send(question)
+            return
+
+        if kind == "automation_confirmation_needed":
+            draft = getattr(result, "draft_automation", None)
+            if draft is None:
+                log.warning("automation_confirmation_missing_draft")
+                return
+            await self._send_automation_confirmation(message, draft, log)
+            return
+
+        if kind == "chat":
+            return
+
+        if kind == "no_action":
+            log.info(
+                "on_message_no_action",
+                content_preview=(message.content or "")[:60],
+            )
+            return
+
+        log.warning("on_message_unknown_dispatch_kind", kind=kind)
+
+    async def _send_automation_confirmation(
+        self,
+        message: discord.Message,
+        draft: Any,
+        log: Any,
+    ) -> None:
+        """Post the AutomationConfirmationView and await user decision."""
+        from donna.integrations.discord_views import AutomationConfirmationView
+
+        name = _suggest_automation_name(draft)
+        view = AutomationConfirmationView(draft=draft, name=name)
+        try:
+            await message.channel.send(embed=view.build_embed(), view=view)
+        except Exception:
+            log.exception("automation_confirmation_send_failed")
+            return
+
+        # Wait for the user to click Approve/Edit/Cancel (or view to time out).
+        # discord.py runs views on its own task scheduler — awaiting here only
+        # blocks this on_message coroutine, not the bot's event loop.
+        try:
+            await view.wait()
+        except Exception:
+            log.exception("automation_confirmation_wait_failed")
+            return
+
+        decision = getattr(view, "result", None)
+        if decision == "approve":
+            await self._approve_automation_draft(message, view, log)
+        elif decision == "edit":
+            await self._store_automation_edit_draft(message, view, log)
+        elif decision == "cancel":
+            # View already replaced itself with a "Cancelled" message.
+            return
+        else:
+            log.info("automation_confirmation_timeout")
+
+    async def _store_automation_edit_draft(
+        self,
+        message: discord.Message,
+        view: Any,
+        log: Any,
+    ) -> None:
+        """Persist a PendingDraft so the user's next message resumes the edit.
+
+        Wave 3 F-W3-F MVP: the AutomationConfirmationView "Edit" button sets
+        ``view.result = "edit"`` and the view already sent a follow-up prompt.
+        To make that prompt actionable we seed a PendingDraft keyed on the
+        DM-fallback key (``dm:{user_id}``) so the next message routed through
+        DiscordIntentDispatcher.dispatch hits the ``_resume`` path with the
+        draft's prior context and re-parses into a fresh DraftAutomation.
+        """
+        log.info(
+            "automation_edit_requested",
+            user_id=str(message.author.id),
+        )
+        if self._intent_dispatcher is None:
+            return
+        draft = view.draft
+        draft_snapshot = {
+            "user_id": getattr(draft, "user_id", None),
+            "capability_name": getattr(draft, "capability_name", None),
+            "inputs": getattr(draft, "inputs", None) or {},
+            "schedule_cron": getattr(draft, "schedule_cron", None),
+            "alert_conditions": getattr(draft, "alert_conditions", None),
+            "target_cadence_cron": getattr(draft, "target_cadence_cron", None),
+            "active_cadence_cron": getattr(draft, "active_cadence_cron", None),
+        }
+        pending = PendingDraft(
+            user_id=str(message.author.id),
+            thread_id=f"dm:{message.author.id}",
+            draft_kind="automation",
+            partial={
+                "extracted_inputs": draft_snapshot["inputs"],
+                "edit_snapshot": draft_snapshot,
+            },
+            capability_name=draft_snapshot["capability_name"],
+        )
+        try:
+            self._intent_dispatcher._drafts.set(pending)
+        except Exception:
+            log.exception(
+                "automation_edit_pending_draft_store_failed",
+                user_id=str(message.author.id),
+            )
+
+    async def _approve_automation_draft(
+        self,
+        message: discord.Message,
+        view: Any,
+        log: Any,
+    ) -> None:
+        """Persist an approved DraftAutomation via AutomationCreationPath."""
+        if self._automation_repo is None:
+            log.warning("automation_approve_no_repo")
+            await message.channel.send(
+                "Automation flow isn't fully wired yet — nothing saved."
+            )
+            return
+
+        from donna.automations.creation_flow import AutomationCreationPath
+
+        default_min_interval = getattr(
+            self, "_automation_default_min_interval_seconds", 300
+        )
+        creation = AutomationCreationPath(
+            repository=self._automation_repo,
+            default_min_interval_seconds=default_min_interval,
+        )
+        try:
+            automation_id = await creation.approve(view.draft, name=view.name)
+        except Exception:
+            log.exception("automation_creation_failed", name=view.name)
+            await message.channel.send(
+                f"Couldn't create automation `{view.name}`."
+            )
+            return
+
+        if automation_id:
+            await message.channel.send(
+                f"Automation created (`{automation_id}`)."
+            )
+        else:
+            await message.channel.send(
+                f"Automation `{view.name}` already exists."
             )
 
     async def _handle_dedup_reply(
@@ -654,6 +882,22 @@ class DonnaBot(discord.Client):
             await message.channel.send(
                 "Something went wrong. Try again in a moment."
             )
+
+
+# ------------------------------------------------------------------
+# Automation name suggestion
+# ------------------------------------------------------------------
+
+
+def _suggest_automation_name(draft: Any) -> str:
+    """Simple deterministic name: capability + first meaningful input token."""
+    cap = getattr(draft, "capability_name", None) or "claude_native"
+    inputs = getattr(draft, "inputs", None) or {}
+    first_input = next(iter(inputs.values()), None) if inputs else None
+    if first_input:
+        token = str(first_input).split("/")[-1][:20]
+        return f"{cap}_{token}"
+    return cap
 
 
 # ------------------------------------------------------------------

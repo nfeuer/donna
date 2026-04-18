@@ -152,6 +152,10 @@ class Task(Base):
     donna_managed: Mapped[bool] = mapped_column(Boolean, default=False)
     nudge_count: Mapped[int] = mapped_column(Integer, default=0)
     quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Wave 3: capability matched by intent dispatcher (nullable — claude-native)
+    capability_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Wave 3: JSON-serialized extracted inputs dict from the intent dispatcher
+    inputs_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class NudgeEvent(Base):
@@ -513,6 +517,7 @@ class SkillCandidateReport(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="new", index=True)
     reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class SkillEvolutionLog(Base):

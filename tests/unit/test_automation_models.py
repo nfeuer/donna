@@ -23,6 +23,7 @@ def test_row_to_automation_parses_json_and_datetime():
         1, 0,
         now.isoformat(), now.isoformat(),
         "dashboard",
+        "0 12 * * *",
     )
     auto = row_to_automation(row)
     assert isinstance(auto, AutomationRow)
@@ -31,6 +32,8 @@ def test_row_to_automation_parses_json_and_datetime():
     assert auto.alert_channels == ["discord"]
     assert auto.last_run_at == now
     assert auto.run_count == 1
+    assert auto.active_cadence_cron == "0 12 * * *"
+    assert auto.target_cadence_cron == "0 12 * * *"
 
 
 def test_row_to_automation_run_parses_output():

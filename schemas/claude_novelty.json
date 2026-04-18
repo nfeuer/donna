@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["intent_kind", "skill_candidate", "skill_candidate_reasoning"],
+  "properties": {
+    "intent_kind": {"enum": ["task", "automation", "question", "chat"]},
+    "trigger_type": {"enum": ["on_schedule", "on_manual", "on_message", null]},
+    "extracted_inputs": {"type": "object"},
+    "schedule": {"type": ["object", "null"]},
+    "deadline": {"type": ["string", "null"], "format": "date-time"},
+    "alert_conditions": {
+      "type": ["object", "null"],
+      "description": "Alert DSL understood by AlertEvaluator: terminal nodes shaped {field, op, value} (op in ==, !=, <, <=, >, >=, contains, exists) or composite nodes shaped {all_of:[...]} / {any_of:[...]}. Null when no alert is needed."
+    },
+    "polling_interval_suggestion": {"type": ["string", "null"]},
+    "skill_candidate": {"type": "boolean"},
+    "skill_candidate_reasoning": {"type": "string"},
+    "clarifying_question": {"type": ["string", "null"]}
+  }
+}

@@ -21,7 +21,8 @@ SCHEMA = """
         status TEXT NOT NULL,
         reported_at TEXT NOT NULL,
         resolved_at TEXT,
-        manual_draft_at TEXT
+        manual_draft_at TEXT,
+        reasoning TEXT
     );
 """
 

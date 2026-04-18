@@ -548,3 +548,114 @@ class EscalationApprovalView(discord.ui.View):
     async def decline(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
         await interaction.response.send_message("Got it, I'll do my best without Claude.")
         self.stop()
+
+
+# ------------------------------------------------------------------
+# Automation Confirmation View (Wave 3 NL-created automations)
+# ------------------------------------------------------------------
+
+
+_CRON_HUMAN_TABLE = {
+    "*/15 * * * *": "every 15 minutes",
+    "*/30 * * * *": "every 30 minutes",
+    "0 * * * *": "hourly",
+    "0 */6 * * *": "every 6 hours",
+    "0 */12 * * *": "every 12 hours",
+    "0 0 * * *": "daily at midnight",
+    "0 9 * * *": "daily at 9am",
+    "0 12 * * *": "daily at noon",
+}
+
+
+def _cron_to_human(cron: str | None) -> str:
+    if cron is None:
+        return "paused"
+    return _CRON_HUMAN_TABLE.get(cron, cron)
+
+
+class AutomationConfirmationView(discord.ui.View):
+    """Embed card + Approve/Edit/Cancel buttons for a pending DraftAutomation."""
+
+    def __init__(self, *, draft: Any, name: str) -> None:
+        super().__init__(timeout=1800)
+        self.draft = draft
+        self.name = name
+        self.result: str | None = None  # approve | edit | cancel
+
+    def build_embed(self) -> discord.Embed:
+        cap_desc = (
+            f"Capability: `{self.draft.capability_name}`"
+            if self.draft.capability_name
+            else "Capability: _none — Claude will handle runs_"
+        )
+        embed = discord.Embed(
+            title=f"Create automation: {self.name}",
+            description=cap_desc,
+            color=discord.Color.blue(),
+        )
+        inputs_value = (
+            "\n".join(f"{k}: `{v}`" for k, v in self.draft.inputs.items())
+            or "_(none)_"
+        )
+        embed.add_field(name="Inputs", value=inputs_value, inline=False)
+
+        if self.draft.target_cadence_cron != self.draft.active_cadence_cron:
+            # Mirror the non-clamped branch's fallback: when schedule_human
+            # is absent, humanize the target cron instead of echoing the
+            # raw expression.
+            target_human = self.draft.schedule_human or _cron_to_human(
+                self.draft.target_cadence_cron
+            )
+            active_human = _cron_to_human(self.draft.active_cadence_cron)
+            embed.add_field(
+                name="Schedule",
+                value=(
+                    f"Your target: **{target_human}**\n"
+                    f"Running: **{active_human}** for now\n"
+                    "_I'll speed up automatically: hourly once I'm shadowing, "
+                    "your target once trusted._"
+                ),
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="Schedule",
+                value=(
+                    self.draft.schedule_human
+                    or self.draft.schedule_cron
+                    or "(none)"
+                ),
+                inline=False,
+            )
+
+        if self.draft.alert_conditions:
+            embed.add_field(
+                name="Alert when",
+                value=f"`{self.draft.alert_conditions.get('expression', '')}`",
+                inline=False,
+            )
+        return embed
+
+    @discord.ui.button(label="Approve", style=ButtonStyle.green)
+    async def approve(self, interaction: Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
+        self.result = "approve"
+        self.stop()
+        await interaction.response.edit_message(
+            content="Creating automation…", view=None
+        )
+
+    @discord.ui.button(label="Edit", style=ButtonStyle.grey)
+    async def edit(self, interaction: Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
+        self.result = "edit"
+        self.stop()
+        await interaction.response.edit_message(
+            content="What do you want to change?", view=None
+        )
+
+    @discord.ui.button(label="Cancel", style=ButtonStyle.red)
+    async def cancel(self, interaction: Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
+        self.result = "cancel"
+        self.stop()
+        await interaction.response.edit_message(
+            content="Cancelled — nothing created.", view=None
+        )

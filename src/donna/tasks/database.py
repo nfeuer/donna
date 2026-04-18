@@ -71,6 +71,10 @@ class TaskRow:
     donna_managed: bool
     nudge_count: int
     quality_score: float | None
+    # Wave 3: capability matched by intent dispatcher (nullable — claude-native)
+    capability_name: str | None = None
+    # Wave 3: extracted inputs dict from the intent dispatcher (parsed from JSON)
+    inputs: dict[str, Any] | None = None
 
 
 # Columns that can be updated via update_task().
@@ -102,6 +106,8 @@ _UPDATABLE_COLUMNS: set[str] = {
     "donna_managed",
     "nudge_count",
     "quality_score",
+    "capability_name",
+    "inputs_json",
 }
 
 # Column order for SELECT — must match TaskRow field order.
@@ -137,6 +143,8 @@ _TASK_COLUMNS = (
     "donna_managed",
     "nudge_count",
     "quality_score",
+    "capability_name",
+    "inputs_json",
 )
 
 _SELECT_COLUMNS = ", ".join(_TASK_COLUMNS)
@@ -149,11 +157,26 @@ _BOOL_INDEXES = {
 }
 
 
+_INPUTS_JSON_INDEX = _TASK_COLUMNS.index("inputs_json")
+
+
 def _row_to_task(row: tuple[Any, ...]) -> TaskRow:
-    """Map a raw SQLite row to a TaskRow, converting int booleans."""
+    """Map a raw SQLite row to a TaskRow, converting int booleans.
+
+    The ``inputs_json`` column is the final SELECT column; it's parsed from
+    JSON text into a dict and fed to ``TaskRow.inputs``. The ``capability_name``
+    column maps 1:1.
+    """
     values = list(row)
     for idx in _BOOL_INDEXES:
         values[idx] = bool(values[idx])
+    # Parse inputs_json → inputs dict (swap in the parsed value at the same index).
+    raw_inputs = values[_INPUTS_JSON_INDEX]
+    if raw_inputs is not None:
+        try:
+            values[_INPUTS_JSON_INDEX] = json.loads(raw_inputs)
+        except (TypeError, ValueError):
+            values[_INPUTS_JSON_INDEX] = None
     return TaskRow(*values)
 
 
@@ -232,8 +255,16 @@ class Database:
         prep_work_instructions: str | None = None,
         agent_eligible: bool = False,
         estimated_cost: float | None = None,
+        capability_name: str | None = None,
+        inputs: dict[str, Any] | None = None,
     ) -> TaskRow:
-        """Insert a new task and return it. Generates a uuid7 ID."""
+        """Insert a new task and return it. Generates a uuid7 ID.
+
+        ``capability_name`` + ``inputs`` are Wave 3 first-class columns written
+        by the Discord intent dispatcher so downstream consumers can query
+        structured task inputs. ``inputs`` is serialized to JSON at write-time
+        and parsed back to a dict at read-time.
+        """
         conn = self.connection
         task_id = str(uuid6.uuid7())
         now = datetime.utcnow().isoformat()
@@ -272,6 +303,8 @@ class Database:
                 False,  # donna_managed
                 0,  # nudge_count
                 None,  # quality_score
+                capability_name,
+                json.dumps(inputs) if inputs else None,
             ),
         )
         await conn.commit()
@@ -310,6 +343,8 @@ class Database:
         processed: dict[str, Any] = {}
         for key, value in fields.items():
             if key in ("tags", "notes", "dependencies") and isinstance(value, list):
+                processed[key] = json.dumps(value)
+            elif key == "inputs_json" and isinstance(value, dict):
                 processed[key] = json.dumps(value)
             elif isinstance(value, datetime):
                 processed[key] = value.isoformat()

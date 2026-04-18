@@ -13,6 +13,7 @@ AUTOMATION_COLUMNS = (
     "alert_channels", "max_cost_per_run_usd", "min_interval_seconds",
     "status", "last_run_at", "next_run_at", "run_count",
     "failure_count", "created_at", "updated_at", "created_via",
+    "active_cadence_cron",
 )
 SELECT_AUTOMATION = ", ".join(AUTOMATION_COLUMNS)
 
@@ -46,6 +47,12 @@ class AutomationRow:
     created_at: datetime
     updated_at: datetime
     created_via: str
+    active_cadence_cron: str | None = None
+
+    @property
+    def target_cadence_cron(self) -> str | None:
+        """Wave 3 — user's intended cadence. Reads from schedule for backward compat."""
+        return self.schedule
 
 
 @dataclass(slots=True)
@@ -98,6 +105,7 @@ def row_to_automation(row: tuple) -> AutomationRow:
         created_at=_parse_dt(row[17]),
         updated_at=_parse_dt(row[18]),
         created_via=row[19],
+        active_cadence_cron=row[20] if len(row) > 20 else None,
     )
 
 

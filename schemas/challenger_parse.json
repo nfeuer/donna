@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "required": ["intent_kind", "confidence", "match_score"],
+  "properties": {
+    "intent_kind": {"enum": ["task", "automation", "question", "chat"]},
+    "capability_name": {"type": ["string", "null"]},
+    "match_score": {"type": "number", "minimum": 0, "maximum": 1},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "extracted_inputs": {"type": "object"},
+    "schedule": {
+      "type": ["object", "null"],
+      "properties": {
+        "cron": {"type": "string"},
+        "human_readable": {"type": "string"}
+      }
+    },
+    "deadline": {"type": ["string", "null"], "format": "date-time"},
+    "alert_conditions": {
+      "type": ["object", "null"],
+      "description": "Alert DSL understood by AlertEvaluator: terminal nodes shaped {field, op, value} (op in ==, !=, <, <=, >, >=, contains, exists) or composite nodes shaped {all_of:[...]} / {any_of:[...]}. Null when no alert is needed."
+    },
+    "missing_fields": {"type": "array", "items": {"type": "string"}},
+    "clarifying_question": {"type": ["string", "null"]},
+    "low_quality_signals": {"type": "array", "items": {"type": "string"}}
+  }
+}

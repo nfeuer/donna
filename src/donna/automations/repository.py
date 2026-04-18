@@ -23,6 +23,10 @@ from donna.automations.models import (
 logger = structlog.get_logger()
 
 
+class AlreadyExistsError(Exception):
+    """Raised when creating an automation that collides on (user_id, name)."""
+
+
 class AutomationRepository:
     def __init__(self, connection: aiosqlite.Connection) -> None:
         self._conn = connection
@@ -43,24 +47,40 @@ class AutomationRepository:
         min_interval_seconds: int,
         created_via: str,
         next_run_at: datetime | None = None,
+        target_cadence_cron: str | None = None,
+        active_cadence_cron: str | None = None,
     ) -> str:
         auto_id = str(uuid6.uuid7())
         now_iso = datetime.now(timezone.utc).isoformat()
-        await self._conn.execute(
-            f"INSERT INTO automation ({SELECT_AUTOMATION}) "
-            f"VALUES ({', '.join('?' for _ in AUTOMATION_COLUMNS)})",
-            (
-                auto_id, user_id, name, description, capability_name,
-                json.dumps(inputs), trigger_type, schedule,
-                json.dumps(alert_conditions), json.dumps(alert_channels),
-                max_cost_per_run_usd, min_interval_seconds,
-                "active",
-                None,
-                next_run_at.isoformat() if next_run_at else None,
-                0, 0,
-                now_iso, now_iso, created_via,
-            ),
-        )
+        target_cadence_cron = target_cadence_cron or schedule
+        active_cadence_cron = active_cadence_cron or schedule
+        try:
+            await self._conn.execute(
+                f"INSERT INTO automation ({SELECT_AUTOMATION}) "
+                f"VALUES ({', '.join('?' for _ in AUTOMATION_COLUMNS)})",
+                (
+                    auto_id, user_id, name, description, capability_name,
+                    json.dumps(inputs), trigger_type, schedule,
+                    json.dumps(alert_conditions), json.dumps(alert_channels),
+                    max_cost_per_run_usd, min_interval_seconds,
+                    "active",
+                    None,
+                    next_run_at.isoformat() if next_run_at else None,
+                    0, 0,
+                    now_iso, now_iso, created_via,
+                    active_cadence_cron,
+                ),
+            )
+        except aiosqlite.IntegrityError as exc:
+            # Narrow the catch: only UNIQUE collisions indicate duplicate
+            # (user_id, name). FK / NOT NULL violations are genuine bugs
+            # and must propagate so the caller sees them instead of a
+            # mislabelled AlreadyExistsError (Wave 3 bug-fix).
+            if "UNIQUE constraint" in str(exc):
+                raise AlreadyExistsError(
+                    f"automation {user_id}/{name} already exists"
+                ) from exc
+            raise
         await self._conn.commit()
         return auto_id
 
@@ -96,6 +116,30 @@ class AutomationRepository:
         )
         rows = await cursor.fetchall()
         return [row_to_automation(r) for r in rows]
+
+    async def list_by_capability(self, capability_name: str) -> list[AutomationRow]:
+        cursor = await self._conn.execute(
+            f"SELECT {SELECT_AUTOMATION} FROM automation WHERE capability_name = ?",
+            (capability_name,),
+        )
+        rows = await cursor.fetchall()
+        return [row_to_automation(r) for r in rows]
+
+    async def update_active_cadence(
+        self,
+        automation_id: str,
+        active_cadence_cron: str | None,
+        next_run_at: datetime | None,
+    ) -> None:
+        """Atomically set active_cadence_cron + next_run_at on an automation row."""
+        iso = next_run_at.isoformat() if next_run_at is not None else None
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await self._conn.execute(
+            "UPDATE automation SET active_cadence_cron = ?, next_run_at = ?, "
+            "updated_at = ? WHERE id = ?",
+            (active_cadence_cron, iso, now_iso, automation_id),
+        )
+        await self._conn.commit()
 
     async def list_due(self, now: datetime) -> list[AutomationRow]:
         cursor = await self._conn.execute(
