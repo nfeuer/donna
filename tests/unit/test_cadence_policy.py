@@ -48,3 +48,16 @@ def test_per_capability_override() -> None:
     )
     override = {"trusted": {"min_interval_seconds": 60}}
     assert policy.min_interval_for("trusted", override=override) == 60
+
+
+def test_unknown_state_with_override_still_raises() -> None:
+    """F-W3-A: An override keyed by a bogus state must not mask validation.
+
+    Before the fix the override lookup ran before the state-validity
+    check, so a typo'd override key would silently return its value and
+    let an unknown lifecycle state reach the scheduler.
+    """
+    policy = CadencePolicy(intervals={"trusted": 900}, paused_states=set())
+    override = {"bogus_state": {"min_interval_seconds": 60}}
+    with pytest.raises(KeyError, match="unknown"):
+        policy.min_interval_for("bogus_state", override=override)

@@ -111,11 +111,18 @@ class SkillSystemHandle:
 
     `bundle` is None when `skill_config.enabled` is false; downstream
     helpers (automation + discord) still wire correctly in that case.
-    `skill_router` + `budget_guard` are always present because the
+    `subsystem_router` + `budget_guard` are always present because the
     automation subsystem needs them even without the skill system.
+
+    ``subsystem_router`` is a ModelRouter instance shared by BOTH the
+    skill system and the automation subsystem (F-W3-J). It is distinct
+    from ``ctx.model_router`` / ``ctx.router`` which handles the primary
+    orchestrator request path; the subsystem router exists so the skill
+    + automation pipelines can be swapped, rate-limited, or budget-
+    capped independently of the interactive path.
     """
 
-    skill_router: ModelRouter
+    subsystem_router: ModelRouter
     budget_guard: Optional[BudgetGuard]
     cost_tracker: Optional[CostTracker]
     bundle: Optional[SkillSystemBundle]
@@ -136,14 +143,13 @@ class DiscordHandle:
     """Return value of `wire_discord`.
 
     `bot` is the DonnaBot instance (or None if the token/channel env
-    vars aren't present). `notification_service` is duplicated from
-    `StartupContext` for callers that only receive the handle. The
-    Wave-3 Task-8 intent dispatcher will hang off this struct once it
-    lands.
+    vars aren't present). Callers that need the notification service
+    should reach through ``StartupContext.notification_service``; this
+    handle used to duplicate that field but no consumer read it off the
+    handle (F-W3-I).
     """
 
     bot: Optional[Any]
-    notification_service: Optional[NotificationService]
     intent_dispatcher: Optional[Any] = None  # Wave 3 Task 8 will wire this.
 
 
@@ -264,7 +270,7 @@ async def wire_skill_system(ctx: StartupContext) -> SkillSystemHandle:
     """Register default tools, seed capabilities, assemble skill bundle.
 
     Always returns a handle. When `skill_config.enabled` is false, the
-    bundle is None but `skill_router` + `budget_guard=None` are still
+    bundle is None but `subsystem_router` + `budget_guard=None` are still
     populated so the automation subsystem can wire.
     """
     log = ctx.log
@@ -276,10 +282,13 @@ async def wire_skill_system(ctx: StartupContext) -> SkillSystemHandle:
     )
     from donna.skills.startup_wiring import assemble_skill_system
 
-    # Pre-define for automation subsystem regardless of skill-system state.
-    # The automation dispatcher tolerates a None budget_guard (see
-    # AutomationDispatcher._run_one which guards `if self._budget_guard is not None`).
-    skill_router = ModelRouter(
+    # Shared ModelRouter used by both the skill system and the automation
+    # subsystem (F-W3-J). Distinct from ctx.router which serves the
+    # interactive request path. Pre-defined here so the automation
+    # subsystem wires even when skill_system.enabled=false. The
+    # automation dispatcher tolerates a None budget_guard (see
+    # AutomationDispatcher._run_one).
+    subsystem_router = ModelRouter(
         ctx.models_config, ctx.task_types_config, ctx.project_root,
     )
 
@@ -346,7 +355,7 @@ async def wire_skill_system(ctx: StartupContext) -> SkillSystemHandle:
 
         bundle = assemble_skill_system(
             connection=ctx.db.connection,
-            model_router=skill_router,
+            model_router=subsystem_router,
             budget_guard=skill_budget_guard,
             notifier=_skill_system_notifier,
             config=ctx.skill_config,
@@ -412,7 +421,7 @@ async def wire_skill_system(ctx: StartupContext) -> SkillSystemHandle:
         log.info("skill_system_disabled_in_config")
 
     return SkillSystemHandle(
-        skill_router=skill_router,
+        subsystem_router=subsystem_router,
         budget_guard=skill_budget_guard,
         cost_tracker=cost_tracker,
         bundle=bundle,
@@ -468,7 +477,7 @@ async def wire_automation_subsystem(
         automation_dispatcher = AutomationDispatcher(
             connection=ctx.db.connection,
             repository=automation_repo,
-            model_router=skill_h.skill_router,
+            model_router=skill_h.subsystem_router,
             skill_executor_factory=lambda: None,  # OOS-W1-2
             budget_guard=skill_h.budget_guard,
             alert_evaluator=AlertEvaluator(),
@@ -552,9 +561,7 @@ async def wire_discord(
             "discord_bot_disabled",
             reason="DISCORD_BOT_TOKEN or DISCORD_TASKS_CHANNEL_ID not set",
         )
-        return DiscordHandle(
-            bot=None, notification_service=None, intent_dispatcher=None,
-        )
+        return DiscordHandle(bot=None, intent_dispatcher=None)
 
     # Wave 3: construct the intent dispatcher. Failure here is logged
     # but non-fatal — the bot falls back to the legacy InputParser path.
@@ -621,7 +628,6 @@ async def wire_discord(
 
     return DiscordHandle(
         bot=bot,
-        notification_service=ctx.notification_service,
         intent_dispatcher=intent_dispatcher,
     )
 
@@ -720,10 +726,10 @@ async def _build_intent_dispatcher(
         matcher = CapabilityMatcher(registry, config=ctx.skill_config)
 
         challenger = ChallengerAgent(
-            matcher=matcher, model_router=skill_h.skill_router,
+            matcher=matcher, model_router=skill_h.subsystem_router,
         )
         novelty = ClaudeNoveltyJudge(
-            model_router=skill_h.skill_router, matcher=matcher,
+            model_router=skill_h.subsystem_router, matcher=matcher,
         )
         pending = PendingDraftRegistry()
 

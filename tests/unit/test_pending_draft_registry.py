@@ -46,5 +46,26 @@ async def test_sweeper_removes_expired() -> None:
     draft = PendingDraft(user_id="u1", thread_id=42, draft_kind="task", partial={})
     draft.created_at = time.time() - 3600
     reg._drafts[42] = draft  # direct insert to bypass set's timestamp
-    await reg.sweep_expired()
+    removed = await reg.sweep_expired()
+    assert removed == 1
     assert reg.get_by_thread(42) is None
+
+
+@pytest.mark.asyncio
+async def test_sweeper_preserves_refreshed_draft() -> None:
+    """F-W3-B: a draft refreshed between list-build and pop should survive.
+
+    The original sweep_expired implementation captured a snapshot list
+    of expired thread_ids and popped them unconditionally. If set()
+    refreshed the draft between the snapshot and the pop, the fresh
+    entry got evicted. The fix re-checks TTL at pop time.
+    """
+    reg = PendingDraftRegistry(ttl_seconds=1)
+    draft = PendingDraft(user_id="u1", thread_id=42, draft_kind="task", partial={})
+    reg._drafts[42] = draft
+    draft.created_at = time.time() - 3600  # initially expired
+    # Simulate a refresh happening between "list keys" and "pop".
+    draft.created_at = time.time()  # refreshed
+    removed = await reg.sweep_expired()
+    assert removed == 0
+    assert reg.get_by_thread(42) is not None

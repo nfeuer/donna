@@ -39,12 +39,16 @@ class CadencePolicy:
         *,
         override: dict[str, Any] | None = None,
     ) -> int:
+        # F-W3-A: validity of the state must be checked BEFORE any
+        # override lookup. If an override supplies a bogus state name,
+        # returning its min_interval_seconds silently would mask typos
+        # and let unknown lifecycle states flow through the scheduler.
         if state in self.paused_states:
             raise PausedState(state)
-        if override and state in override:
-            return int(override[state]["min_interval_seconds"])
         if state not in self.intervals:
             raise KeyError(f"unknown lifecycle state: {state}")
+        if override and state in override:
+            return int(override[state]["min_interval_seconds"])
         return self.intervals[state]
 
     def is_paused(self, state: str) -> bool:

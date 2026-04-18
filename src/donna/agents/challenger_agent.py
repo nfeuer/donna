@@ -63,6 +63,7 @@ class ChallengerAgent:
         matcher: CapabilityMatcher | None = None,
         input_extractor: Any | None = None,
         model_router: Any | None = None,
+        capability_snapshot_ttl_s: float = 60.0,
     ) -> None:
         self._matcher = matcher
         self._input_extractor = input_extractor
@@ -71,6 +72,14 @@ class ChallengerAgent:
             loader=jinja2.FileSystemLoader("prompts"),
             autoescape=False,
         )
+        # F-W3-K: 60s TTL cache for capability snapshots. Every free-text
+        # Discord message renders the registry into the challenger parse
+        # prompt; without caching each message triggered a SQLite
+        # round-trip. The registry changes rarely (migrations + nightly
+        # auto-drafts), so 60s of staleness is fine.
+        self._cap_snapshot_cache: list[CapabilityRow] | None = None
+        self._cap_snapshot_cached_at: float = 0.0
+        self._cap_snapshot_ttl_s: float = capability_snapshot_ttl_s
 
     @property
     def name(self) -> str:
@@ -136,6 +145,24 @@ class ChallengerAgent:
                 error_type=type(exc).__name__,
             )
             return await self._legacy_match_and_extract(user_message, user_id)
+
+        # F-W3-H: validate the LLM output against schemas/challenger_parse.json.
+        # Mirrors ClaudeNoveltyJudge (Wave 3 Task 6). On validation failure
+        # we log and degrade — _build_result_from_parse already tolerates
+        # missing optional fields, so we fall through rather than crash.
+        try:
+            from donna.models.validation import validate_output
+
+            schema = self._router.get_output_schema("challenge_task")
+            if schema:
+                result_json = validate_output(result_json, schema)
+        except Exception as exc:
+            logger.warning(
+                "challenger_parse_schema_validation_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            # Fall through — don't abort the parse on validation mismatch.
 
         return self._build_result_from_parse(result_json, caps)
 
@@ -214,9 +241,20 @@ class ChallengerAgent:
     async def _snapshot_capabilities(self) -> list[CapabilityRow]:
         """Return the active capability set for inclusion in the parse prompt.
 
-        Returns an empty list when no matcher is configured or when the matcher
-        does not expose a ``list_all`` method.
+        Cached for ``_cap_snapshot_ttl_s`` seconds (default 60) so free-text
+        Discord traffic doesn't hit SQLite on every message (F-W3-K).
+
+        Returns an empty list when no matcher is configured or when the
+        matcher does not expose a ``list_all`` method. Failures are
+        logged and produce an empty snapshot; they are NOT cached (so
+        a transient DB error doesn't poison the next 60s of parses).
         """
+        now = time.monotonic()
+        if (
+            self._cap_snapshot_cache is not None
+            and now - self._cap_snapshot_cached_at < self._cap_snapshot_ttl_s
+        ):
+            return self._cap_snapshot_cache
         if self._matcher is None or not hasattr(self._matcher, "list_all"):
             return []
         try:
@@ -224,7 +262,10 @@ class ChallengerAgent:
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("challenger_capabilities_snapshot_failed", error=str(exc))
             return []
-        return list(rows)
+        cached = list(rows)
+        self._cap_snapshot_cache = cached
+        self._cap_snapshot_cached_at = now
+        return cached
 
     def _build_result_from_parse(
         self,

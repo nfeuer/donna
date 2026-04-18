@@ -90,7 +90,7 @@ async def test_wire_skill_system_returns_handle(
         # On skill_system.enabled=true, the handle exposes the skill bundle
         # and cost tracker; on disabled it still exists but with bundle=None.
         assert hasattr(handle, "bundle")
-        assert hasattr(handle, "skill_router")
+        assert hasattr(handle, "subsystem_router")
     finally:
         await ctx.db.close()
 
@@ -152,6 +152,9 @@ async def test_wire_discord_returns_handle(
         assert handle is not None
         # bot may be None if Discord token absent; wire function still runs.
         assert hasattr(handle, "bot")
-        assert hasattr(handle, "notification_service")
+        assert hasattr(handle, "intent_dispatcher")
+        # F-W3-I: notification_service is intentionally NOT on the handle;
+        # consumers should reach through StartupContext.notification_service.
+        assert not hasattr(handle, "notification_service")
     finally:
         await ctx.db.close()

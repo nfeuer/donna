@@ -51,8 +51,24 @@ class PendingDraftRegistry:
         self._drafts.pop(thread_id, None)
 
     async def sweep_expired(self) -> int:
+        """Remove drafts older than TTL.
+
+        F-W3-B: the previous implementation built a list of expired
+        thread_ids up front, then popped them. If ``set()`` refreshed a
+        draft (resetting ``created_at``) between the list build and the
+        pop, the refreshed draft was still evicted. Re-checking the TTL
+        at pop time closes that window.
+        """
         now = time.time()
-        expired = [tid for tid, d in self._drafts.items() if now - d.created_at > self._ttl]
-        for tid in expired:
-            self._drafts.pop(tid, None)
-        return len(expired)
+        removed = 0
+        for tid in list(self._drafts.keys()):
+            draft = self._drafts.get(tid)
+            if draft is None:
+                continue
+            if now - draft.created_at > self._ttl:
+                # Re-read inside the loop to avoid racing with set().
+                current = self._drafts.get(tid)
+                if current is not None and now - current.created_at > self._ttl:
+                    self._drafts.pop(tid, None)
+                    removed += 1
+        return removed

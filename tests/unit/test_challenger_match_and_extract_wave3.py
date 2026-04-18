@@ -73,18 +73,23 @@ def _product_watch_cap() -> CapabilityRow:
 
 
 class _FakeRouter:
-    def __init__(self, response: dict) -> None:
+    def __init__(self, response: dict, schema: dict | None = None) -> None:
         self._response = response
+        self._schema = schema or {}
         self.calls: list[tuple[str, str]] = []
 
     async def complete(self, prompt, *, task_type, user_id, schema=None, model_alias=None, **kwargs):
         self.calls.append((task_type, user_id))
         return self._response, {"cost_usd": 0.0, "latency_ms": 50}
 
+    def get_output_schema(self, task_type: str) -> dict:
+        return self._schema
+
 
 class _FakeMatcher:
     def __init__(self) -> None:
         self._cap = _product_watch_cap()
+        self.list_all_calls = 0
 
     async def match(self, message: str) -> MatchResult:
         return MatchResult(
@@ -95,6 +100,7 @@ class _FakeMatcher:
         )
 
     async def list_all(self) -> list[CapabilityRow]:
+        self.list_all_calls += 1
         return [self._cap]
 
 
@@ -191,3 +197,106 @@ async def test_match_and_extract_needs_input_when_missing_fields() -> None:
     assert result.status == "needs_input"
     assert result.missing_fields == ["url", "max_price_usd", "required_size"]
     assert result.clarifying_question.startswith("Which URL")
+
+
+# ---------------------------------------------------------------------------
+# F-W3-H: schema validation on the LLM parse path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_match_and_extract_validates_schema_and_degrades() -> None:
+    """F-W3-H: when LLM output fails schema validation, log and degrade
+    (don't crash). The Wave 3 parse path now calls validate_output the
+    same way the novelty judge and other agents do. On failure, we log
+    and let _build_result_from_parse compute a best-effort result from
+    whatever fields are present, rather than bubbling up a validation
+    exception to the Discord handler.
+    """
+    # Response missing every required field (intent_kind, confidence, match_score).
+    bad_response: dict = {"foo": "bar"}
+    # Use the real challenger_parse schema so the required-field check fires.
+    import json as _json
+    import pathlib as _pl
+
+    schema = _json.loads(_pl.Path("schemas/challenger_parse.json").read_text())
+    router = _FakeRouter(bad_response, schema=schema)
+    agent = ChallengerAgent(
+        matcher=_FakeMatcher(), input_extractor=None, model_router=router
+    )
+    # Should not raise — the "log and degrade" path kicks in.
+    result = await agent.match_and_extract("do something vague", "u1")
+    # Defaults from _build_result_from_parse when fields are missing:
+    # intent_kind defaults to "task", confidence/match_score to 0 → escalate.
+    assert result.status == "escalate_to_claude"
+
+
+# ---------------------------------------------------------------------------
+# F-W3-K: capability snapshot TTL cache
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_capability_snapshot_cache_reuses_across_calls() -> None:
+    """F-W3-K: _snapshot_capabilities should hit the matcher at most once
+    within the TTL window, not once per message.
+    """
+    router_response = {
+        "intent_kind": "task",
+        "capability_name": "product_watch",
+        "match_score": 0.9,
+        "confidence": 0.92,
+        "extracted_inputs": {},
+        "schedule": None,
+        "deadline": None,
+        "alert_conditions": None,
+        "missing_fields": [],
+        "clarifying_question": None,
+        "low_quality_signals": [],
+    }
+    matcher = _FakeMatcher()
+    router = _FakeRouter(router_response)
+    agent = ChallengerAgent(
+        matcher=matcher,
+        input_extractor=None,
+        model_router=router,
+        capability_snapshot_ttl_s=60.0,
+    )
+
+    await agent.match_and_extract("watch something", "u1")
+    await agent.match_and_extract("watch something else", "u1")
+    await agent.match_and_extract("watch a third thing", "u1")
+
+    # First call populates the cache; calls 2 and 3 hit the cache.
+    assert matcher.list_all_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_capability_snapshot_cache_expires_after_ttl() -> None:
+    """F-W3-K: after TTL elapses, the snapshot is re-fetched."""
+    router_response = {
+        "intent_kind": "task",
+        "capability_name": "product_watch",
+        "match_score": 0.9,
+        "confidence": 0.92,
+        "extracted_inputs": {},
+        "schedule": None,
+        "deadline": None,
+        "alert_conditions": None,
+        "missing_fields": [],
+        "clarifying_question": None,
+        "low_quality_signals": [],
+    }
+    matcher = _FakeMatcher()
+    router = _FakeRouter(router_response)
+    # TTL of 0 seconds -> every call is a cache miss.
+    agent = ChallengerAgent(
+        matcher=matcher,
+        input_extractor=None,
+        model_router=router,
+        capability_snapshot_ttl_s=0.0,
+    )
+
+    await agent.match_and_extract("watch something", "u1")
+    await agent.match_and_extract("watch something else", "u1")
+    assert matcher.list_all_calls == 2
