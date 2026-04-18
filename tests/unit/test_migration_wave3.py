@@ -64,6 +64,45 @@ async def test_wave3_migrations_apply_and_rollback(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_tasks_capability_columns_added_and_rolled_back(
+    tmp_path: Path,
+) -> None:
+    """Migration e7f8a9b0c1d2 adds capability_name + inputs_json to tasks."""
+    db = tmp_path / "caps.db"
+    cfg = _cfg(db)
+
+    # Upgrade to the prior head first — confirm the columns aren't present.
+    command.upgrade(cfg, "d6e7f8a9b0c1")
+    async with aiosqlite.connect(db) as conn:
+        cols = {
+            row[1]
+            async for row in await conn.execute("PRAGMA table_info(tasks)")
+        }
+        assert "capability_name" not in cols
+        assert "inputs_json" not in cols
+
+    # Apply the new migration.
+    command.upgrade(cfg, "e7f8a9b0c1d2")
+    async with aiosqlite.connect(db) as conn:
+        cols = {
+            row[1]
+            async for row in await conn.execute("PRAGMA table_info(tasks)")
+        }
+        assert "capability_name" in cols
+        assert "inputs_json" in cols
+
+    # Rollback — columns disappear.
+    command.downgrade(cfg, "d6e7f8a9b0c1")
+    async with aiosqlite.connect(db) as conn:
+        cols = {
+            row[1]
+            async for row in await conn.execute("PRAGMA table_info(tasks)")
+        }
+        assert "capability_name" not in cols
+        assert "inputs_json" not in cols
+
+
+@pytest.mark.asyncio
 async def test_wave3_backfills_active_cadence_from_schedule(tmp_path: Path) -> None:
     """The automation migration should copy ``schedule`` into ``active_cadence_cron``."""
     db = tmp_path / "backfill.db"

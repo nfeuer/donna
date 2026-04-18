@@ -662,10 +662,9 @@ class _TasksDbAdapter:
     """Adapt `Database.create_task` to the dispatcher's `insert_task` surface.
 
     DiscordIntentDispatcher passes (user_id, title, inputs, deadline,
-    capability_name) — we persist via `Database.create_task` and return
-    the new task id. `inputs` / `capability_name` are recorded in the
-    task's tags + notes so they aren't lost before a richer task schema
-    lands.
+    capability_name); we persist via `Database.create_task` which now
+    stores ``capability_name`` + ``inputs_json`` as first-class columns
+    (Wave 3 migration e7f8a9b0c1d2).
     """
 
     def __init__(self, database: Any) -> None:
@@ -680,22 +679,15 @@ class _TasksDbAdapter:
         deadline: Any | None = None,
         capability_name: str | None = None,
     ) -> str:
-        import json as _json
-
         from donna.tasks.db_models import InputChannel
-
-        notes: list[str] = []
-        if capability_name:
-            notes.append(f"capability: {capability_name}")
-        if inputs:
-            notes.append(f"inputs: {_json.dumps(inputs)}")
 
         row = await self._db.create_task(
             user_id=user_id,
             title=title,
             deadline=deadline,
-            notes=notes or None,
             created_via=InputChannel.DISCORD,
+            capability_name=capability_name,
+            inputs=inputs,
         )
         return row.id
 

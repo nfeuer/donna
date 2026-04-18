@@ -24,6 +24,7 @@ import discord
 from discord import app_commands
 import structlog
 
+from donna.integrations.discord_pending_drafts import PendingDraft
 from donna.orchestrator.input_parser import DuplicateDetectedError, InputParser
 from donna.preferences.correction_logger import log_correction
 from donna.tasks.database import Database, TaskRow
@@ -285,13 +286,6 @@ class DonnaBot(discord.Client):
         if message.channel.id != self._tasks_channel_id:
             return
 
-        # Wave 3: if the intent dispatcher is wired, route the message through
-        # it instead of the legacy InputParser flow. Dedup / field-update
-        # handling is owned by the legacy path only.
-        if self._intent_dispatcher is not None:
-            await self._handle_tasks_channel_via_dispatcher(message)
-            return
-
         correlation_id = str(uuid.uuid4())
         user_id = str(message.author.id)
         raw_text = message.content.strip()
@@ -302,6 +296,11 @@ class DonnaBot(discord.Client):
             channel="discord",
         )
 
+        # Stateful pre-checks that must short-circuit before the Wave 3
+        # intent dispatcher branch. These handle in-flight conversations
+        # (merge/keep/update replies, field-update commands) and must not
+        # be re-routed through Claude's novelty judge.
+
         # Route pending dedup decisions: user is replying to a duplicate prompt.
         if user_id in self._dedup_pending:
             await self._handle_dedup_reply(message, user_id, log)
@@ -311,6 +310,13 @@ class DonnaBot(discord.Client):
         field_update = _detect_field_update(raw_text)
         if field_update is not None:
             await self._handle_field_update(message, user_id, raw_text, field_update, log)
+            return
+
+        # Wave 3: if the intent dispatcher is wired, route the message through
+        # it instead of the legacy InputParser flow. The stateful pre-checks
+        # above always take precedence.
+        if self._intent_dispatcher is not None:
+            await self._handle_tasks_channel_via_dispatcher(message)
             return
 
         log.info("discord_message_received", raw_text=raw_text[:200])
@@ -535,15 +541,61 @@ class DonnaBot(discord.Client):
         if decision == "approve":
             await self._approve_automation_draft(message, view, log)
         elif decision == "edit":
-            log.info(
-                "automation_edit_requested",
-                user_id=str(message.author.id),
-            )
+            await self._store_automation_edit_draft(message, view, log)
         elif decision == "cancel":
             # View already replaced itself with a "Cancelled" message.
             return
         else:
             log.info("automation_confirmation_timeout")
+
+    async def _store_automation_edit_draft(
+        self,
+        message: discord.Message,
+        view: Any,
+        log: Any,
+    ) -> None:
+        """Persist a PendingDraft so the user's next message resumes the edit.
+
+        Wave 3 F-W3-F MVP: the AutomationConfirmationView "Edit" button sets
+        ``view.result = "edit"`` and the view already sent a follow-up prompt.
+        To make that prompt actionable we seed a PendingDraft keyed on the
+        DM-fallback key (``dm:{user_id}``) so the next message routed through
+        DiscordIntentDispatcher.dispatch hits the ``_resume`` path with the
+        draft's prior context and re-parses into a fresh DraftAutomation.
+        """
+        log.info(
+            "automation_edit_requested",
+            user_id=str(message.author.id),
+        )
+        if self._intent_dispatcher is None:
+            return
+        draft = view.draft
+        draft_snapshot = {
+            "user_id": getattr(draft, "user_id", None),
+            "capability_name": getattr(draft, "capability_name", None),
+            "inputs": getattr(draft, "inputs", None) or {},
+            "schedule_cron": getattr(draft, "schedule_cron", None),
+            "alert_conditions": getattr(draft, "alert_conditions", None),
+            "target_cadence_cron": getattr(draft, "target_cadence_cron", None),
+            "active_cadence_cron": getattr(draft, "active_cadence_cron", None),
+        }
+        pending = PendingDraft(
+            user_id=str(message.author.id),
+            thread_id=f"dm:{message.author.id}",
+            draft_kind="automation",
+            partial={
+                "extracted_inputs": draft_snapshot["inputs"],
+                "edit_snapshot": draft_snapshot,
+            },
+            capability_name=draft_snapshot["capability_name"],
+        )
+        try:
+            self._intent_dispatcher._drafts.set(pending)
+        except Exception:
+            log.exception(
+                "automation_edit_pending_draft_store_failed",
+                user_id=str(message.author.id),
+            )
 
     async def _approve_automation_draft(
         self,

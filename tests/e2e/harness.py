@@ -337,22 +337,15 @@ class _TasksDbAdapter:
         deadline: Any | None = None,
         capability_name: str | None = None,
     ) -> str:
-        import json as _json
-
         from donna.tasks.db_models import InputChannel
-
-        notes: list[str] = []
-        if capability_name:
-            notes.append(f"capability: {capability_name}")
-        if inputs:
-            notes.append(f"inputs: {_json.dumps(inputs)}")
 
         row = await self._db.create_task(
             user_id=user_id,
             title=title,
             deadline=deadline,
-            notes=notes or None,
             created_via=InputChannel.DISCORD,
+            capability_name=capability_name,
+            inputs=inputs,
         )
         return row.id
 
