@@ -195,7 +195,9 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
             task.cancel()
             try:
                 await task
-            except (asyncio.CancelledError, Exception):
+            except BaseException:  # noqa: BLE001
+                # Swallow cancellation + unexpected errors during cleanup;
+                # surfaced via task.exception() on the `done` set below.
                 pass
         # Surface any exception from the completed task
         for task in done:

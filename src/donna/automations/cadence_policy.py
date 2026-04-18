@@ -15,6 +15,19 @@ class PausedState(Exception):
     """Raised by ``min_interval_for`` when the lifecycle state is paused."""
 
 
+def load_discord_automation_default_min_interval_seconds(
+    path: pathlib.Path,
+) -> int:
+    """Read ``discord_automation_default_min_interval_seconds`` from config.
+
+    Used by AutomationCreationPath when persisting automations created
+    through the Discord NL path. Defaults to 300 when the key is absent
+    so older configs keep working.
+    """
+    data = yaml.safe_load(path.read_text()) or {}
+    return int(data.get("discord_automation_default_min_interval_seconds", 300))
+
+
 @dataclass(slots=True)
 class CadencePolicy:
     intervals: dict[str, int]
@@ -39,6 +52,11 @@ class CadencePolicy:
         *,
         override: dict[str, Any] | None = None,
     ) -> int:
+        """Return the minimum interval (seconds) allowed for a lifecycle state.
+
+        Resolution order: paused states → known-state check → override → base table.
+        Raises ``PausedState`` for paused states, ``KeyError`` for unknown states.
+        """
         # F-W3-A: validity of the state must be checked BEFORE any
         # override lookup. If an override supplies a bogus state name,
         # returning its min_interval_seconds silently would mask typos
@@ -52,4 +70,5 @@ class CadencePolicy:
         return self.intervals[state]
 
     def is_paused(self, state: str) -> bool:
+        """True if automations pointing at this state should halt scheduling."""
         return state in self.paused_states

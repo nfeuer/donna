@@ -613,7 +613,13 @@ class DonnaBot(discord.Client):
 
         from donna.automations.creation_flow import AutomationCreationPath
 
-        creation = AutomationCreationPath(repository=self._automation_repo)
+        default_min_interval = getattr(
+            self, "_automation_default_min_interval_seconds", 300
+        )
+        creation = AutomationCreationPath(
+            repository=self._automation_repo,
+            default_min_interval_seconds=default_min_interval,
+        )
         try:
             automation_id = await creation.approve(view.draft, name=view.name)
         except Exception:

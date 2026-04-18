@@ -62,6 +62,58 @@ async def test_wave3_migrations_apply_and_rollback(tmp_path: Path) -> None:
     # d0e1f2a3b4c5's branch, so this is the expected resting point.
     command.downgrade(cfg, "d0e1f2a3b4c5")
 
+    # Explicit version_num assertion — confirms the downgrade landed
+    # exactly on the expected resting revision (not a silently-adjacent one).
+    async with aiosqlite.connect(db) as conn:
+        cur = await conn.execute("SELECT version_num FROM alembic_version")
+        row = await cur.fetchone()
+        assert row is not None
+        assert row[0] == "d0e1f2a3b4c5"
+
+
+@pytest.mark.asyncio
+async def test_wave3_migrations_idempotent_upgrade_cycle(tmp_path: Path) -> None:
+    """Second upgrade after a downgrade should not fail (backfill guard works).
+
+    upgrade head → downgrade to pre-Wave-3 head → upgrade head again → no errors.
+    Asserts columns still exist and alembic_version points at the Wave 3 head.
+    """
+    db = tmp_path / "idempotent.db"
+    cfg = _cfg(db)
+
+    # First upgrade — lands on Wave 3 head.
+    command.upgrade(cfg, "c5d6e7f8a9b0")
+    # Down to the pre-Wave-3 resting point.
+    command.downgrade(cfg, "d0e1f2a3b4c5")
+    # Second upgrade — must not raise (idempotent backfill guard).
+    command.upgrade(cfg, "c5d6e7f8a9b0")
+
+    async with aiosqlite.connect(db) as conn:
+        auto_cols = {
+            row[1]
+            async for row in await conn.execute("PRAGMA table_info(automation)")
+        }
+        assert "active_cadence_cron" in auto_cols
+
+        cap_cols = {
+            row[1]
+            async for row in await conn.execute("PRAGMA table_info(capability)")
+        }
+        assert "cadence_policy_override" in cap_cols
+
+        scr_cols = {
+            row[1]
+            async for row in await conn.execute(
+                "PRAGMA table_info(skill_candidate_report)"
+            )
+        }
+        assert "pattern_fingerprint" in scr_cols
+
+        cur = await conn.execute("SELECT version_num FROM alembic_version")
+        row = await cur.fetchone()
+        assert row is not None
+        assert row[0] == "c5d6e7f8a9b0"
+
 
 @pytest.mark.asyncio
 async def test_tasks_capability_columns_added_and_rolled_back(

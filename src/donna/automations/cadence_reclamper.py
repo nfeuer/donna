@@ -18,10 +18,18 @@ logger = structlog.get_logger()
 class CadenceReclamper:
     """Recomputes automation.active_cadence_cron on skill state change."""
 
-    def __init__(self, *, repo: Any, policy: CadencePolicy, scheduler: Any) -> None:
+    def __init__(
+        self,
+        *,
+        repo: Any,
+        policy: CadencePolicy,
+        scheduler: Any,
+        batch_warn_threshold: int = 50,
+    ) -> None:
         self._repo = repo
         self._policy = policy
         self._scheduler = scheduler
+        self._batch_warn_threshold = batch_warn_threshold
 
     async def reclamp_for_capability(
         self, capability_name: str, new_state: str
@@ -55,7 +63,7 @@ class CadenceReclamper:
                 target=row.target_cadence_cron,
             )
             changed += 1
-        if changed > 50:
+        if changed > self._batch_warn_threshold:
             logger.warning(
                 "cadence_reclamp_large_batch",
                 count=changed,

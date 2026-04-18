@@ -574,6 +574,22 @@ async def wire_discord(
         # AutomationConfirmationView approval coordinator.
         ctx.bot._intent_dispatcher = intent_dispatcher
         ctx.bot._automation_repo = automation_h.repository
+        # Pull the Discord automation default min-interval from config so
+        # AutomationCreationPath doesn't hardcode the 300-second floor.
+        from donna.automations.cadence_policy import (
+            load_discord_automation_default_min_interval_seconds,
+        )
+
+        cadence_path = ctx.config_dir / "automations.yaml"
+        if cadence_path.exists():
+            try:
+                ctx.bot._automation_default_min_interval_seconds = (
+                    load_discord_automation_default_min_interval_seconds(
+                        cadence_path
+                    )
+                )
+            except Exception:
+                log.exception("automation_default_min_interval_load_failed")
         log.info("discord_intent_dispatcher_wired")
 
     bot = ctx.bot

@@ -70,7 +70,11 @@ class ClaudeNoveltyJudge:
         prompt = template.render(
             capabilities=caps,
             user_message=user_message,
-            current_date_iso=datetime.now(timezone.utc).isoformat(),
+            # Emit strict ISO-8601 with `Z` suffix (not `+00:00`) so prompt
+            # fixtures and schema examples match the rendered value exactly.
+            current_date_iso=datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
         )
         parsed, _meta = await self._router.complete(
             prompt,

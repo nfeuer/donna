@@ -77,9 +77,11 @@ class _FakeRouter:
         self._response = response
         self._schema = schema or {}
         self.calls: list[tuple[str, str]] = []
+        self.prompts: list[str] = []
 
     async def complete(self, prompt, *, task_type, user_id, schema=None, model_alias=None, **kwargs):
         self.calls.append((task_type, user_id))
+        self.prompts.append(prompt)
         return self._response, {"cost_usd": 0.0, "latency_ms": 50}
 
     def get_output_schema(self, task_type: str) -> dict:
@@ -300,3 +302,40 @@ async def test_capability_snapshot_cache_expires_after_ttl() -> None:
     await agent.match_and_extract("watch something", "u1")
     await agent.match_and_extract("watch something else", "u1")
     assert matcher.list_all_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_parse_prompt_current_date_iso_uses_z_suffix() -> None:
+    """The rendered parse prompt must emit ``YYYY-MM-DDTHH:MM:SSZ`` for
+    current_date_iso (strict ISO-8601-with-Z), not ``+00:00``. Ensures
+    prompt fixtures and LLM outputs line up on the same timestamp format.
+    """
+    import re
+
+    router_response = {
+        "intent_kind": "task",
+        "capability_name": None,
+        "match_score": 0.0,
+        "confidence": 0.3,
+        "extracted_inputs": {},
+        "schedule": None,
+        "deadline": None,
+        "alert_conditions": None,
+        "missing_fields": [],
+        "clarifying_question": None,
+        "low_quality_signals": [],
+    }
+    router = _FakeRouter(router_response)
+    agent = ChallengerAgent(
+        matcher=_FakeMatcher(), input_extractor=None, model_router=router
+    )
+    await agent.match_and_extract("hello", "u1")
+    assert len(router.prompts) == 1
+    prompt = router.prompts[0]
+    # Find a YYYY-MM-DDTHH:MM:SSZ stamp in the rendered prompt.
+    assert re.search(
+        r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b",
+        prompt,
+    ), f"prompt missing Z-suffixed ISO date:\n{prompt}"
+    # And confirm we did NOT emit the +00:00 form.
+    assert "+00:00" not in prompt

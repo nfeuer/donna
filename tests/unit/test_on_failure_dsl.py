@@ -274,6 +274,96 @@ async def test_fail_skill_aborts_entire_run():
     assert router.complete.await_count == 0
 
 
+async def test_for_each_with_on_failure_continue_collects_errors():
+    """Each failing iteration of a for_each stores its tool_error under
+    its templated store_as. Both iterations must run and produce entries
+    because on_failure=continue suppresses the ToolInvocationError.
+    """
+    backbone = (
+        "capability_name: test_on_failure\n"
+        "version: 1\n"
+        "steps:\n"
+        "  - name: fetch\n"
+        "    kind: tool\n"
+        "    tools: [broken_tool]\n"
+        "    tool_invocations:\n"
+        "      - for_each: '{{ inputs.urls }}'\n"
+        "        as: url\n"
+        "        tool: broken_tool\n"
+        "        args:\n"
+        "          url: '{{ url }}'\n"
+        "        store_as: 'page_{{ loop.index0 }}'\n"
+        "        on_failure: continue\n"
+    )
+
+    router = AsyncMock()
+    executor = SkillExecutor(
+        model_router=router,
+        tool_registry=_registry_with_broken_tool(),
+    )
+    result = await executor.execute(
+        skill=_make_skill(),
+        version=_make_version(backbone),
+        inputs={"urls": ["https://a", "https://b"]},
+        user_id="nick",
+    )
+
+    assert result.status == "succeeded", result.error
+    # Step 1's state entry is the collected per-iteration results.
+    fetch = result.state["fetch"]
+    assert fetch == {
+        "page_0": {"tool_error": "tool broke"},
+        "page_1": {"tool_error": "tool broke"},
+    }
+
+
+async def test_for_each_with_fail_step_halts_on_first_failure():
+    """When on_failure=fail_step inside a for_each, the first failing
+    iteration raises StepFailedError — the loop must halt and the skill
+    must terminate with status=failed. Subsequent steps do not run.
+    """
+    backbone = (
+        "capability_name: test_on_failure\n"
+        "version: 1\n"
+        "steps:\n"
+        "  - name: fetch\n"
+        "    kind: tool\n"
+        "    tools: [broken_tool]\n"
+        "    tool_invocations:\n"
+        "      - for_each: '{{ inputs.urls }}'\n"
+        "        as: url\n"
+        "        tool: broken_tool\n"
+        "        args:\n"
+        "          url: '{{ url }}'\n"
+        "        store_as: 'page_{{ loop.index0 }}'\n"
+        "        on_failure: fail_step\n"
+        "  - name: step2_llm\n"
+        "    kind: llm\n"
+        "    prompt: step2_llm\n"
+        "    output_schema: step2_llm\n"
+    )
+
+    router = AsyncMock()
+    router.complete.return_value = ({"unused": True}, _mock_meta())
+    executor = SkillExecutor(
+        model_router=router,
+        tool_registry=_registry_with_broken_tool(),
+    )
+    result = await executor.execute(
+        skill=_make_skill(),
+        version=_make_version(backbone),
+        inputs={"urls": ["https://a", "https://b"]},
+        user_id="nick",
+    )
+
+    assert result.status == "failed"
+    assert result.escalation_reason is None
+    assert "step_failed" in (result.error or "")
+    # Later step must not have run.
+    assert router.complete.await_count == 0
+    assert "step2_llm" not in result.state
+
+
 async def test_escalate_is_default_behavior():
     """Step without on_failure bubbles ToolInvocationError → escalated (existing path)."""
     backbone = (

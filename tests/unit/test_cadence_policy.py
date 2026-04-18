@@ -50,6 +50,15 @@ def test_per_capability_override() -> None:
     assert policy.min_interval_for("trusted", override=override) == 60
 
 
+def test_cadence_policy_loads_real_config() -> None:
+    """Regression test — the real config/automations.yaml must load cleanly."""
+    policy = CadencePolicy.load(pathlib.Path("config/automations.yaml"))
+    # Spot-check the lifecycle states the Wave 3 spec requires.
+    for state in ("claude_native", "sandbox", "shadow_primary", "trusted", "degraded"):
+        assert policy.min_interval_for(state) > 0
+    assert policy.is_paused("flagged_for_review")
+
+
 def test_unknown_state_with_override_still_raises() -> None:
     """F-W3-A: An override keyed by a bogus state must not mask validation.
 

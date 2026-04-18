@@ -19,8 +19,16 @@ logger = structlog.get_logger()
 class AutomationCreationPath:
     """Persist a Discord-approved ``DraftAutomation`` via the repository."""
 
-    def __init__(self, *, repository: Any) -> None:
+    def __init__(
+        self,
+        *,
+        repository: Any,
+        default_min_interval_seconds: int = 300,
+    ) -> None:
         self._repo = repository
+        # Sourced from config/automations.yaml in production wiring; keeps
+        # the 300-second default so existing unit tests keep working.
+        self._default_min_interval_seconds = default_min_interval_seconds
 
     async def approve(self, draft: DraftAutomation, *, name: str) -> str | None:
         """Create the automation row. Returns its id or ``None`` on duplicate."""
@@ -41,7 +49,7 @@ class AutomationCreationPath:
                 alert_conditions=draft.alert_conditions or {},
                 alert_channels=["discord_dm"],
                 max_cost_per_run_usd=None,
-                min_interval_seconds=300,
+                min_interval_seconds=self._default_min_interval_seconds,
                 created_via="discord",
                 target_cadence_cron=draft.target_cadence_cron,
                 active_cadence_cron=draft.active_cadence_cron,

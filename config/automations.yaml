@@ -1,3 +1,7 @@
+# Minimum interval (seconds) applied to automations created through the
+# Discord NL path. Used by AutomationCreationPath when persisting the row.
+discord_automation_default_min_interval_seconds: 300
+
 cadence_policy:
   claude_native:
     min_interval_seconds: 43200

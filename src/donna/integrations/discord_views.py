@@ -600,8 +600,11 @@ class AutomationConfirmationView(discord.ui.View):
         embed.add_field(name="Inputs", value=inputs_value, inline=False)
 
         if self.draft.target_cadence_cron != self.draft.active_cadence_cron:
-            target_human = (
-                self.draft.schedule_human or self.draft.target_cadence_cron
+            # Mirror the non-clamped branch's fallback: when schedule_human
+            # is absent, humanize the target cron instead of echoing the
+            # raw expression.
+            target_human = self.draft.schedule_human or _cron_to_human(
+                self.draft.target_cadence_cron
             )
             active_human = _cron_to_human(self.draft.active_cadence_cron)
             embed.add_field(

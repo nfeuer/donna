@@ -301,7 +301,9 @@ class SkillExecutor:
 
             except StepFailedError as exc:
                 # on_failure=fail_step — terminally fail the step, skip the
-                # rest of the skill, no triage/escalation.
+                # rest of the skill, no triage/escalation. We don't write to
+                # `state[step_name]` here (no subsequent step reads it) —
+                # symmetry with the fail_skill branch below.
                 cause_msg = str(exc.cause) if exc.cause else "step failed"
                 record.error = cause_msg
                 record.validation_status = "step_failed"
@@ -309,7 +311,6 @@ class SkillExecutor:
                 record.latency_ms = int((time.monotonic() - step_start) * 1000)
                 step_results.append(record)
                 await self._persist_step_if_repo(skill_run_id, record)
-                state[step_name] = {"tool_error": cause_msg}
                 logger.info(
                     "skill_step_failed_terminal",
                     skill_id=skill.id, step=step_name, error=cause_msg,

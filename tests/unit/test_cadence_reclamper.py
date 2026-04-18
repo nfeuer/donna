@@ -6,7 +6,25 @@ from unittest.mock import AsyncMock
 import pytest
 
 from donna.automations.cadence_policy import CadencePolicy
-from donna.automations.cadence_reclamper import CadenceReclamper
+from donna.automations.cadence_reclamper import (
+    CadenceReclamper,
+    _cron_min_interval_seconds,
+)
+
+
+@pytest.mark.parametrize(
+    "cron, expected",
+    [
+        ("*/15 * * * *", 900),
+        ("0 */12 * * *", 43200),
+        ("0 12 * * *", 86400),
+        ("0 10 * * 0", 604800),
+        ("0 * * * *", 3600),
+    ],
+)
+def test_cron_min_interval_seconds(cron: str, expected: int) -> None:
+    """Spot-check _cron_min_interval_seconds across the documented cases."""
+    assert _cron_min_interval_seconds(cron) == expected
 
 
 class _FakeRepo:
