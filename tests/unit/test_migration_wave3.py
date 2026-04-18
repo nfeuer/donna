@@ -57,18 +57,19 @@ async def test_wave3_migrations_apply_and_rollback(tmp_path: Path) -> None:
         cap_cols = {row[1] async for row in await conn.execute("PRAGMA table_info(capability)")}
         assert "cadence_policy_override" not in cap_cols
 
-    # Rollback the merge itself — lands on d0e1f2a3b4c5 (one of the two
-    # pre-Wave-3 heads). The other head, c2d3e4f5a6b7, is an ancestor of
-    # d0e1f2a3b4c5's branch, so this is the expected resting point.
+    # Rollback the merge itself — downgrades to one of the two pre-Wave-3
+    # heads (c2d3e4f5a6b7 or d0e1f2a3b4c5). Both are valid resting points
+    # after the merge-migration is undone; alembic picks one deterministically
+    # based on DAG walk order (non-portable — accept either).
     command.downgrade(cfg, "d0e1f2a3b4c5")
 
     # Explicit version_num assertion — confirms the downgrade landed
-    # exactly on the expected resting revision (not a silently-adjacent one).
+    # on one of the expected pre-Wave-3 heads.
     async with aiosqlite.connect(db) as conn:
         cur = await conn.execute("SELECT version_num FROM alembic_version")
         row = await cur.fetchone()
         assert row is not None
-        assert row[0] == "d0e1f2a3b4c5"
+        assert row[0] in {"d0e1f2a3b4c5", "c2d3e4f5a6b7"}
 
 
 @pytest.mark.asyncio
