@@ -19,6 +19,11 @@ from donna.skills.tools.gmail_get_message import gmail_get_message
 # Module-level registry populated at orchestrator startup via
 # register_default_tools(DEFAULT_TOOL_REGISTRY). SkillExecutor instances
 # that don't receive an explicit tool_registry default to this one.
+#
+# Thread-safety: None by design. Registration must complete at boot
+# before any dispatch happens. Mutation after boot is not supported in
+# production. Tests may call .clear() for isolation (see the autouse
+# fixture in tests/conftest.py).
 DEFAULT_TOOL_REGISTRY: ToolRegistry = ToolRegistry()
 
 

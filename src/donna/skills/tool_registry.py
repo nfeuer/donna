@@ -37,6 +37,13 @@ class ToolRegistry:
             logger.info("tool_overwritten", name=name)
         self._tools[name] = callable_
 
+    def clear(self) -> None:
+        """Remove every registered tool. Boot-time-only + test isolation only.
+
+        Not thread-safe. Do not call from request-serving code paths.
+        """
+        self._tools.clear()
+
     def list_tool_names(self) -> list[str]:
         return list(self._tools.keys())
 
