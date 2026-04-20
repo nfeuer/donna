@@ -32,3 +32,67 @@ capabilities:
         size_available: {type: boolean}
         triggers_alert: {type: boolean}
         title: {type: string}
+
+  - name: news_check
+    description: |
+      Monitor RSS/Atom feeds for new items matching user-specified topics.
+      Uses prior_run_end to filter items since the last successful run.
+      Alerts when new items match any topic in the inputs.
+    trigger_type: on_schedule
+    input_schema:
+      type: object
+      required: [feed_urls, topics]
+      properties:
+        feed_urls:
+          type: array
+          items: {type: string}
+          minItems: 1
+          description: List of RSS/Atom feed URLs to monitor.
+        topics:
+          type: array
+          items: {type: string}
+          minItems: 1
+          description: Topic keywords to match feed items against.
+        prior_run_end:
+          type: ["string", "null"]
+          description: Injected by dispatcher; skill passes to rss_fetch.since.
+    default_output_shape:
+      type: object
+      required: [ok, triggers_alert, message, meta]
+      properties:
+        ok: {type: boolean}
+        triggers_alert: {type: boolean}
+        message: {type: ["string", "null"]}
+        meta:
+          type: object
+
+  - name: email_triage
+    description: |
+      Scan Gmail for emails from a sender allow-list since the last run,
+      classify which need a reply, DM a digest when any do. Depends on the
+      gmail_search (+ optional gmail_get_message) tool being registered.
+    trigger_type: on_schedule
+    input_schema:
+      type: object
+      required: [senders]
+      properties:
+        senders:
+          type: array
+          items: {type: string}
+          minItems: 1
+          description: Allow-list of sender addresses/domains to scan.
+        query_extras:
+          type: ["string", "null"]
+          description: Optional additional Gmail query fragments.
+        prior_run_end:
+          type: ["string", "null"]
+          description: Injected by dispatcher; encoded into 'after:' filter.
+    default_output_shape:
+      type: object
+      required: [ok, triggers_alert, message, meta]
+      properties:
+        ok: {type: boolean}
+        triggers_alert: {type: boolean}
+        message: {type: ["string", "null"]}
+        meta:
+          type: object
