@@ -96,3 +96,40 @@ capabilities:
         message: {type: ["string", "null"]}
         meta:
           type: object
+
+  - name: generate_digest
+    description: "Generate morning digest in Donna persona"
+    trigger_type: ad_hoc
+    input_schema:
+      type: object
+      properties:
+        calendar_events: {type: [array, "null"]}
+        tasks_due_today: {type: [array, "null"]}
+
+  - name: prep_research
+    description: "Research and compile prep materials for a flagged task"
+    trigger_type: ad_hoc
+    input_schema:
+      type: object
+      properties:
+        title: {type: [string, "null"]}
+        description: {type: [string, "null"]}
+        domain: {type: [string, "null"]}
+        scheduled_start: {type: [string, "null"]}
+
+  - name: task_decompose
+    description: "Break a complex task into subtasks with dependencies"
+    trigger_type: ad_hoc
+    input_schema:
+      type: object
+      properties:
+        title: {type: [string, "null"]}
+        description: {type: [string, "null"]}
+
+  - name: extract_preferences
+    description: "Extract learned preference rules from correction history"
+    trigger_type: ad_hoc
+    input_schema:
+      type: object
+      properties:
+        correction_batch: {type: [array, "null"]}
