@@ -1,0 +1,24 @@
+{
+  "case_name": "news_empty_feed",
+  "input": {
+    "feed_urls": ["https://example.com/empty"],
+    "topics": ["anything"],
+    "prior_run_end": null
+  },
+  "expected_output_shape": {
+    "type": "object",
+    "required": ["ok", "triggers_alert"],
+    "properties": {
+      "ok": {"enum": [true]},
+      "triggers_alert": {"enum": [false]}
+    }
+  },
+  "tool_mocks": {
+    "rss_fetch:{\"max_items\":50,\"since\":null,\"url\":\"https://example.com/empty\"}": {
+      "ok": true,
+      "feed_title": "Empty Feed",
+      "feed_description": null,
+      "items": []
+    }
+  }
+}

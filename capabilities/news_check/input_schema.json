@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": ["feed_urls", "topics"],
+  "properties": {
+    "feed_urls": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1,
+      "description": "List of RSS/Atom feed URLs to monitor."
+    },
+    "topics": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 1,
+      "description": "Topic keywords to match items against."
+    },
+    "prior_run_end": {
+      "type": ["string", "null"],
+      "description": "Injected by dispatcher; skill passes to rss_fetch.since."
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": ["matches", "total_scanned", "total_matched"],
+  "properties": {
+    "matches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "link", "summary_short", "matched_topics"],
+        "properties": {
+          "title": {"type": "string"},
+          "link": {"type": "string"},
+          "published": {"type": ["string", "null"]},
+          "summary_short": {"type": "string"},
+          "matched_topics": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "total_scanned": {"type": "integer", "minimum": 0},
+    "total_matched": {"type": "integer", "minimum": 0}
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "case_name": "news_no_new_items",
+  "input": {
+    "feed_urls": ["https://example.com/ai-safety-feed"],
+    "topics": ["AI safety"],
+    "prior_run_end": "2026-04-20T12:00:00+00:00"
+  },
+  "expected_output_shape": {
+    "type": "object",
+    "required": ["ok", "triggers_alert", "message", "meta"],
+    "properties": {
+      "ok": {"enum": [true]},
+      "triggers_alert": {"enum": [false]},
+      "message": {"type": "null"}
+    }
+  },
+  "tool_mocks": {
+    "rss_fetch:{\"max_items\":50,\"since\":\"2026-04-20T12:00:00+00:00\",\"url\":\"https://example.com/ai-safety-feed\"}": {
+      "ok": true,
+      "feed_title": "AI Safety Daily",
+      "feed_description": null,
+      "items": []
+    }
+  }
+}
