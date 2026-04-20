@@ -77,3 +77,13 @@ async def test_approve_backward_compat_without_guard_deps():
     path = AutomationCreationPath(repository=repo)
     out = await path.approve(_make_draft(), name="triage-jane")
     assert out == "auto2"
+
+
+@pytest.mark.asyncio
+async def test_missing_tool_error_lists_all_missing_tools():
+    """Test that MissingToolError includes all missing tools in message."""
+    err = MissingToolError("email_triage", ["gmail_search", "gmail_get_message"])
+    s = str(err)
+    assert "gmail_search" in s
+    assert "gmail_get_message" in s
+    assert "email_triage" in s

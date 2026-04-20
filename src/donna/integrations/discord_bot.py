@@ -625,9 +625,15 @@ class DonnaBot(discord.Client):
         try:
             automation_id = await creation.approve(view.draft, name=view.name)
         except MissingToolError as exc:
+            if len(exc.missing) == 1:
+                tools_str = f"`{exc.missing[0]}`"
+                verb = "is"
+            else:
+                tools_str = ", ".join(f"`{t}`" for t in exc.missing[:-1]) + f" and `{exc.missing[-1]}`"
+                verb = "are"
             msg = (
                 f"I can't run `{exc.capability}` until "
-                f"{', '.join(exc.missing)} is connected — "
+                f"{tools_str} {verb} connected — "
                 f"set that up first and try again."
             )
             await message.channel.send(msg)

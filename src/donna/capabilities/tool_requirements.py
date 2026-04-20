@@ -13,7 +13,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
 import yaml
+
+logger = structlog.get_logger()
 
 
 class SkillToolRequirementsLookup:
@@ -36,15 +39,15 @@ class SkillToolRequirementsLookup:
                 (capability_name,),
             )
             row = await cursor.fetchone()
+            if row is None or row[0] is None:
+                return []
+            spec = yaml.safe_load(row[0]) or {}
         except Exception:  # noqa: BLE001 — defensive; unknown capability is fine
+            logger.warning("list_required_tools_failed", capability=capability_name, exc_info=True)
             return []
 
-        if row is None:
-            return []
-
-        spec = yaml.safe_load(row[0]) or {}
         tools: set[str] = set()
-        for step in spec.get("steps", []):
+        for step in spec.get("steps", []) or []:
             for tool in step.get("tools", []) or []:
                 tools.add(tool)
         return sorted(tools)

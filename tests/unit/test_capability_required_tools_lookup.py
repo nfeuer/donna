@@ -60,3 +60,16 @@ async def test_list_required_tools_db_exception_returns_empty():
     lookup = SkillToolRequirementsLookup(conn)
     result = await lookup.list_required_tools("broken_capability")
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_list_required_tools_handles_null_yaml_backbone():
+    """Test that NULL yaml_backbone (degenerate schema state) returns empty."""
+    # Return a row where the yaml_backbone column is None
+    conn = MagicMock()
+    cursor = AsyncMock()
+    cursor.fetchone = AsyncMock(return_value=(None,))
+    conn.execute = AsyncMock(return_value=cursor)
+    lookup = SkillToolRequirementsLookup(conn)
+    result = await lookup.list_required_tools("broken_cap")
+    assert result == []
