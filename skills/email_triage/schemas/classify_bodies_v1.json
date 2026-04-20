@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": ["confirmed", "rejected_ids", "body_fetched"],
+  "properties": {
+    "confirmed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "sender", "subject", "reason", "age_human"],
+        "properties": {
+          "id": {"type": "string"},
+          "sender": {"type": "string"},
+          "subject": {"type": "string"},
+          "reason": {"type": "string"},
+          "age_human": {"type": "string"}
+        }
+      }
+    },
+    "rejected_ids": {"type": "array", "items": {"type": "string"}},
+    "body_fetched": {"type": "boolean"}
+  }
+}

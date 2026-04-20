@@ -1,0 +1,56 @@
+capability_name: email_triage
+version: 1
+description: |
+  Scan Gmail for emails from a sender allow-list since the last successful
+  run, classify which need a reply, optionally fetch bodies for candidates,
+  and DM a digest. Since-last-run semantics via prior_run_end (Gmail's after:
+  filter). Requires gmail_search + gmail_get_message tools registered.
+
+inputs:
+  schema_ref: capabilities/email_triage/input_schema.json
+
+steps:
+  - name: search_messages
+    kind: tool
+    tools: [gmail_search]
+    tool_invocations:
+      - tool: gmail_search
+        args:
+          query: "from:({{ inputs.senders | join(' OR ') }}){% if inputs.prior_run_end and inputs.prior_run_end != 'None' %} after:{{ inputs.prior_run_end[:10] | replace('-', '/') }}{% endif %}{% if inputs.query_extras %} {{ inputs.query_extras }}{% endif %}"
+          max_results: 20
+        retry:
+          max_attempts: 2
+          backoff_s: [2, 5]
+        store_as: search
+
+  - name: classify_snippets
+    kind: llm
+    prompt: steps/classify_snippets.md
+    output_schema: schemas/classify_snippets_v1.json
+
+  - name: fetch_bodies
+    kind: tool
+    tools: [gmail_get_message]
+    tool_invocations:
+      - for_each: "{{ state.classify_snippets.candidates }}"
+        as: candidate
+        tool: gmail_get_message
+        args:
+          message_id: "{{ candidate.id }}"
+        store_as: "body_{{ loop.index0 }}"
+        retry:
+          max_attempts: 2
+          backoff_s: [1, 3]
+        on_failure: escalate
+
+  - name: classify_bodies
+    kind: llm
+    prompt: steps/classify_bodies.md
+    output_schema: schemas/classify_bodies_v1.json
+
+  - name: render_digest
+    kind: llm
+    prompt: steps/render_digest.md
+    output_schema: schemas/render_digest_v1.json
+
+final_output: "{{ state.render_digest }}"

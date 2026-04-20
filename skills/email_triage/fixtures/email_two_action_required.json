@@ -1,0 +1,56 @@
+{
+  "case_name": "email_two_action_required",
+  "input": {
+    "senders": ["jane@x.com", "team@x.com"],
+    "prior_run_end": "2026-04-19T12:00:00+00:00"
+  },
+  "expected_output_shape": {
+    "type": "object",
+    "required": ["ok", "triggers_alert", "message", "meta"],
+    "properties": {
+      "ok": {"enum": [true]},
+      "triggers_alert": {"enum": [true]},
+      "message": {"type": "string"},
+      "meta": {
+        "type": "object",
+        "properties": {
+          "action_required_count": {"type": "integer", "minimum": 2}
+        }
+      }
+    }
+  },
+  "tool_mocks": {
+    "gmail_search:{\"max_results\":20,\"query\":\"from:(jane@x.com OR team@x.com) after:2026/04/19\"}": {
+      "ok": true,
+      "messages": [
+        {"id": "m1", "sender": "Jane <jane@x.com>", "subject": "Re: Q2 roadmap",
+         "snippet": "Can you confirm the timelines by Friday?",
+         "internal_date": "2026-04-20T08:00:00+00:00"},
+        {"id": "m2", "sender": "team@x.com", "subject": "Budget approval needed",
+         "snippet": "Please approve the attached budget request.",
+         "internal_date": "2026-04-20T06:00:00+00:00"},
+        {"id": "m3", "sender": "Jane <jane@x.com>", "subject": "FYI conference recording",
+         "snippet": "Here is the conference recording.",
+         "internal_date": "2026-04-20T04:00:00+00:00"}
+      ]
+    },
+    "gmail_get_message:{\"message_id\":\"m1\"}": {
+      "ok": true,
+      "sender": "Jane <jane@x.com>",
+      "subject": "Re: Q2 roadmap",
+      "body_plain": "Hey Nick — can you confirm the Q2 timelines by Friday? Need them for the board deck.",
+      "body_html": null,
+      "internal_date": "2026-04-20T08:00:00+00:00",
+      "headers": {"To": "nick@example.com"}
+    },
+    "gmail_get_message:{\"message_id\":\"m2\"}": {
+      "ok": true,
+      "sender": "team@x.com",
+      "subject": "Budget approval needed",
+      "body_plain": "Please approve the attached budget request. Deadline: end of week.",
+      "body_html": null,
+      "internal_date": "2026-04-20T06:00:00+00:00",
+      "headers": {"To": "nick@example.com"}
+    }
+  }
+}
