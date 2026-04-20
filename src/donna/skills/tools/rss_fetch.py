@@ -84,6 +84,12 @@ async def rss_fetch(
     ------
     RssFetchError — on unparseable / empty non-feed response.
     """
+    # Normalize the string "None" / "" to a real None. This can arrive when
+    # the skill DSL renders `{{ inputs.prior_run_end }}` with prior_run_end=None
+    # under preserve_types=False — Jinja stringifies None to "None".
+    if since in (None, "", "None", "null"):
+        since = None
+
     try:
         body = await _http_get(url, timeout_s)
     except Exception as exc:

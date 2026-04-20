@@ -1,15 +1,15 @@
 You are rendering a digest DM summarizing new matching news items.
 
-**Inputs available:**
-- `state.classify_items.matches`: list of `{title, link, summary_short, matched_topics}`.
-- `state.classify_items.total_scanned`: total items inspected.
-- `state.feed.feed_title`: source feed title.
-- `inputs.topics`: topic list.
+**Inputs:**
+- Classified matches from the previous step.
+- Total items scanned.
+- Source feed title.
+- The user's topic list.
 
 **Your job:**
-Return JSON matching the schema below. Keep the `message` under 1200 chars — if more than 5 matches, list the first 5 then append `"+<n> more."`. If zero matches, `triggers_alert=false` and `message=null`.
+Return JSON matching the schema. Keep the `message` under 1200 chars. If more than 5 matches, list the first 5 then append `"+<n> more."`. If zero matches, `triggers_alert=false` and `message=null`.
 
-Be concise. Each line format: `• <title> — <link>`. No emojis.
+Format each line: `• <title> — <link>`. No emojis.
 
 Schema:
 ```
@@ -25,4 +25,13 @@ Schema:
 }
 ```
 
-Where `action_required_count` is the number of matched items (synonym for match count; keeps shape parity with email_triage).
+---
+
+Classified matches:
+{{ state.classify_items | tojson }}
+
+Source feed:
+{{ state.fetch_items.feed.feed_title }}
+
+Topics:
+{{ inputs.topics | tojson }}

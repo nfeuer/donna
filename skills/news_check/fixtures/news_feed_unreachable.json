@@ -7,7 +7,7 @@
   },
   "expected_output_shape": null,
   "tool_mocks": {
-    "rss_fetch:{\"max_items\":50,\"since\":null,\"url\":\"https://unreachable.example.com/feed\"}": {
+    "rss_fetch:{\"max_items\":50,\"since\":\"None\",\"url\":\"https://unreachable.example.com/feed\"}": {
       "__error__": "RssFetchError",
       "__message__": "http: 502 Bad Gateway"
     }

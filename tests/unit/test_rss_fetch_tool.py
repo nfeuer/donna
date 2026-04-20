@@ -116,3 +116,14 @@ async def test_rss_fetch_published_timestamp_is_utc_correct():
     # RSS_SAMPLE has "Mon, 20 Apr 2026 08:00:00 GMT" for Article One.
     assert pub_by_title["Article One"] == "2026-04-20T08:00:00+00:00"
     assert pub_by_title["Article Two"] == "2026-04-19T08:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_rss_fetch_since_string_none_treated_as_no_filter():
+    """The skill DSL may render Python None as the string "None" under
+    preserve_types=False; defend against it."""
+    with patch("donna.skills.tools.rss_fetch._http_get", return_value=RSS_SAMPLE):
+        result = await rss_fetch(url="https://example.com/feed", since="None")
+    titles = [i["title"] for i in result["items"]]
+    assert "Article One" in titles
+    assert "Article Two" in titles  # not filtered out

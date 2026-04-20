@@ -14,7 +14,7 @@
     }
   },
   "tool_mocks": {
-    "rss_fetch:{\"max_items\":50,\"since\":null,\"url\":\"https://example.com/empty\"}": {
+    "rss_fetch:{\"max_items\":50,\"since\":\"None\",\"url\":\"https://example.com/empty\"}": {
       "ok": true,
       "feed_title": "Empty Feed",
       "feed_description": null,

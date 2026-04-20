@@ -1,13 +1,13 @@
 You are classifying RSS/Atom feed items for topic relevance.
 
-**Inputs available in context:**
-- `inputs.topics`: list of topic keywords the user cares about.
-- `state.feed.items`: list of `{title, link, published, author, summary}` already filtered server-side to items published after `prior_run_end`.
+**Inputs available:**
+- User topics — things the user cares about.
+- Feed items — already filtered server-side to items published after `prior_run_end`. Each has `{title, link, published, author, summary}`.
 
 **Your job:**
-For each item in `state.feed.items`, decide if it materially matches ANY topic in `inputs.topics`. Material match = the title or summary is clearly ABOUT the topic, not just mentioning it.
+For each feed item, decide if it materially matches ANY of the user's topics. Material match = the title or summary is clearly ABOUT the topic, not just mentioning it in passing.
 
-**Return ONLY JSON matching the schema below.** No prose, no markdown fences.
+**Return ONLY JSON matching the schema below.** No prose, no markdown fences. Produce `summary_short` as a single sentence (≤ 140 chars). If an item matches no topic, omit it from `matches`.
 
 Schema:
 ```
@@ -20,4 +20,10 @@ Schema:
 }
 ```
 
-Produce `summary_short` as a single sentence (≤ 140 chars). If the feed item has no matching topic, omit it from `matches`.
+---
+
+Topics:
+{{ inputs.topics | tojson }}
+
+Feed:
+{{ state.fetch_items.feed | tojson }}
