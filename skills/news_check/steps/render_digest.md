@@ -2,8 +2,6 @@ You are rendering a digest DM summarizing new matching news items.
 
 **Inputs:**
 - Classified matches from the previous step.
-- Total items scanned.
-- Source feed title.
 - The user's topic list.
 
 **Your job:**
@@ -29,9 +27,6 @@ Schema:
 
 Classified matches:
 {{ state.classify_items | tojson }}
-
-Fetched feeds (feed_0, feed_1, …):
-{{ state.fetch_items | tojson }}
 
 Topics:
 {{ inputs.topics | tojson }}
