@@ -107,8 +107,9 @@ class AutomationDispatcher:
                 if result.status != "succeeded":
                     error = getattr(result, "error", None) or getattr(result, "escalation_reason", None)
             else:
+                prior_run_end = await self._query_prior_run_end(automation_id=automation.id)
                 parsed, metadata = await self._router.complete(
-                    prompt=self._build_prompt(automation),
+                    prompt=self._build_prompt(automation, prior_run_end=prior_run_end),
                     task_type=automation.capability_name,
                     task_id=None,
                     user_id=automation.user_id,
@@ -266,12 +267,27 @@ class AutomationDispatcher:
         )
         skill = row_to_skill(skill_row)
         version = row_to_skill_version(version_row)
+        prior_run_end = await self._query_prior_run_end(automation_id=automation.id)
+        merged_inputs = dict(automation.inputs or {})
+        merged_inputs["prior_run_end"] = prior_run_end
+
         return await executor.execute(
             skill=skill, version=version,
-            inputs=automation.inputs,
+            inputs=merged_inputs,
             user_id=automation.user_id,
             automation_run_id=automation_run_id,
         )
+
+    async def _query_prior_run_end(self, *, automation_id: str) -> str | None:
+        """Return the finished_at of the most recent successful run, or None."""
+        cursor = await self._conn.execute(
+            "SELECT finished_at FROM automation_run "
+            "WHERE automation_id = ? AND status = 'succeeded' "
+            "ORDER BY finished_at DESC LIMIT 1",
+            (automation_id,),
+        )
+        row = await cursor.fetchone()
+        return row[0] if row is not None else None
 
     def _compute_next_run(self, automation: AutomationRow, now: datetime) -> datetime | None:
         if automation.trigger_type != "on_schedule" or not automation.schedule:
@@ -285,11 +301,18 @@ class AutomationDispatcher:
             )
             return None
 
-    def _build_prompt(self, automation: AutomationRow) -> str:
+    def _build_prompt(
+        self,
+        automation: AutomationRow,
+        *,
+        prior_run_end: str | None = None,
+    ) -> str:
+        inputs = dict(automation.inputs or {})
+        inputs["prior_run_end"] = prior_run_end
         return (
             f"Execute capability '{automation.capability_name}' with the following inputs. "
             f"Return a strict JSON object matching the capability's output schema.\n\n"
-            f"Inputs:\n{json.dumps(automation.inputs, indent=2)}"
+            f"Inputs:\n{json.dumps(inputs, indent=2)}"
         )
 
     def _render_alert_content(self, automation: AutomationRow, output: dict) -> str:

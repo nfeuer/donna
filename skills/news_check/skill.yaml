@@ -1,0 +1,36 @@
+capability_name: news_check
+version: 1
+description: |
+  Monitor RSS/Atom feeds for new items matching user-specified topics.
+  Since-last-run semantics via prior_run_end (tool filters server-side).
+  Emits a digest DM when items newer than prior_run_end match any topic.
+
+inputs:
+  schema_ref: capabilities/news_check/input_schema.json
+
+steps:
+  - name: fetch_items
+    kind: tool
+    tools: [rss_fetch]
+    tool_invocations:
+      - tool: rss_fetch
+        args:
+          url: "{{ inputs.feed_urls[0] }}"
+          since: "{{ inputs.prior_run_end }}"
+          max_items: 50
+        retry:
+          max_attempts: 2
+          backoff_s: [2, 5]
+        store_as: feed
+
+  - name: classify_items
+    kind: llm
+    prompt: steps/classify_items.md
+    output_schema: schemas/classify_items_v1.json
+
+  - name: render_digest
+    kind: llm
+    prompt: steps/render_digest.md
+    output_schema: schemas/render_digest_v1.json
+
+final_output: "{{ state.render_digest }}"

@@ -1,0 +1,25 @@
+{
+  "case_name": "email_none_action_required",
+  "input": {
+    "senders": ["notifications@x.com"],
+    "prior_run_end": "2026-04-20T00:00:00+00:00"
+  },
+  "expected_output_shape": {
+    "type": "object",
+    "required": ["ok", "triggers_alert"],
+    "properties": {
+      "ok": {"enum": [true]},
+      "triggers_alert": {"enum": [false]}
+    }
+  },
+  "tool_mocks": {
+    "gmail_search:{\"max_results\":20,\"query\":\"from:(notifications@x.com) after:2026/04/20\"}": {
+      "ok": true,
+      "messages": [
+        {"id": "n1", "sender": "notifications@x.com", "subject": "Your weekly summary",
+         "snippet": "Here is your activity recap.",
+         "internal_date": "2026-04-20T01:00:00+00:00"}
+      ]
+    }
+  }
+}

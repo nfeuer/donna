@@ -19,9 +19,9 @@ async def test_orchestrator_registers_default_tools(monkeypatch, tmp_path) -> No
     called = {"n": 0}
     from donna.skills.tools import register_default_tools as orig
 
-    def _capture(registry):
+    def _capture(registry, **kwargs):
         called["n"] += 1
-        orig(registry)
+        orig(registry, **kwargs)
 
     monkeypatch.setattr("donna.skills.tools.register_default_tools", _capture)
 

@@ -1,0 +1,14 @@
+{
+  "case_name": "email_gmail_error",
+  "input": {
+    "senders": ["jane@x.com"],
+    "prior_run_end": null
+  },
+  "expected_output_shape": null,
+  "tool_mocks": {
+    "gmail_search:{\"max_results\":20,\"query\":\"from:(jane@x.com)\"}": {
+      "ok": false,
+      "error": "token expired"
+    }
+  }
+}

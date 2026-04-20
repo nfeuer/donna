@@ -51,21 +51,57 @@ None are ship-blockers. Captured so a fresh session has the full picture.
 - **New: claude_native placeholder capability** seeded so polling automations with capability_name=None can persist.
 - **New: alert_conditions DSL alignment** between parse/novelty schemas/prompts and runtime AlertEvaluator.
 
+## Completed — Wave 4 (2026-04-20)
+
+- **news_check** seed capability — RSS/Atom monitoring with since-last-run semantics. `rss_fetch` tool + skill + 4 fixtures + Alembic seed. (Commits: `d00e5df`, `d87fb15`, `2d46b0a`.)
+- **email_triage** seed capability — Gmail action-required scan with since-last-run semantics. `gmail_search` + `gmail_get_message` tools + 5-step skill (classify_snippets → for_each fetch_bodies → classify_bodies → render_digest) + 4 fixtures + Alembic seed. (Commits: `99abe04`, `abff1e2`, `f62d96d`, `5aa54bb`.)
+- **Dispatcher `prior_run_end` injection** — `AutomationDispatcher` queries most recent successful `automation_run.finished_at` and injects as skill input. Zero schema changes. (Commit: `fc45021`.)
+- **`register_default_tools(gmail_client=...)`** — optional GmailClient threading; Gmail tools register only when client is available. (Commits: `092d2a8`, `c0bbdea`.)
+- **Capability-availability guard** — `AutomationCreationPath` rejects approval with actionable DM when a required tool is unregistered. (Commits: `1e545d9`, `19b4b1a`.)
+- **Digest-shape alert contract** — codified as default for multi-hit capabilities via uniform `{ok, triggers_alert, message, meta}` output.
+- **Cross-capability integration test** — single-tick dispatch of product_watch + news_check + email_triage with isolation assertions. Rolls in F-14 intent. (Commit: `2d97563`.)
+- **Wave 3 P2/P3 rollup** — doc drift repaired; F-W3-A through K marked closed with commit refs.
+
+See `docs/superpowers/specs/2026-04-20-skill-system-wave-4-news-and-email-capabilities-design.md` and `docs/superpowers/plans/2026-04-20-skill-system-wave-4-news-and-email-capabilities.md`.
+
+## Follow-ups surfaced during Wave 4 (2026-04-20)
+
+- **F-W4-A — `email_triage` unbounded-sender mode.** *(P2.)* Scan all inbound mail for action-required, not just a sender allow-list. Different privacy shape + token cost profile. Wait for concrete user ask.
+- **F-W4-B — Pagination for `gmail_search` / `rss_fetch`.** *(P3.)* Trigger: observed context-overflow escalations on either capability.
+- **F-W4-C — `html_extract` tool for non-RSS news sites.** *(P3.)* Trigger: a concrete user-named non-RSS source.
+- **F-W4-D — Per-automation skill-state blob.** *(P3.)* Alternative to since-last-run semantics if a capability needs richer state carryover. Speculative today.
+- **F-W4-E — Dashboard surfacing of `meta.*` per-run diagnostics.** *(P2.)* Depends on F-4 dashboard. Wave 5+.
+- **F-W4-F — `ToolRegistry.clear()` + pytest fixture.** *(P3 — escalate to P1 if cross-test leakage surfaces.)* Upgrade of F-W2-B.
+- **F-W4-G — First-run digest backlog cap at `NotificationService` layer.** *(P3.)* Today enforced in skill render prompt; eventually belongs in notification layer as generic protection.
+- **F-W4-I — `GmailClient` not constructed in orchestrator boot path.** *(P1 — blocks `email_triage` in production.)* Surfaced during Task 8. `src/donna/cli.py` passes `gmail_client=None` to `wire_skill_system` with a TODO — the email subsystem isn't wired into boot yet. `email_triage` automations will hit the W4-D10 capability-availability guard at approval time until this is fixed. Trigger: first real email_triage usage by the user.
+- **F-W4-J — `MockToolRegistry` doesn't support exception-raising mocks.** *(P3.)* The `{"__error__": "...", "__message__": "..."}` fixture shape in the Wave 4 plan was aspirational. MockToolRegistry just returns whatever dict is in the map. Error-path fixtures (`news_feed_unreachable.json`, `email_gmail_error.json`) currently return `{ok: false, ...}` and rely on `expected_output_shape: null` to avoid failing. Teach MockToolRegistry to recognize `__error__` keys and raise. Trigger: when proper error-path fixture coverage is needed for evolution gates.
+- **F-W4-K — Jinja `{% if inputs.X %}` raises `UndefinedError` under `StrictUndefined` when `X` is absent.** *(P2.)* Surfaced during Task 20. `skills/email_triage/skill.yaml` was fixed (commit `5aa54bb`) by switching to `{% if inputs.X is defined and inputs.X %}`. BUT: the root cause is the challenger NL flow not always populating optional input fields with null — inputs extracted from NL may legitimately omit keys. Two fixes needed: (a) audit all future skill.yaml files during their initial seed PR for the pattern; (b) have `AutomationCreationPath` or challenger/novelty-judge pre-populate all optional schema fields with null defaults at draft time. Trigger: before next capability with optional inputs lands.
+- **F-W4-L — `news_check` only monitors `feed_urls[0]`.** *(P2.)* The skill.yaml's `tool_invocations` indexes `feed_urls[0]`, ignoring additional URLs. Input schema accepts an array. User setting `feed_urls: [X, Y]` silently only gets X monitored. Fix: either loop over feeds in the skill (for_each over `inputs.feed_urls`) or document clearly and treat array as "primary + alternates" for failover. Trigger: concrete user ask for multi-feed monitoring.
+
+## Plan-accuracy debt (surfaced by Wave 4 implementation)
+
+The Wave 4 implementation plan document contained two bugs that implementing agents caught and fixed during execution:
+
+- **Bug 1 (Task 3):** Plan referenced `mktime` for struct_time → ISO conversion. Correct function is `calendar.timegm` — `mktime` is the inverse of `localtime` and silently applies the host UTC offset. Fixed in commit `d87fb15`.
+- **Bug 2 (Task 10):** Plan referenced `automation_run.end_time` + `status='ok'`. Real schema uses `finished_at` + `status='succeeded'`. Fixed in commit `fc45021`.
+
+Lesson for future wave planners: validate any column names and status enum values against the actual Alembic migrations (and a quick `uv run grep` in the codebase) before writing tasks that query them.
+
 ## Follow-ups surfaced during Wave 3 (2026-04-17)
 
 Captured during Wave 3 code reviews. Not blockers; document for planning.
 
-- **F-W3-A — CadencePolicy override precedence.** *(P3.)* Override dict can introduce new lifecycle states the base policy doesn't know about. Order fix: validate state is known before checking override. Low priority; current caller paths can't exercise this.
-- **F-W3-B — PendingDraftRegistry sweeper race condition.** *(P3.)* When the async sweeper runs concurrently with set(), a newly-reset draft can be evicted. Re-check TTL at pop time to fix. Important once the sweeper is wired to a background task.
-- **F-W3-C — Legacy dedup_pending + field-update handlers unreachable when intent_dispatcher wired.** *(P2.)* DonnaBot.on_message puts Wave-3 dispatcher before the legacy dedup/field-update branches. Silent functional regression: "merge"/"keep" dedup replies and "change priority to 3" commands go through Claude novelty judge. Fix: move legacy stateful handlers above the Wave-3 dispatcher branch, OR migrate them into dispatcher intents.
-- **F-W3-D — DonnaBot _TasksDbAdapter stuffs capability_name + inputs into notes JSON.** *(P2.)* Awaiting a tasks-schema migration that adds first-class columns. Currently unwindable only by parsing notes.
-- **F-W3-E — AutomationConfirmationView approval coroutine holds 30-min timeout in on_message.** *(P3.)* Not blocking at single-user scale. Consider asyncio.create_task fire-and-forget for scale.
-- **F-W3-F — AutomationConfirmationView edit branch is log-only.** *(P2.)* Card's "Edit" button prompts "What do you want to change?" but no thread is opened and nothing listens for the reply. UX regression risk.
-- **F-W3-G — Challenger parse schema + prompt have drift risk.** *(P3.)* Prompt field list duplicates schema; no test asserts parity. Add a schema-keys-in-prompt check.
-- **F-W3-H — Challenger parse schema validation not invoked on LLM response.** *(P3.)* Challenger calls router.complete but doesn't validate output against schemas/challenger_parse.json (ClaudeNoveltyJudge does via Task 6 fix). Harmonize.
-- **F-W3-I — DiscordHandle.notification_service duplication.** *(P3.)* Delete the duplicated field once Task 8-style wiring is confirmed not to need it.
-- **F-W3-J — SkillSystemHandle.skill_router naming misleading.** *(P3.)* The "skill_router" is also used by automation wiring. Rename or relocate.
-- **F-W3-K — Challenger parse snapshot_capabilities is un-cached.** *(P3.)* Full CapabilityMatcher.list_all on every Discord message. Add TTL cache when volume matters.
+- **F-W3-A — CadencePolicy override precedence.** ✅ Closed in commit `9ae2b8d` (2026-04-17). *(Was P3.)* Override dict can introduce new lifecycle states the base policy doesn't know about. Order fix: validate state is known before checking override. Low priority; current caller paths can't exercise this.
+- **F-W3-B — PendingDraftRegistry sweeper race condition.** ✅ Closed in commit `9ae2b8d`. *(Was P3.)* When the async sweeper runs concurrently with set(), a newly-reset draft can be evicted. Re-check TTL at pop time to fix. Important once the sweeper is wired to a background task.
+- **F-W3-C — Legacy dedup_pending + field-update handlers unreachable when intent_dispatcher wired.** ✅ Closed in commit `50794a1`. *(Was P2.)* DonnaBot.on_message puts Wave-3 dispatcher before the legacy dedup/field-update branches. Silent functional regression: "merge"/"keep" dedup replies and "change priority to 3" commands go through Claude novelty judge. Fix: move legacy stateful handlers above the Wave-3 dispatcher branch, OR migrate them into dispatcher intents.
+- **F-W3-D — DonnaBot _TasksDbAdapter stuffs capability_name + inputs into notes JSON.** ✅ Closed in commit `50794a1`. *(Was P2.)* Awaiting a tasks-schema migration that adds first-class columns. Currently unwindable only by parsing notes.
+- **F-W3-E — AutomationConfirmationView approval coroutine holds 30-min timeout in on_message.** *(P3, unchanged — not addressed.)* Not blocking at single-user scale. Consider asyncio.create_task fire-and-forget for scale.
+- **F-W3-F — AutomationConfirmationView edit branch is log-only.** ✅ Closed in commit `50794a1`. *(Was P2.)* Card's "Edit" button prompts "What do you want to change?" but no thread is opened and nothing listens for the reply. UX regression risk.
+- **F-W3-G — Challenger parse schema + prompt have drift risk.** ✅ Closed in commit `9ae2b8d`. *(Was P3.)* Prompt field list duplicates schema; no test asserts parity. Add a schema-keys-in-prompt check.
+- **F-W3-H — Challenger parse schema validation not invoked on LLM response.** ✅ Closed in commit `9ae2b8d`. *(Was P3.)* Challenger calls router.complete but doesn't validate output against schemas/challenger_parse.json (ClaudeNoveltyJudge does via Task 6 fix). Harmonize.
+- **F-W3-I — DiscordHandle.notification_service duplication.** ✅ Closed in commit `9ae2b8d`. *(Was P3.)* Delete the duplicated field once Task 8-style wiring is confirmed not to need it.
+- **F-W3-J — SkillSystemHandle.skill_router naming misleading.** ✅ Closed in commit `9ae2b8d`. *(Was P3.)* The "skill_router" is also used by automation wiring. Rename or relocate.
+- **F-W3-K — Challenger parse snapshot_capabilities is un-cached.** ✅ Closed in commit `9ae2b8d`. *(Was P3.)* Full CapabilityMatcher.list_all on every Discord message. Add TTL cache when volume matters.
 
 ## Completed — Wave 2 (2026-04-17)
 

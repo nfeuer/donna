@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "required": ["ok", "triggers_alert", "message", "meta"],
+  "properties": {
+    "ok": {"type": "boolean"},
+    "triggers_alert": {"type": "boolean"},
+    "message": {"type": ["string", "null"]},
+    "meta": {
+      "type": "object",
+      "required": ["item_count", "action_required_count", "source_feed"],
+      "properties": {
+        "item_count": {"type": "integer", "minimum": 0},
+        "action_required_count": {"type": "integer", "minimum": 0},
+        "source_feed": {"type": "string"}
+      }
+    }
+  }
+}

@@ -266,12 +266,21 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
 # ---------------------------------------------------------------------------
 
 
-async def wire_skill_system(ctx: StartupContext) -> SkillSystemHandle:
+async def wire_skill_system(
+    ctx: StartupContext,
+    *,
+    gmail_client: Any | None = None,
+) -> SkillSystemHandle:
     """Register default tools, seed capabilities, assemble skill bundle.
 
     Always returns a handle. When `skill_config.enabled` is false, the
     bundle is None but `subsystem_router` + `budget_guard=None` are still
     populated so the automation subsystem can wire.
+
+    ``gmail_client`` is threaded through to ``register_default_tools`` so
+    Gmail skill tools are registered when the integration client is available
+    at boot.  Defaults to None (backward-compat: tests + degraded-mode boot
+    that don't supply a client still work correctly).
     """
     log = ctx.log
     from donna.skills import tools as _skill_tools_module
@@ -298,6 +307,7 @@ async def wire_skill_system(ctx: StartupContext) -> SkillSystemHandle:
     # SkillExecutor instances that look up the default registry.
     _skill_tools_module.register_default_tools(
         _skill_tools_module.DEFAULT_TOOL_REGISTRY,
+        gmail_client=gmail_client,
     )
     log.info(
         "default_tools_registered",
@@ -574,6 +584,13 @@ async def wire_discord(
         # AutomationConfirmationView approval coordinator.
         ctx.bot._intent_dispatcher = intent_dispatcher
         ctx.bot._automation_repo = automation_h.repository
+        # Wave 4: wire capability-availability guard into AutomationCreationPath.
+        from donna.skills import tools as _skill_tools_module
+        from donna.capabilities.tool_requirements import SkillToolRequirementsLookup
+
+        ctx.bot._automation_tool_registry = _skill_tools_module.DEFAULT_TOOL_REGISTRY
+        _cap_lookup = SkillToolRequirementsLookup(ctx.db.connection)
+        ctx.bot._automation_capability_lookup = _cap_lookup.list_required_tools
         # Pull the Discord automation default min-interval from config so
         # AutomationCreationPath doesn't hardcode the 300-second floor.
         from donna.automations.cadence_policy import (

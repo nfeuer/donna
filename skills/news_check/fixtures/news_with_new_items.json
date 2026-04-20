@@ -1,0 +1,55 @@
+{
+  "case_name": "news_with_new_items",
+  "input": {
+    "feed_urls": ["https://example.com/ai-safety-feed"],
+    "topics": ["AI safety", "alignment"],
+    "prior_run_end": "2026-04-19T12:00:00+00:00"
+  },
+  "expected_output_shape": {
+    "type": "object",
+    "required": ["ok", "triggers_alert", "message", "meta"],
+    "properties": {
+      "ok": {"enum": [true]},
+      "triggers_alert": {"enum": [true]},
+      "message": {"type": "string"},
+      "meta": {
+        "type": "object",
+        "required": ["item_count", "action_required_count", "source_feed"],
+        "properties": {
+          "item_count": {"type": "integer", "minimum": 2},
+          "action_required_count": {"type": "integer", "minimum": 2}
+        }
+      }
+    }
+  },
+  "tool_mocks": {
+    "rss_fetch:{\"max_items\":50,\"since\":\"2026-04-19T12:00:00+00:00\",\"url\":\"https://example.com/ai-safety-feed\"}": {
+      "ok": true,
+      "feed_title": "AI Safety Daily",
+      "feed_description": "Daily roundup",
+      "items": [
+        {
+          "title": "New interpretability paper on alignment",
+          "link": "https://example.com/a1",
+          "published": "2026-04-20T08:00:00+00:00",
+          "author": "alice@x.com",
+          "summary": "A paper on scalable alignment interpretability."
+        },
+        {
+          "title": "Policy brief: AI safety frameworks",
+          "link": "https://example.com/a2",
+          "published": "2026-04-20T06:00:00+00:00",
+          "author": "bob@x.com",
+          "summary": "Overview of current AI safety regulatory approaches."
+        },
+        {
+          "title": "Unrelated gardening post",
+          "link": "https://example.com/a3",
+          "published": "2026-04-20T05:00:00+00:00",
+          "author": "carol@x.com",
+          "summary": "Tomatoes grow better with compost."
+        }
+      ]
+    }
+  }
+}

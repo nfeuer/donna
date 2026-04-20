@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "required": ["candidates", "total_scanned"],
+  "properties": {
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "sender", "subject", "snippet", "snippet_confidence"],
+        "properties": {
+          "id": {"type": "string"},
+          "sender": {"type": "string"},
+          "subject": {"type": "string"},
+          "snippet": {"type": "string"},
+          "internal_date": {"type": ["string", "null"]},
+          "snippet_confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    },
+    "total_scanned": {"type": "integer", "minimum": 0}
+  }
+}

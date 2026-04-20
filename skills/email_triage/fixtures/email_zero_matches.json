@@ -1,0 +1,21 @@
+{
+  "case_name": "email_zero_matches",
+  "input": {
+    "senders": ["nobody@x.com"],
+    "prior_run_end": "2026-04-20T00:00:00+00:00"
+  },
+  "expected_output_shape": {
+    "type": "object",
+    "required": ["ok", "triggers_alert"],
+    "properties": {
+      "ok": {"enum": [true]},
+      "triggers_alert": {"enum": [false]}
+    }
+  },
+  "tool_mocks": {
+    "gmail_search:{\"max_results\":20,\"query\":\"from:(nobody@x.com) after:2026/04/20\"}": {
+      "ok": true,
+      "messages": []
+    }
+  }
+}
