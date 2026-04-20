@@ -314,7 +314,6 @@ async def test_email_triage_body_fetch_skipped_when_no_candidates(runtime) -> No
     await _insert_email_triage_automation(
         conn, automation_id, now, past,
         name="Skill-Path email_triage zero-candidates",
-        include_query_extras=True,
     )
 
     sends_before = len(runtime.fake_bot.sends)

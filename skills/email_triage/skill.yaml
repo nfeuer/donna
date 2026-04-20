@@ -16,7 +16,7 @@ steps:
     tool_invocations:
       - tool: gmail_search
         args:
-          query: "from:({{ inputs.senders | join(' OR ') }}){% if inputs.prior_run_end and inputs.prior_run_end != 'None' %} after:{{ inputs.prior_run_end[:10] | replace('-', '/') }}{% endif %}{% if inputs.query_extras %} {{ inputs.query_extras }}{% endif %}"
+          query: "from:({{ inputs.senders | join(' OR ') }}){% if inputs.prior_run_end and inputs.prior_run_end != 'None' %} after:{{ inputs.prior_run_end[:10] | replace('-', '/') }}{% endif %}{% if inputs.query_extras is defined and inputs.query_extras %} {{ inputs.query_extras }}{% endif %}"
           max_results: 20
         retry:
           max_attempts: 2
