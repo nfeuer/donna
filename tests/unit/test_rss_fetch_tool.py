@@ -74,8 +74,18 @@ async def test_rss_fetch_malformed_raises():
         "donna.skills.tools.rss_fetch._http_get",
         return_value="not xml at all",
     ):
-        with pytest.raises(RssFetchError):
+        with pytest.raises(RssFetchError, match="unparseable feed"):
             await rss_fetch(url="https://example.com/feed")
+
+
+@pytest.mark.asyncio
+async def test_rss_fetch_http_error_wraps_in_rss_fetch_error():
+    with patch(
+        "donna.skills.tools.rss_fetch._http_get",
+        side_effect=Exception("connection refused"),
+    ):
+        with pytest.raises(RssFetchError, match="http:"):
+            await rss_fetch(url="https://unreachable.example.com/feed")
 
 
 @pytest.mark.asyncio
@@ -95,3 +105,14 @@ async def test_rss_fetch_atom_feed():
         result = await rss_fetch(url="https://example.com/atom")
     titles = [i["title"] for i in result["items"]]
     assert "Atom Article" in titles
+
+
+@pytest.mark.asyncio
+async def test_rss_fetch_published_timestamp_is_utc_correct():
+    """Regression: mktime (vs calendar.timegm) silently applies host TZ offset."""
+    with patch("donna.skills.tools.rss_fetch._http_get", return_value=RSS_SAMPLE):
+        result = await rss_fetch(url="https://example.com/feed")
+    pub_by_title = {i["title"]: i["published"] for i in result["items"]}
+    # RSS_SAMPLE has "Mon, 20 Apr 2026 08:00:00 GMT" for Article One.
+    assert pub_by_title["Article One"] == "2026-04-20T08:00:00+00:00"
+    assert pub_by_title["Article Two"] == "2026-04-19T08:00:00+00:00"

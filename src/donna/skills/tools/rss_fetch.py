@@ -4,13 +4,15 @@ Thin async wrapper over `feedparser`. Offloads HTTP + parsing to a
 thread. Normalizes output to a stable schema. Optional `since` (ISO-8601)
 filters items server-side by published/updated timestamp.
 
-Registered into DEFAULT_TOOL_REGISTRY at startup.
+Registered into DEFAULT_TOOL_REGISTRY at startup via
+donna.skills.tools.register_default_tools (wired in Task 7).
 """
 from __future__ import annotations
 
 import asyncio
+import calendar
 from datetime import datetime, timezone
-from time import struct_time, mktime
+from time import struct_time
 from typing import Any
 
 import feedparser
@@ -35,7 +37,7 @@ def _parsed_time_to_iso(pt: struct_time | None) -> str | None:
     if pt is None:
         return None
     try:
-        return datetime.fromtimestamp(mktime(pt), tz=timezone.utc).isoformat()
+        return datetime.fromtimestamp(calendar.timegm(pt), tz=timezone.utc).isoformat()
     except Exception:
         return None
 
@@ -52,7 +54,13 @@ def _item_published_iso(entry: dict[str, Any]) -> str | None:
 
 
 def _after(iso_a: str, iso_b: str) -> bool:
-    return datetime.fromisoformat(iso_a) > datetime.fromisoformat(iso_b)
+    dt_a = datetime.fromisoformat(iso_a)
+    dt_b = datetime.fromisoformat(iso_b)
+    if dt_a.tzinfo is None:
+        dt_a = dt_a.replace(tzinfo=timezone.utc)
+    if dt_b.tzinfo is None:
+        dt_b = dt_b.replace(tzinfo=timezone.utc)
+    return dt_a > dt_b
 
 
 async def rss_fetch(
@@ -92,6 +100,10 @@ async def rss_fetch(
     items: list[dict[str, Any]] = []
     for entry in parsed.entries[: max_items * 4]:  # over-read to survive since-filter
         published = _item_published_iso(entry)
+        # When `since` is set and the item has no published/updated timestamp,
+        # we include it rather than skip it. Rationale: an undated item could be
+        # newer than `since`; skipping would risk missing real news. Downstream
+        # skills may dedup via their own classification step.
         if since is not None and published is not None and not _after(published, since):
             continue
         items.append({
