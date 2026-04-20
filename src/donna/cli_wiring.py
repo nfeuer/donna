@@ -622,6 +622,14 @@ async def wire_discord(
         ctx.bot._automation_tool_registry = _skill_tools_module.DEFAULT_TOOL_REGISTRY
         _cap_lookup = SkillToolRequirementsLookup(ctx.db.connection)
         ctx.bot._automation_capability_lookup = _cap_lookup.list_required_tools
+
+        # F-W4-K: wire optional-input defaulting lookup into AutomationCreationPath.
+        from donna.capabilities.repo_input_schema_lookup import (
+            CapabilityInputSchemaDBLookup,
+        )
+
+        _input_schema_lookup = CapabilityInputSchemaDBLookup(ctx.db.connection)
+        ctx.bot._automation_input_schema_lookup = _input_schema_lookup.lookup
         # Pull the Discord automation default min-interval from config so
         # AutomationCreationPath doesn't hardcode the 300-second floor.
         from donna.automations.cadence_policy import (

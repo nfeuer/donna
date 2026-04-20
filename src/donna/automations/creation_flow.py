@@ -32,6 +32,7 @@ class MissingToolError(Exception):
 
 
 CapabilityToolLookup = Callable[[str], Awaitable[list[str]]]
+CapabilityInputSchemaLookup = Callable[[str], Awaitable[dict]]
 
 
 class AutomationCreationPath:
@@ -42,6 +43,7 @@ class AutomationCreationPath:
         default_min_interval_seconds: int = 300,
         tool_registry: Any | None = None,
         capability_tool_lookup: CapabilityToolLookup | None = None,
+        capability_input_schema_lookup: CapabilityInputSchemaLookup | None = None,
     ) -> None:
         self._repo = repository
         # Sourced from config/automations.yaml in production wiring; keeps
@@ -49,6 +51,7 @@ class AutomationCreationPath:
         self._default_min_interval_seconds = default_min_interval_seconds
         self._tool_registry = tool_registry
         self._capability_tool_lookup = capability_tool_lookup
+        self._capability_input_schema_lookup = capability_input_schema_lookup
 
     async def approve(self, draft: DraftAutomation, *, name: str) -> str | None:
         """Create the automation row. Returns its id or ``None`` on duplicate."""
@@ -76,13 +79,30 @@ class AutomationCreationPath:
                 )
                 raise MissingToolError(draft.capability_name, missing)
 
+        # F-W4-K: default optional input_schema keys to None so skill.yaml
+        # templates under StrictUndefined don't need `is defined and` guards.
+        inputs = dict(draft.inputs or {})
+        if (
+            self._capability_input_schema_lookup is not None
+            and draft.capability_name
+        ):
+            try:
+                schema = await self._capability_input_schema_lookup(draft.capability_name)
+                required = set(schema.get("required", []) or [])
+                props = (schema.get("properties") or {}).keys()
+                for key in props:
+                    if key not in required and key not in inputs:
+                        inputs[key] = None
+            except Exception:
+                logger.exception("capability_input_schema_lookup_failed")
+
         try:
             automation_id = await self._repo.create(
                 user_id=draft.user_id,
                 name=name,
                 description=None,
                 capability_name=capability_name,
-                inputs=draft.inputs,
+                inputs=inputs,
                 trigger_type="on_schedule",
                 schedule=draft.schedule_cron,
                 alert_conditions=draft.alert_conditions or {},
