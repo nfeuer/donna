@@ -69,17 +69,10 @@ def _try_build_gmail_client(config_dir: Path) -> Any | None:
     if not email_yaml.exists():
         return None
     try:
-        import yaml
-        from donna.config import EmailConfig
+        from donna.config import load_email_config
         from donna.integrations.gmail import GmailClient
 
-        raw = email_yaml.read_text()
-        data = yaml.safe_load(raw)
-        # Support both flat format (production email.yaml) and nested format
-        # (email: {...}) used in tests and alternative config layouts.
-        if isinstance(data, dict) and "email" in data and isinstance(data["email"], dict):
-            data = data["email"]
-        email_cfg = EmailConfig(**data)
+        email_cfg = load_email_config(config_dir)
         token_path = Path(email_cfg.credentials.token_path)
         secrets_path = Path(email_cfg.credentials.client_secrets_path)
         if not token_path.exists() or not secrets_path.exists():

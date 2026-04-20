@@ -15,11 +15,10 @@ def test_gmail_tools_register_when_client_present(tmp_path: Path) -> None:
     token.write_text("{}")
     secrets.write_text("{}")
     (tmp_path / "email.yaml").write_text(
-        "email:\n"
-        "  credentials:\n"
-        f"    token_path: {token}\n"
-        f"    client_secrets_path: {secrets}\n"
-        "    scopes: ['https://www.googleapis.com/auth/gmail.readonly']\n"
+        "credentials:\n"
+        f"  token_path: {token}\n"
+        f"  client_secrets_path: {secrets}\n"
+        "  scopes: ['https://www.googleapis.com/auth/gmail.readonly']\n"
     )
     client = _try_build_gmail_client(tmp_path)
     assert client is not None
