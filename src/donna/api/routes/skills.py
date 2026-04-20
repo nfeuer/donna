@@ -158,7 +158,11 @@ async def transition_skill_state(
     # reason=human_approval, recompute baseline_agreement from recent divergences.
     if body.to_state == "trusted" and body.reason == "human_approval":
         skill_config = request.app.state.skill_system_config
-        window = int(skill_config.baseline_reset_window) if skill_config else 100
+        if skill_config is None:
+            raise HTTPException(
+                status_code=503, detail="skill_system_config not loaded"
+            )
+        window = int(skill_config.baseline_reset_window)
         cursor = await conn.execute(
             "SELECT AVG(agreement) FROM ("
             "  SELECT d.overall_agreement AS agreement"
