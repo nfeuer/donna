@@ -179,6 +179,20 @@ class GmailClient:
         logger.info("gmail_read", message_id=message_id, subject=msg.subject)
         return msg
 
+    async def get_message(self, *, message_id: str) -> EmailMessage:
+        """Fetch and parse a single Gmail message by ID (keyword-arg form).
+
+        Thin alias over ``read_email`` with a keyword-only signature, used by
+        the gmail_get_message skill tool.
+
+        Args:
+            message_id: The Gmail message ID.
+
+        Returns:
+            Parsed EmailMessage.
+        """
+        return await self.read_email(message_id)
+
     # ------------------------------------------------------------------
     # Write operations
     # ------------------------------------------------------------------
