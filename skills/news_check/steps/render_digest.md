@@ -30,8 +30,8 @@ Schema:
 Classified matches:
 {{ state.classify_items | tojson }}
 
-Source feed:
-{{ state.fetch_items.feed.feed_title }}
+Fetched feeds (feed_0, feed_1, …):
+{{ state.fetch_items | tojson }}
 
 Topics:
 {{ inputs.topics | tojson }}

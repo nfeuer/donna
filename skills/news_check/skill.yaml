@@ -13,15 +13,17 @@ steps:
     kind: tool
     tools: [rss_fetch]
     tool_invocations:
-      - tool: rss_fetch
+      - for_each: "{{ inputs.feed_urls }}"
+        as: feed_url
+        tool: rss_fetch
         args:
-          url: "{{ inputs.feed_urls[0] }}"
+          url: "{{ feed_url }}"
           since: "{{ inputs.prior_run_end }}"
           max_items: 50
         retry:
           max_attempts: 2
           backoff_s: [2, 5]
-        store_as: feed
+        store_as: "feed_{{ loop.index0 }}"
 
   - name: classify_items
     kind: llm
