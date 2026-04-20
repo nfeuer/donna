@@ -191,7 +191,7 @@ class GmailClient:
         Returns:
             Parsed EmailMessage.
         """
-        return await self.read_email(message_id)
+        return await self.read_email(message_id=message_id)
 
     # ------------------------------------------------------------------
     # Write operations

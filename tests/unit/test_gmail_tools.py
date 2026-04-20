@@ -11,7 +11,10 @@ from donna.skills.tools.gmail_get_message import gmail_get_message
 
 
 class FakeEmailMessage:
-    def __init__(self, *, id: str, sender: str, subject: str, snippet: str, date: datetime, body: str = ""):
+    def __init__(
+        self, *, id: str, sender: str, subject: str, snippet: str,
+        date: datetime, body: str = "", body_html: str | None = None,
+    ):
         self.id = id
         self.sender = sender
         self.subject = subject
@@ -19,6 +22,7 @@ class FakeEmailMessage:
         self.date = date
         self.recipients = ["nick@example.com"]
         self.body_text = body
+        self.body_html = body_html
 
 
 @pytest.fixture
@@ -85,6 +89,21 @@ async def test_gmail_get_message_returns_body(fake_client):
     assert out["subject"] == "Re: Q2"
     assert out["body_plain"].startswith("Hey")
     assert out["body_html"] is None
+
+
+@pytest.mark.asyncio
+async def test_gmail_get_message_returns_html_when_plain_absent(fake_client):
+    fake_client.get_message.return_value = FakeEmailMessage(
+        id="m1", sender="Jane <jane@x.com>", subject="Newsletter",
+        snippet="html-only email",
+        date=datetime(2026, 4, 20, 10, 0, tzinfo=timezone.utc),
+        body="",
+        body_html="<p>HTML body content</p>",
+    )
+    out = await gmail_get_message(client=fake_client, message_id="m1")
+    assert out["ok"] is True
+    assert out["body_plain"] == ""
+    assert out["body_html"] == "<p>HTML body content</p>"
 
 
 @pytest.mark.asyncio
