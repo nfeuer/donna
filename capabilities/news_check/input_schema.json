@@ -6,7 +6,7 @@
       "type": "array",
       "items": {"type": "string"},
       "minItems": 1,
-      "description": "List of RSS/Atom feed URLs to monitor."
+      "description": "List of RSS/Atom feed URLs to monitor. v1: only the first URL is polled; multi-feed support is a follow-up."
     },
     "topics": {
       "type": "array",
