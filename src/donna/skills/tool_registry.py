@@ -38,9 +38,11 @@ class ToolRegistry:
         self._tools[name] = callable_
 
     def clear(self) -> None:
-        """Remove every registered tool. Boot-time-only + test isolation only.
+        """Remove every registered tool.
 
-        Not thread-safe. Do not call from request-serving code paths.
+        Intended for test teardown (via the autouse fixture in
+        tests/conftest.py) and boot-time reinitialization. Not thread-safe;
+        do not call from request-serving code paths.
         """
         self._tools.clear()
 
