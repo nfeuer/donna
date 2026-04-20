@@ -183,10 +183,12 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     # downstream wiring is still in flight. Matches the pre-refactor order.
     ctx.tasks.append(asyncio.create_task(run_server(port=ctx.port)))
 
-    # gmail_client is not yet constructed during boot (email subsystem is Wave 2+).
-    # Pass None explicitly; when the email subsystem is wired it should pass its
-    # GmailClient here so Gmail skill tools register at startup.
-    skill_h = await wire_skill_system(ctx, gmail_client=None)
+    # Wave 5 F-W4-I: attempt to build a GmailClient at boot so Gmail skill
+    # tools register for capabilities like email_triage. Non-fatal on failure.
+    from donna.cli_wiring import _try_build_gmail_client
+
+    gmail_client = _try_build_gmail_client(ctx.config_dir)
+    skill_h = await wire_skill_system(ctx, gmail_client=gmail_client)
     automation_h = await wire_automation_subsystem(ctx, skill_h)
     _discord_h = await wire_discord(ctx, skill_h, automation_h)
 

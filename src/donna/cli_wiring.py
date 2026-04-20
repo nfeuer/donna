@@ -58,6 +58,44 @@ from donna.tasks.state_machine import StateMachine
 logger = structlog.get_logger()
 
 
+def _try_build_gmail_client(config_dir: Path) -> Any | None:
+    """Attempt to construct a GmailClient from config/email.yaml.
+
+    Returns None on any failure (missing file, creds file missing, construction
+    raises). Non-fatal — the capability-availability guard surfaces the
+    missing-tool state at automation-approval time via an actionable DM.
+    """
+    email_yaml = config_dir / "email.yaml"
+    if not email_yaml.exists():
+        return None
+    try:
+        import yaml
+        from donna.config import EmailConfig
+        from donna.integrations.gmail import GmailClient
+
+        raw = email_yaml.read_text()
+        data = yaml.safe_load(raw)
+        # Support both flat format (production email.yaml) and nested format
+        # (email: {...}) used in tests and alternative config layouts.
+        if isinstance(data, dict) and "email" in data and isinstance(data["email"], dict):
+            data = data["email"]
+        email_cfg = EmailConfig(**data)
+        token_path = Path(email_cfg.credentials.token_path)
+        secrets_path = Path(email_cfg.credentials.client_secrets_path)
+        if not token_path.exists() or not secrets_path.exists():
+            logger.warning(
+                "gmail_client_unavailable",
+                reason="credential_file_missing",
+                token_exists=token_path.exists(),
+                secrets_exists=secrets_path.exists(),
+            )
+            return None
+        return GmailClient(config=email_cfg)
+    except Exception as exc:  # noqa: BLE001 — non-fatal boot path
+        logger.warning("gmail_client_unavailable", reason=str(exc))
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
