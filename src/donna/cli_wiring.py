@@ -584,6 +584,13 @@ async def wire_discord(
         # AutomationConfirmationView approval coordinator.
         ctx.bot._intent_dispatcher = intent_dispatcher
         ctx.bot._automation_repo = automation_h.repository
+        # Wave 4: wire capability-availability guard into AutomationCreationPath.
+        from donna.skills import tools as _skill_tools_module
+        from donna.capabilities.tool_requirements import SkillToolRequirementsLookup
+
+        ctx.bot._automation_tool_registry = _skill_tools_module.DEFAULT_TOOL_REGISTRY
+        _cap_lookup = SkillToolRequirementsLookup(ctx.db.connection)
+        ctx.bot._automation_capability_lookup = _cap_lookup.list_required_tools
         # Pull the Discord automation default min-interval from config so
         # AutomationCreationPath doesn't hardcode the 300-second floor.
         from donna.automations.cadence_policy import (

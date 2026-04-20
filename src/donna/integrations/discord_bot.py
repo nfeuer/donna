@@ -611,7 +611,7 @@ class DonnaBot(discord.Client):
             )
             return
 
-        from donna.automations.creation_flow import AutomationCreationPath
+        from donna.automations.creation_flow import AutomationCreationPath, MissingToolError
 
         default_min_interval = getattr(
             self, "_automation_default_min_interval_seconds", 300
@@ -619,9 +619,19 @@ class DonnaBot(discord.Client):
         creation = AutomationCreationPath(
             repository=self._automation_repo,
             default_min_interval_seconds=default_min_interval,
+            tool_registry=getattr(self, "_automation_tool_registry", None),
+            capability_tool_lookup=getattr(self, "_automation_capability_lookup", None),
         )
         try:
             automation_id = await creation.approve(view.draft, name=view.name)
+        except MissingToolError as exc:
+            msg = (
+                f"I can't run `{exc.capability}` until "
+                f"{', '.join(exc.missing)} is connected — "
+                f"set that up first and try again."
+            )
+            await message.channel.send(msg)
+            return
         except Exception:
             log.exception("automation_creation_failed", name=view.name)
             await message.channel.send(
