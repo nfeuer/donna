@@ -465,6 +465,9 @@ class SkillSystemConfig(BaseModel):
     validation_per_step_timeout_s: int = 60
     validation_per_run_timeout_s: int = 300
 
+    # Wave 5 — F-9: configurable window for baseline_agreement reset.
+    baseline_reset_window: int = 100
+
 
 def load_skill_system_config(config_dir: Path) -> SkillSystemConfig:
     """Load skill system configuration, falling back to defaults if missing."""
