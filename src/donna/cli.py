@@ -183,7 +183,10 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     # downstream wiring is still in flight. Matches the pre-refactor order.
     ctx.tasks.append(asyncio.create_task(run_server(port=ctx.port)))
 
-    skill_h = await wire_skill_system(ctx)
+    # gmail_client is not yet constructed during boot (email subsystem is Wave 2+).
+    # Pass None explicitly; when the email subsystem is wired it should pass its
+    # GmailClient here so Gmail skill tools register at startup.
+    skill_h = await wire_skill_system(ctx, gmail_client=None)
     automation_h = await wire_automation_subsystem(ctx, skill_h)
     _discord_h = await wire_discord(ctx, skill_h, automation_h)
 
