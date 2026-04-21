@@ -567,8 +567,8 @@ async def _persist_fixture(
     """Insert a ``skill_fixture`` row; return the new id.
 
     ``tool_mocks`` is a fingerprint-keyed dict of mocked tool results,
-    JSON-serialized. See
-    docs/superpowers/specs/archive/2026-04-16-skill-system-wave-1-production-enablement-design.md §5.1.
+    JSON-serialized. See §5.1 of
+    ``docs/superpowers/specs/archive/2026-04-16-skill-system-wave-1-production-enablement-design.md``.
     """
     fixture_id = str(uuid6.uuid7())
     await conn.execute(
