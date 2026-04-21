@@ -15,6 +15,10 @@ from donna.skills.tools.rss_fetch import rss_fetch
 from donna.skills.tools.html_extract import html_extract
 from donna.skills.tools.gmail_search import gmail_search
 from donna.skills.tools.gmail_get_message import gmail_get_message
+from donna.skills.tools.calendar_read import calendar_read
+from donna.skills.tools.task_db_read import task_db_read
+from donna.skills.tools.cost_summary import cost_summary
+from donna.skills.tools.email_read import email_read
 
 
 # Module-level registry populated at orchestrator startup via
@@ -32,13 +36,16 @@ def register_default_tools(
     registry: ToolRegistry,
     *,
     gmail_client: Any | None = None,
+    calendar_client: Any | None = None,
+    task_db: Any | None = None,
+    cost_tracker: Any | None = None,
 ) -> None:
     """Register built-in skill tools.
 
-    Always registers: web_fetch, rss_fetch.
-    Registers gmail_search + gmail_get_message only when a GmailClient is
-    provided (production wiring threads the existing integration handle;
-    tests / degraded-mode boot pass None).
+    Always registers: web_fetch, rss_fetch, html_extract.
+    Each client-bound tool registers only when its dependency is provided;
+    tests / degraded-mode boot that omit a client still work correctly but
+    the dependent tool simply isn't available.
     """
     registry.register("web_fetch", web_fetch)
     registry.register("rss_fetch", rss_fetch)
@@ -53,14 +60,40 @@ def register_default_tools(
             "gmail_get_message",
             partial(gmail_get_message, client=gmail_client),
         )
+        registry.register(
+            "email_read",
+            partial(email_read, client=gmail_client),
+        )
+
+    if calendar_client is not None:
+        registry.register(
+            "calendar_read",
+            partial(calendar_read, client=calendar_client),
+        )
+
+    if task_db is not None:
+        registry.register(
+            "task_db_read",
+            partial(task_db_read, client=task_db),
+        )
+
+    if cost_tracker is not None:
+        registry.register(
+            "cost_summary",
+            partial(cost_summary, client=cost_tracker),
+        )
 
 
 __all__ = [
     "DEFAULT_TOOL_REGISTRY",
-    "register_default_tools",
-    "web_fetch",
-    "rss_fetch",
-    "html_extract",
-    "gmail_search",
+    "calendar_read",
+    "cost_summary",
+    "email_read",
     "gmail_get_message",
+    "gmail_search",
+    "html_extract",
+    "register_default_tools",
+    "rss_fetch",
+    "task_db_read",
+    "web_fetch",
 ]

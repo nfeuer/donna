@@ -41,9 +41,15 @@ class SeedCapabilityLoader:
                 if "default_output_shape" in entry
                 else None
             )
+            tools_json = (
+                json.dumps(list(entry["tools"]))
+                if "tools" in entry and entry["tools"] is not None
+                else None
+            )
 
             cursor = await self._conn.execute(
-                "SELECT description, input_schema, trigger_type, default_output_shape "
+                "SELECT description, input_schema, trigger_type, "
+                "       default_output_shape, tools_json "
                 "FROM capability WHERE name = ?", (name,),
             )
             row = await cursor.fetchone()
@@ -51,13 +57,14 @@ class SeedCapabilityLoader:
                 await self._conn.execute(
                     "INSERT INTO capability "
                     "(id, name, description, input_schema, trigger_type, "
-                    " default_output_shape, status, created_at, created_by) "
-                    "VALUES (?, ?, ?, ?, ?, ?, 'active', ?, 'seed')",
+                    " default_output_shape, tools_json, status, created_at, created_by) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, 'seed')",
                     (str(uuid.uuid4()), name, description, input_schema,
-                     trigger_type, default_output_shape, now),
+                     trigger_type, default_output_shape, tools_json, now),
                 )
             else:
-                existing_desc, existing_schema, existing_trigger, existing_shape = row
+                (existing_desc, existing_schema, existing_trigger,
+                 existing_shape, existing_tools) = row
                 changed_fields: list[str] = []
                 if existing_desc != description:
                     changed_fields.append("description")
@@ -67,6 +74,8 @@ class SeedCapabilityLoader:
                     changed_fields.append("trigger_type")
                 if (existing_shape or None) != (default_output_shape or None):
                     changed_fields.append("default_output_shape")
+                if (existing_tools or None) != (tools_json or None):
+                    changed_fields.append("tools_json")
                 if changed_fields:
                     logger.info(
                         "seed_capability_drift",
@@ -76,10 +85,10 @@ class SeedCapabilityLoader:
                 await self._conn.execute(
                     "UPDATE capability "
                     "SET description = ?, input_schema = ?, trigger_type = ?, "
-                    "    default_output_shape = ? "
+                    "    default_output_shape = ?, tools_json = ? "
                     "WHERE name = ?",
                     (description, input_schema, trigger_type,
-                     default_output_shape, name),
+                     default_output_shape, tools_json, name),
                 )
             upserted += 1
         await self._conn.commit()

@@ -89,6 +89,35 @@ def _try_build_gmail_client(config_dir: Path) -> Any | None:
         return None
 
 
+def _try_build_calendar_client(config_dir: Path) -> Any | None:
+    """Attempt to construct a GoogleCalendarClient from config/calendar.yaml.
+
+    Non-fatal: returns None if config or credentials are absent.
+    """
+    calendar_yaml = config_dir / "calendar.yaml"
+    if not calendar_yaml.exists():
+        return None
+    try:
+        from donna.config import load_calendar_config
+        from donna.integrations.calendar import GoogleCalendarClient
+
+        cal_cfg = load_calendar_config(config_dir)
+        token_path = Path(cal_cfg.credentials.token_path)
+        secrets_path = Path(cal_cfg.credentials.client_secrets_path)
+        if not token_path.exists() or not secrets_path.exists():
+            logger.warning(
+                "calendar_client_unavailable",
+                reason="credential_file_missing",
+                token_exists=token_path.exists(),
+                secrets_exists=secrets_path.exists(),
+            )
+            return None
+        return GoogleCalendarClient(config=cal_cfg)
+    except Exception as exc:
+        logger.warning("calendar_client_unavailable", reason=str(exc))
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
@@ -301,6 +330,7 @@ async def wire_skill_system(
     ctx: StartupContext,
     *,
     gmail_client: Any | None = None,
+    calendar_client: Any | None = None,
 ) -> SkillSystemHandle:
     """Register default tools, seed capabilities, assemble skill bundle.
 
@@ -308,10 +338,12 @@ async def wire_skill_system(
     bundle is None but `subsystem_router` + `budget_guard=None` are still
     populated so the automation subsystem can wire.
 
-    ``gmail_client`` is threaded through to ``register_default_tools`` so
-    Gmail skill tools are registered when the integration client is available
-    at boot.  Defaults to None (backward-compat: tests + degraded-mode boot
-    that don't supply a client still work correctly).
+    Integration clients are threaded through to ``register_default_tools``
+    so the dependent skill tools register when clients are available at
+    boot. Each defaults to None (backward-compat: tests + degraded-mode
+    boot that don't supply a client still work correctly); the
+    ``task_db`` handle reuses ``ctx.db`` and the ``cost_tracker`` is
+    constructed here regardless.
     """
     log = ctx.log
     from donna.skills import tools as _skill_tools_module
@@ -332,13 +364,23 @@ async def wire_skill_system(
         ctx.models_config, ctx.task_types_config, ctx.project_root,
     )
 
+    # CostTracker is constructed here (rather than later, inside the
+    # skill-enabled branch) so it can be injected into register_default_tools
+    # as the backing client for the cost_summary skill tool. The same
+    # instance is reused downstream by BudgetGuard.
+    cost_tracker_early = CostTracker(ctx.db.connection)
+
     # Wave 2 Task 16: register default tools (web_fetch, etc.) on the module-level
     # registry so SkillExecutor instances without an explicit registry can dispatch.
     # Must happen before assemble_skill_system, because the bundle will construct
     # SkillExecutor instances that look up the default registry.
+    _skill_tools_module.DEFAULT_TOOL_REGISTRY.clear()
     _skill_tools_module.register_default_tools(
         _skill_tools_module.DEFAULT_TOOL_REGISTRY,
         gmail_client=gmail_client,
+        calendar_client=calendar_client,
+        task_db=ctx.db,
+        cost_tracker=cost_tracker_early,
     )
     log.info(
         "default_tools_registered",
@@ -386,7 +428,20 @@ async def wire_skill_system(
             except Exception:
                 log.exception("capabilities_loader_failed")
 
-        cost_tracker = CostTracker(ctx.db.connection)
+        # Wave 1 followup: verify every capability's declared tools are in
+        # the registry. Fail-loud rather than silently falling back to the
+        # ad_hoc path at runtime.
+        from donna.capabilities.capability_tool_check import (
+            CapabilityToolRegistryCheck,
+        )
+
+        check = CapabilityToolRegistryCheck(
+            registry=_skill_tools_module.DEFAULT_TOOL_REGISTRY,
+            connection=ctx.db.connection,
+        )
+        await check.validate_all()
+
+        cost_tracker = cost_tracker_early
 
         skill_budget_guard = BudgetGuard(
             tracker=cost_tracker,

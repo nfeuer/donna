@@ -383,6 +383,7 @@ class Capability(Base):
     input_schema: Mapped[dict] = mapped_column(JSON, nullable=False)
     trigger_type: Mapped[TriggerType] = mapped_column(Enum(TriggerType), nullable=False, index=True)
     default_output_shape: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    tools_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", index=True)
     embedding: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

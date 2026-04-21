@@ -411,3 +411,26 @@ def _reset_default_tool_registry():
     from donna.skills.tools import DEFAULT_TOOL_REGISTRY
     yield
     DEFAULT_TOOL_REGISTRY.clear()
+
+
+@pytest.fixture(autouse=True)
+def _stub_calendar_client_builder(monkeypatch):
+    """Stub GoogleCalendarClient construction in tests.
+
+    Production wiring returns None when calendar credentials are absent,
+    which leaves ``calendar_read`` unregistered. The boot-time
+    ``CapabilityToolRegistryCheck`` then fails because seeded capabilities
+    like ``generate_digest`` declare ``calendar_read`` as a dependency.
+    In tests, no credentials exist — so return a MagicMock here so the
+    tool registers and the check passes. Individual tests that want to
+    exercise the "unregistered tool" code path can re-patch the builder
+    inside the test body.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    def _stub(_config_dir):
+        c = MagicMock()
+        c.list_events = AsyncMock(return_value=[])
+        return c
+
+    monkeypatch.setattr("donna.cli_wiring._try_build_calendar_client", _stub)

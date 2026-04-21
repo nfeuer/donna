@@ -100,6 +100,7 @@ capabilities:
   - name: generate_digest
     description: "Generate morning digest in Donna persona"
     trigger_type: ad_hoc
+    tools: [calendar_read, task_db_read]
     input_schema:
       type: object
       properties:
@@ -109,6 +110,8 @@ capabilities:
   - name: prep_research
     description: "Research and compile prep materials for a flagged task"
     trigger_type: ad_hoc
+    # web_search deferred until the tool is implemented; see open-backlog.md Wave 1.
+    tools: [task_db_read]
     input_schema:
       type: object
       properties:
@@ -120,6 +123,7 @@ capabilities:
   - name: task_decompose
     description: "Break a complex task into subtasks with dependencies"
     trigger_type: ad_hoc
+    tools: []
     input_schema:
       type: object
       properties:
@@ -129,6 +133,8 @@ capabilities:
   - name: extract_preferences
     description: "Extract learned preference rules from correction history"
     trigger_type: ad_hoc
+    # notes_read deferred until a notes storage module exists; see open-backlog.md Wave 1.
+    tools: [task_db_read]
     input_schema:
       type: object
       properties:
