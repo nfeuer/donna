@@ -46,10 +46,20 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
+      # Wave 3 F-12: skill-system cost panel reads invocation_log directly.
+      # frser-sqlite-datasource is community-maintained (unsigned), so we
+      # opt it in via the allow-list rather than running unsigned plugins globally.
+      - GF_INSTALL_PLUGINS=frser-sqlite-datasource
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=frser-sqlite-datasource
     volumes:
       - donna-grafana-data:/var/lib/grafana
       - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      # Same host path the orchestrator mounts at /donna/db. Read-only keeps
+      # Grafana from ever writing; SQLite WAL mode (see CLAUDE.md) supports
+      # one writer + concurrent readers, so no lock contention with the
+      # orchestrator's writes.
+      - ${DONNA_DB_PATH}:/var/lib/donna/db:ro
     ports:
       - "3000:3000"
     depends_on:

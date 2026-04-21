@@ -69,8 +69,8 @@ Manually trigger `generate_digest` via CLI/Discord and confirm it runs through t
 
 **Scope:**
 1. Verify + fill instrumentation gaps (emit only what's missing):
-   - `skill_state_transition_logged` structlog event in `src/donna/skills/lifecycle.py` at each transition.
-   - `skill_evolution_outcome` structlog event in `src/donna/skills/nightly.py` per evolution attempt (currently only aggregate `nightly_tasks_completed` is emitted).
+   - `skill_state_transition` structlog event in `src/donna/skills/lifecycle.py` at each transition — **already emitted** (`lifecycle.py:242-250`) with `skill_id`, `from_state`, `to_state`, `reason`, `actor`, `actor_id`. Dashboard queries the existing event; no code change needed.
+   - `skill_evolution_outcome` structlog event in `src/donna/skills/evolution_scheduler.py` per evolution attempt (currently only aggregate `nightly_evolution_done` count is emitted from `crons/nightly.py`).
 2. Cost-per-skill strategy — adopt option (b): tag `task_type` with a `skill:<name>` prefix convention. No schema migration. Option (a) — add `skill_id` to `invocation_log` — stays available if (b) proves insufficient.
 3. Create `docker/grafana/dashboards/skill_system.json` (template: copy layout from `docker/grafana/dashboards/task_pipeline.json`):
    - **Skill state distribution over time** — stacked timeseries on `event_type="skill_state_transition_logged" | to_state`.

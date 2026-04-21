@@ -59,6 +59,15 @@ class EvolutionScheduler:
                     rationale=str(exc),
                 )
             reports.append(report)
+            logger.info(
+                "skill_evolution_outcome",
+                skill_id=report.skill_id,
+                outcome=report.outcome,
+                cost_usd=report.cost_usd,
+                latency_ms=report.latency_ms,
+                new_version_id=report.new_version_id,
+                rationale=report.rationale,
+            )
             if report.outcome not in ("budget_exhausted", "skipped"):
                 budget -= per_cost
             if report.outcome == "budget_exhausted":

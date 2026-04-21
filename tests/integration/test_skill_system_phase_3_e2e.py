@@ -103,7 +103,8 @@ _PHASE3_SCHEMA = """
         tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL,
         cost_usd REAL NOT NULL, output TEXT, quality_score REAL,
         is_shadow INTEGER DEFAULT 0, eval_session_id TEXT,
-        spot_check_queued INTEGER DEFAULT 0, user_id TEXT NOT NULL
+        spot_check_queued INTEGER DEFAULT 0, user_id TEXT NOT NULL,
+        skill_id TEXT
     );
     CREATE TABLE skill_fixture (
         id TEXT PRIMARY KEY, skill_id TEXT NOT NULL,
@@ -203,7 +204,7 @@ async def test_h3_1_detector_surfaces_high_savings_candidate(phase3_db):
     # all within the last 30 days. No skill row → claude_native.
     for i in range(200):
         await phase3_db.execute(
-            "INSERT INTO invocation_log VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, 'nick')",
+            "INSERT INTO invocation_log VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, 'nick', NULL)",
             (f"inv-{i}", _ts(1), "parse_task", "parser", "model", "hash", 50, 10, 5, 0.10, '{"x": 1}'),
         )
     await phase3_db.commit()
@@ -230,7 +231,7 @@ async def test_h3_1_detector_skips_existing_skill(phase3_db):
     """H3.1 corollary: detector skips task types that already have a non-claude_native skill."""
     for i in range(200):
         await phase3_db.execute(
-            "INSERT INTO invocation_log VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, 'nick')",
+            "INSERT INTO invocation_log VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, 'nick', NULL)",
             (f"inv-{i}", _ts(1), "parse_task", "parser", "model", "hash", 50, 10, 5, 0.10, '{"x": 1}'),
         )
     # skill row exists in sandbox state (non-claude_native)

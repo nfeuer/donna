@@ -206,6 +206,9 @@ class InvocationLog(Base):
     eval_session_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     spot_check_queued: Mapped[bool] = mapped_column(Boolean, default=False)
     user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    skill_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True
+    )
 
 
 class CorrectionLog(Base):
@@ -328,7 +331,10 @@ class ChatMessageRole(str, enum.Enum):
 
 
 class ChatSessionModel(Base):
-    """Chat conversation session. See docs/superpowers/specs/archive/2026-04-12-chat-interface-design.md."""
+    """Chat conversation session.
+
+    See ``docs/superpowers/specs/archive/2026-04-12-chat-interface-design.md``.
+    """
 
     __tablename__ = "conversation_sessions"
 

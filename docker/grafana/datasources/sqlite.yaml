@@ -1,0 +1,16 @@
+apiVersion: 1
+
+# Wave 3 F-12: second datasource for the Skill System dashboard's
+# per-skill cost panel. invocation_log lives in donna_logs.db (SQLite)
+# on the orchestrator host; Grafana bind-mounts the same path read-only
+# (see docker/donna-monitoring.yml). The frser-sqlite-datasource plugin
+# is installed via GF_INSTALL_PLUGINS.
+datasources:
+  - name: DonnaLogs
+    type: frser-sqlite-datasource
+    access: proxy
+    uid: donna-logs-sqlite
+    jsonData:
+      path: /var/lib/donna/db/donna_logs.db
+    version: 1
+    editable: false

@@ -1,0 +1,88 @@
+{
+  "title": "Skill System",
+  "uid": "donna-skill-system",
+  "version": 1,
+  "schemaVersion": 36,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "tags": ["donna", "skills"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Skill State Distribution Over Time",
+      "type": "timeseries",
+      "description": "Stacked count of skill_state_transition events bucketed by destination state. Source: src/donna/skills/lifecycle.py.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (to_state) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"skill_state_transition\" [$__interval]))",
+          "legendFormat": "{{to_state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "stacking": { "mode": "normal" }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Evolution Success Rate per Skill",
+      "type": "timeseries",
+      "description": "Ratio of skill_evolution_outcome events with outcome=success to total attempts, grouped by skill. Source: src/donna/skills/evolution_scheduler.py.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (skill_id) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"skill_evolution_outcome\" | outcome=\"success\" [$__interval])) / sum by (skill_id) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"skill_evolution_outcome\" [$__interval]))",
+          "legendFormat": "{{skill_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Nightly Cron Outcomes",
+      "type": "logs",
+      "description": "Summary rows from the nightly skill-system cron: detector, evolution, drafter, degradation, correction-cluster, and aggregate. Source: src/donna/skills/crons/nightly.py.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "{container_name=\"donna-orchestrator\"} | json | event=~\"nightly_(detector|evolution|drafter|degradation|correction_cluster)_done|nightly_tasks_completed\"",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Cost Breakdown by Skill",
+      "type": "timeseries",
+      "description": "Per-skill LLM cost from invocation_log. Only rows with skill_id populated are included. NOTE: currently wired for forward-looking data — the skill executor does not yet write to invocation_log (see Wave 3 commit note).",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "datasource": "DonnaLogs",
+          "rawSql": "SELECT datetime((strftime('%s', timestamp) / 3600) * 3600, 'unixepoch') AS time, skill_id, SUM(cost_usd) AS cost FROM invocation_log WHERE skill_id IS NOT NULL AND timestamp >= $__timeFrom AND timestamp < $__timeTo GROUP BY time, skill_id ORDER BY time;",
+          "queryType": "table",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        }
+      }
+    }
+  ]
+}

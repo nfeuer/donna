@@ -41,6 +41,10 @@ class EvolutionReport:
     outcome: str        # success | rejected_validation | malformed_output | budget_exhausted | skipped | error
     new_version_id: str | None = None
     rationale: str | None = None
+    # Populated when an LLM evolution call completed; zero/None for early-exit outcomes
+    # (skipped, budget_exhausted, error-before-LLM).
+    cost_usd: float = 0.0
+    latency_ms: int | None = None
 
 
 class Evolver:
@@ -122,6 +126,8 @@ class Evolver:
             )
 
         invocation_id = getattr(metadata, "invocation_id", None)
+        cost_usd = float(getattr(metadata, "cost_usd", 0.0) or 0.0)
+        latency_ms = getattr(metadata, "latency_ms", None)
 
         # Validate output shape.
         required_keys = ("diagnosis", "new_skill_version", "changelog", "targeted_failure_cases")
@@ -138,6 +144,7 @@ class Evolver:
             return EvolutionReport(
                 skill_id=skill_id, outcome="rejected_validation",
                 rationale="malformed llm output",
+                cost_usd=cost_usd, latency_ms=latency_ms,
             )
 
         new_version = parsed["new_skill_version"]
@@ -158,6 +165,7 @@ class Evolver:
                 diagnosis=diagnosis, targeted=targeted,
                 gate_results=gate_results,
                 rationale=f"structural gate failed: {structural.failure_reason}",
+                cost_usd=cost_usd, latency_ms=latency_ms,
             )
 
         targeted_result = await gates.run_targeted_case_gate(
@@ -172,6 +180,7 @@ class Evolver:
                 diagnosis=diagnosis, targeted=targeted,
                 gate_results=gate_results,
                 rationale="targeted case gate failed",
+                cost_usd=cost_usd, latency_ms=latency_ms,
             )
 
         fixture_result = await gates.run_fixture_regression_gate(
@@ -185,6 +194,7 @@ class Evolver:
                 diagnosis=diagnosis, targeted=targeted,
                 gate_results=gate_results,
                 rationale="fixture regression gate failed",
+                cost_usd=cost_usd, latency_ms=latency_ms,
             )
 
         recent_result = await gates.run_recent_success_gate(
@@ -198,6 +208,7 @@ class Evolver:
                 diagnosis=diagnosis, targeted=targeted,
                 gate_results=gate_results,
                 rationale="recent success gate failed",
+                cost_usd=cost_usd, latency_ms=latency_ms,
             )
 
         # All gates passed: persist new version + transition.
@@ -254,6 +265,7 @@ class Evolver:
             skill_id=skill_id, outcome="success",
             new_version_id=new_version_id,
             rationale="all 4 gates passed",
+            cost_usd=cost_usd, latency_ms=latency_ms,
         )
 
     async def _record_rejection(
@@ -266,6 +278,8 @@ class Evolver:
         targeted: list[str],
         gate_results: dict[str, GateResult],
         rationale: str,
+        cost_usd: float = 0.0,
+        latency_ms: int | None = None,
     ) -> EvolutionReport:
         await self._log_repo.record(
             skill_id=skill_id,
@@ -285,6 +299,7 @@ class Evolver:
         return EvolutionReport(
             skill_id=skill_id, outcome="rejected_validation",
             rationale=rationale,
+            cost_usd=cost_usd, latency_ms=latency_ms,
         )
 
     async def _maybe_demote_after_failure(self, skill_id: str) -> None:

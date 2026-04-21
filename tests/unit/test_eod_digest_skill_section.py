@@ -44,7 +44,8 @@ _CREATE_TABLES = """
         input_hash TEXT, latency_ms INTEGER, tokens_in INTEGER,
         tokens_out INTEGER, cost_usd REAL, output TEXT,
         quality_score REAL, is_shadow INTEGER,
-        eval_session_id TEXT, spot_check_queued INTEGER, user_id TEXT
+        eval_session_id TEXT, spot_check_queued INTEGER, user_id TEXT,
+        skill_id TEXT
     );
     CREATE TABLE skill_evolution_log (
         id TEXT PRIMARY KEY, skill_id TEXT NOT NULL,
