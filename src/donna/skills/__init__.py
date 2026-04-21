@@ -1,4 +1,4 @@
-"""Skill system runtime — executor, state, validation, triage (later).
+"""Skill system runtime — executor, state, validation, triage.
 
 See docs/superpowers/specs/2026-04-15-skill-system-and-challenger-refactor-design.md
 """

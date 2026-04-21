@@ -8,6 +8,36 @@ This is a backlog, not a roadmap. Priority suggestions are opinions — use them
 
 ---
 
+## Status update — 2026-04-21 (verified against code)
+
+A code-against-doc reconciliation found the prioritized "Open Follow-ups" sections below are stale — most P0/P1/P2 items have shipped in Waves 1–5 but were never trimmed from the detailed write-ups, the Recommended Sequencing, or the Priority Summary Table. The Wave-N "Completed" sections in this same file are authoritative; the detailed F-* entries below are kept for historical context but are tagged `✅ CLOSED` where verified.
+
+**Verified closed (with evidence):**
+- **F-1** sandbox executor → `src/donna/skills/validation_executor.py:29`
+- **F-2** `automation_run.skill_run_id` linkage → `alembic/versions/add_automation_tables_phase_5.py:63`; `src/donna/automations/dispatcher.py:108,184`
+- **F-3** Discord NL automation → `src/donna/orchestrator/discord_intent_dispatcher.py:39-49,263-273`; `src/donna/integrations/discord_bot.py:494-599`
+- **F-5** sandbox in lifespan → `src/donna/cli_wiring.py:403`; `src/donna/skills/startup_wiring.py:54-68`
+- **F-6** NotificationService in lifespan → `src/donna/cli_wiring.py:252-265,401`
+- **F-7** correction-cluster fast path → `src/donna/skills/correction_cluster.py:61-80`; `src/donna/preferences/correction_logger.py:111-119`
+- **F-10** `min_interval_seconds` enforcement → `src/donna/automations/cadence_reclamper.py:82-88`
+- **F-11** real capabilities seeded → `alembic/versions/seed_product_watch_capability.py`; `alembic/versions/f3a4b5c6d7e8_seed_news_check_and_email_triage.py`
+- **F-14** end-to-end smoke test → `tests/e2e/test_wave4_full_stack.py`; `tests/integration/test_cli_startup_wire_helpers.py:82-139`
+
+**Partial (tracker-listed open, code work exists but gap remains):**
+- **F-12** observability dashboards — generic Grafana panels exist (`docker/grafana/dashboards/{error_exploration,task_pipeline,llm_cost,system_health}.json`) but skill-system-specific panels (state distribution, evolution success, cost-by-skill) are still missing.
+- **F-13** migrate Claude-native task types — capabilities for `generate_digest`, `prep_research`, `task_decompose`, `extract_preferences` are seeded in `config/capabilities.yaml:100-135`, but the tools they reference (`calendar_read`, `task_db_read`, `cost_summary`, `web_search`, `email_read`, `notes_read`, `fs_read`) are not in `src/donna/skills/tools/__init__.py:31-56`. Capabilities are dead until the tool-registration wave lands.
+- **F-W1-A** DegradationDetector exists and reads the threshold (`src/donna/skills/degradation.py:37,99,116`), but the original concern is the *binary-classification semantics* on continuous agreement scores. Needs deeper code review to confirm whether the semantics issue was actually fixed or merely papered over.
+
+**Genuinely still open:**
+- **F-4** Dashboard UI for skill system + automations — no skill/automation/skill-run/draft/evolution pages in `donna-ui/src/pages/`.
+- **F-W4-A** `email_triage` unbounded-sender mode — by-design defer; awaits user trigger.
+- **F-W4-E** Dashboard `meta.*` diagnostics — gated on F-4.
+- **Tool-registration wave** — same blocker as F-13 above.
+
+The detailed F-* entries below pre-date this update; trust the status tags here over the older priority labels.
+
+---
+
 ## Wave 3 entry points (read first)
 
 Wave 3 focus: **F-3 Discord natural-language automation creation** (see F-3 entry below). Wave 2 closed all F-W1-* items except F-W1-A (P2, degradation-threshold semantics — still unresolved, see below). Wave 2 also surfaced 6 new follow-ups from its own code review (F-W2-* entries below) — none blocking, but worth folding into Wave 3 or Wave 4 planning.
@@ -128,7 +158,7 @@ Wave 3 shipped **F-3** Discord natural-language automation creation — see the 
 
 New follow-ups surfaced during Wave 1 implementation and final code review:
 
-- **F-W1-A — `DegradationDetector` threshold semantics.** *(Priority P2; not a ship-blocker, but produces silent gaps.)* The detector uses `degradation_agreement_threshold=0.5` as a binary success/failure classifier on each divergence, then computes a Wilson CI on the success count. Divergences with agreement between the threshold and the baseline (e.g., 0.65 when baseline is 0.90) all count as successes and never trigger degradation. A trusted skill that silently drifts to mid-confidence agreement will never flag, so no degradation notification fires. Current mitigation: `correction_cluster` path if the user issues corrections; EOD/nightly digest. Fix options: graded/continuous agreement in the CI, or lower the default threshold. E2E scenario 4 (`test_trusted_degrades_to_flagged`) seeds 0.30 agreement to work around the bug.
+- **F-W1-A — `DegradationDetector` threshold semantics.** *(Priority P2; not a ship-blocker, but produces silent gaps.)* **Status (2026-04-21):** ⚠️ **NEEDS VERIFICATION** — `DegradationDetector` exists at `src/donna/skills/degradation.py:37` and reads `degradation_agreement_threshold` (lines 99,116), but whether the binary-classification semantics issue was actually fixed (vs. the detector merely existing) requires deeper code review. The detector uses `degradation_agreement_threshold=0.5` as a binary success/failure classifier on each divergence, then computes a Wilson CI on the success count. Divergences with agreement between the threshold and the baseline (e.g., 0.65 when baseline is 0.90) all count as successes and never trigger degradation. A trusted skill that silently drifts to mid-confidence agreement will never flag, so no degradation notification fires. Current mitigation: `correction_cluster` path if the user issues corrections; EOD/nightly digest. Fix options: graded/continuous agreement in the CI, or lower the default threshold. E2E scenario 4 (`test_trusted_degrades_to_flagged`) seeds 0.30 agreement to work around the bug.
 
 - **F-W1-B — `EvolutionGates` does not thread `tool_mocks` through validation.** *(Priority P0 for Wave 2 — must land before F-11 seeds any tool-using skill.)* `src/donna/skills/evolution_gates.py` runs all three gates (targeted-case, fixture-regression, recent-success) against `self._executor.execute(...)` without passing the fixture's `tool_mocks` blob. `ValidationExecutor.execute` defaults `tool_mocks=None`, `MockToolRegistry.from_mocks(None)` produces an empty map, and the first tool step raises `UnmockedToolError` — which the gate catches and marks as a failure. Any skill with even one tool step (i.e., every Wave 2 capability: `product_watch`, `news_check`, `meeting_prep`) will permanently fail Gate 3 and never successfully evolve. Impact today is zero because no such skills exist. Fix: (1) for the fixture-regression gate, JOIN `skill_fixture.tool_mocks` into the query and `json.loads` it per fixture; (2) for the targeted-case and recent-success gates, synthesize mocks from `skill_run.tool_result_cache` on the captured run (the same transform the Alembic backfill performs in `alembic/versions/add_fixture_tool_mocks.py::_cache_to_mocks`). Unit tests in `test_skills_evolution_gates.py` use `MagicMock()` executors and miss this entirely — add a gate-level test using a real `ValidationExecutor` + `MockToolRegistry` populated from a seeded fixture row.
 
@@ -159,6 +189,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-1: Sandbox SkillExecutor for validation gates
 
+- **Status (2026-04-21):** ✅ **CLOSED** — shipped as `ValidationExecutor` (`src/donna/skills/validation_executor.py:29`). Section retained for context.
 - **Origin:** Phase 3 Task 9 drift entry (AutoDrafter), Phase 4 Task 11 drift entry (Evolver + `assemble_skill_system` default).
 - **Current state:** Both `AutoDrafter` and `Evolver` accept `executor_factory=None`, the lifespan wiring passes None, gates 2-4 return `pass_rate=1.0` (vacuous pass). Drafted / evolved skills still land in `draft` requiring human approval — so the safety posture holds, but validation is a stub.
 - **What it unblocks:** Fully automated draft→sandbox promotion. Meaningful evolution 4-gate validation. Closes `R28` partial status.
@@ -170,6 +201,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-2: `automation_run.skill_run_id` linkage
 
+- **Status (2026-04-21):** ✅ **CLOSED** — column at `alembic/versions/add_automation_tables_phase_5.py:63`; dispatcher writes both directions at `src/donna/automations/dispatcher.py:108,184`. Section retained for context.
 - **Origin:** Phase 5 final code review (Important).
 - **Current state:** When an automation dispatches via the skill path, `automation_run.skill_run_id` is always `None`. The column exists for this linkage; the dispatcher just doesn't populate it because `SkillExecutor.execute()` doesn't return the persisted `run_id`.
 - **What it unblocks:** Dashboard traceability (click through from an automation run to the underlying skill run). Attribution of automation costs to specific skill versions.
@@ -180,6 +212,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-3: Discord natural-language automation creation
 
+- **Status (2026-04-21):** ✅ **CLOSED** — `src/donna/orchestrator/discord_intent_dispatcher.py:39-49,263-273`; `src/donna/integrations/discord_bot.py:494-599`. Section retained for context.
 - **Origin:** Phase 5 drift log (AS-5.1 partial).
 - **Current state:** REST endpoint `POST /admin/automations` exists. The Discord creation flow ("watch this URL daily for size L under $100") requires the challenger to output `trigger_type=on_schedule` alongside extracted inputs, then post to the endpoint.
 - **What it unblocks:** AS-5.1 as spec'd (Discord-driven creation). Currently automations can only be created via dashboard.
@@ -203,6 +236,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-5: Real sandbox executor wired into lifespan
 
+- **Status (2026-04-21):** ✅ **CLOSED** — `src/donna/cli_wiring.py:403`; `src/donna/skills/startup_wiring.py:54-68`. Section retained for context.
 - **Origin:** Follow-up to F-1. Once the sandbox executor exists, `assemble_skill_system` needs to pass it as `executor_factory=...` instead of `lambda: None`.
 - **Current state:** Line `executor_factory=None` in `src/donna/skills/startup_wiring.py`.
 - **Scope estimate:** Trivial if F-1 has the right interface. Just a single wire-up line + an E2E regression test.
@@ -212,6 +246,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-6: NotificationService wired into FastAPI lifespan
 
+- **Status (2026-04-21):** ✅ **CLOSED** — `src/donna/cli_wiring.py:252-265,401`. Section retained for context.
 - **Origin:** Phase 5 drift log.
 - **Current state:** `app.state.notification_service` is never populated in `src/donna/api/__init__.py`. `AutomationDispatcher` defensively checks `self._notifier is not None` and skips notification when absent — runs succeed but no alerts go out.
 - **What it unblocks:** AS-5.4 in production (alert conditions fire → Discord DM). Currently alerts only fire in tests where the fixture explicitly injects the notifier.
@@ -222,6 +257,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-7: `CorrectionClusterDetector` frequency — hourly or on-correction
 
+- **Status (2026-04-21):** ✅ **CLOSED** — sync fast-path at `src/donna/skills/correction_cluster.py:61-80`, triggered from `src/donna/preferences/correction_logger.py:111-119`; nightly fallback also present. Section retained for context.
 - **Origin:** Phase 4 Task 7 notes + Phase 5 nightly cron integration.
 - **Current state:** `CorrectionClusterDetector.scan_once()` runs once per nightly cron (3am UTC). Spec §6.6 AS-4.5 says "fires immediately with a higher-urgency notification (not EOD digest)."
 - **What it unblocks:** Real "immediate" signal from user corrections. Currently a user issuing 3 corrections at 9am won't see the skill flagged until 3am the next day.
@@ -252,6 +288,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-10: `min_interval_seconds` enforcement
 
+- **Status (2026-04-21):** ✅ **CLOSED** — `src/donna/automations/cadence_reclamper.py:82-88`. Section retained for context.
 - **Origin:** Phase 5 drift log (R31 partial-semantics note).
 - **Current state:** The `automation.min_interval_seconds` column is persisted but not enforced at dispatch time. The scheduler trusts the cron expression. If a user creates an automation with `*/30 * * * * *` (every 30s) and `min_interval_seconds=300`, the scheduler will still fire every 30s.
 - **What it unblocks:** Genuine rate-limit floor the spec described.
@@ -262,6 +299,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-11: Seed useful capabilities + skills for real usage
 
+- **Status (2026-04-21):** ✅ **CLOSED** — `product_watch`, `news_check`, `email_triage` all seeded (`alembic/versions/seed_product_watch_capability.py`; `alembic/versions/f3a4b5c6d7e8_seed_news_check_and_email_triage.py`). Additional task-type capabilities seeded but pending tool registration — see F-13. Section retained for context.
 - **Origin:** Implicit. Phase 1 seeded `parse_task`, `dedup_check`, `classify_priority` (three existing task types). Phase 5 delivered the automation subsystem with nothing to automate.
 - **Current state:** No capabilities exist for the motivating examples (`product_watch`, `news_check`, `meeting_prep`). An empty capability registry means the challenger's match-and-route layer is permanently in "novelty" mode.
 - **What it unblocks:** Real user flows. AS-5.1 refers to `product_watch` as if it already existed — it doesn't.
@@ -272,6 +310,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-12: Observability dashboards
 
+- **Status (2026-04-21):** ⚠️ **PARTIAL** — generic Grafana dashboards exist (`docker/grafana/dashboards/{error_exploration,task_pipeline,llm_cost,system_health}.json`), but skill-system-specific panels (state distribution, evolution success, cost-by-skill) are still missing.
 - **Origin:** Implicit. Every Phase 3-5 component logs structured events but there's no aggregation or alerting on top.
 - **Current state:** Events are logged to `invocation_log` and structlog. Grafana/Loki exists in the infra stack but no skill-specific dashboards.
 - **What it unblocks:** Operational visibility. When a promotion gate is stuck or evolution is failing repeatedly across many skills, the user would otherwise only notice via EOD digest.
@@ -282,6 +321,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-13: Migrate existing Claude-native task types to capabilities
 
+- **Status (2026-04-21):** ⚠️ **PARTIAL** — `generate_digest`, `prep_research`, `task_decompose`, `extract_preferences` are seeded as capabilities in `config/capabilities.yaml:100-135`, but the underlying tools they reference (`calendar_read`, `task_db_read`, `cost_summary`, `web_search`, `email_read`, `notes_read`, `fs_read`) are NOT registered in `src/donna/skills/tools/__init__.py:31-56` (only `web_fetch`, `rss_fetch`, `html_extract`, `gmail_search`, `gmail_get_message` exist). Capabilities are inert until a tool-registration wave lands.
 - **Origin:** Spec Open Questions #5 ("Migration strategy for existing task types").
 - **Current state:** `parse_task`, `dedup_check`, `classify_priority` are seeded. The spec open-question lists `generate_digest` as a likely next candidate; `prep_research`, `task_decompose`, `extract_preferences` are also in `config/task_types.yaml` and currently run straight through Claude.
 - **What it unblocks:** `SkillCandidateDetector` automatically surfaces these once they have capability rows. Opens them to drafting + evolution + shadow.
@@ -292,6 +332,7 @@ New follow-ups surfaced during Wave 1 implementation and final code review:
 
 ### F-14: End-to-end "enabled" smoke test
 
+- **Status (2026-04-21):** ✅ **CLOSED** — `tests/e2e/test_wave4_full_stack.py`; `tests/integration/test_cli_startup_wire_helpers.py:82-139`. Section retained for context.
 - **Origin:** Implicit. We have config-disabled behavior tested, but no single test proves "set enabled=true, boot the API, the whole pipeline works end-to-end."
 - **Current state:** Unit + integration tests hit each component in isolation. No bootstrapping test that actually sets `enabled=true`, runs a full nightly cycle, and asserts the resulting DB state is coherent.
 - **What it unblocks:** Confidence to flip `enabled=true` in production.
@@ -402,32 +443,45 @@ These were deliberately deferred in the original spec with explicit trigger cond
 
 ## Recommended sequencing
 
-### Wave 1 — Production enablement (P0)
+> **Updated 2026-04-21:** Waves 1–5 closed F-1, F-2, F-3, F-5, F-6, F-7, F-10, F-11, F-14. The historical Wave 1/Wave 2 sequencing below is preserved for reference; the current open backlog is in the section that follows.
+
+### Current open backlog (verified 2026-04-21)
+
+1. **Tool-registration wave** — register `calendar_read`, `task_db_read`, `cost_summary`, `web_search`, `email_read`, `notes_read`, `fs_read` on `DEFAULT_TOOL_REGISTRY` (`src/donna/skills/tools/__init__.py`). Activates the four claude-native task-type capabilities seeded for F-13.
+2. **F-4** Dashboard UI for skill system + automations — separate frontend track. Skill/automation/skill-run/draft/evolution pages. Unblocks F-W4-E.
+3. **F-W1-A** DegradationDetector threshold semantics — verify the binary-classification issue is actually fixed; revisit if not.
+4. **F-12** Grafana skill-system panels — generic dashboards exist; skill-state distribution + evolution-success + cost-by-skill panels still missing.
+5. **F-W4-A** `email_triage` unbounded-sender mode — by-design defer; build when user asks.
+6. **F-W4-E** Dashboard `meta.*` per-run diagnostics — gated on F-4.
+
+### Historical sequencing (waves 1 & 2 — now closed)
+
+#### Wave 1 — Production enablement (P0)
 
 Get `skill_system.enabled=true` safe to flip in production.
 
-1. **F-1** sandbox SkillExecutor — keystone. Without it, validation is a stub.
-2. **F-5** wire sandbox executor into lifespan — trivial once F-1 exists.
-3. **F-6** wire NotificationService — alerts are silent without this.
+1. **F-1** sandbox SkillExecutor — keystone. Without it, validation is a stub. ✅ Closed
+2. **F-5** wire sandbox executor into lifespan — trivial once F-1 exists. ✅ Closed
+3. **F-6** wire NotificationService — alerts are silent without this. ✅ Closed
 
-### Wave 2 — Make it actually useful (P1)
+#### Wave 2 — Make it actually useful (P1)
 
 Populate the pipeline and close UX gaps.
 
-4. **F-11** seed real capabilities + skills Nick wants to use (depends on user input).
-5. **F-14** end-to-end smoke test as a regression trap.
-6. **F-2** `automation_run.skill_run_id` linkage — cheap, high debugging value.
-7. **F-7** correction-cluster frequency — matches spec's "fires immediately" intent.
-8. **F-3** Discord natural-language automation creation — unlocks Nick's primary use case.
-9. **F-4** Dashboard UI — biggest effort item, but "human retains judgment-level control" collapses without it. Separate brainstorm track.
+4. **F-11** seed real capabilities + skills Nick wants to use (depends on user input). ✅ Closed
+5. **F-14** end-to-end smoke test as a regression trap. ✅ Closed
+6. **F-2** `automation_run.skill_run_id` linkage — cheap, high debugging value. ✅ Closed
+7. **F-7** correction-cluster frequency — matches spec's "fires immediately" intent. ✅ Closed
+8. **F-3** Discord natural-language automation creation — unlocks Nick's primary use case. ✅ Closed
+9. **F-4** Dashboard UI — biggest effort item, but "human retains judgment-level control" collapses without it. Separate brainstorm track. ❌ Still open
 
-### Wave 3 — When triggered (P2)
+#### Wave 3 — When triggered (P2)
 
 Do not build speculatively. Revisit with data or a concrete ask.
 
-- **F-10** min_interval enforcement — when F-3/F-4 land.
-- **F-12** Grafana dashboards — when first production incident reveals a gap.
-- **F-13** migrate more task types — when F-11's infrastructure is mature.
+- **F-10** min_interval enforcement — when F-3/F-4 land. ✅ Closed
+- **F-12** Grafana dashboards — when first production incident reveals a gap. ⚠️ Partial
+- **F-13** migrate more task types — when F-11's infrastructure is mature. ⚠️ Partial (seeded; tools still need registration)
 - **OOS-1** event triggers — when 3+ automations need them.
 - **OOS-2** per-capability runbooks — after 6 months of challenger data.
 - **OOS-3** automation chains — when a real use case exists.
@@ -449,23 +503,27 @@ Do not build speculatively. Revisit with data or a concrete ask.
 
 ## Priority summary table
 
-| Item | Priority | Origin | Effort |
-|---|---|---|---|
-| F-1 sandbox executor | P0 | Phase 3/4 drift | Med-Large |
-| F-5 wire sandbox executor | P0 | Follow-up to F-1 | Trivial |
-| F-6 wire NotificationService | P0 | Phase 5 drift | Small |
-| F-2 skill_run_id linkage | P1 | Phase 5 review | Small |
-| F-3 Discord automation flow | P1 | Phase 5 drift | Medium |
-| F-4 Dashboard UI | P1 | All phases | Large (separate track) |
-| F-7 correction frequency | P1 | Phase 4 notes | Small-Med |
-| F-11 seed real capabilities | P1 | Implicit | Small-Med per cap |
-| F-14 E2E smoke test | P1 | Implicit | Small-Med |
-| F-8 evolution → sandbox | P2 | Phase 4 drift | Small (subsumed by F-4) |
-| F-10 min_interval enforcement | P2 | Phase 5 drift | Small |
-| F-12 Grafana dashboards | P2 | Implicit | Small-Med |
-| F-13 migrate task types | P2 | Spec open Q#5 | Small per type |
-| F-9 configurable baseline | P3 | Phase 4 drift | Trivial |
-| OOS-1..12 | P2 | Spec §2 | Varies |
+| Item | Priority | Origin | Effort | Status (2026-04-21) |
+|---|---|---|---|---|
+| F-1 sandbox executor | P0 | Phase 3/4 drift | Med-Large | ✅ Closed |
+| F-5 wire sandbox executor | P0 | Follow-up to F-1 | Trivial | ✅ Closed |
+| F-6 wire NotificationService | P0 | Phase 5 drift | Small | ✅ Closed |
+| F-2 skill_run_id linkage | P1 | Phase 5 review | Small | ✅ Closed |
+| F-3 Discord automation flow | P1 | Phase 5 drift | Medium | ✅ Closed |
+| F-4 Dashboard UI | P1 | All phases | Large (separate track) | ❌ Open |
+| F-7 correction frequency | P1 | Phase 4 notes | Small-Med | ✅ Closed |
+| F-11 seed real capabilities | P1 | Implicit | Small-Med per cap | ✅ Closed |
+| F-14 E2E smoke test | P1 | Implicit | Small-Med | ✅ Closed |
+| F-8 evolution → sandbox | P2 | Phase 4 drift | Small (subsumed by F-4) | ⚠️ Subsumed (gated on F-4) |
+| F-10 min_interval enforcement | P2 | Phase 5 drift | Small | ✅ Closed |
+| F-12 Grafana dashboards | P2 | Implicit | Small-Med | ⚠️ Partial (skill panels missing) |
+| F-13 migrate task types | P2 | Spec open Q#5 | Small per type | ⚠️ Partial (tools unregistered) |
+| F-W1-A degradation semantics | P2 | Wave 1 review | Small-Med | ⚠️ Needs verification |
+| F-W4-A unbounded-sender | P2 | Wave 4 review | Med | ❌ Open (by-design defer) |
+| F-W4-E `meta.*` diagnostics | P2 | Wave 4 review | Small (gated on F-4) | ❌ Open |
+| Tool-registration wave | P1 | Implicit (blocks F-13) | Small per tool | ❌ Open |
+| F-9 configurable baseline | P3 | Phase 4 drift | Trivial | ✅ Closed (Wave 5) |
+| OOS-1..12 | P2 | Spec §2 | Varies | ❌ Open (triggered) |
 
 ## Notes
 

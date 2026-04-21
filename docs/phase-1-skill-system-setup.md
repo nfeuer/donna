@@ -95,7 +95,7 @@ Expected includes: `capability`, `skill`, `skill_version`, `skill_state_transiti
 
 ## 4. Application wiring — TWO THINGS STILL NEED TO BE DONE
 
-These were scoped out of Phase 1 and Phase 2's tasks to keep task-by-task changes tight. They are one-time startup-code edits. Both need to happen before the skill system does anything at runtime.
+> **⚠️ SUPERSEDED (2026-04-21):** §4.1 and §4.2 below describe manual wiring that no longer needs to be done by hand. Both are now performed automatically by `wire_skill_system()` and `assemble_skill_system()` in `src/donna/cli_wiring.py:300-470`, invoked from the CLI startup path. The historical content is preserved for context — operators do not need to follow it. The only manual step today is enabling the skill system via config (see §3 above).
 
 ### 4.1 Wire `initialize_skill_system` into application startup
 
