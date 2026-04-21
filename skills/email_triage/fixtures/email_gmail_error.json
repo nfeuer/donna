@@ -2,13 +2,20 @@
   "case_name": "email_gmail_error",
   "input": {
     "senders": ["jane@x.com"],
+    "query_extras": null,
     "prior_run_end": null
   },
-  "expected_output_shape": null,
+  "expected_output_shape": {
+    "type": "object",
+    "required": ["ok"],
+    "properties": {
+      "ok": {"type": "boolean", "enum": [false]}
+    }
+  },
   "tool_mocks": {
     "gmail_search:{\"max_results\":20,\"query\":\"from:(jane@x.com)\"}": {
-      "ok": false,
-      "error": "token expired"
+      "__error__": "ConnectionError",
+      "__message__": "token expired"
     }
   }
 }
