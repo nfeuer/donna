@@ -41,7 +41,7 @@ async def task_db_read(
     user_id: str | None = None,
     status: str | None = None,
     domain: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Fetch one task (by ``task_id``) or a filtered list.
 
     When ``task_id`` is provided, returns ``{ok, task}``; otherwise returns
@@ -92,10 +92,10 @@ def _coerce_domain(value: str) -> TaskDomain:
         raise TaskDbReadError(f"unknown domain: {value!r}") from exc
 
 
-def _project(row: Any) -> dict:
+def _project(row: Any) -> dict[str, Any]:
     """Project a TaskRow to a JSON-safe subset. Only read-friendly fields."""
-    if dataclasses.is_dataclass(row):
-        as_dict = dataclasses.asdict(row)
+    if dataclasses.is_dataclass(row) and not isinstance(row, type):
+        as_dict: dict[str, Any] = dataclasses.asdict(row)
     else:
         as_dict = dict(row)
     return {k: as_dict.get(k) for k in _PROJECTED_FIELDS}

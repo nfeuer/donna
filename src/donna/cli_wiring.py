@@ -113,7 +113,7 @@ def _try_build_calendar_client(config_dir: Path) -> Any | None:
             )
             return None
         return GoogleCalendarClient(config=cal_cfg)
-    except Exception as exc:  # noqa: BLE001 — non-fatal boot path
+    except Exception as exc:
         logger.warning("calendar_client_unavailable", reason=str(exc))
         return None
 

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from donna.skills.tools.task_db_read import task_db_read, TaskDbReadError
+from donna.skills.tools.task_db_read import TaskDbReadError, task_db_read
 from donna.tasks.db_models import TaskDomain, TaskStatus
 
 

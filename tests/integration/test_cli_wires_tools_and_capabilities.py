@@ -179,7 +179,8 @@ async def test_capability_tool_registry_check_passes_on_seeded_yaml(
     async with aiosqlite.connect(db_path) as conn:
         cursor = await conn.execute(
             "SELECT name, tools_json FROM capability "
-            "WHERE name IN ('generate_digest', 'task_decompose', 'prep_research', 'extract_preferences')"
+            "WHERE name IN ('generate_digest', 'task_decompose', "
+            "'prep_research', 'extract_preferences')"
         )
         rows = {name: tools for name, tools in await cursor.fetchall()}
     assert rows["generate_digest"] is not None

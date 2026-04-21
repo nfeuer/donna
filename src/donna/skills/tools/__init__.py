@@ -86,14 +86,14 @@ def register_default_tools(
 
 __all__ = [
     "DEFAULT_TOOL_REGISTRY",
-    "register_default_tools",
-    "web_fetch",
-    "rss_fetch",
-    "html_extract",
-    "gmail_search",
-    "gmail_get_message",
     "calendar_read",
-    "task_db_read",
     "cost_summary",
     "email_read",
+    "gmail_get_message",
+    "gmail_search",
+    "html_extract",
+    "register_default_tools",
+    "rss_fetch",
+    "task_db_read",
+    "web_fetch",
 ]

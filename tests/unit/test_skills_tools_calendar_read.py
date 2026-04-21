@@ -1,12 +1,12 @@
 """Tests for calendar_read skill-system tool."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from donna.skills.tools.calendar_read import calendar_read, CalendarReadError
+from donna.skills.tools.calendar_read import CalendarReadError, calendar_read
 
 
 class FakeCalendarEvent:
@@ -37,8 +37,8 @@ async def test_calendar_read_returns_events(fake_client):
         FakeCalendarEvent(
             event_id="e1",
             summary="Morning standup",
-            start=datetime(2026, 4, 21, 9, 0, tzinfo=timezone.utc),
-            end=datetime(2026, 4, 21, 9, 30, tzinfo=timezone.utc),
+            start=datetime(2026, 4, 21, 9, 0, tzinfo=UTC),
+            end=datetime(2026, 4, 21, 9, 30, tzinfo=UTC),
             donna_managed=True,
             donna_task_id="task-42",
         ),

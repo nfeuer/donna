@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from donna.cost.tracker import CostSummary
-from donna.skills.tools.cost_summary import cost_summary, CostSummaryError
+from donna.skills.tools.cost_summary import CostSummaryError, cost_summary
 
 
 @pytest.fixture

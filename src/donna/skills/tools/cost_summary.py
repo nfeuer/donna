@@ -27,7 +27,7 @@ async def cost_summary(
     year: int | None = None,
     month: int | None = None,
     exclude_task_types: list[str] | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Return total spend + per-task-type breakdown for the requested scope.
 
     ``scope="daily"`` uses ``for_date`` (ISO ``YYYY-MM-DD``; defaults to today).

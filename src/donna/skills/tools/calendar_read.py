@@ -25,7 +25,7 @@ async def calendar_read(
     time_min: str,
     time_max: str,
     calendar_id: str = "primary",
-) -> dict:
+) -> dict[str, Any]:
     """List events in [time_min, time_max] on *calendar_id*.
 
     ``time_min`` / ``time_max`` are ISO-8601 datetimes (naive is treated as UTC).

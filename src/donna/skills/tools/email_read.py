@@ -32,7 +32,7 @@ async def email_read(
     since: str | None = None,
     until: str | None = None,
     max_results: int = 20,
-) -> dict:
+) -> dict[str, Any]:
     """List messages matching the given structured filters.
 
     At least one filter must be provided. ``since`` / ``until`` are ISO-8601

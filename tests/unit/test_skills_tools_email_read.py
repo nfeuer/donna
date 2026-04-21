@@ -1,12 +1,12 @@
 """Tests for email_read skill-system tool."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from donna.skills.tools.email_read import email_read, EmailReadError
+from donna.skills.tools.email_read import EmailReadError, email_read
 
 
 class FakeEmailMessage:
@@ -35,7 +35,7 @@ async def test_email_read_composes_full_query(fake_client):
     fake_client.search_emails.return_value = [
         FakeEmailMessage(
             id="m1", sender="Jane <jane@x.com>", subject="Re: Q2",
-            snippet="Let me know", date=datetime(2026, 4, 20, 10, 0, tzinfo=timezone.utc),
+            snippet="Let me know", date=datetime(2026, 4, 20, 10, 0, tzinfo=UTC),
         ),
     ]
     out = await email_read(
