@@ -2,7 +2,7 @@
 
 Single entry point for all chat interactions. Classifies intent,
 assembles context, calls the local LLM, and manages sessions.
-See docs/superpowers/specs/2026-04-12-chat-interface-design.md.
+See docs/superpowers/specs/archive/2026-04-12-chat-interface-design.md.
 """
 
 from __future__ import annotations

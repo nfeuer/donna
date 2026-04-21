@@ -165,7 +165,7 @@ Every call to an Ollama alias records `invocation_log.estimated_tokens_in` along
 
 ### Future extensions (explicitly deferred)
 
-The following are documented as deferred in `docs/superpowers/specs/2026-04-12-local-llm-context-strategy-design.md`:
+The following are documented as deferred in `docs/superpowers/specs/archive/2026-04-12-local-llm-context-strategy-design.md`:
 
 - Per-task-type compaction strategies (rolling summary, map-reduce, RAG).
 - `pgvector` "brain" on Supabase for long-history retrieval.

@@ -91,18 +91,9 @@ class TestInvalidTransitions:
         assert "Must re-open to backlog first" in str(exc_info.value)
 
     def test_cancelled_to_backlog_allowed(self, sm: StateMachine) -> None:
-        """Cancelled → backlog is the exception — should be allowed."""
+        """Cancelled → backlog is the `except` carve-out — should be allowed."""
         effects = sm.validate_transition("cancelled", "backlog")
-        # This comes from the wildcard * → cancelled, not cancelled → backlog
-        # Actually: there's no explicit cancelled → backlog transition
-        # This tests that the except clause works
-        # The wildcard gives us backlog → cancelled, not the reverse
-        # Let's check: cancelled → backlog should NOT be in invalid_transitions
-        # because of the "except: [backlog]" clause
-        # But it also needs to be in valid transitions to work
-        # This is a design gap — the fixture doesn't have cancelled → backlog
-        # For now, this test documents the gap
-        pass
+        assert "clear_cancelled_at" in effects
 
     def test_done_to_scheduled_rejected(self, sm: StateMachine) -> None:
         with pytest.raises(InvalidTransitionError) as exc_info:

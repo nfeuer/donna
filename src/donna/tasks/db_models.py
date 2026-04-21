@@ -328,7 +328,7 @@ class ChatMessageRole(str, enum.Enum):
 
 
 class ChatSessionModel(Base):
-    """Chat conversation session. See docs/superpowers/specs/2026-04-12-chat-interface-design.md."""
+    """Chat conversation session. See docs/superpowers/specs/archive/2026-04-12-chat-interface-design.md."""
 
     __tablename__ = "conversation_sessions"
 

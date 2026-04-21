@@ -1,6 +1,6 @@
 """Authentication and authorization for the Donna REST API.
 
-See docs/superpowers/specs/2026-04-14-api-auth-hardening-design.md.
+See docs/superpowers/specs/archive/2026-04-14-api-auth-hardening-design.md.
 """
 
 from donna.api.auth.router_factory import (

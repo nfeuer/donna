@@ -2,8 +2,8 @@
 
 > **For Nick, to remember when activating this on the deployment machine.**
 > Last updated: 2026-04-16
-> Related spec: `docs/superpowers/specs/2026-04-15-skill-system-and-challenger-refactor-design.md`
-> Related plans: `docs/superpowers/plans/2026-04-15-skill-system-phase-1-foundation.md`, `docs/superpowers/plans/2026-04-15-skill-system-phase-2-execution.md`, `docs/superpowers/plans/2026-04-15-skill-system-phase-3-lifecycle.md`
+> Related spec: `docs/superpowers/specs/archive/2026-04-15-skill-system-and-challenger-refactor-design.md`
+> Related plans: `docs/superpowers/plans/archive/2026-04-15-skill-system-phase-1-foundation.md`, `docs/superpowers/plans/archive/2026-04-15-skill-system-phase-2-execution.md`, `docs/superpowers/plans/archive/2026-04-16-skill-system-phase-3-lifecycle-and-shadow.md`
 
 Phase 1 and Phase 2 introduced new machinery (capability registry, multi-step skill executor, challenger refactor, tool dispatch, triage, run persistence, dashboard routes) but deliberately ship with the skill system disabled by default — no user-visible behavior change until you actively turn it on. This document lists every action you need to take to activate the skill system on the real deployment, plus the application startup wiring that still needs to be done manually.
 
@@ -95,7 +95,7 @@ Expected includes: `capability`, `skill`, `skill_version`, `skill_state_transiti
 
 ## 4. Application wiring — TWO THINGS STILL NEED TO BE DONE
 
-These were scoped out of Phase 1 and Phase 2's tasks to keep task-by-task changes tight. They are one-time startup-code edits. Both need to happen before the skill system does anything at runtime.
+> **⚠️ SUPERSEDED (2026-04-21):** §4.1 and §4.2 below describe manual wiring that no longer needs to be done by hand. Both are now performed automatically by `wire_skill_system()` and `assemble_skill_system()` in `src/donna/cli_wiring.py:300-470`, invoked from the CLI startup path. The historical content is preserved for context — operators do not need to follow it. The only manual step today is enabling the skill system via config (see §3 above).
 
 ### 4.1 Wire `initialize_skill_system` into application startup
 
