@@ -12,6 +12,7 @@ from typing import Any
 from donna.skills.tool_registry import ToolRegistry
 from donna.skills.tools.web_fetch import web_fetch
 from donna.skills.tools.rss_fetch import rss_fetch
+from donna.skills.tools.html_extract import html_extract
 from donna.skills.tools.gmail_search import gmail_search
 from donna.skills.tools.gmail_get_message import gmail_get_message
 
@@ -41,6 +42,7 @@ def register_default_tools(
     """
     registry.register("web_fetch", web_fetch)
     registry.register("rss_fetch", rss_fetch)
+    registry.register("html_extract", html_extract)
 
     if gmail_client is not None:
         registry.register(
@@ -58,6 +60,7 @@ __all__ = [
     "register_default_tools",
     "web_fetch",
     "rss_fetch",
+    "html_extract",
     "gmail_search",
     "gmail_get_message",
 ]
