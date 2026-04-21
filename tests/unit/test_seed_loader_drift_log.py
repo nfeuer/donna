@@ -46,13 +46,13 @@ async def test_drift_log_emitted_on_description_change(
         await conn.execute(
             "CREATE TABLE capability (id TEXT PRIMARY KEY, name TEXT UNIQUE, "
             "description TEXT, input_schema TEXT, trigger_type TEXT, "
-            "default_output_shape TEXT, status TEXT, created_at TEXT, "
-            "created_by TEXT)"
+            "default_output_shape TEXT, tools_json TEXT, status TEXT, "
+            "created_at TEXT, created_by TEXT)"
         )
         now = datetime.now(timezone.utc).isoformat()
         await conn.execute(
             "INSERT INTO capability VALUES (?, 'x', 'old-desc', '{}', "
-            "'on_schedule', NULL, 'active', ?, 'seed')",
+            "'on_schedule', NULL, NULL, 'active', ?, 'seed')",
             (str(uuid.uuid4()), now),
         )
         await conn.commit()
@@ -85,13 +85,13 @@ async def test_no_drift_log_when_unchanged(
         await conn.execute(
             "CREATE TABLE capability (id TEXT PRIMARY KEY, name TEXT UNIQUE, "
             "description TEXT, input_schema TEXT, trigger_type TEXT, "
-            "default_output_shape TEXT, status TEXT, created_at TEXT, "
-            "created_by TEXT)"
+            "default_output_shape TEXT, tools_json TEXT, status TEXT, "
+            "created_at TEXT, created_by TEXT)"
         )
         now = datetime.now(timezone.utc).isoformat()
         await conn.execute(
             "INSERT INTO capability VALUES (?, 'x', 'same', ?, "
-            "'on_schedule', NULL, 'active', ?, 'seed')",
+            "'on_schedule', NULL, NULL, 'active', ?, 'seed')",
             (str(uuid.uuid4()), json.dumps({"type": "object"}), now),
         )
         await conn.commit()

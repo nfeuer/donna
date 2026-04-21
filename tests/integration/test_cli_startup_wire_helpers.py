@@ -17,6 +17,7 @@ import argparse
 import pathlib
 import shutil
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -27,6 +28,13 @@ from donna.cli_wiring import (
     wire_discord,
     wire_skill_system,
 )
+
+
+def _stub_calendar_client() -> MagicMock:
+    """Return a MagicMock that satisfies CapabilityToolRegistryCheck."""
+    c = MagicMock()
+    c.list_events = AsyncMock(return_value=[])
+    return c
 
 
 def _args_for(tmp_path: pathlib.Path, config_dir: Path) -> argparse.Namespace:
@@ -85,7 +93,9 @@ async def test_wire_skill_system_returns_handle(
     args = _args_for(tmp_path, skill_enabled_config_dir)
     ctx = await build_startup_context(args)
     try:
-        handle = await wire_skill_system(ctx)
+        handle = await wire_skill_system(
+            ctx, calendar_client=_stub_calendar_client(),
+        )
         assert handle is not None
         # On skill_system.enabled=true, the handle exposes the skill bundle
         # and cost tracker; on disabled it still exists but with bundle=None.
@@ -102,7 +112,9 @@ async def test_wire_automation_subsystem_returns_handle(
     args = _args_for(tmp_path, skill_enabled_config_dir)
     ctx = await build_startup_context(args)
     try:
-        skill_h = await wire_skill_system(ctx)
+        skill_h = await wire_skill_system(
+            ctx, calendar_client=_stub_calendar_client(),
+        )
         handle = await wire_automation_subsystem(ctx, skill_h)
         assert handle is not None
         assert handle.scheduler is not None
@@ -123,7 +135,9 @@ async def test_wire_automation_subsystem_registers_cadence_reclamper(
     args = _args_for(tmp_path, skill_enabled_config_dir)
     ctx = await build_startup_context(args)
     try:
-        skill_h = await wire_skill_system(ctx)
+        skill_h = await wire_skill_system(
+            ctx, calendar_client=_stub_calendar_client(),
+        )
         # If the skill bundle is disabled there's nothing to register against.
         assert skill_h.bundle is not None, (
             "skill_system must be enabled for this regression — check fixture"
@@ -146,7 +160,9 @@ async def test_wire_discord_returns_handle(
     args = _args_for(tmp_path, skill_enabled_config_dir)
     ctx = await build_startup_context(args)
     try:
-        skill_h = await wire_skill_system(ctx)
+        skill_h = await wire_skill_system(
+            ctx, calendar_client=_stub_calendar_client(),
+        )
         automation_h = await wire_automation_subsystem(ctx, skill_h)
         handle = await wire_discord(ctx, skill_h, automation_h)
         assert handle is not None

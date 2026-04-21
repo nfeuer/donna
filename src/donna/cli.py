@@ -185,10 +185,19 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
 
     # Wave 5 F-W4-I: attempt to build a GmailClient at boot so Gmail skill
     # tools register for capabilities like email_triage. Non-fatal on failure.
-    from donna.cli_wiring import _try_build_gmail_client
+    # Wave 1 followup: also attempt a GoogleCalendarClient for calendar_read.
+    from donna.cli_wiring import (
+        _try_build_calendar_client,
+        _try_build_gmail_client,
+    )
 
     gmail_client = _try_build_gmail_client(ctx.config_dir)
-    skill_h = await wire_skill_system(ctx, gmail_client=gmail_client)
+    calendar_client = _try_build_calendar_client(ctx.config_dir)
+    skill_h = await wire_skill_system(
+        ctx,
+        gmail_client=gmail_client,
+        calendar_client=calendar_client,
+    )
     automation_h = await wire_automation_subsystem(ctx, skill_h)
     _discord_h = await wire_discord(ctx, skill_h, automation_h)
 
