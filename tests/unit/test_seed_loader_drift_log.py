@@ -14,8 +14,25 @@ from structlog.testing import LogCapture
 from donna.skills.seed_capabilities import SeedCapabilityLoader
 
 
+@pytest.fixture()
+def _structlog_capture():
+    """Snapshot structlog config, install a LogCapture, restore on teardown.
+
+    Prevents global structlog state mutation from leaking between tests and
+    causing ordering-dependent failures in the full test suite.
+    """
+    original = structlog.get_config()
+    cap = LogCapture()
+    structlog.configure(processors=[cap])
+    yield cap
+    structlog.configure(**original)
+
+
 @pytest.mark.asyncio
-async def test_drift_log_emitted_on_description_change(tmp_path: Path) -> None:
+async def test_drift_log_emitted_on_description_change(
+    tmp_path: Path, _structlog_capture: LogCapture
+) -> None:
+    cap = _structlog_capture
     db_path = tmp_path / "t.db"
     async with aiosqlite.connect(str(db_path)) as conn:
         await conn.execute(
@@ -41,8 +58,6 @@ async def test_drift_log_emitted_on_description_change(tmp_path: Path) -> None:
             "    input_schema: {type: object}\n"
         )
 
-        cap = LogCapture()
-        structlog.configure(processors=[cap])
         loader = SeedCapabilityLoader(connection=conn)
         await loader.load_and_upsert(yaml_path)
 
@@ -53,7 +68,10 @@ async def test_drift_log_emitted_on_description_change(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_drift_log_when_unchanged(tmp_path: Path) -> None:
+async def test_no_drift_log_when_unchanged(
+    tmp_path: Path, _structlog_capture: LogCapture
+) -> None:
+    cap = _structlog_capture
     db_path = tmp_path / "t.db"
     async with aiosqlite.connect(str(db_path)) as conn:
         await conn.execute(
@@ -79,8 +97,6 @@ async def test_no_drift_log_when_unchanged(tmp_path: Path) -> None:
             "    input_schema: {type: object}\n"
         )
 
-        cap = LogCapture()
-        structlog.configure(processors=[cap])
         loader = SeedCapabilityLoader(connection=conn)
         await loader.load_and_upsert(yaml_path)
 
