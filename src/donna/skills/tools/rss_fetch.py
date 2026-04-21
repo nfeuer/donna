@@ -67,26 +67,26 @@ async def rss_fetch(
     url: str,
     since: str | None = None,
     max_items: int = 50,
+    offset: int = 0,
     timeout_s: float = 10.0,
 ) -> dict:
     """Fetch + parse an RSS/Atom feed.
+
+    Pagination: `offset` skips leading filtered items. The response
+    includes `has_more: bool` indicating whether additional items
+    exist beyond the returned window.
 
     Returns
     -------
     {
         "ok": True,
-        "items": [{"title", "link", "published", "author", "summary"}, ...],
+        "items": [...],
         "feed_title": str,
         "feed_description": str | None,
+        "has_more": bool,
     }
-
-    Raises
-    ------
-    RssFetchError — on unparseable / empty non-feed response.
     """
-    # Normalize the string "None" / "" to a real None. This can arrive when
-    # the skill DSL renders `{{ inputs.prior_run_end }}` with prior_run_end=None
-    # under preserve_types=False — Jinja stringifies None to "None".
+    # Normalize string forms of null to None (Jinja can render Python None as "None").
     if since in (None, "", "None", "null"):
         since = None
 
@@ -103,28 +103,27 @@ async def rss_fetch(
     feed_title = getattr(parsed.feed, "title", "")
     feed_desc = getattr(parsed.feed, "description", None)
 
-    items: list[dict[str, Any]] = []
-    for entry in parsed.entries[: max_items * 4]:  # over-read to survive since-filter
+    # Build the full filtered list first; apply offset + max_items for the window.
+    filtered: list[dict[str, Any]] = []
+    for entry in parsed.entries:
         published = _item_published_iso(entry)
-        # When `since` is set and the item has no published/updated timestamp,
-        # we include it rather than skip it. Rationale: an undated item could be
-        # newer than `since`; skipping would risk missing real news. Downstream
-        # skills may dedup via their own classification step.
         if since is not None and published is not None and not _after(published, since):
             continue
-        items.append({
+        filtered.append({
             "title": entry.get("title", ""),
             "link": entry.get("link", ""),
             "published": published,
             "author": entry.get("author", ""),
             "summary": entry.get("summary", ""),
         })
-        if len(items) >= max_items:
-            break
+
+    window = filtered[offset : offset + max_items]
+    has_more = offset + len(window) < len(filtered)
 
     return {
         "ok": True,
-        "items": items,
+        "items": window,
         "feed_title": feed_title,
         "feed_description": feed_desc,
+        "has_more": has_more,
     }

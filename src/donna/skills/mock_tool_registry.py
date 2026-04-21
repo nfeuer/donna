@@ -36,6 +36,14 @@ class UnmockedToolError(Exception):
 class MockToolRegistry(ToolRegistry):
     """ToolRegistry that dispatches from a precomputed mock map."""
 
+    _ERROR_WHITELIST: dict[str, type[Exception]] = {
+        "TimeoutError": TimeoutError,
+        "ConnectionError": ConnectionError,
+        "ValueError": ValueError,
+        "RuntimeError": RuntimeError,
+        "OSError": OSError,
+    }
+
     def __init__(self, mocks: dict[str, Any]) -> None:
         super().__init__()
         self._mocks = dict(mocks)
@@ -67,4 +75,14 @@ class MockToolRegistry(ToolRegistry):
                 tool_name=tool_name, fingerprint=fp,
             )
             raise UnmockedToolError(tool_name, fp)
-        return self._mocks[fp]
+
+        mock = self._mocks[fp]
+        if isinstance(mock, dict) and "__error__" in mock:
+            exc_class_name = mock["__error__"]
+            message = mock.get("__message__", "")
+            exc_class = self._ERROR_WHITELIST.get(exc_class_name)
+            if exc_class is None:
+                logger.warning("unknown_error_class_in_mock", requested_class=exc_class_name)
+                exc_class = RuntimeError
+            raise exc_class(message)
+        return mock

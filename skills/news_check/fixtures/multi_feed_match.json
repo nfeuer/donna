@@ -1,0 +1,36 @@
+{
+  "case_name": "multi_feed_match",
+  "input": {
+    "feed_urls": ["https://feed-a.example/rss", "https://feed-b.example/rss"],
+    "topics": ["rust"],
+    "prior_run_end": null
+  },
+  "expected_output_shape": {
+    "type": "object",
+    "required": ["ok", "triggers_alert", "message", "meta"],
+    "properties": {
+      "ok": {"type": "boolean"},
+      "triggers_alert": {"type": "boolean"},
+      "message": {"type": ["string", "null"]},
+      "meta": {"type": "object"}
+    }
+  },
+  "tool_mocks": {
+    "rss_fetch:{\"max_items\":50,\"since\":\"None\",\"url\":\"https://feed-a.example/rss\"}": {
+      "ok": true,
+      "items": [
+        {"title": "Rust 1.80 released", "link": "https://feed-a.example/rust-1-80", "published": "2026-04-19T10:00:00+00:00", "author": "", "summary": "New Rust version."}
+      ],
+      "feed_title": "Feed A",
+      "feed_description": null
+    },
+    "rss_fetch:{\"max_items\":50,\"since\":\"None\",\"url\":\"https://feed-b.example/rss\"}": {
+      "ok": true,
+      "items": [
+        {"title": "Rust async update", "link": "https://feed-b.example/rust-async", "published": "2026-04-19T11:00:00+00:00", "author": "", "summary": "Async Rust."}
+      ],
+      "feed_title": "Feed B",
+      "feed_description": null
+    }
+  }
+}

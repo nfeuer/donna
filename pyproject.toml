@@ -55,6 +55,8 @@ dependencies = [
     "numpy>=1.26.0",
     # Skill system (Phase 2)
     "httpx>=0.27.0",
+    # Article extraction
+    "trafilatura>=1.12.0",
 ]
 
 [project.optional-dependencies]

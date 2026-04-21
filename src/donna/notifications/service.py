@@ -37,6 +37,10 @@ NOTIF_DEBUG = "debug"
 NOTIF_AUTOMATION_ALERT = "automation_alert"
 NOTIF_AUTOMATION_FAILURE = "automation_failure"
 
+# Discord message length limits
+DIGEST_MAX_CHARS_DEFAULT = 1900
+DIGEST_HARD_CEILING = 2000  # Discord message limit
+
 # Channel name constants
 CHANNEL_TASKS = "tasks"
 CHANNEL_DIGEST = "digest"
@@ -58,14 +62,26 @@ class NotificationService:
         user_id: str,
         sms: "TwilioSMS | None" = None,
         gmail: "GmailClient | None" = None,
+        digest_max_chars: int = DIGEST_MAX_CHARS_DEFAULT,
     ) -> None:
         self._bot = bot
         self._tw = calendar_config.time_windows
         self._user_id = user_id
         self._sms = sms
         self._gmail = gmail
+        self._digest_max_chars = digest_max_chars
         # Queue of async callables to replay after blackout ends.
         self._queue: deque[Callable[[], Awaitable[None]]] = deque()
+
+    @staticmethod
+    def _truncate_for_channel(content: str, max_chars: int) -> str:
+        """Cap content at max_chars. If truncated, append a count footer."""
+        if len(content) <= max_chars:
+            return content
+        footer_budget = 64
+        body_budget = max(0, max_chars - footer_budget)
+        remaining = len(content) - body_budget
+        return content[:body_budget] + f"\n\n…(truncated, {remaining} more chars)"
 
     def _is_blackout(self, now: datetime) -> bool:
         """Return True if current time is within the absolute blackout window."""
@@ -104,6 +120,8 @@ class NotificationService:
             True if the message was sent immediately, False if queued/blocked.
         """
         now = datetime.now(tz=timezone.utc)
+        if notification_type in (NOTIF_DIGEST, NOTIF_AUTOMATION_ALERT):
+            content = self._truncate_for_channel(content, self._digest_max_chars)
         content_hash = hashlib.md5(content.encode(), usedforsecurity=False).hexdigest()[:8]
 
         log = logger.bind(

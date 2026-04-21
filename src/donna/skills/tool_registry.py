@@ -37,6 +37,15 @@ class ToolRegistry:
             logger.info("tool_overwritten", name=name)
         self._tools[name] = callable_
 
+    def clear(self) -> None:
+        """Remove every registered tool.
+
+        Intended for test teardown (via the autouse fixture in
+        tests/conftest.py) and boot-time reinitialization. Not thread-safe;
+        do not call from request-serving code paths.
+        """
+        self._tools.clear()
+
     def list_tool_names(self) -> list[str]:
         return list(self._tools.keys())
 

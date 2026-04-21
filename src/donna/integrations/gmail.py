@@ -69,6 +69,7 @@ class GmailClient:
     ) -> None:
         self._config = config
         self._service = service  # injected in tests; None until authenticate()
+        self._last_next_page_token: str | None = None
 
     # ------------------------------------------------------------------
     # Authentication
@@ -125,24 +126,29 @@ class GmailClient:
         self,
         query: str,
         max_results: int = 10,
+        page_token: str | None = None,
     ) -> list[EmailMessage]:
         """Search the inbox and return matching messages.
 
         Args:
             query: Gmail search query (e.g. "from:boss@example.com is:unread").
             max_results: Maximum number of results to return.
+            page_token: Opaque token from a previous response to fetch the next page.
 
         Returns:
             List of EmailMessage objects, newest first.
         """
         def _do_search() -> list[dict[str, Any]]:
-            result = (
-                self._svc.users()
-                .messages()
-                .list(userId="me", q=query, maxResults=max_results)
-                .execute()
-            )
-            return result.get("messages", [])
+            list_kwargs: dict[str, Any] = {
+                "userId": "me",
+                "q": query,
+                "maxResults": max_results,
+            }
+            if page_token:
+                list_kwargs["pageToken"] = page_token
+            resp = self._svc.users().messages().list(**list_kwargs).execute()
+            self._last_next_page_token = resp.get("nextPageToken")
+            return resp.get("messages", [])
 
         stubs = await asyncio.to_thread(_do_search)
         logger.info("gmail_search", query=query, count=len(stubs))
@@ -156,6 +162,10 @@ class GmailClient:
                 logger.exception("gmail_read_failed", message_id=stub["id"])
 
         return messages
+
+    def get_last_next_page_token(self) -> str | None:
+        """Return the nextPageToken from the most recent search_emails call."""
+        return getattr(self, "_last_next_page_token", None)
 
     async def read_email(self, message_id: str) -> EmailMessage:
         """Fetch and parse a single Gmail message by ID.

@@ -7,9 +7,11 @@
   },
   "expected_output_shape": {
     "type": "object",
+    "required": ["ok", "in_stock", "triggers_alert"],
     "properties": {
       "ok": {"type": "boolean"},
-      "in_stock": {"type": "boolean"}
+      "in_stock": {"type": "boolean"},
+      "triggers_alert": {"type": "boolean", "enum": [false]}
     }
   },
   "tool_mocks": {

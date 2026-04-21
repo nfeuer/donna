@@ -621,6 +621,7 @@ class DonnaBot(discord.Client):
             default_min_interval_seconds=default_min_interval,
             tool_registry=getattr(self, "_automation_tool_registry", None),
             capability_tool_lookup=getattr(self, "_automation_capability_lookup", None),
+            capability_input_schema_lookup=getattr(self, "_automation_input_schema_lookup", None),
         )
         try:
             automation_id = await creation.approve(view.draft, name=view.name)

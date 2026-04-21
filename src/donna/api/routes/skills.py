@@ -157,15 +157,21 @@ async def transition_skill_state(
     # AS-4.2: Save (reset baseline) — on flagged_for_review → trusted with
     # reason=human_approval, recompute baseline_agreement from recent divergences.
     if body.to_state == "trusted" and body.reason == "human_approval":
+        skill_config = request.app.state.skill_system_config
+        if skill_config is None:
+            raise HTTPException(
+                status_code=503, detail="skill_system_config not loaded"
+            )
+        window = int(skill_config.baseline_reset_window)
         cursor = await conn.execute(
             "SELECT AVG(agreement) FROM ("
             "  SELECT d.overall_agreement AS agreement"
             "  FROM skill_divergence d"
             "  JOIN skill_run r ON d.skill_run_id = r.id"
             "  WHERE r.skill_id = ?"
-            "  ORDER BY d.created_at DESC LIMIT 100"
+            "  ORDER BY d.created_at DESC LIMIT ?"
             ")",
-            (skill_id,),
+            (skill_id, window),
         )
         row = await cursor.fetchone()
         if row and row[0] is not None:

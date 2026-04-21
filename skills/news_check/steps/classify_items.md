@@ -25,5 +25,5 @@ Schema:
 Topics:
 {{ inputs.topics | tojson }}
 
-Feed:
-{{ state.fetch_items.feed | tojson }}
+Feeds (all fetched feeds — each key is feed_0, feed_1, …):
+{{ state.fetch_items | tojson }}

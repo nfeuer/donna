@@ -43,7 +43,8 @@ class SeedCapabilityLoader:
             )
 
             cursor = await self._conn.execute(
-                "SELECT id FROM capability WHERE name = ?", (name,),
+                "SELECT description, input_schema, trigger_type, default_output_shape "
+                "FROM capability WHERE name = ?", (name,),
             )
             row = await cursor.fetchone()
             if row is None:
@@ -56,6 +57,22 @@ class SeedCapabilityLoader:
                      trigger_type, default_output_shape, now),
                 )
             else:
+                existing_desc, existing_schema, existing_trigger, existing_shape = row
+                changed_fields: list[str] = []
+                if existing_desc != description:
+                    changed_fields.append("description")
+                if existing_schema != input_schema:
+                    changed_fields.append("input_schema")
+                if existing_trigger != trigger_type:
+                    changed_fields.append("trigger_type")
+                if (existing_shape or None) != (default_output_shape or None):
+                    changed_fields.append("default_output_shape")
+                if changed_fields:
+                    logger.info(
+                        "seed_capability_drift",
+                        capability_name=name,
+                        fields=changed_fields,
+                    )
                 await self._conn.execute(
                     "UPDATE capability "
                     "SET description = ?, input_schema = ?, trigger_type = ?, "

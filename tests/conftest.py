@@ -403,3 +403,11 @@ async def auth_test_app_user_only(auth_test_app):
     app, conn, _gmail, _immich = auth_test_app
     app.dependency_overrides[_admin_dep] = _deny
     yield app, conn
+
+
+@pytest.fixture(autouse=True)
+def _reset_default_tool_registry():
+    """Clear DEFAULT_TOOL_REGISTRY between tests to prevent cross-test leakage."""
+    from donna.skills.tools import DEFAULT_TOOL_REGISTRY
+    yield
+    DEFAULT_TOOL_REGISTRY.clear()

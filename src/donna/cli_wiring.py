@@ -58,6 +58,37 @@ from donna.tasks.state_machine import StateMachine
 logger = structlog.get_logger()
 
 
+def _try_build_gmail_client(config_dir: Path) -> Any | None:
+    """Attempt to construct a GmailClient from config/email.yaml.
+
+    Returns None on any failure (missing file, creds file missing, construction
+    raises). Non-fatal — the capability-availability guard surfaces the
+    missing-tool state at automation-approval time via an actionable DM.
+    """
+    email_yaml = config_dir / "email.yaml"
+    if not email_yaml.exists():
+        return None
+    try:
+        from donna.config import load_email_config
+        from donna.integrations.gmail import GmailClient
+
+        email_cfg = load_email_config(config_dir)
+        token_path = Path(email_cfg.credentials.token_path)
+        secrets_path = Path(email_cfg.credentials.client_secrets_path)
+        if not token_path.exists() or not secrets_path.exists():
+            logger.warning(
+                "gmail_client_unavailable",
+                reason="credential_file_missing",
+                token_exists=token_path.exists(),
+                secrets_exists=secrets_path.exists(),
+            )
+            return None
+        return GmailClient(config=email_cfg)
+    except Exception as exc:  # noqa: BLE001 — non-fatal boot path
+        logger.warning("gmail_client_unavailable", reason=str(exc))
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
@@ -591,6 +622,14 @@ async def wire_discord(
         ctx.bot._automation_tool_registry = _skill_tools_module.DEFAULT_TOOL_REGISTRY
         _cap_lookup = SkillToolRequirementsLookup(ctx.db.connection)
         ctx.bot._automation_capability_lookup = _cap_lookup.list_required_tools
+
+        # F-W4-K: wire optional-input defaulting lookup into AutomationCreationPath.
+        from donna.capabilities.repo_input_schema_lookup import (
+            CapabilityInputSchemaDBLookup,
+        )
+
+        _input_schema_lookup = CapabilityInputSchemaDBLookup(ctx.db.connection)
+        ctx.bot._automation_input_schema_lookup = _input_schema_lookup.lookup
         # Pull the Discord automation default min-interval from config so
         # AutomationCreationPath doesn't hardcode the 300-second floor.
         from donna.automations.cadence_policy import (
