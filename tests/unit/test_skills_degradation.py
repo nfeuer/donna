@@ -403,3 +403,55 @@ async def test_flagging_uses_lifecycle_manager(db: aiosqlite.Connection) -> None
     assert row[1] == "flagged_for_review"
     assert row[2] == "degradation"
     assert row[3] == "system"
+
+
+# ---------------------------------------------------------------------------
+# 11. F-W1-A — documented gap: mid-drift is silently missed
+# ---------------------------------------------------------------------------
+
+
+async def test_degradation_misses_mid_drift_documented_gap(db: aiosqlite.Connection) -> None:
+    """Documents F-W1-A: a trusted skill whose continuous agreement slides
+    from 0.90 -> 0.60 -> 0.45 is not flagged when baseline_agreement is low
+    (~0.50), because DegradationDetector binarizes each divergence at
+    degradation_agreement_threshold=0.5 and runs Wilson CI on the success
+    count. With 20 of 30 samples >= 0.5 the CI upper bound (~0.81) stays
+    above the baseline, so the trigger at degradation.py:123
+    (current_upper < baseline_agreement) never fires.
+
+    If this test ever fails, F-W1-A has been fixed and should move out of
+    the Triggered table in docs/superpowers/followups/open-backlog.md.
+    """
+    skill_id = "mid-drift-skill"
+    await _insert_skill(db, skill_id, state="trusted", baseline_agreement=0.50)
+    # Sliding agreement over the 30-sample rolling window:
+    # 10 at 0.90 (stable-looking), 10 at 0.60 (drifting), 10 at 0.45 (below threshold).
+    agreements = [0.90] * 10 + [0.60] * 10 + [0.45] * 10
+    await _insert_divergences(db, skill_id, agreements=agreements)
+
+    config = _make_config(rolling_window=30)
+    divergence_repo = SkillDivergenceRepository(db)
+    lifecycle = SkillLifecycleManager(db, config=SkillSystemConfig())
+    detector = DegradationDetector(db, divergence_repo, lifecycle, config)
+
+    reports = await detector.run()
+
+    assert len(reports) == 1
+    report = reports[0]
+    assert report.skill_id == skill_id
+    assert report.outcome == "no_degradation"
+    # 20 successes (>= 0.5), 10 failures (< 0.5) out of 30 trials.
+    assert report.current_successes == 20
+    assert report.current_trials == 30
+    # The faulty branch: CI upper stays above baseline, so no flag.
+    assert report.current_upper > 0.50
+
+    # State must still be trusted.
+    cursor = await db.execute("SELECT state FROM skill WHERE id = ?", (skill_id,))
+    row = await cursor.fetchone()
+    assert row[0] == "trusted"
+
+    # No audit row was written.
+    cursor = await db.execute("SELECT COUNT(*) FROM skill_state_transition")
+    count = (await cursor.fetchone())[0]
+    assert count == 0

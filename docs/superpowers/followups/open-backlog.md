@@ -63,30 +63,6 @@ Manually trigger `generate_digest` via CLI/Discord and confirm it runs through t
 
 ---
 
-### Wave 2 — F-W1-A verification only (no fix)  *(P2, verify-then-defer)*
-
-**Goal:** Confirm and *document* the DegradationDetector gap; add a regression test that reproduces it. No behavior change.
-
-**Why:** Exploration confirmed the concern is real. `src/donna/skills/degradation.py:99,116` binarizes continuous `overall_agreement` scores via `degradation_agreement_threshold` before running Wilson CI on the binomial successes (`lines 101-103, 118-120`). The trigger `current_upper < baseline_agreement` (`lines 123-139`) cannot catch gradual drift when the baseline is already low — a skill sliding 0.90 → 0.60 with baseline 0.50 may never flag. The "correction-cluster fast path + EOD digest" workaround masks this in practice.
-
-**Scope:**
-1. Add a new test to `tests/unit/test_skills_degradation.py` named `test_degradation_misses_mid_drift_documented_gap` that reproduces the mid-drift miss: baseline ~0.50, divergences sliding 0.90 → 0.60 → 0.45 over the rolling window; assert detector does *not* flag.
-2. Leave `src/donna/skills/degradation.py` unchanged.
-3. Move F-W1-A from this wave into *Triggered* with a named trigger: *"A production skill exhibits the drift pattern the test documents."*
-
-**Acceptance:**
-- New test passes and encodes the gap.
-- Backlog doc reflects the move to *Triggered*.
-
-**Verification:**
-```
-pytest tests/unit/test_skills_degradation.py::test_degradation_misses_mid_drift_documented_gap
-```
-
-**Closes:** F-W1-A verification step. Fix deferred to *Triggered*.
-
----
-
 ### Wave 3 — F-12 Grafana skill-system panels  *(P2)*
 
 **Goal:** Skill-specific observability dashboard built from existing Loki instrumentation (plus minimal additions).
@@ -200,7 +176,6 @@ See the archived tracker for full design notes on each OOS item.
 | Wave | Bucket | Items | Priority |
 |---|---|---|---|
 | 1 | Tool registration + F-13 | 4 tools + 4 capability YAML updates | P1 |
-| 2 | F-W1-A verification | Regression test only | P2 |
 | 3 | F-12 Grafana skill panels | 2 log events + 1 dashboard | P2 |
 | 4 | F-4 Dashboard UI (staged) | Decision + follow-up plan | P1 |
 | 5 | Polish sweep | 4 small items | P3 |
