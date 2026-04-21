@@ -9,30 +9,38 @@ from pathlib import Path
 import aiosqlite
 import pytest
 import structlog
-from structlog.testing import LogCapture
+from structlog.testing import capture_logs
 
+import donna.skills.seed_capabilities as _seed_mod
 from donna.skills.seed_capabilities import SeedCapabilityLoader
 
 
-@pytest.fixture()
-def _structlog_capture():
-    """Snapshot structlog config, install a LogCapture, restore on teardown.
+@pytest.fixture(autouse=True)
+def _reset_seed_capabilities_logger():
+    """Force the module-level logger in seed_capabilities to re-bind before each
+    test and restore it afterwards.
 
-    Prevents global structlog state mutation from leaking between tests and
-    causing ordering-dependent failures in the full test suite.
+    Root cause: setup_logging() (called by integration tests that boot the
+    full orchestrator) configures structlog with cache_logger_on_first_use=True
+    and creates a NEW processor-list object on each call.  Once the module's
+    logger has been used it is cached against that old list object.  Subsequent
+    calls to structlog.configure() — including the in-place mutation done by
+    structlog.testing.capture_logs() — target the *current* list, not the
+    cached one, so captured entries are empty.
+
+    Replacing the module-level proxy with a fresh structlog.get_logger() call
+    ensures the test's capture_logs() context manager intercepts every emit.
     """
-    original = structlog.get_config()
-    cap = LogCapture()
-    structlog.configure(processors=[cap])
-    yield cap
-    structlog.configure(**original)
+    original_logger = _seed_mod.logger
+    _seed_mod.logger = structlog.get_logger()
+    yield
+    _seed_mod.logger = original_logger
 
 
 @pytest.mark.asyncio
 async def test_drift_log_emitted_on_description_change(
-    tmp_path: Path, _structlog_capture: LogCapture
+    tmp_path: Path,
 ) -> None:
-    cap = _structlog_capture
     db_path = tmp_path / "t.db"
     async with aiosqlite.connect(str(db_path)) as conn:
         await conn.execute(
@@ -59,9 +67,10 @@ async def test_drift_log_emitted_on_description_change(
         )
 
         loader = SeedCapabilityLoader(connection=conn)
-        await loader.load_and_upsert(yaml_path)
+        with capture_logs() as cap:
+            await loader.load_and_upsert(yaml_path)
 
-        drift_events = [e for e in cap.entries if e["event"] == "seed_capability_drift"]
+        drift_events = [e for e in cap if e["event"] == "seed_capability_drift"]
         assert len(drift_events) == 1
         assert drift_events[0]["capability_name"] == "x"
         assert "description" in drift_events[0]["fields"]
@@ -69,9 +78,8 @@ async def test_drift_log_emitted_on_description_change(
 
 @pytest.mark.asyncio
 async def test_no_drift_log_when_unchanged(
-    tmp_path: Path, _structlog_capture: LogCapture
+    tmp_path: Path,
 ) -> None:
-    cap = _structlog_capture
     db_path = tmp_path / "t.db"
     async with aiosqlite.connect(str(db_path)) as conn:
         await conn.execute(
@@ -98,7 +106,8 @@ async def test_no_drift_log_when_unchanged(
         )
 
         loader = SeedCapabilityLoader(connection=conn)
-        await loader.load_and_upsert(yaml_path)
+        with capture_logs() as cap:
+            await loader.load_and_upsert(yaml_path)
 
-        drift_events = [e for e in cap.entries if e["event"] == "seed_capability_drift"]
+        drift_events = [e for e in cap if e["event"] == "seed_capability_drift"]
         assert len(drift_events) == 0
