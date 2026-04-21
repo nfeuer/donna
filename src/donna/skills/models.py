@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 SKILL_COLUMNS = ("id", "capability_name", "current_version_id", "state", "requires_human_gate", "baseline_agreement", "created_at", "updated_at")
@@ -33,6 +33,7 @@ class SkillVersionRow:
     created_by: str
     changelog: str | None
     created_at: datetime
+    state_write: list[str] = field(default_factory=list)
 
 
 def row_to_skill(row: tuple) -> SkillRow:

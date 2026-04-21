@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
 
+import yaml
+
 import aiosqlite
 import structlog
 
@@ -268,15 +270,41 @@ class AutomationDispatcher:
         skill = row_to_skill(skill_row)
         version = row_to_skill_version(version_row)
         prior_run_end = await self._query_prior_run_end(automation_id=automation.id)
+        state_blob = await self._query_state_blob(automation_id=automation.id)
         merged_inputs = dict(automation.inputs or {})
         merged_inputs["prior_run_end"] = prior_run_end
+        if state_blob is not None:
+            merged_inputs["state"] = state_blob
 
-        return await executor.execute(
+        result = await executor.execute(
             skill=skill, version=version,
             inputs=merged_inputs,
             user_id=automation.user_id,
             automation_run_id=automation_run_id,
         )
+
+        # F-W4-D: persist state_write keys from skill output
+        try:
+            _parsed_backbone = yaml.safe_load(version.yaml_backbone) if version.yaml_backbone else {}
+            backbone = _parsed_backbone if isinstance(_parsed_backbone, dict) else {}
+        except yaml.YAMLError:
+            backbone = {}
+        state_write = backbone.get("state_write") or []
+        if state_write and result is not None and getattr(result, "final_output", None):
+            output = result.final_output if isinstance(result.final_output, dict) else {}
+            new_state = dict(state_blob) if state_blob else {}
+            changed = False
+            for key in state_write:
+                if key in output:
+                    if new_state.get(key) != output[key]:
+                        changed = True
+                    new_state[key] = output[key]
+            if changed:
+                await self._update_state_blob(
+                    automation_id=automation.id, state_blob=new_state,
+                )
+
+        return result
 
     async def _query_prior_run_end(self, *, automation_id: str) -> str | None:
         """Return the finished_at of the most recent successful run, or None."""
@@ -288,6 +316,36 @@ class AutomationDispatcher:
         )
         row = await cursor.fetchone()
         return row[0] if row is not None else None
+
+    async def _query_state_blob(self, *, automation_id: str) -> dict | None:
+        """Return the parsed state_blob for an automation, or None if absent/invalid.
+
+        Returns None if the column does not exist (pre-migration schema) or the
+        row is missing, the value is NULL, or the stored JSON is malformed.
+        """
+        try:
+            cursor = await self._conn.execute(
+                "SELECT state_blob FROM automation WHERE id = ?", (automation_id,),
+            )
+            row = await cursor.fetchone()
+        except Exception:
+            # Column may not exist in older test fixtures or pre-migration schemas.
+            return None
+        if row is None or row[0] is None:
+            return None
+        try:
+            parsed = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            return parsed if isinstance(parsed, dict) else None
+        except (ValueError, TypeError):
+            return None
+
+    async def _update_state_blob(self, *, automation_id: str, state_blob: dict) -> None:
+        """Persist an updated state_blob for an automation."""
+        await self._conn.execute(
+            "UPDATE automation SET state_blob = ? WHERE id = ?",
+            (json.dumps(state_blob), automation_id),
+        )
+        await self._conn.commit()
 
     def _compute_next_run(self, automation: AutomationRow, now: datetime) -> datetime | None:
         if automation.trigger_type != "on_schedule" or not automation.schedule:

@@ -44,6 +44,12 @@ async def load_skill_from_directory(
     if not capability_name:
         raise SkillLoadError(f"{skill_yaml_path} missing capability_name field")
 
+    state_write = skill_data.get("state_write") or []
+    if not isinstance(state_write, list) or not all(isinstance(k, str) for k in state_write):
+        raise SkillLoadError(
+            f"{skill_yaml_path}: state_write must be a list of strings"
+        )
+
     cursor = await conn.execute(
         "SELECT name FROM capability WHERE name = ?", (capability_name,)
     )
