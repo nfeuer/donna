@@ -33,7 +33,15 @@ The GUI communicates exclusively through the FastAPI admin API. No direct databa
 
 ## Admin API Endpoints
 
-All endpoints are under the `/admin` prefix. No authentication required (development tool). Auth will be added in a future session if needed.
+All endpoints are under the `/admin` prefix. No authentication required today — this is a local dev tool bound to the loopback interface.
+
+**If `/admin/*` is ever exposed externally**, the minimum bar would be:
+
+1. A shared-secret bearer token (or Cloudflare Access / Tailscale header) enforced via a single FastAPI dependency — `Depends(require_admin)` — applied at the router layer so every `admin_*` router inherits it in one place.
+2. Write-side endpoints (`PUT /admin/configs/{filename}`, `POST /admin/skills/{id}/state`, automation create/update/delete, `POST /admin/skill-runs/{id}/capture-fixture`) rate-limited more aggressively than read endpoints, and logged to `invocation_log` with caller identity.
+3. No new persistence — reuse the existing access/auth infrastructure in `src/donna/api/routes/admin_access.py` (IP / device / caller tables) rather than adding a parallel admin-user table.
+
+This is a note, not a plan — implementation is deferred until the tool leaves the loopback.
 
 ### Dashboard KPIs
 | Endpoint | Description |

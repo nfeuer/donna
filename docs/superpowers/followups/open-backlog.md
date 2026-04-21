@@ -1,9 +1,9 @@
 # Skill System — Open Backlog
 
 **Date:** 2026-04-21 (revised)
-**Scope:** Only genuinely-open items. Closed/shipped follow-ups (including Waves 1, 3, and 4 from the prior revision of this doc) live in the archived historical tracker: `docs/superpowers/followups/archive/2026-04-16-skill-system-followups.md`.
+**Scope:** Only genuinely-open items. Closed/shipped follow-ups (including Waves 1, 3, 4, and 5 from prior revisions) live in the archived historical tracker: `docs/superpowers/followups/archive/2026-04-16-skill-system-followups.md`.
 
-This doc is structured as **sequential waves** — pick one, do it, check in. Items under *Triggered* and *OOS* are deferred with explicit trigger conditions; don't build speculatively.
+All remaining items are deferred with explicit trigger conditions — don't build speculatively. When a trigger fires, open a new wave.
 
 ---
 
@@ -16,24 +16,6 @@ This doc is structured as **sequential waves** — pick one, do it, check in. It
 
 ---
 
-## Waves
-
-### Wave 5 — Polish sweep  *(P3, as-convenient)*
-
-**Goal:** Clear the low-priority items in one sitting.
-
-**Scope:**
-1. `config/dashboard.yaml:6` — evaluate + tune the `quality_score` thresholds once more production data has accumulated. Trigger: ≥30 days of live data in `invocation_log` post-production enablement.
-2. `docs/domain/management-gui.md:36` — add a note describing what auth *would* look like if `/admin/*` is ever exposed externally. No implementation. **(Still outstanding — current line 36 only says "Auth will be added in a future session if needed.")**
-3. Token counting — swap `len(prompt) // 4` heuristic in `src/donna/models/tokens.py:20` for an Ollama `/api/tokenize` call **only** when `context_overflow_escalation` rate > 10% (keep the trigger).
-4. Slice 11 Flutter UI — tracked in `slices/slice_11_flutter_ui.md`; it's a separate-repo track (`donna-app`) and doesn't live in this backlog.
-
-**Acceptance:** Each item either resolved or explicitly deferred with its trigger restated.
-
-**Verification:** `pytest` passes; updated files read cleanly.
-
----
-
 ## Triggered — don't build speculatively
 
 | ID | Trigger | One-liner |
@@ -42,6 +24,8 @@ This doc is structured as **sequential waves** — pick one, do it, check in. It
 | **F-W3-E** | Concurrent-user scale (currently single user) | `AutomationConfirmationView.on_message` holds a 30-min timeout coroutine. Convert to fire-and-forget `asyncio.create_task` for scale. |
 | **F-W4-A** | User asks to scan all inbound mail instead of sender allowlist | `email_triage` unbounded-sender mode — different privacy + token cost profile. |
 | **F-W1-A fix** | A production skill exhibits the drift pattern the Wave 2 test documents | Add correction-cluster fast path + EOD digest mechanism; or replace Wilson CI on binarized scores with a continuous-score drift detector. |
+| **Dashboard threshold tune** | ≥30 days of live data in `invocation_log` post-production enablement | Tune `quality_score.{critical,warning}_threshold` in `config/dashboard.yaml`. |
+| **Admin auth** | `/admin/*` is ever exposed outside the loopback | Implement the auth note documented in `docs/domain/management-gui.md:36`. |
 | **Wave 1 sub-items** | | |
 | • `web_search` | Productionize `prep_research` against real tasks | Deferred tool for `prep_research` capability. |
 | • `notes_read` | A notes storage module exists | Deferred tool for `extract_preferences` capability. |
@@ -63,19 +47,20 @@ These were deliberately scoped out with explicit trigger conditions. Do not buil
 - **OOS-8** Auto `requires_human_gate` flagging from sensitive tools. *Trigger:* manual flagging misses.
 - **OOS-9** If-conditionals in the skill DSL. *Trigger:* 3+ skills need branching.
 - **OOS-10** Nested DSL primitives (`for_each` inside `for_each`). *Trigger:* a skill needs nesting that can't be flattened.
-- **OOS-11** Exact tokenization for local context budgeting. *Trigger:* `context_overflow_escalation` rate > 10%.
+- **OOS-11** Exact tokenization for local context budgeting. *Trigger:* `context_overflow_escalation` rate > 10%. (See in-code note at `src/donna/models/tokens.py`.)
 - **OOS-12** Voice-triggered challenger interactions. *Trigger:* voice UX is prioritized.
 
 See the archived tracker for full design notes on each OOS item.
+
+Slice 11 (Flutter Web + Android app) is tracked separately in `slices/slice_11_flutter_ui.md` and lives in its own repo (`donna-app`); it is not part of this backlog.
 
 ---
 
 ## Summary table
 
-| Wave | Bucket | Items | Priority |
-|---|---|---|---|
-| 5 | Polish sweep | 4 small items (only item 2 currently unresolved; 1/3/4 explicitly deferred) | P3 |
-| — | Triggered (deferred) | 7 items | P2 |
-| — | OOS (triggered by spec) | 12 items | P2 |
+| Bucket | Items | Priority |
+|---|---|---|
+| Triggered (deferred) | 9 items | P2 |
+| OOS (triggered by spec) | 12 items | P2 |
 
-Historical closed items (Waves 1–4): see the archived tracker.
+Historical closed items (Waves 1–5): see the archived tracker.

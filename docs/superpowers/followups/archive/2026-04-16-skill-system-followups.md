@@ -54,6 +54,17 @@ Full UI shipped per `docs/superpowers/plans/2026-04-21-wave-4-skill-system-ui.md
 
 **Closes:** F-4 and F-W4-E.
 
+### Wave 5 — Polish sweep (P3) — ✅ CLOSED
+
+Acceptance was: *"Each item either resolved or explicitly deferred with its trigger restated."* All four items now satisfy that bar.
+
+- **Item 1 — dashboard `quality_score` thresholds.** Deferred. Trigger restated inline at `config/dashboard.yaml:6-8`: tune after ≥30 days of live data in `invocation_log` post-production enablement. Consumed by `src/donna/api/routes/admin_dashboard.py:_load_dashboard_config()` and `get_quality_warnings()` (lines 614–689); no code change needed.
+- **Item 2 — `/admin/*` auth note.** Resolved. `docs/domain/management-gui.md:36` now carries the concrete future-auth note (bearer-token dependency, rate-limiting on write routes, reuse of `admin_access.py` infrastructure) alongside the pre-existing decision at line 122.
+- **Item 3 — token counting heuristic.** Deferred. Module docstring in `src/donna/models/tokens.py:1-11` now quantifies the trigger (OOS-11, `context_overflow_escalation` rate > 10%) and cross-references the emission site at `src/donna/models/router.py:215`.
+- **Item 4 — Slice 11 Flutter UI pointer.** Already in place. `slices/slice_11_flutter_ui.md:5` has been carrying the "separate Flutter repository (`donna-app`)" note since the slice was authored; the pointer is referenced in `docs/architecture/overview.md:166`.
+
+Wave 5 is archived out of `docs/superpowers/followups/open-backlog.md`. Items 1/2 graduated into the *Triggered* section (as "Dashboard threshold tune" and "Admin auth") so the trigger conditions remain discoverable. Item 3 is covered by the existing OOS-11 entry; item 4 is called out as separate-repo work at the end of the OOS section.
+
 ---
 
 ## Status update — 2026-04-21 (verified against code)
