@@ -46,7 +46,8 @@ async def db(tmp_path: Path):
             is_shadow INTEGER DEFAULT 0,
             eval_session_id TEXT,
             spot_check_queued INTEGER DEFAULT 0,
-            user_id TEXT NOT NULL
+            user_id TEXT NOT NULL,
+            skill_id TEXT
         );
         CREATE TABLE skill (
             id TEXT PRIMARY KEY,

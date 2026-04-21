@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import aiosqlite
 import pytest
+import structlog
 
 from donna.config import SkillSystemConfig
 from donna.skills.evolution import EvolutionReport
@@ -104,6 +105,71 @@ async def test_scheduler_stops_when_budget_exhausted(db):
     )
     reports = await scheduler.run(remaining_budget_usd=1.0)
     assert len(reports) == 1
+
+
+async def test_scheduler_emits_skill_evolution_outcome_per_attempt(db):
+    """Wave 3 F-12: each EvolutionReport produces a `skill_evolution_outcome`
+    structlog event with skill_id, outcome, cost_usd, latency_ms, new_version_id,
+    rationale. Powers panel 2 of the Skill System Grafana dashboard."""
+    await _seed_skills(db, n_degraded=2)
+
+    evolver = AsyncMock()
+    evolver.evolve_one.side_effect = [
+        EvolutionReport(
+            skill_id="s0", outcome="success", new_version_id="v-new",
+            rationale="all 4 gates passed", cost_usd=0.42, latency_ms=1234,
+        ),
+        EvolutionReport(
+            skill_id="s1", outcome="rejected_validation",
+            rationale="targeted case gate failed",
+            cost_usd=0.37, latency_ms=987,
+        ),
+    ]
+
+    scheduler = EvolutionScheduler(
+        connection=db, evolver=evolver,
+        config=SkillSystemConfig(evolution_daily_cap=10),
+    )
+
+    with structlog.testing.capture_logs() as cap:
+        await scheduler.run(remaining_budget_usd=100.0)
+
+    outcome_events = [e for e in cap if e.get("event") == "skill_evolution_outcome"]
+    assert len(outcome_events) == 2
+
+    by_skill = {e["skill_id"]: e for e in outcome_events}
+    assert by_skill["s0"]["outcome"] == "success"
+    assert by_skill["s0"]["cost_usd"] == pytest.approx(0.42)
+    assert by_skill["s0"]["latency_ms"] == 1234
+    assert by_skill["s0"]["new_version_id"] == "v-new"
+    assert by_skill["s0"]["rationale"] == "all 4 gates passed"
+
+    assert by_skill["s1"]["outcome"] == "rejected_validation"
+    assert by_skill["s1"]["cost_usd"] == pytest.approx(0.37)
+    assert by_skill["s1"]["latency_ms"] == 987
+
+
+async def test_scheduler_emits_outcome_even_when_evolver_raises(db):
+    """Unexpected evolver errors still produce a `skill_evolution_outcome`
+    event (with outcome=error, cost_usd=0) so the dashboard does not miss
+    failed attempts."""
+    await _seed_skills(db, n_degraded=1)
+
+    evolver = AsyncMock()
+    evolver.evolve_one.side_effect = RuntimeError("boom")
+
+    scheduler = EvolutionScheduler(
+        connection=db, evolver=evolver,
+        config=SkillSystemConfig(evolution_daily_cap=10),
+    )
+
+    with structlog.testing.capture_logs() as cap:
+        await scheduler.run(remaining_budget_usd=100.0)
+
+    outcome_events = [e for e in cap if e.get("event") == "skill_evolution_outcome"]
+    assert len(outcome_events) == 1
+    assert outcome_events[0]["outcome"] == "error"
+    assert outcome_events[0]["cost_usd"] == 0.0
 
 
 async def test_scheduler_returns_empty_when_no_degraded_skills(db):

@@ -39,8 +39,12 @@ scrape_configs:
             correlation_id: correlation_id
             task_id: task_id
             user_id: user_id
+            skill_id: skill_id
+            task_type: task_type
       - labels:
           level:
           event_type:
           service:
           component:
+          skill_id:
+          task_type:
