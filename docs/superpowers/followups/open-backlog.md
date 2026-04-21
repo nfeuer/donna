@@ -110,11 +110,20 @@ Manually trigger `generate_digest` via CLI/Discord and confirm it runs through t
 
 **Recommendation: Approach B.** Matches existing `Shadow` and `LLMGateway` patterns (see `donna-ui/src/pages/Shadow/index.tsx:49-73` and `donna-ui/src/pages/LLMGateway/index.tsx:1-43`); keeps nav compact; drawer-per-detail fits the single-user dev-tool posture documented in `docs/management-gui.md:36`.
 
-**Follow-up plan (separate session) will cover:** route structure, per-tab columns/actions, drawer layouts, state-transition form (AS-3.3, AS-4.2, AS-4.3), `requires_human_gate` toggle, automation CRUD form, meta.* diagnostics surface (addresses F-W4-E), and test coverage.
+**Decision (2026-04-21): Approach B + Dashboard card.**
+
+Per `docs/management-gui.md` lines 98–117 and the card pattern at `donna-ui/src/pages/Dashboard/index.tsx`, new subsystems surface in two places:
+
+1. A summary card on the main Dashboard (mirrors `AgentPerformanceCard`, `TaskThroughputCard`, etc.).
+2. A dedicated page for interactive management (mirrors `Shadow`, `Preferences`).
+
+Wave 4 covers both: a `SkillSystemCard.tsx` on the Dashboard plus a tabbed `/skill-system` hub with detail drawers. Detailed breakdown in `docs/superpowers/plans/2026-04-21-wave-4-skill-system-ui.md`.
+
+**Follow-up plan covers:** route structure, per-tab columns/actions, drawer layouts, state-transition form (AS-3.3, AS-4.2, AS-4.3), `requires_human_gate` toggle, automation CRUD form, per-run `state_object` + `step_results` diagnostics surface (addresses F-W4-E), and test coverage.
 
 **Acceptance:**
-- An approach decision recorded here (update this doc when chosen).
-- A follow-up plan exists for the detailed page breakdown.
+- [x] Approach decision recorded (above).
+- [x] Follow-up plan exists at `docs/superpowers/plans/2026-04-21-wave-4-skill-system-ui.md`.
 
 **Verification:** Not applicable — this wave is a decision point.
 
@@ -145,7 +154,7 @@ Manually trigger `generate_digest` via CLI/Discord and confirm it runs through t
 | **F-W2-A** | Second real capability ships and drift between migration blob and YAML matters | Log a diff when `SeedCapabilityLoader` overwrites migration-seeded rows, or make migration placeholder-only and let loader supply semantics. |
 | **F-W3-E** | Concurrent-user scale (currently single user) | `AutomationConfirmationView.on_message` holds a 30-min timeout coroutine. Convert to fire-and-forget `asyncio.create_task` for scale. |
 | **F-W4-A** | User asks to scan all inbound mail instead of sender allowlist | `email_triage` unbounded-sender mode — different privacy + token cost profile. |
-| **F-W4-E** | After F-4 lands | Surface per-run `meta.*` diagnostics in the dashboard. |
+| **F-W4-E** | After F-4 lands | Surface per-run `state_object` + `step_results` diagnostics in the dashboard (see `src/donna/skills/runs.py:37`). |
 | **F-W1-A fix** | A production skill exhibits the drift pattern the Wave 2 test documents | Add correction-cluster fast path + EOD digest mechanism; or replace Wilson CI on binarized scores with a continuous-score drift detector. |
 
 ---

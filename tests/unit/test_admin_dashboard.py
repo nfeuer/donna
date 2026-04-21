@@ -14,6 +14,7 @@ from donna.api.routes.admin_dashboard import (
     get_cost_analytics,
     get_parse_accuracy,
     get_quality_warnings,
+    get_skill_system,
     get_task_throughput,
 )
 
@@ -321,3 +322,123 @@ class TestQualityWarnings:
         result = await get_quality_warnings(request, days=7)
         assert result["thresholds"]["warning_threshold"] == 0.65
         assert result["thresholds"]["critical_threshold"] == 0.3
+
+
+# ---------------------------------------------------------------------------
+# SkillSystem aggregator (Wave 4 F-4)
+# ---------------------------------------------------------------------------
+
+
+class TestSkillSystem:
+    async def test_empty_db_returns_zero_everything(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        # 7 queries in order: by_state, new_candidates, evolution, active_automations,
+        # automation_runs, automation_failures, run_time_series
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(),                       # by_state
+                _cursor(fetchone=(0,)),          # new candidates
+                _cursor(),                       # evolution outcomes
+                _cursor(fetchone=(0,)),          # active automations
+                _cursor(fetchone=(0,)),          # automation runs
+                _cursor(fetchone=(0,)),          # automation failures
+                _cursor(),                       # run time series
+            ]
+        )
+        result = await get_skill_system(request, days=30)
+        assert result["summary"]["total_skills"] == 0
+        assert result["summary"]["new_candidates_24h"] == 0
+        assert result["summary"]["evolution_success_rate_24h"] is None
+        assert result["summary"]["active_automations"] == 0
+        assert result["summary"]["automation_failure_rate_pct"] == 0.0
+        # all state buckets initialized to 0
+        for state in (
+            "claude_native",
+            "skill_candidate",
+            "draft",
+            "sandbox",
+            "shadow_primary",
+            "trusted",
+            "flagged_for_review",
+            "degraded",
+        ):
+            assert result["by_state"][state] == 0
+        assert result["anomalies"] == []
+
+    async def test_state_counts_and_totals(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(fetchall=[("trusted", 3), ("draft", 2), ("degraded", 1)]),
+                _cursor(fetchone=(2,)),           # new candidates 24h
+                _cursor(fetchall=[("success", 4), ("failed", 1)]),
+                _cursor(fetchone=(5,)),           # active automations
+                _cursor(fetchone=(10,)),          # automation runs 24h
+                _cursor(fetchone=(2,)),           # automation failures 24h
+                _cursor(fetchall=[("2026-04-20", 7), ("2026-04-21", 3)]),
+            ]
+        )
+        result = await get_skill_system(request, days=30)
+        assert result["summary"]["total_skills"] == 6
+        assert result["by_state"]["trusted"] == 3
+        assert result["by_state"]["draft"] == 2
+        assert result["by_state"]["degraded"] == 1
+        assert result["summary"]["new_candidates_24h"] == 2
+        assert result["summary"]["evolution_success_rate_24h"] == 80.0
+        assert result["summary"]["active_automations"] == 5
+        assert result["summary"]["automation_runs_24h"] == 10
+        assert result["summary"]["automation_failures_24h"] == 2
+        assert result["summary"]["automation_failure_rate_pct"] == 20.0
+        assert len(result["run_time_series"]) == 2
+
+    async def test_anomaly_degraded_skill(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(fetchall=[("degraded", 2)]),
+                _cursor(fetchone=(0,)),
+                _cursor(),
+                _cursor(fetchone=(0,)),
+                _cursor(fetchone=(0,)),
+                _cursor(fetchone=(0,)),
+                _cursor(),
+            ]
+        )
+        result = await get_skill_system(request, days=30)
+        kinds = [a["kind"] for a in result["anomalies"]]
+        assert "degraded_skill" in kinds
+
+    async def test_anomaly_automation_failure_rate(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        # 20% failure rate > default 10% threshold
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(),
+                _cursor(fetchone=(0,)),
+                _cursor(),
+                _cursor(fetchone=(1,)),
+                _cursor(fetchone=(10,)),
+                _cursor(fetchone=(2,)),
+                _cursor(),
+            ]
+        )
+        result = await get_skill_system(request, days=30)
+        kinds = [a["kind"] for a in result["anomalies"]]
+        assert "automation_failure_rate" in kinds
+
+    async def test_anomaly_new_candidates_spike(self, mock_request: tuple) -> None:
+        request, conn = mock_request
+        conn.execute = AsyncMock(
+            side_effect=[
+                _cursor(),
+                _cursor(fetchone=(9,)),           # above default 5
+                _cursor(),
+                _cursor(fetchone=(0,)),
+                _cursor(fetchone=(0,)),
+                _cursor(fetchone=(0,)),
+                _cursor(),
+            ]
+        )
+        result = await get_skill_system(request, days=30)
+        kinds = [a["kind"] for a in result["anomalies"]]
+        assert "new_candidates" in kinds

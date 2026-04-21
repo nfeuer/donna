@@ -1,0 +1,18 @@
+.pre {
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  overflow: auto;
+  white-space: pre;
+}
+
+.empty {
+  color: var(--color-text-muted);
+  font-style: italic;
+}

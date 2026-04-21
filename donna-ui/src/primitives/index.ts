@@ -24,3 +24,4 @@ export { Stat } from "./Stat";
 export { Segmented } from "./Segmented";
 export { EmptyState } from "./EmptyState";
 export { DataTable } from "./DataTable";
+export { JsonViewer } from "./JsonViewer";

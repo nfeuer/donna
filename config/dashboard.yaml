@@ -9,3 +9,9 @@ budget:
   daily_usd: 20.0
   monthly_usd: 100.0
   alert_pct: 80              # Alert when utilization exceeds this %
+
+skill_system:
+  # Thresholds used by the Dashboard skill-system card to flag anomalies.
+  degraded_skill_alert: true           # Toast on any skill in degraded state
+  automation_failure_rate_pct: 10      # Toast when 24h failure rate exceeds this
+  new_candidates_daily: 5              # Toast when new candidates exceed this per 24h

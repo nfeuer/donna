@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from donna.skills.lifecycle import SkillLifecycleManager
 from donna.skills.models import (
     SELECT_SKILL,
     SELECT_SKILL_VERSION,
@@ -52,6 +53,26 @@ def _skill_to_dict(skill: SkillRow, version: SkillVersionRow | None = None) -> d
             "changelog": version.changelog,
         }
     return data
+
+
+@router.get("/skills/_transitions")
+async def list_skill_transitions() -> dict[str, Any]:
+    """Expose the static state-transition table for UI dropdown filtering.
+
+    Source of truth is :func:`donna.skills.lifecycle._build_transitions`.
+    Shape: ``{"transitions": [{from_state, to_state, allowed_reasons: [...]}, ...]}``.
+    """
+    table = SkillLifecycleManager._TRANSITIONS
+    rows = [
+        {
+            "from_state": from_state.value,
+            "to_state": to_state.value,
+            "allowed_reasons": sorted(reasons),
+        }
+        for (from_state, to_state), reasons in table.items()
+    ]
+    rows.sort(key=lambda r: (r["from_state"], r["to_state"]))
+    return {"transitions": rows}
 
 
 @router.get("/skills")

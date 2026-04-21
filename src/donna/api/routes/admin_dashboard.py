@@ -718,3 +718,167 @@ async def get_quality_warnings(
         "by_task_type": by_task_type,
         "days": days,
     }
+
+
+# ---------------------------------------------------------------------------
+# Skill system aggregator (Wave 4 F-4)
+# ---------------------------------------------------------------------------
+
+
+_SKILL_STATES: tuple[str, ...] = (
+    "claude_native",
+    "skill_candidate",
+    "draft",
+    "sandbox",
+    "shadow_primary",
+    "trusted",
+    "flagged_for_review",
+    "degraded",
+)
+
+
+def _load_skill_system_thresholds(config_dir: str | Path) -> dict[str, Any]:
+    """Read skill_system thresholds from config/dashboard.yaml with safe defaults."""
+    defaults: dict[str, Any] = {
+        "degraded_skill_alert": True,
+        "automation_failure_rate_pct": 10,
+        "new_candidates_daily": 5,
+    }
+    try:
+        path = Path(config_dir) / "dashboard.yaml"
+        if not path.exists():
+            return defaults
+        with open(path) as f:
+            loaded = yaml.safe_load(f) or {}
+        section = loaded.get("skill_system") or {}
+        return {**defaults, **section}
+    except Exception:
+        return defaults
+
+
+@router.get("/dashboard/skill-system")
+async def get_skill_system(
+    request: Request,
+    days: int = Query(default=30, ge=1, le=365),
+) -> dict[str, Any]:
+    """Skill-system KPI card for the main Dashboard.
+
+    Aggregates counts of skills by state, new candidates, evolution success
+    rate, and automation activity over the past 24h (where applicable).
+    Returns ``anomalies`` flags driven by ``config/dashboard.yaml`` thresholds.
+    """
+    conn = request.app.state.db.connection
+    now_utc = datetime.now(UTC)
+    since_24h = (now_utc - timedelta(hours=24)).isoformat()
+    since_window = _days_ago(days)
+
+    # --- Skills by state ---
+    cursor = await conn.execute(
+        "SELECT state, COUNT(*) FROM skill GROUP BY state",
+    )
+    state_counts = {state: 0 for state in _SKILL_STATES}
+    for row in await cursor.fetchall():
+        state_counts[str(row[0])] = int(row[1])
+    total_skills = sum(state_counts.values())
+
+    # --- New candidates (24h) ---
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM skill_candidate_report "
+        "WHERE status = 'new' AND reported_at >= ?",
+        (since_24h,),
+    )
+    new_candidates_24h = int((await cursor.fetchone())[0] or 0)
+
+    # --- Evolution success rate (24h) ---
+    cursor = await conn.execute(
+        "SELECT outcome, COUNT(*) FROM skill_evolution_log "
+        "WHERE at >= ? GROUP BY outcome",
+        (since_24h,),
+    )
+    evo_rows = await cursor.fetchall()
+    evo_total = sum(int(r[1]) for r in evo_rows)
+    evo_success = sum(int(r[1]) for r in evo_rows if str(r[0]) == "success")
+    evolution_success_rate_24h = (
+        round(evo_success / evo_total * 100, 1) if evo_total > 0 else None
+    )
+
+    # --- Automations ---
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM automation WHERE status = 'active'",
+    )
+    active_automations = int((await cursor.fetchone())[0] or 0)
+
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM automation_run WHERE started_at >= ?",
+        (since_24h,),
+    )
+    automation_runs_24h = int((await cursor.fetchone())[0] or 0)
+
+    cursor = await conn.execute(
+        "SELECT COUNT(*) FROM automation_run "
+        "WHERE status NOT IN ('success', 'running', 'pending') AND started_at >= ?",
+        (since_24h,),
+    )
+    automation_failures_24h = int((await cursor.fetchone())[0] or 0)
+    automation_failure_rate_pct = (
+        round(automation_failures_24h / automation_runs_24h * 100, 1)
+        if automation_runs_24h > 0
+        else 0.0
+    )
+
+    # --- Skill-run volume over the window ---
+    cursor = await conn.execute(
+        "SELECT DATE(started_at) AS day, COUNT(*) AS count "
+        "FROM skill_run WHERE started_at >= ? "
+        "GROUP BY DATE(started_at) ORDER BY day",
+        (since_window,),
+    )
+    run_time_series = [
+        {"date": row[0], "runs": int(row[1])} for row in await cursor.fetchall()
+    ]
+
+    # --- Anomalies (threshold-driven) ---
+    thresholds = _load_skill_system_thresholds(
+        getattr(request.app.state, "config_dir", "config")
+    )
+    anomalies: list[dict[str, Any]] = []
+    if thresholds.get("degraded_skill_alert") and state_counts.get("degraded", 0) > 0:
+        anomalies.append({
+            "kind": "degraded_skill",
+            "count": state_counts["degraded"],
+            "message": f"{state_counts['degraded']} skill(s) in degraded state",
+        })
+    if (
+        automation_runs_24h > 0
+        and automation_failure_rate_pct > float(thresholds.get("automation_failure_rate_pct", 10))
+    ):
+        anomalies.append({
+            "kind": "automation_failure_rate",
+            "value": automation_failure_rate_pct,
+            "threshold": thresholds["automation_failure_rate_pct"],
+            "message": f"Automation failure rate {automation_failure_rate_pct}% over 24h",
+        })
+    if new_candidates_24h > int(thresholds.get("new_candidates_daily", 5)):
+        anomalies.append({
+            "kind": "new_candidates",
+            "count": new_candidates_24h,
+            "threshold": thresholds["new_candidates_daily"],
+            "message": f"{new_candidates_24h} new skill candidates in last 24h",
+        })
+
+    return {
+        "summary": {
+            "total_skills": total_skills,
+            "new_candidates_24h": new_candidates_24h,
+            "evolution_success_rate_24h": evolution_success_rate_24h,
+            "active_automations": active_automations,
+            "automation_runs_24h": automation_runs_24h,
+            "automation_failures_24h": automation_failures_24h,
+            "automation_failure_rate_pct": automation_failure_rate_pct,
+        },
+        "by_state": state_counts,
+        "run_time_series": run_time_series,
+        "anomalies": anomalies,
+        "thresholds": thresholds,
+        "days": days,
+    }

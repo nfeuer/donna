@@ -102,6 +102,36 @@ def _make_request(conn, lifecycle=None):
 # GET endpoints (smoke tests)
 # ---------------------------------------------------------------------------
 
+
+async def test_list_skill_transitions_exposes_table():
+    """/skills/_transitions returns the static lifecycle transition table."""
+    from donna.api.routes.skills import list_skill_transitions
+
+    result = await list_skill_transitions()
+    assert "transitions" in result
+    transitions = result["transitions"]
+    assert len(transitions) > 0
+    # Every entry has the expected shape.
+    for row in transitions:
+        assert set(row.keys()) == {"from_state", "to_state", "allowed_reasons"}
+        assert isinstance(row["allowed_reasons"], list)
+        assert all(isinstance(r, str) for r in row["allowed_reasons"])
+    # A known transition exists.
+    assert any(
+        r["from_state"] == "draft"
+        and r["to_state"] == "sandbox"
+        and "human_approval" in r["allowed_reasons"]
+        for r in transitions
+    )
+    # Any-state → claude_native with manual_override exists for at least sandbox.
+    assert any(
+        r["from_state"] == "sandbox"
+        and r["to_state"] == "claude_native"
+        and "manual_override" in r["allowed_reasons"]
+        for r in transitions
+    )
+
+
 async def test_list_skills_returns_skill(db_with_skill):
     from donna.api.routes.skills import list_skills
 

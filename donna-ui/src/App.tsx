@@ -10,6 +10,7 @@ import TasksPage from "./pages/Tasks";
 import ShadowPage from "./pages/Shadow";
 import PreferencesPage from "./pages/Preferences";
 import LLMGatewayPage from "./pages/LLMGateway";
+import SkillSystemPage from "./pages/SkillSystem";
 import DevPrimitivesPage from "./pages/DevPrimitives";
 import { useTheme } from "./hooks/useTheme";
 import { Skeleton } from "./primitives";
@@ -48,6 +49,7 @@ export default function App() {
           <Route path="/shadow" element={<ErrorBoundary><ShadowPage /></ErrorBoundary>} />
           <Route path="/preferences" element={<ErrorBoundary><PreferencesPage /></ErrorBoundary>} />
           <Route path="/llm-gateway" element={<ErrorBoundary><LLMGatewayPage /></ErrorBoundary>} />
+          <Route path="/skill-system" element={<ErrorBoundary><SkillSystemPage /></ErrorBoundary>} />
         </Route>
       </Routes>
     </RadixTooltip.Provider>

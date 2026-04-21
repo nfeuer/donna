@@ -7,6 +7,7 @@ import AgentPerformanceCard from "./AgentPerformanceCard";
 import TaskThroughputCard from "./TaskThroughputCard";
 import QualityWarningsCard from "./QualityWarningsCard";
 import LLMQueueCard from "./LLMQueueCard";
+import SkillSystemCard from "./SkillSystemCard";
 import { PageHeader } from "../../primitives/PageHeader";
 import { Segmented } from "../../primitives/Segmented";
 import { Pill } from "../../primitives/Pill";
@@ -17,11 +18,13 @@ import {
   fetchQualityWarnings,
   fetchTaskThroughput,
   fetchAgentPerformance,
+  fetchSkillSystem,
   type CostAnalyticsData,
   type ParseAccuracyData,
   type TaskThroughputData,
   type AgentPerformanceData,
   type QualityWarningsData,
+  type SkillSystemData,
 } from "../../api/dashboard";
 import {
   fetchLLMQueueStatus,
@@ -46,6 +49,7 @@ export interface DashboardData {
   agents: AgentPerformanceData | null;
   quality: QualityWarningsData | null;
   llmQueue: LLMQueueStatusData | null;
+  skillSystem: SkillSystemData | null;
 }
 
 export default function Dashboard() {
@@ -59,6 +63,7 @@ export default function Dashboard() {
     agents: null,
     quality: null,
     llmQueue: null,
+    skillSystem: null,
   });
   const [loading, setLoading] = useState(true);
   const [entered, setEntered] = useState(false);
@@ -68,20 +73,23 @@ export default function Dashboard() {
   const prevCostAlert = useRef(false);
   const prevParseAlert = useRef(false);
   const prevQualityAlert = useRef(false);
+  const prevSkillAnomalies = useRef<Set<string>>(new Set());
 
   const fetchAll = useCallback(async (d: number) => {
     setLoading(true);
     try {
-      const [cost, parse, tasks, agents, quality, llmQueue] = await Promise.all([
-        fetchCostAnalytics(d).catch(() => null),
-        fetchParseAccuracy(d).catch(() => null),
-        fetchTaskThroughput(d).catch(() => null),
-        fetchAgentPerformance(d).catch(() => null),
-        fetchQualityWarnings(d).catch(() => null),
-        fetchLLMQueueStatus().catch(() => null),
-      ]);
+      const [cost, parse, tasks, agents, quality, llmQueue, skillSystem] =
+        await Promise.all([
+          fetchCostAnalytics(d).catch(() => null),
+          fetchParseAccuracy(d).catch(() => null),
+          fetchTaskThroughput(d).catch(() => null),
+          fetchAgentPerformance(d).catch(() => null),
+          fetchQualityWarnings(d).catch(() => null),
+          fetchLLMQueueStatus().catch(() => null),
+          fetchSkillSystem(d).catch(() => null),
+        ]);
 
-      setData({ cost, parse, tasks, agents, quality, llmQueue });
+      setData({ cost, parse, tasks, agents, quality, llmQueue, skillSystem });
 
       // Deduplicated anomaly toasts — only on threshold crossing.
       if (cost?.summary) {
@@ -129,6 +137,19 @@ export default function Dashboard() {
           });
         }
         prevQualityAlert.current = highRate;
+      }
+
+      if (skillSystem?.anomalies) {
+        const currentKinds = new Set(skillSystem.anomalies.map((a) => a.kind));
+        for (const anomaly of skillSystem.anomalies) {
+          if (!prevSkillAnomalies.current.has(anomaly.kind)) {
+            toast.warning("Skill System Alert", {
+              description: anomaly.message,
+              duration: 8000,
+            });
+          }
+        }
+        prevSkillAnomalies.current = currentKinds;
       }
     } finally {
       setLoading(false);
@@ -207,6 +228,7 @@ export default function Dashboard() {
         <TaskThroughputCard data={data.tasks} loading={loading} />
         <AgentPerformanceCard data={data.agents} loading={loading} />
         <QualityWarningsCard data={data.quality} loading={loading} />
+        <SkillSystemCard data={data.skillSystem} loading={loading} />
       </div>
     </div>
   );

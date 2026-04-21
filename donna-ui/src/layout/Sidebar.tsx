@@ -9,6 +9,7 @@ import {
   FlaskConical,
   Lightbulb,
   Radio,
+  Network,
 } from "lucide-react";
 import { NavItem } from "./NavItem";
 import { useTheme } from "../hooks/useTheme";
@@ -31,6 +32,7 @@ const NAV_ITEMS: NavEntry[] = [
   { path: "/shadow", label: "Shadow", icon: <FlaskConical size={18} /> },
   { path: "/preferences", label: "Preferences", icon: <Lightbulb size={18} /> },
   { path: "/llm-gateway", label: "LLM Gateway", icon: <Radio size={18} /> },
+  { path: "/skill-system", label: "Skill System", icon: <Network size={18} /> },
 ];
 
 function isActive(pathname: string, itemPath: string): boolean {

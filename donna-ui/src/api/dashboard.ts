@@ -167,3 +167,35 @@ export async function fetchQualityWarnings(
   });
   return data;
 }
+
+export interface SkillSystemData {
+  summary: {
+    total_skills: number;
+    new_candidates_24h: number;
+    evolution_success_rate_24h: number | null;
+    active_automations: number;
+    automation_runs_24h: number;
+    automation_failures_24h: number;
+    automation_failure_rate_pct: number;
+  };
+  by_state: Record<string, number>;
+  run_time_series: Array<{ date: string; runs: number }>;
+  anomalies: Array<{
+    kind: string;
+    count?: number;
+    value?: number;
+    threshold?: number;
+    message: string;
+  }>;
+  thresholds: Record<string, unknown>;
+  days: number;
+}
+
+export async function fetchSkillSystem(
+  days: number,
+): Promise<SkillSystemData> {
+  const { data } = await client.get("/admin/dashboard/skill-system", {
+    params: { days },
+  });
+  return data;
+}
