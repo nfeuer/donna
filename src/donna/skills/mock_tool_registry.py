@@ -80,6 +80,9 @@ class MockToolRegistry(ToolRegistry):
         if isinstance(mock, dict) and "__error__" in mock:
             exc_class_name = mock["__error__"]
             message = mock.get("__message__", "")
-            exc_class = self._ERROR_WHITELIST.get(exc_class_name, RuntimeError)
+            exc_class = self._ERROR_WHITELIST.get(exc_class_name)
+            if exc_class is None:
+                logger.warning("unknown_error_class_in_mock", requested_class=exc_class_name)
+                exc_class = RuntimeError
             raise exc_class(message)
         return mock
