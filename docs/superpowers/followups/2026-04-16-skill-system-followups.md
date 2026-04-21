@@ -43,9 +43,9 @@ The detailed F-* entries below pre-date this update; trust the status tags here 
 Wave 3 focus: **F-3 Discord natural-language automation creation** (see F-3 entry below). Wave 2 closed all F-W1-* items except F-W1-A (P2, degradation-threshold semantics — still unresolved, see below). Wave 2 also surfaced 6 new follow-ups from its own code review (F-W2-* entries below) — none blocking, but worth folding into Wave 3 or Wave 4 planning.
 
 Predecessor specs for context:
-- Wave 1: `docs/superpowers/specs/2026-04-16-skill-system-wave-1-production-enablement-design.md` (PR #44).
-- Wave 2: `docs/superpowers/specs/2026-04-17-skill-system-wave-2-first-capability-design.md` (PR #46, depends on #44).
-- Original skill-system: `docs/superpowers/specs/2026-04-15-skill-system-and-challenger-refactor-design.md`.
+- Wave 1: `docs/superpowers/specs/archive/2026-04-16-skill-system-wave-1-production-enablement-design.md` (PR #44).
+- Wave 2: `docs/superpowers/specs/archive/2026-04-17-skill-system-wave-2-first-capability-design.md` (PR #46, depends on #44).
+- Original skill-system: `docs/superpowers/specs/archive/2026-04-15-skill-system-and-challenger-refactor-design.md`.
 
 ---
 
@@ -71,7 +71,7 @@ None are ship-blockers. Captured so a fresh session has the full picture.
 
 ## Completed — Wave 3 (2026-04-17)
 
-- **F-3** Discord natural-language automation creation. ChallengerAgent now does unified intent-parse + capability-match + input-extraction in a single local-Ollama call. ClaudeNoveltyJudge handles no-match escalations. DiscordIntentDispatcher routes parse results; AutomationConfirmationView + AutomationCreationPath close the loop. See `docs/superpowers/specs/2026-04-17-skill-system-wave-3-discord-nl-automation-design.md`.
+- **F-3** Discord natural-language automation creation. ChallengerAgent now does unified intent-parse + capability-match + input-extraction in a single local-Ollama call. ClaudeNoveltyJudge handles no-match escalations. DiscordIntentDispatcher routes parse results; AutomationConfirmationView + AutomationCreationPath close the loop. See `docs/superpowers/specs/archive/2026-04-17-skill-system-wave-3-discord-nl-automation-design.md`.
 - **F-W2-C** Unit test for SkillExecutor default-tool-registry wiring.
 - **F-W2-D** on_failure DSL (escalate|continue|fail_step|fail_skill) implemented in ToolDispatcher + executor.
 - **F-W2-E** cli.py refactored into StartupContext + wire_skill_system/wire_automation_subsystem/wire_discord helpers.
@@ -92,7 +92,7 @@ None are ship-blockers. Captured so a fresh session has the full picture.
 - **Cross-capability integration test** — single-tick dispatch of product_watch + news_check + email_triage with isolation assertions. Rolls in F-14 intent. (Commit: `2d97563`.)
 - **Wave 3 P2/P3 rollup** — doc drift repaired; F-W3-A through K marked closed with commit refs.
 
-See `docs/superpowers/specs/2026-04-20-skill-system-wave-4-news-and-email-capabilities-design.md` and `docs/superpowers/plans/archive/2026-04-20-skill-system-wave-4-news-and-email-capabilities.md`.
+See `docs/superpowers/specs/archive/2026-04-20-skill-system-wave-4-news-and-email-capabilities-design.md` and `docs/superpowers/plans/archive/2026-04-20-skill-system-wave-4-news-and-email-capabilities.md`.
 
 ## Follow-ups surfaced during Wave 4 (2026-04-20)
 
@@ -135,7 +135,7 @@ Captured during Wave 3 code reviews. Not blockers; document for planning.
 
 ## Completed — Wave 2 (2026-04-17)
 
-- **F-W1-B** EvolutionGates now thread `tool_mocks` through all three gates. New `mock_synthesis.py` helper shared between runtime and migration. See `docs/superpowers/specs/2026-04-17-skill-system-wave-2-first-capability-design.md`.
+- **F-W1-B** EvolutionGates now thread `tool_mocks` through all three gates. New `mock_synthesis.py` helper shared between runtime and migration. See `docs/superpowers/specs/archive/2026-04-17-skill-system-wave-2-first-capability-design.md`.
 - **F-W1-C** Router kwargs mismatch resolved; executor + triage drop unsupported kwargs. `FakeRouter` in the E2E harness tightened to match `ModelRouter.complete` signature (catches future drift).
 - **F-W1-D** Draft-now via `skill_candidate_report.manual_draft_at` + `ManualDraftPoller` (15s poll). API endpoint returns 202.
 - **F-W1-E** Validation-mode per-step timeout wired (`validation_per_step_timeout_s`; fires only when `run_sink` + `config` are both set).
@@ -151,7 +151,7 @@ Wave 3 shipped **F-3** Discord natural-language automation creation — see the 
 
 ## Completed — Wave 1 (2026-04-16)
 
-- **F-1** Sandbox SkillExecutor → shipped as `ValidationExecutor`. See `docs/superpowers/specs/2026-04-16-skill-system-wave-1-production-enablement-design.md`.
+- **F-1** Sandbox SkillExecutor → shipped as `ValidationExecutor`. See `docs/superpowers/specs/archive/2026-04-16-skill-system-wave-1-production-enablement-design.md`.
 - **F-5** Wire ValidationExecutor into lifespan.
 - **F-6** NotificationService wired; automation scheduler moved to orchestrator process.
 - **F-14** End-to-end "enabled" smoke test.

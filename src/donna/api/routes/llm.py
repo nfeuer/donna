@@ -2,7 +2,7 @@
 
 Requests are enqueued into the priority queue system. Donna's internal
 tasks always take priority. External requests are rate-limited and
-budget-checked. See docs/superpowers/specs/2026-04-11-llm-gateway-queue-design.md.
+budget-checked. See docs/superpowers/specs/archive/2026-04-11-llm-gateway-queue-design.md.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """CapabilityRegistry — CRUD and retrieval for the capability table.
 
-See docs/superpowers/specs/2026-04-15-skill-system-and-challenger-refactor-design.md §6.1
+See docs/superpowers/specs/archive/2026-04-15-skill-system-and-challenger-refactor-design.md §6.1
 """
 
 from __future__ import annotations

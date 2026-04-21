@@ -1,6 +1,6 @@
 # Wave 8 — Shadow + Preferences · Design Refinements
 
-> Addendum to the master redesign spec (`docs/superpowers/specs/2026-04-08-donna-ui-redesign-design.md`, lines 422–436). This document captures decisions made during the brainstorming session on 2026-04-09/10 that refine the high-level spec into an implementable shape.
+> Addendum to the master redesign spec (`docs/superpowers/specs/archive/2026-04-08-donna-ui-redesign-design.md`, lines 422–436). This document captures decisions made during the brainstorming session on 2026-04-09/10 that refine the high-level spec into an implementable shape.
 
 ---
 

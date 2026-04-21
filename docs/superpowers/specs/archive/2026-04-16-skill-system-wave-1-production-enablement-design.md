@@ -541,7 +541,7 @@ Legend: `[x]` = done · `[~]` = partial — see drift log · `[ ]` = not yet sta
 
 ## 11. References
 
-- Predecessor spec: `docs/superpowers/specs/2026-04-15-skill-system-and-challenger-refactor-design.md`.
+- Predecessor spec: `docs/superpowers/specs/archive/2026-04-15-skill-system-and-challenger-refactor-design.md`.
 - Follow-ups inventory: `docs/superpowers/followups/2026-04-16-skill-system-followups.md`.
 - `src/donna/skills/startup_wiring.py` — current wiring point for skill-system bundle.
 - `src/donna/api/__init__.py` lifespan — current (to-be-moved) automation scheduler wiring.

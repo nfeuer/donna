@@ -2,7 +2,7 @@
 
 REST endpoints for session management, messaging, pinning, and escalation.
 All endpoints are client-agnostic — used by Flutter app, web client, etc.
-See docs/superpowers/specs/2026-04-12-chat-interface-design.md.
+See docs/superpowers/specs/archive/2026-04-12-chat-interface-design.md.
 """
 
 from __future__ import annotations

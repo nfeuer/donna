@@ -2,7 +2,7 @@
 
 Internal queue (Donna tasks) always takes priority over external queue
 (API gateway). During active hours, running external requests are
-preempted. See docs/superpowers/specs/2026-04-11-llm-gateway-queue-design.md.
+preempted. See docs/superpowers/specs/archive/2026-04-11-llm-gateway-queue-design.md.
 """
 
 from __future__ import annotations

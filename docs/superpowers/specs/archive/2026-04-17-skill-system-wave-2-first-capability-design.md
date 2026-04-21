@@ -841,7 +841,7 @@ After Wave 2 merges:
 
 ## 11. References
 
-- Predecessor spec: `docs/superpowers/specs/2026-04-16-skill-system-wave-1-production-enablement-design.md` (PR #44).
+- Predecessor spec: `docs/superpowers/specs/archive/2026-04-16-skill-system-wave-1-production-enablement-design.md` (PR #44).
 - Followups inventory: `docs/superpowers/followups/2026-04-16-skill-system-followups.md` (F-W1-A through F-W1-H captured at Wave 1 ship).
 - `src/donna/skills/executor.py:454-458` — F-W1-C call site.
 - `src/donna/skills/triage.py:78-84` — F-W1-C call site.
