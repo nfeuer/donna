@@ -1,6 +1,6 @@
 """Tests for Wave 1 validation-timeout + automation-poll-interval config knobs.
 
-See docs/superpowers/plans/2026-04-16-skill-system-wave-1-production-enablement.md
+See docs/superpowers/plans/archive/2026-04-16-skill-system-wave-1-production-enablement.md
 Task 9. Covers the three config assertions for Wave 1's new fields in
 SkillSystemConfig.
 """

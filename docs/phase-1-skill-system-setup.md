@@ -3,7 +3,7 @@
 > **For Nick, to remember when activating this on the deployment machine.**
 > Last updated: 2026-04-16
 > Related spec: `docs/superpowers/specs/2026-04-15-skill-system-and-challenger-refactor-design.md`
-> Related plans: `docs/superpowers/plans/2026-04-15-skill-system-phase-1-foundation.md`, `docs/superpowers/plans/2026-04-15-skill-system-phase-2-execution.md`, `docs/superpowers/plans/2026-04-15-skill-system-phase-3-lifecycle.md`
+> Related plans: `docs/superpowers/plans/archive/2026-04-15-skill-system-phase-1-foundation.md`, `docs/superpowers/plans/archive/2026-04-15-skill-system-phase-2-execution.md`, `docs/superpowers/plans/archive/2026-04-16-skill-system-phase-3-lifecycle-and-shadow.md`
 
 Phase 1 and Phase 2 introduced new machinery (capability registry, multi-step skill executor, challenger refactor, tool dispatch, triage, run persistence, dashboard routes) but deliberately ship with the skill system disabled by default — no user-visible behavior change until you actively turn it on. This document lists every action you need to take to activate the skill system on the real deployment, plus the application startup wiring that still needs to be done manually.
 

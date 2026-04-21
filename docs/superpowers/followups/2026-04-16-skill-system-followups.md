@@ -92,7 +92,7 @@ None are ship-blockers. Captured so a fresh session has the full picture.
 - **Cross-capability integration test** — single-tick dispatch of product_watch + news_check + email_triage with isolation assertions. Rolls in F-14 intent. (Commit: `2d97563`.)
 - **Wave 3 P2/P3 rollup** — doc drift repaired; F-W3-A through K marked closed with commit refs.
 
-See `docs/superpowers/specs/2026-04-20-skill-system-wave-4-news-and-email-capabilities-design.md` and `docs/superpowers/plans/2026-04-20-skill-system-wave-4-news-and-email-capabilities.md`.
+See `docs/superpowers/specs/2026-04-20-skill-system-wave-4-news-and-email-capabilities-design.md` and `docs/superpowers/plans/archive/2026-04-20-skill-system-wave-4-news-and-email-capabilities.md`.
 
 ## Follow-ups surfaced during Wave 4 (2026-04-20)
 
