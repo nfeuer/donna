@@ -44,6 +44,9 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 
+# MkDocs build output
+site/
+
 # Backups (managed by system, not version controlled)
 backups/
 

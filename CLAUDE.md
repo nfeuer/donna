@@ -27,7 +27,9 @@ The user forgets to capture tasks, rarely checks task lists, and doesn't schedul
 6. **Tool validation layer.** Models propose tool calls; the orchestrator validates and executes. Models never call tools directly.
 
 ## Directory Layout
-- `docs/` — Domain specs split from the master spec. **Read the relevant doc before making architectural decisions.**
+- `spec_v3.md` — **Canonical design document.** All architectural decisions trace back to this file. Cite `§` sections when introducing or changing design.
+- `IMPLEMENTATION_GUIDE.md` — Implementation companion to `spec_v3.md`.
+- `docs/` — Browsable documentation site (MkDocs). Narrative under `docs/architecture/`, `docs/domain/`, `docs/workflows/`, `docs/development/`, `docs/operations/`; auto-generated API reference under `docs/reference/`; canonical specs embedded under `docs/reference-specs/`. **Read the relevant `docs/domain/*.md` before making architectural decisions, and consult `spec_v3.md` for authority.**
 - `config/` — YAML config files (models, task types, state machine, preferences)
 - `src/donna/` — Application source code
 - `prompts/` — Externalized prompt templates (Jinja2 or plain markdown)
@@ -36,6 +38,7 @@ The user forgets to capture tasks, rarely checks task lists, and doesn't schedul
 - `slices/` — Phase 1 build slice briefs with acceptance criteria
 - `docker/` — Compose files and env template
 - `tests/` — pytest unit + integration tests
+- `mkdocs.yml`, `scripts/gen_ref_pages.py` — Docs site config and auto-generator
 
 ## Budget
 - $100/month hard cap on Claude API
@@ -44,10 +47,11 @@ The user forgets to capture tasks, rarely checks task lists, and doesn't schedul
 
 ## Before You Start a Task
 1. Read this file.
-2. Identify which `docs/*.md` files are relevant to the task.
-3. Read the slice brief in `slices/` if working on a specific slice.
-4. Check `config/` for any config structures your code should read from.
-5. Run `pytest` before and after changes.
+2. For any design decision, consult `spec_v3.md` (and cite the relevant `§` in your PR description).
+3. Identify which `docs/domain/*.md` files are relevant to the task.
+4. Read the slice brief in `slices/` if working on a specific slice.
+5. Check `config/` for any config structures your code should read from.
+6. Run `pytest` before and after changes.
 
 ## Conventions
 - Async everywhere — use `async def` and `await` for all I/O.
@@ -56,3 +60,11 @@ The user forgets to capture tasks, rarely checks task lists, and doesn't schedul
 - SQLite access via `aiosqlite` — single connection, WAL mode.
 - All task state transitions go through the state machine (loaded from `config/task_states.yaml`).
 - Schema changes require an Alembic migration — never modify tables manually.
+
+## Documentation
+- Narrative docs are hand-written markdown under `docs/`.
+- API reference, config pages, and schema pages are **auto-generated** on every `mkdocs build` by `scripts/gen_ref_pages.py` — never commit files under `docs/reference/`, `docs/config/`, or `docs/schemas/`.
+- Docstring style: **Google** (rendered by `mkdocstrings`). New modules must have a docstring; new public functions/classes need at least `Args` / `Returns` / `Raises`.
+- Local preview: `pip install -e ".[docs]" && mkdocs serve`.
+- Deploy: handled by `.github/workflows/docs.yml` on push to `main`.
+- **Any design work** — in PR descriptions, commit messages, or doc pages — must reference `spec_v3.md` with the relevant `§` section.

@@ -1,0 +1,180 @@
+site_name: Donna
+site_description: AI Personal Assistant — active task management, scheduling, and autonomous sub-agents
+site_url: https://nfeuer.github.io/donna/
+repo_url: https://github.com/nfeuer/donna
+repo_name: nfeuer/donna
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+exclude_docs: |
+  superpowers/
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: info
+  links:
+    not_found: info
+    absolute_links: info
+    unrecognized_links: info
+    anchors: info
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - search.share
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - awesome-pages
+  - section-index
+  - gen-files:
+      scripts:
+        - scripts/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_signature_annotations: true
+            separate_signature: true
+            merge_init_into_class: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_root_heading: true
+            show_if_no_docstring: true
+            filters: ["!^_"]
+            members_order: source
+            group_by_category: true
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      base_path: [".", "docs"]
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/nfeuer/donna
+
+nav:
+  - Home: index.md
+  - Start Here:
+      - start-here/index.md
+      - Install: start-here/install.md
+      - Quickstart: start-here/quickstart.md
+      - Conventions: start-here/conventions.md
+  - Architecture:
+      - architecture/index.md
+      - Overview: architecture/overview.md
+      - Data Flow: architecture/data-flow.md
+      - Component Map: architecture/component-map.md
+  - Domain:
+      - domain/index.md
+      - Task System: domain/task-system.md
+      - Model Layer: domain/model-layer.md
+      - Skill System: domain/skill-system.md
+      - Agents: domain/agents.md
+      - Scheduling: domain/scheduling.md
+      - Integrations: domain/integrations.md
+      - Notifications: domain/notifications.md
+      - Preferences: domain/preferences.md
+      - Observability: domain/observability.md
+      - Resilience: domain/resilience.md
+      - Management GUI: domain/management-gui.md
+  - Workflows:
+      - workflows/index.md
+      - Capture a Task: workflows/capture-a-task.md
+      - Run a Skill: workflows/run-a-skill.md
+      - Add a New Skill: workflows/add-a-new-skill.md
+      - Run Evals: workflows/run-evals.md
+      - Handle Budget Breach: workflows/handle-budget-breach.md
+      - Add a Migration: workflows/add-a-migration.md
+  - Config: config/
+  - Schemas: schemas/
+  - API Reference: reference/
+  - Development:
+      - development/index.md
+      - Slices: development/slices.md
+      - Testing: development/testing.md
+      - Evaluation Harness: development/evaluation-harness.md
+      - Contributing: development/contributing.md
+  - Operations:
+      - operations/index.md
+      - Docker: operations/docker.md
+      - Migrations: operations/migrations.md
+      - Backup & Recovery: operations/backup-recovery.md
+      - Budget & Cost: operations/budget-and-cost.md
+  - Canonical Specs:
+      - reference-specs/index.md
+      - spec_v3.md: reference-specs/spec-v3.md
+      - Implementation Guide: reference-specs/implementation-guide.md
