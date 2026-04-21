@@ -328,8 +328,8 @@ class AutomationDispatcher:
                 "SELECT state_blob FROM automation WHERE id = ?", (automation_id,),
             )
             row = await cursor.fetchone()
-        except Exception:
-            # Column may not exist in older test fixtures or pre-migration schemas.
+        except aiosqlite.OperationalError:
+            # Pre-migration test fixtures may not have the state_blob column.
             return None
         if row is None or row[0] is None:
             return None
