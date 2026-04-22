@@ -72,7 +72,9 @@ class SkillDivergenceRepository:
         await self._conn.commit()
         return div_id
 
-    async def recent_by_run_ids(self, run_ids: list[str], limit: int = 100) -> list[SkillDivergenceRow]:
+    async def recent_by_run_ids(
+        self, run_ids: list[str], limit: int = 100,
+    ) -> list[SkillDivergenceRow]:
         if not run_ids:
             return []
         placeholders = ",".join("?" * len(run_ids))

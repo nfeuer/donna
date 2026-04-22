@@ -355,7 +355,9 @@ class SkillExecutor:
                 await self._finish_run_if_repo(skill_run_id, result)
                 return result
 
-            except (SchemaValidationError, ToolInvocationError, DSLError, jinja2.UndefinedError) as exc:
+            except (
+                SchemaValidationError, ToolInvocationError, DSLError, jinja2.UndefinedError,
+            ) as exc:
                 record.error = str(exc)
                 record.validation_status = (
                     "schema_invalid" if isinstance(exc, SchemaValidationError) else "tool_failed"

@@ -40,7 +40,8 @@ TASK_TYPE = "skill_evolution"
 @dataclass(slots=True)
 class EvolutionReport:
     skill_id: str
-    outcome: str        # success | rejected_validation | malformed_output | budget_exhausted | skipped | error
+    # success | rejected_validation | malformed_output | budget_exhausted | skipped | error
+    outcome: str
     new_version_id: str | None = None
     rationale: str | None = None
     # Populated when an LLM evolution call completed; zero/None for early-exit outcomes

@@ -59,7 +59,8 @@ async def db(tmp_path: Path):
     await conn.execute(
         "INSERT INTO capability (id, name, description, input_schema, "
         "trigger_type, status, created_at, created_by) VALUES "
-        "('c1', 'product_watch', 'cap', '{\"type\":\"object\"}', 'on_schedule', 'active', ?, 'seed')",
+        "('c1', 'product_watch', 'cap', '{\"type\":\"object\"}', "
+        "'on_schedule', 'active', ?, 'seed')",
         (now,),
     )
     await conn.commit()
@@ -95,9 +96,17 @@ def _make_dispatcher(db, **overrides):
     router = overrides.pop("router", _default_router)
     if router is _default_router:
         router = AsyncMock()
-        router.complete = AsyncMock(return_value=({"price_usd": 89, "in_stock": True}, _ReasonerOutputMeta()))
-    elif not hasattr(router, "complete") or not callable(router.complete) or not getattr(router.complete, "return_value", None):
-        router.complete = AsyncMock(return_value=({"price_usd": 89, "in_stock": True}, _ReasonerOutputMeta()))
+        router.complete = AsyncMock(
+            return_value=({"price_usd": 89, "in_stock": True}, _ReasonerOutputMeta()),
+        )
+    elif (
+        not hasattr(router, "complete")
+        or not callable(router.complete)
+        or not getattr(router.complete, "return_value", None)
+    ):
+        router.complete = AsyncMock(
+            return_value=({"price_usd": 89, "in_stock": True}, _ReasonerOutputMeta()),
+        )
 
     budget_guard = overrides.pop("budget_guard", AsyncMock())
     if not hasattr(budget_guard, "check_pre_call") or not callable(budget_guard.check_pre_call):

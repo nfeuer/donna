@@ -25,7 +25,9 @@ from donna.server import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-async def _make_client(tmp_path: Path | None = None, **app_state: object) -> tuple[web.Application, TestClient]:
+async def _make_client(
+    tmp_path: Path | None = None, **app_state: object,
+) -> tuple[web.Application, TestClient]:
     """Build a test aiohttp app with given app state."""
     db_path: str | None = None
     if tmp_path is not None:

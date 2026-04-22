@@ -58,7 +58,9 @@ class TestBackupDatabase:
         assert rows == [(1,)], "Backup should contain the same data as source"
 
     @pytest.mark.asyncio
-    async def test_backup_logs_completed_event(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_backup_logs_completed_event(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+    ) -> None:
         """backup_database() logs a system.backup.completed event."""
         src = tmp_path / "source.db"
         backup_dir = tmp_path / "backups"

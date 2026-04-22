@@ -76,7 +76,9 @@ def models_config() -> ModelsConfig:
             "reasoner": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
         },
         routing={
-            "parse_task": RoutingEntry(model="parser", fallback="reasoner", confidence_threshold=0.7),
+            "parse_task": RoutingEntry(
+                model="parser", fallback="reasoner", confidence_threshold=0.7,
+            ),
         },
     )
 

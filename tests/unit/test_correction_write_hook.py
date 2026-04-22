@@ -101,7 +101,7 @@ async def test_log_correction_without_detector_is_noop(seeded_db_with_trusted_sk
 async def test_scan_for_capability_flags_when_threshold_exceeded(
     seeded_db_with_trusted_skill,
 ):
-    """CorrectionClusterDetector.scan_for_capability flags the skill when corrections >= threshold."""
+    """scan_for_capability flags the skill when corrections >= threshold."""
     from donna.config import SkillSystemConfig
     from donna.skills.correction_cluster import CorrectionClusterDetector
     from donna.skills.lifecycle import SkillLifecycleManager

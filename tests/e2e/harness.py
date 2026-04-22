@@ -66,7 +66,9 @@ class FakeOllama:
         self.canned = canned or {}
         self.invocations: list[_Invocation] = []
 
-    async def complete(self, *, task_type: str, prompt: str | None = None, **_kw) -> tuple[dict, Any]:
+    async def complete(
+        self, *, task_type: str, prompt: str | None = None, **_kw,
+    ) -> tuple[dict, Any]:
         output = dict(self.canned.get(task_type, {"_default": True}))
         self.invocations.append(_Invocation(task_type=task_type, prompt=prompt, output=output))
 
@@ -83,7 +85,9 @@ class FakeClaude:
         self.canned = canned or {}
         self.invocations: list[_Invocation] = []
 
-    async def complete(self, *, task_type: str, prompt: str | None = None, **_kw) -> tuple[dict, Any]:
+    async def complete(
+        self, *, task_type: str, prompt: str | None = None, **_kw,
+    ) -> tuple[dict, Any]:
         output = dict(self.canned.get(task_type, {"_default": True}))
         self.invocations.append(_Invocation(task_type=task_type, prompt=prompt, output=output))
 

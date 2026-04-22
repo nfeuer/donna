@@ -73,10 +73,18 @@ async def _insert_row(
 
 class TestGetDailyCost:
     async def test_sums_correctly(self, db_conn: aiosqlite.Connection) -> None:
-        await _insert_row(db_conn, row_id="1", timestamp="2026-03-20T10:00:00", task_type="parse_task", model_alias="parser", cost_usd=0.0010)
-        await _insert_row(db_conn, row_id="2", timestamp="2026-03-20T14:00:00", task_type="parse_task", model_alias="parser", cost_usd=0.0020)
-        await _insert_row(db_conn, row_id="3", timestamp="2026-03-20T22:00:00", task_type="dedup_check", model_alias="parser", cost_usd=0.0005)
-
+        await _insert_row(
+            db_conn, row_id="1", timestamp="2026-03-20T10:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=0.0010,
+        )
+        await _insert_row(
+            db_conn, row_id="2", timestamp="2026-03-20T14:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=0.0020,
+        )
+        await _insert_row(
+            db_conn, row_id="3", timestamp="2026-03-20T22:00:00",
+            task_type="dedup_check", model_alias="parser", cost_usd=0.0005,
+        )
         tracker = CostTracker(db_conn)
         summary = await tracker.get_daily_cost(for_date=date(2026, 3, 20))
 
@@ -84,10 +92,18 @@ class TestGetDailyCost:
         assert summary.call_count == 3
 
     async def test_excludes_other_days(self, db_conn: aiosqlite.Connection) -> None:
-        await _insert_row(db_conn, row_id="1", timestamp="2026-03-19T23:59:59", task_type="parse_task", model_alias="parser", cost_usd=5.00)
-        await _insert_row(db_conn, row_id="2", timestamp="2026-03-20T10:00:00", task_type="parse_task", model_alias="parser", cost_usd=0.50)
-        await _insert_row(db_conn, row_id="3", timestamp="2026-03-21T00:00:01", task_type="parse_task", model_alias="parser", cost_usd=5.00)
-
+        await _insert_row(
+            db_conn, row_id="1", timestamp="2026-03-19T23:59:59",
+            task_type="parse_task", model_alias="parser", cost_usd=5.00,
+        )
+        await _insert_row(
+            db_conn, row_id="2", timestamp="2026-03-20T10:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=0.50,
+        )
+        await _insert_row(
+            db_conn, row_id="3", timestamp="2026-03-21T00:00:01",
+            task_type="parse_task", model_alias="parser", cost_usd=5.00,
+        )
         tracker = CostTracker(db_conn)
         summary = await tracker.get_daily_cost(for_date=date(2026, 3, 20))
 
@@ -102,10 +118,18 @@ class TestGetDailyCost:
         assert summary.breakdown == {}
 
     async def test_breakdown_by_task_type(self, db_conn: aiosqlite.Connection) -> None:
-        await _insert_row(db_conn, row_id="1", timestamp="2026-03-20T10:00:00", task_type="parse_task", model_alias="parser", cost_usd=0.10)
-        await _insert_row(db_conn, row_id="2", timestamp="2026-03-20T11:00:00", task_type="parse_task", model_alias="parser", cost_usd=0.10)
-        await _insert_row(db_conn, row_id="3", timestamp="2026-03-20T12:00:00", task_type="dedup_check", model_alias="parser", cost_usd=0.05)
-
+        await _insert_row(
+            db_conn, row_id="1", timestamp="2026-03-20T10:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=0.10,
+        )
+        await _insert_row(
+            db_conn, row_id="2", timestamp="2026-03-20T11:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=0.10,
+        )
+        await _insert_row(
+            db_conn, row_id="3", timestamp="2026-03-20T12:00:00",
+            task_type="dedup_check", model_alias="parser", cost_usd=0.05,
+        )
         tracker = CostTracker(db_conn)
         summary = await tracker.get_daily_cost(for_date=date(2026, 3, 20))
 
@@ -116,11 +140,19 @@ class TestGetDailyCost:
 class TestGetMonthlyCost:
     async def test_sums_full_month(self, db_conn: aiosqlite.Connection) -> None:
         # Rows in January
-        await _insert_row(db_conn, row_id="1", timestamp="2026-01-05T10:00:00", task_type="parse_task", model_alias="parser", cost_usd=1.00)
-        await _insert_row(db_conn, row_id="2", timestamp="2026-01-31T23:00:00", task_type="parse_task", model_alias="parser", cost_usd=2.00)
+        await _insert_row(
+            db_conn, row_id="1", timestamp="2026-01-05T10:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=1.00,
+        )
+        await _insert_row(
+            db_conn, row_id="2", timestamp="2026-01-31T23:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=2.00,
+        )
         # Row in February — should not be included
-        await _insert_row(db_conn, row_id="3", timestamp="2026-02-01T00:00:00", task_type="parse_task", model_alias="parser", cost_usd=99.0)
-
+        await _insert_row(
+            db_conn, row_id="3", timestamp="2026-02-01T00:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=99.0,
+        )
         tracker = CostTracker(db_conn)
         summary = await tracker.get_monthly_cost(year=2026, month=1)
 
@@ -135,10 +167,18 @@ class TestGetMonthlyCost:
 
 class TestGetCostByTaskType:
     async def test_groups_correctly(self, db_conn: aiosqlite.Connection) -> None:
-        await _insert_row(db_conn, row_id="1", timestamp="2026-03-15T10:00:00", task_type="parse_task", model_alias="parser", cost_usd=0.50)
-        await _insert_row(db_conn, row_id="2", timestamp="2026-03-15T11:00:00", task_type="dedup_check", model_alias="parser", cost_usd=0.25)
-        await _insert_row(db_conn, row_id="3", timestamp="2026-03-16T10:00:00", task_type="parse_task", model_alias="parser", cost_usd=0.50)
-
+        await _insert_row(
+            db_conn, row_id="1", timestamp="2026-03-15T10:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=0.50,
+        )
+        await _insert_row(
+            db_conn, row_id="2", timestamp="2026-03-15T11:00:00",
+            task_type="dedup_check", model_alias="parser", cost_usd=0.25,
+        )
+        await _insert_row(
+            db_conn, row_id="3", timestamp="2026-03-16T10:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=0.50,
+        )
         tracker = CostTracker(db_conn)
         result = await tracker.get_cost_by_task_type(date(2026, 3, 15), date(2026, 3, 16))
 
@@ -148,10 +188,18 @@ class TestGetCostByTaskType:
 
 class TestGetCostByAgent:
     async def test_groups_by_model_alias(self, db_conn: aiosqlite.Connection) -> None:
-        await _insert_row(db_conn, row_id="1", timestamp="2026-03-20T10:00:00", task_type="parse_task", model_alias="parser", cost_usd=0.30)
-        await _insert_row(db_conn, row_id="2", timestamp="2026-03-20T11:00:00", task_type="prep_research", model_alias="reasoner", cost_usd=0.70)
-        await _insert_row(db_conn, row_id="3", timestamp="2026-03-20T12:00:00", task_type="parse_task", model_alias="parser", cost_usd=0.20)
-
+        await _insert_row(
+            db_conn, row_id="1", timestamp="2026-03-20T10:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=0.30,
+        )
+        await _insert_row(
+            db_conn, row_id="2", timestamp="2026-03-20T11:00:00",
+            task_type="prep_research", model_alias="reasoner", cost_usd=0.70,
+        )
+        await _insert_row(
+            db_conn, row_id="3", timestamp="2026-03-20T12:00:00",
+            task_type="parse_task", model_alias="parser", cost_usd=0.20,
+        )
         tracker = CostTracker(db_conn)
         result = await tracker.get_cost_by_agent(date(2026, 3, 20), date(2026, 3, 20))
 

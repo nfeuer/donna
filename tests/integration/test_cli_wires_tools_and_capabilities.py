@@ -89,7 +89,8 @@ async def test_orchestrator_seeds_capabilities_from_yaml(monkeypatch, tmp_path) 
     )
     await _run_orchestrator(args)
 
-    # Verify the capability is present (either from the migration, the YAML loader, or both — idempotent).
+    # Verify the capability is present (either from the migration, the YAML loader,
+    # or both — idempotent).
     async with aiosqlite.connect(db_path) as conn:
         cursor = await conn.execute(
             "SELECT COUNT(*) FROM capability WHERE name = 'product_watch'"

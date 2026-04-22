@@ -29,10 +29,13 @@ async def db(tmp_path: Path):
             created_by TEXT, changelog TEXT, created_at TEXT
         );
     """)
-    await conn.execute("""
-        INSERT INTO capability (id, name, description, input_schema, trigger_type, status, created_at, created_by)
-        VALUES ('c1', 'parse_task', 'parse task', '{}', 'on_message', 'active', '2026-04-15T00:00:00+00:00', 'seed')
-    """)
+    await conn.execute(
+        "INSERT INTO capability "
+        "(id, name, description, input_schema, trigger_type, status, "
+        "created_at, created_by) "
+        "VALUES ('c1', 'parse_task', 'parse task', '{}', 'on_message', "
+        "'active', '2026-04-15T00:00:00+00:00', 'seed')"
+    )
     await conn.commit()
     yield conn
     await conn.close()
@@ -78,7 +81,9 @@ final_output: "{{ state.extract }}"
     vrow = await cursor.fetchone()
     assert vrow[0] == 1
     assert json.loads(vrow[1]) == {"extract": "Extract the task fields."}
-    assert json.loads(vrow[2]) == {"extract": {"type": "object", "properties": {"title": {"type": "string"}}}}
+    assert json.loads(vrow[2]) == {
+        "extract": {"type": "object", "properties": {"title": {"type": "string"}}},
+    }
 
 
 async def test_load_skill_missing_capability_raises(db, tmp_path: Path):

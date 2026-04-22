@@ -41,12 +41,17 @@ def _make_task(
     return t
 
 
-def _make_digest(project_root: Path | None = None) -> tuple[MorningDigest, AsyncMock, AsyncMock, AsyncMock, MagicMock]:
+def _make_digest(
+    project_root: Path | None = None,
+) -> tuple[MorningDigest, AsyncMock, AsyncMock, AsyncMock, MagicMock]:
     db = AsyncMock()
     service = AsyncMock()
     service.dispatch = AsyncMock(return_value=True)
     router = AsyncMock()
-    router.complete = AsyncMock(return_value=({"digest_text": "Good morning! Here is your day."}, MagicMock()))
+    router.complete = AsyncMock(return_value=(
+        {"digest_text": "Good morning! Here is your day."},
+        MagicMock(),
+    ))
     router._models_config = MagicMock()
     router._models_config.cost.monthly_budget_usd = 100.0
 

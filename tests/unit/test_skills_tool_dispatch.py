@@ -105,7 +105,10 @@ async def test_dispatch_renders_nested_args():
     result = await dispatcher.run_invocation(
         spec=ToolInvocationSpec(
             tool="echo",
-            args={"config": {"url": "{{ inputs.u }}", "timeout": 5}, "tags": ["{{ inputs.t }}", "static"]},
+            args={
+                "config": {"url": "{{ inputs.u }}", "timeout": 5},
+                "tags": ["{{ inputs.t }}", "static"],
+            },
             store_as="r",
         ),
         state={}, inputs={"u": "https://a.com", "t": "tag1"},

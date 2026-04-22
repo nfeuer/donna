@@ -82,7 +82,9 @@ def _make_router() -> ModelRouter:
             "reasoner": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
         },
         routing={
-            "dedup_check": RoutingEntry(model="parser", fallback="reasoner", confidence_threshold=0.7),
+            "dedup_check": RoutingEntry(
+                model="parser", fallback="reasoner", confidence_threshold=0.7,
+            ),
         },
     )
     task_types_config = TaskTypesConfig(
@@ -103,7 +105,10 @@ def _dedup_response(verdict: str = "same") -> dict:
         "verdict": verdict,
         "confidence": 0.9,
         "reasoning": f"These tasks are {verdict}.",
-        "suggested_action": "merge" if verdict == "same" else ("link" if verdict == "related" else "none"),
+        "suggested_action": (
+            "merge" if verdict == "same"
+            else ("link" if verdict == "related" else "none")
+        ),
     }
 
 
@@ -124,7 +129,10 @@ class TestFuzzyScoreBucketing:
         router.complete = AsyncMock(return_value=(_dedup_response("same"), _make_metadata()))
         inv_logger = AsyncMock()
         inv_logger.log = AsyncMock(return_value="inv-001")
-        dedup = Deduplicator(db=db, router=router, invocation_logger=inv_logger, project_root=PROJECT_ROOT)
+        dedup = Deduplicator(
+            db=db, router=router, invocation_logger=inv_logger,
+            project_root=PROJECT_ROOT,
+        )
         return dedup, router, inv_logger
 
     async def test_score_above_85_raises_without_llm_call(self) -> None:
@@ -191,7 +199,7 @@ class TestFuzzyScoreBucketing:
         router.complete.assert_called_once()
 
     async def test_mid_range_llm_related_raises(self) -> None:
-        """Mid-range score, LLM returns 'related' → DuplicateDetectedError with verdict='related'."""
+        """Mid-range score, LLM 'related' → DuplicateDetectedError with verdict='related'."""
         task = _make_task_row(title="Oil change for lawn mower")
         dedup, router, _ = self._make_deduplicator([task])
         router.complete = AsyncMock(return_value=(_dedup_response("related"), _make_metadata()))
@@ -226,7 +234,10 @@ class TestFuzzyScoreBucketing:
         router = _make_router()
         router.complete = AsyncMock()
         inv_logger = AsyncMock()
-        dedup = Deduplicator(db=db, router=router, invocation_logger=inv_logger, project_root=PROJECT_ROOT)
+        dedup = Deduplicator(
+            db=db, router=router, invocation_logger=inv_logger,
+            project_root=PROJECT_ROOT,
+        )
 
         await dedup.check("Get oil change", None, "personal", "nick")
         router.complete.assert_not_called()

@@ -47,7 +47,7 @@ def _make_invocation_row(**overrides: object) -> tuple:
 
 
 def _make_detail_row(**overrides: object) -> tuple:
-    """Build a row for get_invocation detail query (includes input_hash, output, eval_session_id)."""
+    """Build a row for get_invocation detail (includes input_hash, output, eval_session_id)."""
     defaults = {
         "id": "inv-001",
         "timestamp": "2026-04-01T10:00:00Z",

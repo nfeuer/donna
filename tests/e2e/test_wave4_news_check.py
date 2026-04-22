@@ -135,7 +135,10 @@ async def test_news_check_nl_creation_then_first_tick_alerts(runtime) -> None:
     runtime.fake_claude.canned["news_check"] = {
         "ok": True,
         "triggers_alert": True,
-        "message": "2 new AI safety items:\n- Alignment interpretability paper\n- Policy brief: AI safety",
+        "message": (
+            "2 new AI safety items:\n- Alignment interpretability paper\n"
+            "- Policy brief: AI safety"
+        ),
         "meta": {
             "item_count": 2,
             "action_required_count": 2,
@@ -357,7 +360,10 @@ async def test_news_check_promotion_to_shadow_primary_fires_skill_executor(
     runtime.fake_claude.canned["skill_step::news_check::render_digest"] = {
         "ok": True,
         "triggers_alert": True,
-        "message": "2 new AI safety items:\n- Alignment interpretability paper\n- Policy brief: AI safety",
+        "message": (
+            "2 new AI safety items:\n- Alignment interpretability paper\n"
+            "- Policy brief: AI safety"
+        ),
         "meta": {
             "item_count": 2,
             "action_required_count": 2,

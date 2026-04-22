@@ -166,7 +166,8 @@ async def _insert_skill_run(
         "INSERT INTO skill_run (id, skill_id, skill_version_id, task_id, automation_run_id, "
         "status, total_latency_ms, total_cost_usd, state_object, tool_result_cache, "
         "final_output, escalation_reason, error, user_id, started_at, finished_at) "
-        "VALUES (?, ?, NULL, NULL, NULL, ?, NULL, NULL, '{}', NULL, NULL, NULL, NULL, 'nick', ?, ?)",
+        "VALUES (?, ?, NULL, NULL, NULL, ?, NULL, NULL, '{}', NULL, "
+        "NULL, NULL, NULL, 'nick', ?, ?)",
         (run_id, skill_id, status, now, now),
     )
     await conn.commit()
@@ -202,8 +203,12 @@ async def test_h3_1_detector_surfaces_high_savings_candidate(phase3_db):
     # all within the last 30 days. No skill row → claude_native.
     for i in range(200):
         await phase3_db.execute(
-            "INSERT INTO invocation_log VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, 'nick', NULL)",
-            (f"inv-{i}", _ts(1), "parse_task", "parser", "model", "hash", 50, 10, 5, 0.10, '{"x": 1}'),
+            "INSERT INTO invocation_log VALUES "
+            "(?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, 'nick', NULL)",
+            (
+                f"inv-{i}", _ts(1), "parse_task", "parser", "model",
+                "hash", 50, 10, 5, 0.10, '{"x": 1}',
+            ),
         )
     await phase3_db.commit()
 
@@ -229,8 +234,12 @@ async def test_h3_1_detector_skips_existing_skill(phase3_db):
     """H3.1 corollary: detector skips task types that already have a non-claude_native skill."""
     for i in range(200):
         await phase3_db.execute(
-            "INSERT INTO invocation_log VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, 'nick', NULL)",
-            (f"inv-{i}", _ts(1), "parse_task", "parser", "model", "hash", 50, 10, 5, 0.10, '{"x": 1}'),
+            "INSERT INTO invocation_log VALUES "
+            "(?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, 'nick', NULL)",
+            (
+                f"inv-{i}", _ts(1), "parse_task", "parser", "model",
+                "hash", 50, 10, 5, 0.10, '{"x": 1}',
+            ),
         )
     # skill row exists in sandbox state (non-claude_native)
     await _insert_skill(phase3_db, skill_id="s1", capability_name="parse_task", state="sandbox")
@@ -263,11 +272,26 @@ final_output: "{{ state.extract }}"
 _GOOD_DRAFT_PAYLOAD = {
     "skill_yaml": _GOOD_SKILL_YAML,
     "step_prompts": {"extract": "Extract task fields from: {{ inputs.raw }}"},
-    "output_schemas": {"extract": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]}},
+    "output_schemas": {
+        "extract": {
+            "type": "object",
+            "properties": {"title": {"type": "string"}},
+            "required": ["title"],
+        },
+    },
     "fixtures": [
-        {"case_name": "basic", "input": {"raw": "fix the bug"}, "expected_output_shape": {"title": "string"}},
-        {"case_name": "complex", "input": {"raw": "schedule a meeting"}, "expected_output_shape": {"title": "string"}},
-        {"case_name": "edge", "input": {"raw": ""}, "expected_output_shape": {"title": "string"}},
+        {
+            "case_name": "basic", "input": {"raw": "fix the bug"},
+            "expected_output_shape": {"title": "string"},
+        },
+        {
+            "case_name": "complex", "input": {"raw": "schedule a meeting"},
+            "expected_output_shape": {"title": "string"},
+        },
+        {
+            "case_name": "edge", "input": {"raw": ""},
+            "expected_output_shape": {"title": "string"},
+        },
     ],
 }
 
@@ -280,7 +304,8 @@ async def test_h3_2_auto_drafter_happy_path(phase3_db):
     """
     # Insert a capability row required by the drafter
     await phase3_db.execute(
-        "INSERT INTO capability (id, name, description, input_schema, trigger_type, status, created_at, created_by) "
+        "INSERT INTO capability (id, name, description, input_schema, "
+        "trigger_type, status, created_at, created_by) "
         "VALUES (?, ?, ?, ?, ?, 'active', ?, 'seed')",
         ("cap-1", "parse_task", "Parse task from text", '{"type": "object"}', "on_message", _ts()),
     )
@@ -299,7 +324,10 @@ async def test_h3_2_auto_drafter_happy_path(phase3_db):
 
     # Mock router to return well-formed payload
     router = AsyncMock()
-    meta = MagicMock(invocation_id="i1", latency_ms=200, tokens_in=100, tokens_out=50, cost_usd=0.30)
+    meta = MagicMock(
+        invocation_id="i1", latency_ms=200, tokens_in=100,
+        tokens_out=50, cost_usd=0.30,
+    )
     router.complete = AsyncMock(return_value=(_GOOD_DRAFT_PAYLOAD, meta))
 
     # Mock executor_factory: executor.execute returns a succeeded result with matching output
@@ -332,7 +360,9 @@ async def test_h3_2_auto_drafter_happy_path(phase3_db):
 
     assert len(reports) == 1
     report = reports[0]
-    assert report.outcome == "drafted", f"expected drafted, got {report.outcome}: {report.rationale}"
+    assert report.outcome == "drafted", (
+        f"expected drafted, got {report.outcome}: {report.rationale}"
+    )
     assert report.skill_id is not None
     assert report.pass_rate is not None and report.pass_rate >= 0.80
 
@@ -364,7 +394,8 @@ async def test_h3_2_auto_drafter_happy_path(phase3_db):
 async def test_h3_2_budget_exhausted_stops_early(phase3_db):
     """H3.2: auto-drafter respects budget and does not draft when budget is too low."""
     await phase3_db.execute(
-        "INSERT INTO capability (id, name, description, input_schema, trigger_type, status, created_at, created_by) "
+        "INSERT INTO capability (id, name, description, input_schema, "
+        "trigger_type, status, created_at, created_by) "
         "VALUES (?, ?, ?, ?, ?, 'active', ?, 'seed')",
         ("cap-1", "parse_task", "Parse task from text", '{"type": "object"}', "on_message", _ts()),
     )
@@ -528,7 +559,9 @@ async def test_h3_4_sandbox_no_promotion_with_insufficient_runs(phase3_db):
 @pytest.mark.integration
 async def test_h3_5_shadow_primary_auto_promotes_to_trusted(phase3_db):
     """H3.5: After 100 divergences with mean agreement >= 0.9, shadow_primary → trusted."""
-    await _insert_skill(phase3_db, skill_id="s1", capability_name="parse_task", state="shadow_primary")
+    await _insert_skill(
+        phase3_db, skill_id="s1", capability_name="parse_task", state="shadow_primary",
+    )
 
     # Insert 100 skill_run rows and 100 divergence rows with high agreement
     for i in range(100):
@@ -569,7 +602,9 @@ async def test_h3_5_shadow_primary_auto_promotes_to_trusted(phase3_db):
 @pytest.mark.integration
 async def test_h3_5_shadow_primary_no_promotion_low_agreement(phase3_db):
     """H3.5 corollary: mean agreement below threshold → no promotion."""
-    await _insert_skill(phase3_db, skill_id="s1", capability_name="parse_task", state="shadow_primary")
+    await _insert_skill(
+        phase3_db, skill_id="s1", capability_name="parse_task", state="shadow_primary",
+    )
 
     for i in range(100):
         await _insert_skill_run(phase3_db, run_id=f"run-{i}", skill_id="s1", status="succeeded")

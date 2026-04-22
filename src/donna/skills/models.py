@@ -4,10 +4,16 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 
-SKILL_COLUMNS = ("id", "capability_name", "current_version_id", "state", "requires_human_gate", "baseline_agreement", "created_at", "updated_at")
+SKILL_COLUMNS = (
+    "id", "capability_name", "current_version_id", "state",
+    "requires_human_gate", "baseline_agreement", "created_at", "updated_at",
+)
 SELECT_SKILL = ", ".join(SKILL_COLUMNS)
 
-SKILL_VERSION_COLUMNS = ("id", "skill_id", "version_number", "yaml_backbone", "step_content", "output_schemas", "created_by", "changelog", "created_at")
+SKILL_VERSION_COLUMNS = (
+    "id", "skill_id", "version_number", "yaml_backbone", "step_content",
+    "output_schemas", "created_by", "changelog", "created_at",
+)
 SELECT_SKILL_VERSION = ", ".join(SKILL_VERSION_COLUMNS)
 
 

@@ -79,7 +79,9 @@ class _FakeRouter:
         self.calls: list[tuple[str, str]] = []
         self.prompts: list[str] = []
 
-    async def complete(self, prompt, *, task_type, user_id, schema=None, model_alias=None, **kwargs):
+    async def complete(
+        self, prompt, *, task_type, user_id, schema=None, model_alias=None, **kwargs,
+    ):
         self.calls.append((task_type, user_id))
         self.prompts.append(prompt)
         return self._response, {"cost_usd": 0.0, "latency_ms": 50}

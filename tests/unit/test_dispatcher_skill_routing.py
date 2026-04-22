@@ -63,11 +63,16 @@ def _make_dispatcher(
     skill_executor = AsyncMock()
 
     if skill_exists:
-        skill_row = MagicMock(id="s1", capability_name="parse_task", current_version_id="v1", state="sandbox")
+        skill_row = MagicMock(
+            id="s1", capability_name="parse_task",
+            current_version_id="v1", state="sandbox",
+        )
         version_row = MagicMock(id="v1", version_number=1)
         skill_database.get_by_capability.return_value = skill_row
         skill_database.get_version.return_value = version_row
-        skill_executor.execute.return_value = MagicMock(status="succeeded", final_output={"title": "x"}, total_latency_ms=50)
+        skill_executor.execute.return_value = MagicMock(
+            status="succeeded", final_output={"title": "x"}, total_latency_ms=50,
+        )
     else:
         skill_database.get_by_capability.return_value = None
 

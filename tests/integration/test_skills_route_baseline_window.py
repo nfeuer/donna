@@ -27,7 +27,10 @@ def test_baseline_reset_requires_skill_system_config() -> None:
     """When skill_system_config is None, the route returns 503."""
     # Read the source file directly to avoid import caching issues.
     import pathlib
-    skills_file = pathlib.Path(__file__).parent.parent.parent / "src" / "donna" / "api" / "routes" / "skills.py"
+    skills_file = (
+        pathlib.Path(__file__).parent.parent.parent
+        / "src" / "donna" / "api" / "routes" / "skills.py"
+    )
     src = skills_file.read_text()
     # The handler should raise 503 if skill_system_config is None.
     # Grep for the pattern at least once in the file.

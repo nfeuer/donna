@@ -52,7 +52,9 @@ def _make_bot() -> MagicMock:
     return bot
 
 
-def _make_service(blackout_start: int = 0, blackout_end: int = 6) -> tuple[NotificationService, MagicMock]:
+def _make_service(
+    blackout_start: int = 0, blackout_end: int = 6,
+) -> tuple[NotificationService, MagicMock]:
     tw = _make_time_windows(blackout_start=blackout_start, blackout_end=blackout_end)
     cfg = _make_calendar_config(tw)
     bot = _make_bot()

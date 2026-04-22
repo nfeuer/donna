@@ -56,7 +56,9 @@ def _make_config(tier1_wait: int = 30, tier2_wait: int = 60, backoff_hours: int 
     )
 
 
-def _make_manager(db_conn, config: SmsConfig | None = None) -> tuple[EscalationManager, MagicMock, MagicMock]:
+def _make_manager(
+    db_conn, config: SmsConfig | None = None,
+) -> tuple[EscalationManager, MagicMock, MagicMock]:
     config = config or _make_config()
 
     mock_db = MagicMock()
@@ -147,7 +149,8 @@ class TestAdvanceTier:
 
         past = (datetime.now(tz=UTC) - timedelta(hours=2)).isoformat()
         await db_conn.execute(
-            "UPDATE escalation_state SET next_escalation_at = ?, current_tier = 2 WHERE task_id = ?",
+            "UPDATE escalation_state SET next_escalation_at = ?, "
+            "current_tier = 2 WHERE task_id = ?",
             (past, "task-1"),
         )
         await db_conn.commit()

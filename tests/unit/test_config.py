@@ -92,7 +92,10 @@ class TestLoadStateMachineConfig:
 
     def test_has_all_states(self) -> None:
         config = load_state_machine_config(CONFIG_DIR)
-        expected = {"backlog", "scheduled", "in_progress", "blocked", "waiting_input", "done", "cancelled"}
+        expected = {
+            "backlog", "scheduled", "in_progress", "blocked",
+            "waiting_input", "done", "cancelled",
+        }
         assert set(config.states) == expected
 
     def test_initial_state_is_backlog(self) -> None:

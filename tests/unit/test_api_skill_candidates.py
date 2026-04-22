@@ -51,7 +51,10 @@ async def db_with_candidates(tmp_path: Path):
         "(id, capability_name, task_pattern_hash, expected_savings_usd, "
         "volume_30d, variance_score, status, reported_at, resolved_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ("c3", "extract_dates", "hash3", 12.0, 150, 0.2, "dismissed", "2026-03-30T00:00:00", "2026-04-01T00:00:00"),
+        (
+            "c3", "extract_dates", "hash3", 12.0, 150, 0.2, "dismissed",
+            "2026-03-30T00:00:00", "2026-04-01T00:00:00",
+        ),
     )
     await conn.commit()
     yield conn

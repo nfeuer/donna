@@ -147,7 +147,10 @@ class TestReminderFormat:
         now = _utc(9, 0)
         start = now + timedelta(minutes=14)
         db.list_tasks = AsyncMock(
-            return_value=[_task(title="Write report", estimated_duration=45, scheduled_start=start.isoformat())]
+            return_value=[_task(
+                title="Write report", estimated_duration=45,
+                scheduled_start=start.isoformat(),
+            )]
         )
 
         await sched._check_and_send(now)

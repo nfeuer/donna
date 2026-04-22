@@ -75,7 +75,9 @@ async def _insert_skill(
 ) -> None:
     now = datetime.now(UTC).isoformat()
     await conn.execute(
-        "INSERT INTO skill (id, capability_name, state, requires_human_gate, baseline_agreement, created_at, updated_at) "
+        "INSERT INTO skill "
+        "(id, capability_name, state, requires_human_gate, baseline_agreement, "
+        "created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             skill_id,
@@ -361,7 +363,9 @@ async def test_flagging_uses_lifecycle_manager(db: aiosqlite.Connection) -> None
                 "notes": notes,
             }
         )
-        return await original_transition(skill_id, to_state, reason, actor, actor_id=actor_id, notes=notes)
+        return await original_transition(
+            skill_id, to_state, reason, actor, actor_id=actor_id, notes=notes,
+        )
 
     real_lifecycle.transition = spy_transition  # type: ignore[method-assign]
 

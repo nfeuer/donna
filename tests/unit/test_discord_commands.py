@@ -145,5 +145,8 @@ class TestRegisterCommands:
 
         register_commands(bot, db, "nick")
 
-        expected = {"tasks", "done", "cancel", "reschedule", "next", "today", "tomorrow", "edit", "status"}
+        expected = {
+            "tasks", "done", "cancel", "reschedule", "next",
+            "today", "tomorrow", "edit", "status",
+        }
         assert set(registered) == expected

@@ -174,7 +174,10 @@ class TestGetAgentDetail:
 
     async def test_agent_with_full_metrics(self, mock_request: tuple) -> None:
         request, conn = mock_request
-        inv_row = ("inv-1", "2026-04-01", "parse_task", "claude-sonnet", 500, 1000, 200, 0.003, 0, "task-001")
+        inv_row = (
+            "inv-1", "2026-04-01", "parse_task", "claude-sonnet",
+            500, 1000, 200, 0.003, 0, "task-001",
+        )
         latency_row = ("2026-04-01", 450.5, 5)
         cost_row = (10, 0.03, 0.003)
 

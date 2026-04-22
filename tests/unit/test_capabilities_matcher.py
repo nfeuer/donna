@@ -30,7 +30,10 @@ async def test_high_confidence_match():
 
 async def test_medium_confidence_match():
     registry = AsyncMock()
-    registry.semantic_search.return_value = [(_cap("news_check"), 0.55), (_cap("product_watch"), 0.40)]
+    registry.semantic_search.return_value = [
+        (_cap("news_check"), 0.55),
+        (_cap("product_watch"), 0.40),
+    ]
     matcher = CapabilityMatcher(registry)
     result = await matcher.match("keep tabs on current events")
     assert result.confidence == MatchConfidence.MEDIUM

@@ -77,7 +77,10 @@ async def test_executor_populates_result_run_id_and_writes_automation_run_id(tmp
         )
         version = SkillVersionRow(
             id="v1", skill_id="s1", version_number=1,
-            yaml_backbone="steps:\n  - name: parse\n    kind: llm\n    prompt: \"parse\"\n    output_schema:\n      type: object\n",
+            yaml_backbone=(
+                "steps:\n  - name: parse\n    kind: llm\n"
+                "    prompt: \"parse\"\n    output_schema:\n      type: object\n"
+            ),
             step_content={"parse": "parse"},
             output_schemas={"parse": {"type": "object"}},
             created_by="test", changelog=None, created_at=None,
@@ -102,7 +105,7 @@ async def test_executor_populates_result_run_id_and_writes_automation_run_id(tmp
 
 @pytest.mark.asyncio
 async def test_dispatcher_writes_skill_run_id_into_automation_run(tmp_path, monkeypatch):
-    """Dispatcher passes automation_run_id into executor and records result.run_id on automation_run."""
+    """Dispatcher passes automation_run_id into executor and records result.run_id."""
     from donna.automations.dispatcher import AutomationDispatcher
     from donna.automations.repository import AutomationRepository
     from donna.config import SkillSystemConfig

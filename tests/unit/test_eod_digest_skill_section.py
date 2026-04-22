@@ -89,7 +89,8 @@ def _now_utc() -> datetime:
 async def _insert_skill(conn, skill_id: str, capability_name: str, state: str = "sandbox") -> None:
     now = _now_utc().isoformat()
     await conn.execute(
-        "INSERT INTO skill (id, capability_name, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO skill (id, capability_name, state, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?)",
         (skill_id, capability_name, state, now, now),
     )
     await conn.commit()
@@ -250,7 +251,10 @@ class TestDemotedTransitions:
         at = (now - timedelta(hours=4)).isoformat()
 
         await _insert_skill(db, "skill-C", "send_summary", state="flagged_for_review")
-        await _insert_transition(db, "skill-C", "trusted", "flagged_for_review", at, reason="high_divergence")
+        await _insert_transition(
+            db, "skill-C", "trusted", "flagged_for_review", at,
+            reason="high_divergence",
+        )
 
         data = await digest._assemble_skill_system_data(now)
         assert len(data["demoted"]) == 1

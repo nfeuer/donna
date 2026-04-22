@@ -14,5 +14,6 @@ def validate_output(output: Any, schema: dict) -> None:
         jsonschema.validate(instance=output, schema=schema)
     except jsonschema.ValidationError as exc:
         raise SchemaValidationError(
-            f"Output failed schema validation at {'.'.join(str(p) for p in exc.path)}: {exc.message}"
+            f"Output failed schema validation at "
+            f"{'.'.join(str(p) for p in exc.path)}: {exc.message}"
         ) from exc

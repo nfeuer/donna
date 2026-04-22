@@ -304,7 +304,8 @@ async def test_run_successful_draft(db: aiosqlite.Connection) -> None:
     # Lifecycle audit rows present. The claude_native → skill_candidate → draft
     # path requires two transitions per the spec.
     cursor = await db.execute(
-        "SELECT from_state, to_state, reason, actor FROM skill_state_transition WHERE skill_id = ? ORDER BY at",
+        "SELECT from_state, to_state, reason, actor FROM skill_state_transition "
+        "WHERE skill_id = ? ORDER BY at",
         (r.skill_id,),
     )
     trows = await cursor.fetchall()

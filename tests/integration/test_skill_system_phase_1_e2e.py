@@ -55,23 +55,54 @@ async def initialized_db(tmp_path: Path):
     """)
 
     seeds = [
-        ("seed-parse_task", "parse_task",
-         "Extract structured task fields from a natural language message",
-         json.dumps({"type": "object", "properties": {"raw_text": {"type": "string"}, "user_id": {"type": "string"}}, "required": ["raw_text", "user_id"]}),
-         "on_message"),
-        ("seed-dedup_check", "dedup_check",
-         "Determine whether two task candidates represent the same work item",
-         json.dumps({"type": "object", "properties": {"task_a": {"type": "object"}, "task_b": {"type": "object"}}, "required": ["task_a", "task_b"]}),
-         "on_message"),
-        ("seed-classify_priority", "classify_priority",
-         "Assign a priority level (1-5) to a task based on content and deadline",
-         json.dumps({"type": "object", "properties": {"title": {"type": "string"}, "description": {"type": "string"}, "deadline": {"type": ["string", "null"]}}, "required": ["title"]}),
-         "on_message"),
+        (
+            "seed-parse_task", "parse_task",
+            "Extract structured task fields from a natural language message",
+            json.dumps({
+                "type": "object",
+                "properties": {
+                    "raw_text": {"type": "string"},
+                    "user_id": {"type": "string"},
+                },
+                "required": ["raw_text", "user_id"],
+            }),
+            "on_message",
+        ),
+        (
+            "seed-dedup_check", "dedup_check",
+            "Determine whether two task candidates represent the same work item",
+            json.dumps({
+                "type": "object",
+                "properties": {
+                    "task_a": {"type": "object"},
+                    "task_b": {"type": "object"},
+                },
+                "required": ["task_a", "task_b"],
+            }),
+            "on_message",
+        ),
+        (
+            "seed-classify_priority", "classify_priority",
+            "Assign a priority level (1-5) to a task based on content and deadline",
+            json.dumps({
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "deadline": {"type": ["string", "null"]},
+                },
+                "required": ["title"],
+            }),
+            "on_message",
+        ),
     ]
     for cap_id, name, desc, schema, trigger in seeds:
         await conn.execute(
-            """INSERT INTO capability (id, name, description, input_schema, trigger_type, status, created_at, created_by)
-               VALUES (?, ?, ?, ?, ?, 'active', '2026-04-15T00:00:00+00:00', 'seed')""",
+            "INSERT INTO capability "
+            "(id, name, description, input_schema, trigger_type, status, "
+            "created_at, created_by) "
+            "VALUES (?, ?, ?, ?, ?, 'active', "
+            "'2026-04-15T00:00:00+00:00', 'seed')",
             (cap_id, name, desc, schema, trigger),
         )
     await conn.commit()
@@ -121,7 +152,9 @@ async def test_h3_matcher_high_confidence(initialized_db):
 @pytest.mark.integration
 async def test_h4_skills_in_sandbox(initialized_db):
     """H4: three seed skills exist in sandbox state."""
-    cursor = await initialized_db.execute("SELECT capability_name, state FROM skill ORDER BY capability_name")
+    cursor = await initialized_db.execute(
+        "SELECT capability_name, state FROM skill ORDER BY capability_name",
+    )
     rows = await cursor.fetchall()
     assert len(rows) == 3
     for name, state in rows:

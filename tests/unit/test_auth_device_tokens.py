@@ -41,7 +41,10 @@ async def test_issue_and_validate(db):
         sliding_window_days=90, absolute_max_days=365,
     )
     assert len(raw) >= 32
-    record = await dt.validate(db, token=raw, ip="2.2.2.2", sliding_window_days=90, absolute_max_days=365)
+    record = await dt.validate(
+        db, token=raw, ip="2.2.2.2",
+        sliding_window_days=90, absolute_max_days=365,
+    )
     assert record is not None
     assert record["user_id"] == "nick"
 
@@ -50,9 +53,15 @@ async def test_issue_and_validate(db):
 async def test_revoked_token_rejected(db):
     raw = await dt.issue(db, user_id="nick", label="L", user_agent="ua", ip="1.2.3.4",
                           sliding_window_days=90, absolute_max_days=365)
-    row = await dt.validate(db, token=raw, ip="1.2.3.4", sliding_window_days=90, absolute_max_days=365)
+    row = await dt.validate(
+        db, token=raw, ip="1.2.3.4",
+        sliding_window_days=90, absolute_max_days=365,
+    )
     await dt.revoke(db, device_id=row["id"], revoked_by="admin")
-    record = await dt.validate(db, token=raw, ip="1.2.3.4", sliding_window_days=90, absolute_max_days=365)
+    record = await dt.validate(
+        db, token=raw, ip="1.2.3.4",
+        sliding_window_days=90, absolute_max_days=365,
+    )
     assert record is None
 
 
@@ -65,7 +74,10 @@ async def test_expired_token_rejected(db):
         ((datetime.utcnow() - timedelta(days=1)).isoformat(),),
     )
     await db.commit()
-    record = await dt.validate(db, token=raw, ip="1.2.3.4", sliding_window_days=90, absolute_max_days=365)
+    record = await dt.validate(
+        db, token=raw, ip="1.2.3.4",
+        sliding_window_days=90, absolute_max_days=365,
+    )
     assert record is None
 
 
@@ -94,7 +106,10 @@ async def test_absolute_max_caps_sliding_window(db):
         ((datetime.utcnow() - timedelta(days=360)).isoformat(),),
     )
     await db.commit()
-    record = await dt.validate(db, token=raw, ip="1.2.3.4", sliding_window_days=90, absolute_max_days=365)
+    record = await dt.validate(
+        db, token=raw, ip="1.2.3.4",
+        sliding_window_days=90, absolute_max_days=365,
+    )
     assert record is not None
     cursor = await db.execute("SELECT expires_at FROM device_tokens WHERE user_id='nick'")
     row = await cursor.fetchone()

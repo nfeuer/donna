@@ -59,7 +59,10 @@ def _load_capability_schema(capability_name: str | None) -> dict | None:
 
 
 def _is_key_optional(schema: dict | None, key: str) -> bool:
-    """Return True if the key is in properties but NOT in required. None-schema → True (assume optional)."""
+    """Return True if the key is in properties but NOT in required.
+
+    None-schema → True (assume optional).
+    """
     if schema is None:
         return True
     required = set(schema.get("required", []) or [])
@@ -78,10 +81,13 @@ def test_no_unsafe_optional_input_references() -> None:
     input_schema at ALL (not even as optional), the defaulting layer can't help
     and the template needs the guard.
 
-    This lint reads every skill.yaml and its step prompts, finds bare `{% if inputs.X %}`
-    references, and checks: is X a property declared in the capability's input_schema?
-    - If yes (required or optional): OK. The defaulting layer + required semantics cover it.
-    - If no (truly undeclared): FAIL. Template needs `is defined and` guard, OR the schema needs the key added.
+    This lint reads every skill.yaml and its step prompts, finds bare
+    `{% if inputs.X %}` references, and checks: is X a property declared in the
+    capability's input_schema?
+    - If yes (required or optional): OK. The defaulting layer + required semantics
+      cover it.
+    - If no (truly undeclared): FAIL. Template needs `is defined and` guard, OR
+      the schema needs the key added.
     """
     violations: list[tuple[str, int, str, str]] = []
 
@@ -106,7 +112,10 @@ def test_no_unsafe_optional_input_references() -> None:
                     # If schema doesn't exist at all → skip (can't lint).
                     if schema is not None and key not in declared_keys:
                         violations.append(
-                            (str(file_path), lineno, line.strip(), capability_name or "<no capability>")
+                            (
+                                str(file_path), lineno, line.strip(),
+                                capability_name or "<no capability>",
+                            )
                         )
 
     assert not violations, (

@@ -97,7 +97,10 @@ async def validate_against_fixtures(
             if result.status != "succeeded":
                 failures.append(FixtureFailureDetail(
                     case_name=fix.case_name,
-                    reason=f"run status={result.status}: {result.error or result.escalation_reason}",
+                    reason=(
+                        f"run status={result.status}: "
+                        f"{result.error or result.escalation_reason}"
+                    ),
                 ))
                 continue
 
