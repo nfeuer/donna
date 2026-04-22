@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import dataclasses
 import re
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import structlog
@@ -182,22 +183,31 @@ async def poll_and_create_tasks(
             except ValueError:
                 domain = TaskDomain.PERSONAL
 
+            try:
+                deadline_type = DeadlineType(result.deadline_type)
+            except ValueError:
+                deadline_type = DeadlineType.NONE
+
+            deadline: datetime | None = None
+            if result.deadline:
+                try:
+                    deadline = datetime.fromisoformat(result.deadline)
+                except ValueError:
+                    logger.warning("unparseable_deadline", deadline=result.deadline)
+
             await db.create_task(
                 user_id=user_id,
                 title=result.title,
                 description=result.description,
                 domain=domain,
                 priority=result.priority,
-                deadline=result.deadline,
-                deadline_type=DeadlineType(result.deadline_type),
+                deadline=deadline,
+                deadline_type=deadline_type,
                 estimated_duration=result.estimated_duration,
-                recurrence=result.recurrence,
                 tags=result.tags,
                 prep_work_flag=result.prep_work_flag,
                 agent_eligible=result.agent_eligible,
-                confidence_score=result.confidence,
-                input_channel=InputChannel.EMAIL,
-                raw_input=task_text,
+                created_via=InputChannel.EMAIL,
             )
 
             logger.info(
