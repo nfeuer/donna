@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 
@@ -24,7 +25,7 @@ class AutomationScheduler:
         self._repo = repository
         self._dispatcher = dispatcher
         self._poll = poll_interval_seconds
-        self._now_fn = now_fn or (lambda: datetime.now(timezone.utc))
+        self._now_fn = now_fn or (lambda: datetime.now(UTC))
         self._sleep_fn = sleep_fn or asyncio.sleep
         self._stop = False
 

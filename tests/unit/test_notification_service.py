@@ -6,11 +6,10 @@ without any real Discord connection.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
-import pytest
 
 from donna.config import TimeWindowConfig, TimeWindowsConfig
 from donna.notifications.service import (
@@ -18,7 +17,6 @@ from donna.notifications.service import (
     NOTIF_REMINDER,
     NotificationService,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -63,7 +61,7 @@ def _make_service(blackout_start: int = 0, blackout_end: int = 6) -> tuple[Notif
 
 
 def _utc(hour: int, minute: int = 0) -> datetime:
-    return datetime(2026, 3, 20, hour, minute, tzinfo=timezone.utc)
+    return datetime(2026, 3, 20, hour, minute, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +81,7 @@ class TestBlackout:
         bot.send_message.assert_not_called()
 
     async def test_blackout_queues_notification(self) -> None:
-        service, bot = _make_service()
+        service, _bot = _make_service()
 
         with patch("donna.notifications.service.datetime") as mock_dt:
             mock_dt.now.return_value = _utc(3)  # 3 AM — blackout

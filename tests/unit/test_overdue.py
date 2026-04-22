@@ -6,13 +6,10 @@ No real Discord, DB, or scheduler connections.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from donna.notifications.overdue import OVERDUE_BUFFER_MINUTES, OverdueDetector
-
+from donna.notifications.overdue import OverdueDetector
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -20,7 +17,7 @@ from donna.notifications.overdue import OVERDUE_BUFFER_MINUTES, OverdueDetector
 
 
 def _utc(hour: int, minute: int = 0) -> datetime:
-    return datetime(2026, 3, 20, hour, minute, tzinfo=timezone.utc)
+    return datetime(2026, 3, 20, hour, minute, tzinfo=UTC)
 
 
 def _task(
@@ -68,7 +65,7 @@ def _make_detector() -> tuple[OverdueDetector, AsyncMock, AsyncMock, MagicMock]:
 
 class TestOverdueDetection:
     async def test_task_past_buffer_triggers_nudge(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, service, _bot = _make_detector()
         now = _utc(10, 0)
         # Task started at 9:00, duration 20 min → ends 9:20 + 30 min buffer = 9:50 overdue
         start = _utc(9, 0)
@@ -81,7 +78,7 @@ class TestOverdueDetection:
         service.dispatch.assert_called_once()
 
     async def test_task_within_buffer_not_nudged(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, service, _bot = _make_detector()
         now = _utc(9, 45)
         # Task started at 9:00, duration 20 min → ends 9:20 + 30 min buffer = 9:50
         start = _utc(9, 0)
@@ -94,7 +91,7 @@ class TestOverdueDetection:
         service.dispatch.assert_not_called()
 
     async def test_task_with_no_scheduled_start_skipped(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, service, _bot = _make_detector()
         now = _utc(10, 0)
         db.list_tasks = AsyncMock(return_value=[_task(scheduled_start=None)])
 
@@ -103,7 +100,7 @@ class TestOverdueDetection:
         service.dispatch.assert_not_called()
 
     async def test_nudge_only_sent_once_per_day(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, service, _bot = _make_detector()
         now = _utc(10, 0)
         start = _utc(9, 0)
         task = _task(scheduled_start=start.isoformat(), estimated_duration=20)
@@ -115,7 +112,7 @@ class TestOverdueDetection:
         assert service.dispatch.call_count == 1
 
     async def test_overdue_thread_created_when_sent(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, _service, bot = _make_detector()
         now = _utc(10, 0)
         start = _utc(9, 0)
         db.list_tasks = AsyncMock(return_value=[
@@ -127,7 +124,7 @@ class TestOverdueDetection:
         bot.create_overdue_thread.assert_called_once()
 
     async def test_nudge_message_contains_task_title(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, service, _bot = _make_detector()
         now = _utc(10, 0)
         start = _utc(9, 0)
         db.list_tasks = AsyncMock(return_value=[
@@ -161,7 +158,7 @@ class TestOverdueDetection:
 
 class TestHandleReplyDone:
     async def test_done_reply_transitions_to_done(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, _service, _bot = _make_detector()
 
         task_mock = _task(task_id="t1", status="scheduled")
         db.get_task = AsyncMock(return_value=task_mock)
@@ -178,7 +175,7 @@ class TestHandleReplyDone:
         assert TaskStatus.DONE in statuses
 
     async def test_done_reply_sets_completed_at(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, _service, _bot = _make_detector()
 
         task_mock = _task(task_id="t1", status="in_progress")
         db.get_task = AsyncMock(return_value=task_mock)
@@ -192,7 +189,7 @@ class TestHandleReplyDone:
         assert "completed_at" in kw
 
     async def test_done_reply_task_not_found(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, _service, _bot = _make_detector()
         db.get_task = AsyncMock(return_value=None)
 
         # Should not raise.
@@ -208,7 +205,7 @@ class TestHandleReplyDone:
 
 class TestHandleReplyReschedule:
     async def test_reschedule_reply_calls_schedule_task(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, _service, _bot = _make_detector()
 
         task_mock = _task(task_id="t1", status="in_progress")
         refreshed = _task(task_id="t1", status="scheduled")
@@ -224,7 +221,7 @@ class TestHandleReplyReschedule:
         detector._scheduler.schedule_task.assert_called_once()
 
     async def test_reschedule_transitions_through_in_progress(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, _service, _bot = _make_detector()
 
         task_mock = _task(task_id="t1", status="scheduled")
         refreshed = _task(task_id="t1", status="scheduled")
@@ -240,7 +237,7 @@ class TestHandleReplyReschedule:
         assert TaskStatus.SCHEDULED in state_calls
 
     async def test_unrecognised_reply_does_nothing(self) -> None:
-        detector, db, service, bot = _make_detector()
+        detector, db, _service, _bot = _make_detector()
 
         task_mock = _task(task_id="t1", status="scheduled")
         db.get_task = AsyncMock(return_value=task_mock)

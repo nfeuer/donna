@@ -4,21 +4,22 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import aiosqlite
 import pytest
-from alembic import command
 from alembic.config import Config
 from fastapi import HTTPException
+
+from alembic import command
 
 
 async def _seed_run(conn, *, status="succeeded", final_output=None, tool_cache=None):
     skill_id = str(uuid.uuid4())
     version_id = str(uuid.uuid4())
     run_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     await conn.execute(
         "INSERT INTO capability (id, name, description, input_schema, "
@@ -74,7 +75,7 @@ async def test_capture_fixture_succeeds(tmp_path):
                     "args": {"url": "https://x.com"},
                     "result": {"status": 200, "body": "OK"}},
         }
-        run_id, skill_id = await _seed_run(
+        run_id, _skill_id = await _seed_run(
             conn,
             final_output={"ok": True, "price_usd": 79.0, "in_stock": True},
             tool_cache=tool_cache,
@@ -126,7 +127,7 @@ async def test_capture_fixture_409_when_run_failed(tmp_path):
     command.upgrade(cfg, "head")
 
     async with aiosqlite.connect(db) as conn:
-        run_id, skill_id = await _seed_run(conn, status="failed")
+        run_id, _skill_id = await _seed_run(conn, status="failed")
         request = _make_request(conn)
         with pytest.raises(HTTPException) as excinfo:
             await capture_fixture(run_id=run_id, request=request)

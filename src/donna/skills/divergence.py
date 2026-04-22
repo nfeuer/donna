@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiosqlite
@@ -54,7 +54,7 @@ class SkillDivergenceRepository:
         flagged_for_evolution: bool = False,
     ) -> str:
         div_id = str(uuid6.uuid7())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         await self._conn.execute(
             f"""

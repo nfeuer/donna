@@ -4,14 +4,11 @@ These are lightweight tests that verify the routes exist and return
 correct shapes. Full integration tests are in test_skill_system_phase_1_e2e.py.
 """
 
-import json
 from pathlib import Path
 
 import aiosqlite
 import pytest
 
-from donna.capabilities.models import SELECT_CAPABILITY, row_to_capability
-from donna.skills.models import SELECT_SKILL, SELECT_SKILL_VERSION, row_to_skill, row_to_skill_version
 from donna.skills.database import SkillDatabase
 
 

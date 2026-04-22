@@ -5,15 +5,15 @@ from dataclasses import dataclass
 
 import pytest
 
-from donna.orchestrator.discord_intent_dispatcher import (
-    DiscordIntentDispatcher,
-    DispatchResult,
-)
 from donna.agents.challenger_agent import ChallengerMatchResult
 from donna.agents.claude_novelty_judge import NoveltyVerdict
 from donna.integrations.discord_pending_drafts import (
     PendingDraft,
     PendingDraftRegistry,
+)
+from donna.orchestrator.discord_intent_dispatcher import (
+    DiscordIntentDispatcher,
+    DispatchResult,
 )
 
 

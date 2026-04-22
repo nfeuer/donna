@@ -7,7 +7,7 @@ any monitoring that needs to verify the API is alive.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
 
@@ -24,6 +24,6 @@ async def health(request: Request) -> dict:
     return {
         "status": "healthy" if db_ok else "degraded",
         "service": "donna-api",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "uptime_seconds": uptime_s,
     }

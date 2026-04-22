@@ -10,7 +10,6 @@ import aiosqlite
 import pytest
 from fastapi import HTTPException
 
-
 SCHEMA = """
     CREATE TABLE skill_run (
         id TEXT PRIMARY KEY, skill_id TEXT, skill_version_id TEXT,

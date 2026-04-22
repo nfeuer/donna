@@ -9,8 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+
+# Imported lazily to avoid circular dependency: budget → tracker → aiosqlite,
+# while router is used by dedup which is used by budget.
+# Type-only import is sufficient here.
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -21,10 +26,6 @@ from donna.models.tokens import estimate_tokens
 from donna.models.types import CompletionMetadata
 from donna.resilience.retry import CircuitBreaker, TaskCategory, resilient_call
 
-# Imported lazily to avoid circular dependency: budget → tracker → aiosqlite,
-# while router is used by dedup which is used by budget.
-# Type-only import is sufficient here.
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from donna.cost.budget import BudgetGuard
 

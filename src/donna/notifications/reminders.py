@@ -17,7 +17,8 @@ See slices/slice_05_reminders_digest.md and docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import structlog
 
@@ -25,8 +26,6 @@ from donna.models.router import ContextOverflowError
 from donna.notifications.service import CHANNEL_TASKS, NOTIF_REMINDER, NotificationService
 from donna.tasks.database import Database, TaskRow
 from donna.tasks.db_models import TaskStatus
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from donna.models.router import ModelRouter
@@ -65,7 +64,7 @@ class ReminderScheduler:
         _last_flush_date: str | None = None
 
         while True:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             today_str = now.date().isoformat()
 
             # Flush blackout queue at boundary (6 AM).
@@ -193,7 +192,7 @@ def _parse_dt(value: str | None) -> datetime | None:
     try:
         dt = datetime.fromisoformat(value)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt
     except ValueError:
         return None

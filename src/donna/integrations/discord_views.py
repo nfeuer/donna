@@ -9,11 +9,12 @@ See docs/notifications.md and the discord interaction expansion plan.
 
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from datetime import UTC
+from typing import TYPE_CHECKING, Any
 
 import discord
-from discord import ButtonStyle, Interaction, SelectOption, TextStyle
 import structlog
+from discord import ButtonStyle, Interaction, SelectOption, TextStyle
 
 if TYPE_CHECKING:
     from donna.tasks.database import Database
@@ -248,14 +249,14 @@ class OverdueNudgeView(discord.ui.View):
 
     @discord.ui.button(label="+30min", style=ButtonStyle.blurple, custom_id="overdue_snooze")
     async def snooze(self, interaction: Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         try:
             task = await self._db.get_task(self._task_id)
             if task and task.scheduled_start:
                 current = datetime.fromisoformat(task.scheduled_start)
             else:
-                current = datetime.now(tz=timezone.utc)
+                current = datetime.now(tz=UTC)
             new_start = current + timedelta(minutes=30)
             await self._db.update_task(
                 self._task_id, scheduled_start=new_start.isoformat()

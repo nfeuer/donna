@@ -2,23 +2,21 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
-from datetime import datetime, timezone
 
-import pytest
 import yaml
 
-from donna.config import SkillSystemConfig, load_skill_system_config
 from donna.capabilities.matcher import (
-    CapabilityMatcher,
-    MatchConfidence,
     HIGH_CONFIDENCE_THRESHOLD,
     MEDIUM_CONFIDENCE_THRESHOLD,
+    CapabilityMatcher,
+    MatchConfidence,
 )
-from donna.capabilities.registry import CapabilityRegistry
 from donna.capabilities.models import CapabilityRow
-
+from donna.capabilities.registry import CapabilityRegistry
+from donna.config import SkillSystemConfig, load_skill_system_config
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -38,7 +36,7 @@ def _cap(name: str) -> CapabilityRow:
         default_output_shape=None,
         status="active",
         embedding=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         created_by="seed",
         notes=None,
     )

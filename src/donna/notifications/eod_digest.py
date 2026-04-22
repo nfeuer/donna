@@ -10,12 +10,12 @@ See slices/slice_08_email_corrections.md and docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from donna.notifications.digest import _next_fire_time, _parse_dt
+from donna.notifications.digest import _next_fire_time
 from donna.notifications.service import CHANNEL_DIGEST, NOTIF_DIGEST, NotificationService
 
 if TYPE_CHECKING:
@@ -70,7 +70,7 @@ class EodDigest:
         )
 
         while True:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             next_fire = _next_eod_fire_time(now, hour, minute, weekdays_only)
             wait_seconds = (next_fire - now).total_seconds()
 
@@ -82,7 +82,7 @@ class EodDigest:
             await asyncio.sleep(max(wait_seconds, 0))
 
             try:
-                await self._fire(datetime.now(tz=timezone.utc))
+                await self._fire(datetime.now(tz=UTC))
             except Exception:
                 logger.exception("eod_digest_fire_failed")
 
@@ -323,7 +323,7 @@ class EodDigest:
     async def _assemble_data(self, now: datetime) -> dict[str, Any]:
         """Collect end-of-day task and cost data."""
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = today_start + timedelta(days=1)
+        today_start + timedelta(days=1)
 
         all_tasks = await self._db.list_tasks(user_id=self._user_id)
 

@@ -1,6 +1,4 @@
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from donna.capabilities.models import CapabilityRow, row_to_capability
 
@@ -15,7 +13,7 @@ def test_capability_row_basic():
         default_output_shape=None,
         status="active",
         embedding=None,
-        created_at=datetime(2026, 4, 15, tzinfo=timezone.utc),
+        created_at=datetime(2026, 4, 15, tzinfo=UTC),
         created_by="seed",
         notes=None,
     )

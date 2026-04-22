@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from donna.capabilities.models import CapabilityRow, SELECT_CAPABILITY, row_to_capability
+from donna.capabilities.models import SELECT_CAPABILITY, CapabilityRow, row_to_capability
 
 router = APIRouter()
 

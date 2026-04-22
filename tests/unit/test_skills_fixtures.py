@@ -2,10 +2,9 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from donna.skills.fixtures import (
-    FixtureLoader, FixtureValidationReport, validate_against_fixtures,
+    FixtureLoader,
+    validate_against_fixtures,
 )
 
 
@@ -120,6 +119,7 @@ def test_fixture_accepts_tool_mocks() -> None:
 
 def test_fixture_loader_reads_tool_mocks(tmp_path) -> None:
     import json
+
     from donna.skills.fixtures import FixtureLoader
 
     fixture_file = tmp_path / "case_a.json"

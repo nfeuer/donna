@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
@@ -39,7 +39,7 @@ async def test_second_run_returns_prior_end_time():
 
     conn = await _make_empty_conn()
     automation_id = str(uuid.uuid4())
-    prior = datetime(2026, 4, 20, 10, 0, 0, tzinfo=timezone.utc).isoformat()
+    prior = datetime(2026, 4, 20, 10, 0, 0, tzinfo=UTC).isoformat()
     await conn.execute(
         "INSERT INTO automation_run (id, automation_id, status, finished_at) "
         "VALUES (?, ?, 'succeeded', ?)",
@@ -60,8 +60,8 @@ async def test_failed_prior_run_ignored():
 
     conn = await _make_empty_conn()
     automation_id = str(uuid.uuid4())
-    ok_time = datetime(2026, 4, 19, 10, 0, 0, tzinfo=timezone.utc).isoformat()
-    failed_time = datetime(2026, 4, 20, 10, 0, 0, tzinfo=timezone.utc).isoformat()
+    ok_time = datetime(2026, 4, 19, 10, 0, 0, tzinfo=UTC).isoformat()
+    failed_time = datetime(2026, 4, 20, 10, 0, 0, tzinfo=UTC).isoformat()
     await conn.execute(
         "INSERT INTO automation_run (id, automation_id, status, finished_at) "
         "VALUES (?, ?, 'succeeded', ?)",
@@ -88,7 +88,7 @@ async def test_execute_skill_injects_prior_run_end_into_inputs():
 
     conn = await _make_empty_conn()
     automation_id = str(uuid.uuid4())
-    prior = datetime(2026, 4, 20, 10, 0, 0, tzinfo=timezone.utc).isoformat()
+    prior = datetime(2026, 4, 20, 10, 0, 0, tzinfo=UTC).isoformat()
     await conn.execute(
         "INSERT INTO automation_run (id, automation_id, status, finished_at) "
         "VALUES (?, ?, 'succeeded', ?)",

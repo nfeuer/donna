@@ -16,10 +16,9 @@ See docs/scheduling.md and slices/slice_04_calendar.md.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-import aiosqlite
 import structlog
 
 from donna.config import CalendarConfig
@@ -72,7 +71,7 @@ class CalendarSync:
 
     async def run_once(self) -> None:
         """Execute a single sync cycle."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         time_min = now - timedelta(days=self._config.sync.lookbehind_days)
         time_max = now + timedelta(days=self._config.sync.lookahead_days)
 
@@ -370,10 +369,10 @@ class CalendarSync:
 def _parse_dt_str(value: str | None) -> datetime:
     """Parse an ISO datetime string (from SQLite) to a UTC-aware datetime."""
     if not value:
-        return datetime.min.replace(tzinfo=timezone.utc)
+        return datetime.min.replace(tzinfo=UTC)
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 

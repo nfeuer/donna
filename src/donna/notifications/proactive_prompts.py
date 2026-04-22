@@ -15,7 +15,7 @@ See docs/notifications.md and the discord interaction expansion plan.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import discord
@@ -75,7 +75,7 @@ class PostMeetingCapture:
 
         while True:
             try:
-                await self._check_ended_meetings(datetime.now(tz=timezone.utc))
+                await self._check_ended_meetings(datetime.now(tz=UTC))
             except Exception:
                 logger.exception("post_meeting_capture_check_failed")
 
@@ -153,7 +153,7 @@ class EveningCheckin:
         )
 
         while True:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             next_fire = _next_fire_time(now, self._hour, self._minute)
             wait_seconds = (next_fire - now).total_seconds()
 
@@ -172,7 +172,7 @@ class EveningCheckin:
     async def _fire(self) -> None:
         """Post the evening check-in message."""
         # Preview tomorrow's first task.
-        tomorrow = (datetime.now(tz=timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+        tomorrow = (datetime.now(tz=UTC) + timedelta(days=1)).strftime("%Y-%m-%d")
         tasks = await self._db.list_tasks(user_id=self._user_id)
         tomorrow_tasks = [
             t for t in tasks
@@ -243,7 +243,7 @@ class StaleTaskDetector:
     async def _check(self) -> None:
         """Find and flag stale tasks."""
         cutoff = (
-            datetime.now(tz=timezone.utc) - timedelta(days=self._stale_days)
+            datetime.now(tz=UTC) - timedelta(days=self._stale_days)
         ).isoformat()
 
         tasks = await self._db.list_tasks(
@@ -317,7 +317,7 @@ class AfternoonInactivityCheck:
         )
 
         while True:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             next_fire = _next_fire_time(now, self._hour, self._minute)
             wait_seconds = (next_fire - now).total_seconds()
 
@@ -335,7 +335,7 @@ class AfternoonInactivityCheck:
 
     async def _fire(self) -> None:
         """Check for today's activity and nudge if none found."""
-        today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
 
         tasks = await self._db.list_tasks(user_id=self._user_id)
 

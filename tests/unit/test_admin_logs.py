@@ -5,10 +5,7 @@ Mocks Loki HTTP calls with aioresponses and DB connection with AsyncMock.
 
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, patch
 
 from donna.api.routes.admin_logs import (
     EVENT_TYPE_TREE,
@@ -17,7 +14,6 @@ from donna.api.routes.admin_logs import (
     get_logs,
     get_trace,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -80,7 +76,7 @@ class TestGetTrace:
         assert result["entries"] == []
 
     async def test_loki_success_returns_loki_source(self, mock_request: tuple) -> None:
-        request, conn = mock_request
+        request, _conn = mock_request
         loki_entries = [
             {"timestamp": "2026-04-01T10:00:00Z", "event_type": "agent.dispatched", "level": "INFO"},
         ]
@@ -118,7 +114,7 @@ class TestGetLogsFallback:
         assert len(result["entries"]) == 1
 
     async def test_loki_success_returns_loki_entries(self, mock_request: tuple) -> None:
-        request, conn = mock_request
+        request, _conn = mock_request
         entries = [
             {"timestamp": "2026-04-01T10:00:00Z", "event_type": "task.created"},
             {"timestamp": "2026-04-01T10:01:00Z", "event_type": "agent.dispatched"},
@@ -134,7 +130,7 @@ class TestGetLogsFallback:
         assert len(result["entries"]) == 2
 
     async def test_loki_with_offset(self, mock_request: tuple) -> None:
-        request, conn = mock_request
+        request, _conn = mock_request
         entries = [{"event_type": f"entry-{i}"} for i in range(10)]
         with patch("donna.api.routes.admin_logs._query_loki", return_value=entries):
             result = await get_logs(

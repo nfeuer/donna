@@ -17,7 +17,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -64,10 +63,9 @@ def _is_key_optional(schema: dict | None, key: str) -> bool:
     if schema is None:
         return True
     required = set(schema.get("required", []) or [])
-    props = (schema.get("properties") or {}).keys()
-    if key in required:
-        return False
-    return True  # either listed as optional or unknown — default to optional
+    (schema.get("properties") or {}).keys()
+    # either listed as optional or unknown — default to optional
+    return key not in required
 
 
 def test_no_unsafe_optional_input_references() -> None:
@@ -114,6 +112,6 @@ def test_no_unsafe_optional_input_references() -> None:
     assert not violations, (
         "skill.yaml/template references undeclared inputs without `is defined and` guard:\n"
         + "\n".join(
-            f"  {p}:{l} [cap: {c}]: {line}" for p, l, line, c in violations
+            f"  {p}:{lineno} [cap: {c}]: {line}" for p, lineno, line, c in violations
         )
     )

@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,7 +11,7 @@ async def test_scheduler_run_once_fires_task():
     task = AsyncMock()
     scheduler = AsyncCronScheduler(
         hour_utc=0, task=task,
-        now_fn=lambda: datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+        now_fn=lambda: datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC),
         sleep_fn=lambda s: asyncio.sleep(0),
     )
     await scheduler.run_once()
@@ -32,7 +32,7 @@ async def test_scheduler_does_not_fire_before_hour():
 
     scheduler = AsyncCronScheduler(
         hour_utc=3, task=task,
-        now_fn=lambda: datetime(2026, 1, 1, 2, 0, 0, tzinfo=timezone.utc),
+        now_fn=lambda: datetime(2026, 1, 1, 2, 0, 0, tzinfo=UTC),
         sleep_fn=_sleep,
     )
     with pytest.raises(asyncio.CancelledError):
@@ -46,7 +46,7 @@ async def test_scheduler_stop_before_loop_exits_cleanly():
     task = AsyncMock()
     scheduler = AsyncCronScheduler(
         hour_utc=0, task=task,
-        now_fn=lambda: datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+        now_fn=lambda: datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC),
         sleep_fn=lambda s: asyncio.sleep(0),
     )
     scheduler.stop()

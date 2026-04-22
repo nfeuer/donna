@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from donna.config import SkillSystemConfig
 from donna.skills.startup_wiring import assemble_skill_system
 from donna.skills.validation_executor import ValidationExecutor

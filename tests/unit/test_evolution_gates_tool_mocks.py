@@ -7,7 +7,7 @@ because ValidationExecutor -> MockToolRegistry deny-closes unmocked tool calls.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -163,7 +163,7 @@ async def test_targeted_case_gate_synthesizes_mocks_from_cache(db) -> None:
 
 
 async def test_recent_success_gate_synthesizes_mocks_from_cache(db) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     cache = {
         "c1": {
             "tool": "web_fetch",
@@ -198,7 +198,7 @@ async def test_recent_success_gate_synthesizes_mocks_from_cache(db) -> None:
 
 async def test_recent_success_gate_tolerates_null_cache(db) -> None:
     """A run without tool_result_cache yields tool_mocks={} (not a crash)."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO skill_run (id, skill_id, status, state_object, "
         "user_id, started_at, tool_result_cache) VALUES "

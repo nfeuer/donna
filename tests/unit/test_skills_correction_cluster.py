@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -8,7 +8,6 @@ import pytest
 from donna.config import SkillSystemConfig
 from donna.skills.correction_cluster import CorrectionClusterDetector
 from donna.skills.lifecycle import SkillLifecycleManager
-from donna.tasks.db_models import SkillState
 
 
 @pytest.fixture
@@ -46,7 +45,7 @@ async def db(tmp_path: Path):
 
 
 async def _seed(db, skill_state="trusted"):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO skill (id, capability_name, current_version_id, state, "
         "requires_human_gate, baseline_agreement, created_at, updated_at) "
@@ -65,7 +64,7 @@ async def _seed(db, skill_state="trusted"):
 
 async def test_detector_fires_when_corrections_exceed_threshold(db):
     await _seed(db)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for i in range(3):
         await db.execute(
             "INSERT INTO correction_log (id, timestamp, user_id, task_type, "
@@ -91,7 +90,7 @@ async def test_detector_fires_when_corrections_exceed_threshold(db):
 
 async def test_detector_silent_when_below_threshold(db):
     await _seed(db)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO correction_log (id, timestamp, user_id, task_type, "
         "task_id, input_text, field_corrected, original_value, "
@@ -114,7 +113,7 @@ async def test_detector_silent_when_below_threshold(db):
 
 async def test_detector_only_scans_eligible_skill_states(db):
     await _seed(db, skill_state="sandbox")
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for i in range(5):
         await db.execute(
             "INSERT INTO correction_log (id, timestamp, user_id, task_type, "
@@ -137,7 +136,7 @@ async def test_detector_only_scans_eligible_skill_states(db):
 
 async def test_detector_idempotent_when_already_flagged(db):
     await _seed(db, skill_state="flagged_for_review")
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for i in range(5):
         await db.execute(
             "INSERT INTO correction_log (id, timestamp, user_id, task_type, "
@@ -176,7 +175,7 @@ async def test_detector_flags_real_shadow_primary_skill(db):
     await db.commit()
 
     await _seed(db, skill_state="shadow_primary")
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for i in range(3):
         await db.execute(
             "INSERT INTO correction_log (id, timestamp, user_id, task_type, "

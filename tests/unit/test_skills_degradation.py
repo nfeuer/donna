@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
 import pytest
 
 from donna.config import SkillSystemConfig
-from donna.skills.degradation import DegradationDetector, DegradationReport
+from donna.skills.degradation import DegradationDetector
 from donna.skills.divergence import SkillDivergenceRepository
 from donna.skills.lifecycle import SkillLifecycleManager
 from donna.tasks.db_models import SkillState
-
 
 # ---------------------------------------------------------------------------
 # Schema helpers
@@ -75,7 +73,7 @@ async def _insert_skill(
     baseline_agreement: float | None = None,
     requires_human_gate: bool = False,
 ) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await conn.execute(
         "INSERT INTO skill (id, capability_name, state, requires_human_gate, baseline_agreement, created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -103,7 +101,7 @@ async def _insert_divergences(
         "INSERT OR IGNORE INTO skill_run (id, skill_id) VALUES (?, ?)",
         (run_id, skill_id),
     )
-    now_base = datetime.now(timezone.utc)
+    now_base = datetime.now(UTC)
     for i, agreement in enumerate(agreements):
         div_id = f"div-{skill_id}-{i}"
         ts = now_base.replace(microsecond=i).isoformat()

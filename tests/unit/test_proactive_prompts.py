@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -35,13 +35,13 @@ def _make_task_row(**overrides: object) -> MagicMock:
 
 class TestNextFireTime:
     def test_future_time_today(self) -> None:
-        now = datetime(2024, 4, 5, 10, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 4, 5, 10, 0, 0, tzinfo=UTC)
         result = _next_fire_time(now, 19, 0)
         assert result.hour == 19
         assert result.day == 5
 
     def test_past_time_goes_to_tomorrow(self) -> None:
-        now = datetime(2024, 4, 5, 20, 0, 0, tzinfo=timezone.utc)
+        now = datetime(2024, 4, 5, 20, 0, 0, tzinfo=UTC)
         result = _next_fire_time(now, 19, 0)
         assert result.hour == 19
         assert result.day == 6
@@ -61,7 +61,7 @@ class TestPostMeetingCapture:
         service.dispatch = AsyncMock()
 
         capture = PostMeetingCapture(db, service, user_id="nick", delay_minutes=5)
-        await capture._check_ended_meetings(datetime.now(tz=timezone.utc))
+        await capture._check_ended_meetings(datetime.now(tz=UTC))
 
         service.dispatch.assert_called_once()
         call_kwargs = service.dispatch.call_args[1]
@@ -81,7 +81,7 @@ class TestPostMeetingCapture:
         capture = PostMeetingCapture(db, service, user_id="nick")
         capture._prompted_events.add("evt-1")
 
-        await capture._check_ended_meetings(datetime.now(tz=timezone.utc))
+        await capture._check_ended_meetings(datetime.now(tz=UTC))
 
         service.dispatch.assert_not_called()
 
@@ -105,7 +105,7 @@ class TestEveningCheckin:
     async def test_fire_includes_tomorrow_preview(self) -> None:
         from datetime import timedelta
 
-        tomorrow = (datetime.now(tz=timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+        tomorrow = (datetime.now(tz=UTC) + timedelta(days=1)).strftime("%Y-%m-%d")
         task = _make_task_row(
             scheduled_start=f"{tomorrow}T09:00:00",
             status="scheduled",
@@ -185,7 +185,7 @@ class TestAfternoonInactivityCheck:
 
     @pytest.mark.asyncio
     async def test_skips_when_task_created_today(self) -> None:
-        today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
         task = _make_task_row(
             created_at=f"{today}T10:00:00",
             status="backlog",
@@ -201,7 +201,7 @@ class TestAfternoonInactivityCheck:
 
     @pytest.mark.asyncio
     async def test_skips_when_task_completed_today(self) -> None:
-        today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
         task = _make_task_row(
             created_at="2024-01-01T10:00:00",
             completed_at=f"{today}T15:00:00",

@@ -52,7 +52,7 @@ class MockToolRegistry(ToolRegistry):
     def from_mocks(cls, mocks: dict[str, Any] | None) -> MockToolRegistry:
         return cls(mocks or {})
 
-    def register(self, name: str, callable_: Any) -> None:  # noqa: ARG002
+    def register(self, name: str, callable_: Any) -> None:
         raise RuntimeError(
             "MockToolRegistry does not accept real tool callables; "
             "construct with the tool_mocks map instead."

@@ -5,11 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from donna.config import CalendarConfig, SmsConfig
 from donna.notifications.service import NotificationService
-
 
 # ------------------------------------------------------------------
 # Fixtures
@@ -166,9 +163,9 @@ class TestEscalationTier3:
     async def test_escalation_tier3_sends_email_draft(self) -> None:
         """Advancing from Tier 2 to Tier 3 creates an email draft with 'ACTION REQUIRED'."""
         from donna.notifications.escalation import (
+            STATUS_PENDING,
             EscalationManager,
             EscalationState,
-            STATUS_PENDING,
         )
 
         mock_db = MagicMock()
@@ -223,10 +220,10 @@ class TestEscalationTier3:
     async def test_escalation_tier4_marks_completed(self) -> None:
         """Tier 4+ marks escalation as COMPLETED (phone TTS deferred)."""
         from donna.notifications.escalation import (
-            EscalationManager,
-            EscalationState,
             STATUS_COMPLETED,
             STATUS_PENDING,
+            EscalationManager,
+            EscalationState,
         )
 
         mock_db = MagicMock()

@@ -8,7 +8,7 @@ See docs/agents.md and slices/wave-3/ for context.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import jinja2
@@ -72,7 +72,7 @@ class ClaudeNoveltyJudge:
             user_message=user_message,
             # Emit strict ISO-8601 with `Z` suffix (not `+00:00`) so prompt
             # fixtures and schema examples match the rendered value exactly.
-            current_date_iso=datetime.now(timezone.utc).strftime(
+            current_date_iso=datetime.now(UTC).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             ),
         )
@@ -98,7 +98,7 @@ class ClaudeNoveltyJudge:
             except ValueError:
                 if raw_deadline.endswith("Z"):
                     deadline = datetime.fromisoformat(raw_deadline[:-1]).replace(
-                        tzinfo=timezone.utc
+                        tzinfo=UTC
                     )
                 else:
                     deadline = None

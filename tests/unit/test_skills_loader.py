@@ -4,7 +4,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from donna.skills.loader import load_skill_from_directory, SkillLoadError
+from donna.skills.loader import SkillLoadError, load_skill_from_directory
 
 
 @pytest.fixture

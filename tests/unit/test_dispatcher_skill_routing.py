@@ -1,7 +1,5 @@
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 from donna.agents.challenger_agent import ChallengerMatchResult
 from donna.capabilities.models import CapabilityRow
@@ -12,7 +10,7 @@ def _cap(name: str) -> CapabilityRow:
     return CapabilityRow(
         id="c1", name=name, description="x", input_schema={"type": "object"},
         trigger_type="on_message", default_output_shape=None, status="active",
-        embedding=None, created_at=datetime.now(timezone.utc), created_by="seed", notes=None,
+        embedding=None, created_at=datetime.now(UTC), created_by="seed", notes=None,
     )
 
 
@@ -111,7 +109,7 @@ async def test_dispatcher_runs_skill_shadow_alongside_legacy():
 
 
 async def test_dispatcher_skips_skill_when_no_match():
-    dispatcher, skill_executor, _, pm, scheduler = _make_dispatcher(
+    dispatcher, skill_executor, _, _pm, _scheduler = _make_dispatcher(
         challenger_match_status="escalate_to_claude"
     )
 

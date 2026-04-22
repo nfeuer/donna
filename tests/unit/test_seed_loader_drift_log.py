@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -49,7 +49,7 @@ async def test_drift_log_emitted_on_description_change(
             "default_output_shape TEXT, tools_json TEXT, status TEXT, "
             "created_at TEXT, created_by TEXT)"
         )
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         await conn.execute(
             "INSERT INTO capability VALUES (?, 'x', 'old-desc', '{}', "
             "'on_schedule', NULL, NULL, 'active', ?, 'seed')",
@@ -88,7 +88,7 @@ async def test_no_drift_log_when_unchanged(
             "default_output_shape TEXT, tools_json TEXT, status TEXT, "
             "created_at TEXT, created_by TEXT)"
         )
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         await conn.execute(
             "INSERT INTO capability VALUES (?, 'x', 'same', ?, "
             "'on_schedule', NULL, NULL, 'active', ?, 'seed')",

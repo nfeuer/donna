@@ -9,7 +9,6 @@ import aiosqlite
 import pytest
 from fastapi import HTTPException
 
-
 SCHEMA = """
     CREATE TABLE skill_candidate_report (
         id TEXT PRIMARY KEY,

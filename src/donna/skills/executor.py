@@ -120,7 +120,7 @@ class SkillExecutor:
         triage: TriageAgent | None = None,
         run_repository: Any | None = None,
         run_sink: Any | None = None,
-        shadow_sampler: "ShadowSampler | None" = None,
+        shadow_sampler: ShadowSampler | None = None,
         config: Any | None = None,               # Wave 2: SkillSystemConfig for validation timeouts
         task_type_prefix: str | None = None,     # Wave 2: override "skill_step" default
     ) -> None:

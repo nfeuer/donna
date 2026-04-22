@@ -27,9 +27,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import structlog
 
@@ -84,7 +86,7 @@ def _try_build_gmail_client(config_dir: Path) -> Any | None:
             )
             return None
         return GmailClient(config=email_cfg)
-    except Exception as exc:  # noqa: BLE001 — non-fatal boot path
+    except Exception as exc:
         logger.warning("gmail_client_unavailable", reason=str(exc))
         return None
 
@@ -151,15 +153,15 @@ class StartupContext:
     port: int
     user_id: str
     # Discord env inputs (pre-parsed for wire_discord)
-    discord_token: Optional[str]
-    tasks_channel_id_str: Optional[str]
-    debug_channel_id_str: Optional[str]
-    agents_channel_id_str: Optional[str]
-    guild_id_str: Optional[str]
+    discord_token: str | None
+    tasks_channel_id_str: str | None
+    debug_channel_id_str: str | None
+    agents_channel_id_str: str | None
+    guild_id_str: str | None
     # Bot + NotificationService are constructed here so skill/automation
     # wiring (which runs before bot.start()) can see a live notifier.
-    bot: Optional[Any]
-    notification_service: Optional[NotificationService]
+    bot: Any | None
+    notification_service: NotificationService | None
     # Shared asyncio task list — every helper that spawns a background
     # loop appends to this. `_run_orchestrator` awaits it.
     tasks: list[asyncio.Task[Any]] = field(default_factory=list)
@@ -183,9 +185,9 @@ class SkillSystemHandle:
     """
 
     subsystem_router: ModelRouter
-    budget_guard: Optional[BudgetGuard]
-    cost_tracker: Optional[CostTracker]
-    bundle: Optional[SkillSystemBundle]
+    budget_guard: BudgetGuard | None
+    cost_tracker: CostTracker | None
+    bundle: SkillSystemBundle | None
     notifier: Callable[[str], Any]
 
 
@@ -193,9 +195,9 @@ class SkillSystemHandle:
 class AutomationHandle:
     """Return value of `wire_automation_subsystem`."""
 
-    repository: Optional[AutomationRepository]
-    dispatcher: Optional[AutomationDispatcher]
-    scheduler: Optional[AutomationScheduler]
+    repository: AutomationRepository | None
+    dispatcher: AutomationDispatcher | None
+    scheduler: AutomationScheduler | None
 
 
 @dataclass
@@ -209,8 +211,8 @@ class DiscordHandle:
     handle (F-W3-I).
     """
 
-    bot: Optional[Any]
-    intent_dispatcher: Optional[Any] = None  # Wave 3 Task 8 will wire this.
+    bot: Any | None
+    intent_dispatcher: Any | None = None  # Wave 3 Task 8 will wire this.
 
 
 # ---------------------------------------------------------------------------
@@ -264,8 +266,8 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     guild_id_str = os.environ.get("DISCORD_GUILD_ID")
     user_id = os.environ.get("DONNA_USER_ID", "nick")
 
-    bot: Optional[Any] = None
-    notification_service: Optional[NotificationService] = None
+    bot: Any | None = None
+    notification_service: NotificationService | None = None
     if discord_token and tasks_channel_id_str:
         from donna.integrations.discord_bot import DonnaBot
 
@@ -408,9 +410,9 @@ async def wire_skill_system(
             priority=4,
         )
 
-    skill_budget_guard: Optional[BudgetGuard] = None
-    cost_tracker: Optional[CostTracker] = None
-    bundle: Optional[SkillSystemBundle] = None
+    skill_budget_guard: BudgetGuard | None = None
+    cost_tracker: CostTracker | None = None
+    bundle: SkillSystemBundle | None = None
 
     if ctx.skill_config.enabled:
         # Wave 2 Task 16: sync capability rows from config/capabilities.yaml on
@@ -546,10 +548,10 @@ class _ReclamperSchedulerAdapter:
         self._cron = CronScheduleCalculator()
 
     async def compute_next_run(self, cron: str) -> Any:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         return self._cron.next_run(
-            expression=cron, after=datetime.now(timezone.utc),
+            expression=cron, after=datetime.now(UTC),
         )
 
 
@@ -671,8 +673,8 @@ async def wire_discord(
         ctx.bot._intent_dispatcher = intent_dispatcher
         ctx.bot._automation_repo = automation_h.repository
         # Wave 4: wire capability-availability guard into AutomationCreationPath.
-        from donna.skills import tools as _skill_tools_module
         from donna.capabilities.tool_requirements import SkillToolRequirementsLookup
+        from donna.skills import tools as _skill_tools_module
 
         ctx.bot._automation_tool_registry = _skill_tools_module.DEFAULT_TOOL_REGISTRY
         _cap_lookup = SkillToolRequirementsLookup(ctx.db.connection)
@@ -784,7 +786,7 @@ class _SkillLifecycleStateAdapter:
                 (capability_name,),
             )
             row = await cursor.fetchone()
-        except Exception:  # noqa: BLE001 — defensive; fall back to claude_native
+        except Exception:
             return "claude_native"
         if row is None:
             return "claude_native"

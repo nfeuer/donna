@@ -12,8 +12,7 @@ Tests verify:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -23,21 +22,19 @@ from donna.config import (
     CalendarConfig,
     CalendarEntryConfig,
     CredentialsConfig,
+    InvalidTransitionEntry,
     SchedulingConfig,
+    StateMachineConfig,
     SyncConfig,
     TimeWindowConfig,
     TimeWindowsConfig,
+    TransitionEntry,
 )
 from donna.integrations.calendar import CalendarEvent, GoogleCalendarClient
 from donna.scheduling.calendar_sync import CalendarSync
 from donna.tasks.database import Database
-from donna.tasks.db_models import Base, DeadlineType, InputChannel, TaskDomain, TaskStatus
+from donna.tasks.db_models import Base, TaskDomain, TaskStatus
 from donna.tasks.state_machine import StateMachine
-from donna.config import (
-    StateMachineConfig,
-    TransitionEntry,
-    InvalidTransitionEntry,
-)
 
 pytestmark = pytest.mark.asyncio
 
@@ -110,7 +107,7 @@ def cal_config() -> CalendarConfig:
 
 
 def _utc(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
-    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+    return datetime(year, month, day, hour, minute, tzinfo=UTC)
 
 
 def _make_cal_event(

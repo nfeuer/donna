@@ -1,8 +1,6 @@
 """Intent dispatcher applies cadence policy to drafts."""
 from __future__ import annotations
 
-import pathlib
-
 import pytest
 
 from donna.agents.challenger_agent import ChallengerMatchResult

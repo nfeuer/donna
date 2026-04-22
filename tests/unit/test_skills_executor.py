@@ -1,9 +1,7 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from donna.skills.executor import SkillExecutor, SkillRunResult
+from donna.skills.executor import SkillExecutor
 from donna.skills.models import SkillRow, SkillVersionRow
 
 
@@ -11,7 +9,7 @@ def _make_skill() -> SkillRow:
     return SkillRow(
         id="s1", capability_name="parse_task", current_version_id="v1",
         state="sandbox", requires_human_gate=False, baseline_agreement=None,
-        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC), updated_at=datetime.now(UTC),
     )
 
 
@@ -27,7 +25,7 @@ def _make_version(step_content: dict, output_schemas: dict, yaml_backbone: str |
     return SkillVersionRow(
         id="v1", skill_id="s1", version_number=1, yaml_backbone=yaml_backbone,
         step_content=step_content, output_schemas=output_schemas,
-        created_by="seed", changelog=None, created_at=datetime.now(timezone.utc),
+        created_by="seed", changelog=None, created_at=datetime.now(UTC),
     )
 
 
@@ -170,7 +168,7 @@ async def test_executor_handles_empty_steps():
 # --- Phase 2 multi-step tests ---
 
 from donna.skills.tool_registry import ToolRegistry
-from donna.skills.triage import TriageAgent, TriageDecision, TriageResult
+from donna.skills.triage import TriageDecision, TriageResult
 
 
 def _multistep_version(yaml_backbone: str, step_content: dict, output_schemas: dict) -> SkillVersionRow:
@@ -179,7 +177,7 @@ def _multistep_version(yaml_backbone: str, step_content: dict, output_schemas: d
         yaml_backbone=yaml_backbone,
         step_content=step_content, output_schemas=output_schemas,
         created_by="seed", changelog=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 

@@ -44,14 +44,13 @@ async def sync(
     successful sync.
     """
     headers = {"x-api-key": admin_api_key}
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            f"{internal_url.rstrip('/')}/api/admin/users",
-            headers=headers,
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as resp:
-            resp.raise_for_status()
-            users = await resp.json()
+    async with aiohttp.ClientSession() as session, session.get(
+        f"{internal_url.rstrip('/')}/api/admin/users",
+        headers=headers,
+        timeout=aiohttp.ClientTimeout(total=10),
+    ) as resp:
+        resp.raise_for_status()
+        users = await resp.json()
 
     if not users:
         raise EmptyAllowlistError(

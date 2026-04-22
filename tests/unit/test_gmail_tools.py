@@ -1,13 +1,13 @@
 """Tests for gmail_search + gmail_get_message skill-system tools."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from donna.skills.tools.gmail_search import gmail_search, GmailToolError
 from donna.skills.tools.gmail_get_message import gmail_get_message
+from donna.skills.tools.gmail_search import GmailToolError, gmail_search
 
 
 class FakeEmailMessage:
@@ -38,7 +38,7 @@ async def test_gmail_search_returns_summaries(fake_client):
     fake_client.search_emails.return_value = [
         FakeEmailMessage(
             id="m1", sender="Jane <jane@x.com>", subject="Re: Q2",
-            snippet="Let me know...", date=datetime(2026, 4, 20, 10, 0, tzinfo=timezone.utc),
+            snippet="Let me know...", date=datetime(2026, 4, 20, 10, 0, tzinfo=UTC),
         ),
     ]
     out = await gmail_search(
@@ -80,7 +80,7 @@ async def test_gmail_get_message_returns_body(fake_client):
     fake_client.get_message.return_value = FakeEmailMessage(
         id="m1", sender="Jane <jane@x.com>", subject="Re: Q2",
         snippet="Let me know...",
-        date=datetime(2026, 4, 20, 10, 0, tzinfo=timezone.utc),
+        date=datetime(2026, 4, 20, 10, 0, tzinfo=UTC),
         body="Hey — need your roadmap thoughts by Friday.",
     )
     out = await gmail_get_message(client=fake_client, message_id="m1")
@@ -96,7 +96,7 @@ async def test_gmail_get_message_returns_html_when_plain_absent(fake_client):
     fake_client.get_message.return_value = FakeEmailMessage(
         id="m1", sender="Jane <jane@x.com>", subject="Newsletter",
         snippet="html-only email",
-        date=datetime(2026, 4, 20, 10, 0, tzinfo=timezone.utc),
+        date=datetime(2026, 4, 20, 10, 0, tzinfo=UTC),
         body="",
         body_html="<p>HTML body content</p>",
     )
@@ -114,7 +114,7 @@ async def test_gmail_tools_never_call_compose_or_send(fake_client):
     fake_client.search_emails.return_value = []
     fake_client.get_message.return_value = FakeEmailMessage(
         id="m1", sender="x@y", subject="s", snippet="sn",
-        date=datetime(2026, 4, 20, tzinfo=timezone.utc),
+        date=datetime(2026, 4, 20, tzinfo=UTC),
     )
     await gmail_search(client=fake_client, query="x")
     await gmail_get_message(client=fake_client, message_id="m1")

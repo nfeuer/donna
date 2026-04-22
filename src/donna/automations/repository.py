@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiosqlite
 import structlog
@@ -51,7 +51,7 @@ class AutomationRepository:
         active_cadence_cron: str | None = None,
     ) -> str:
         auto_id = str(uuid6.uuid7())
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         target_cadence_cron = target_cadence_cron or schedule
         active_cadence_cron = active_cadence_cron or schedule
         try:
@@ -133,7 +133,7 @@ class AutomationRepository:
     ) -> None:
         """Atomically set active_cadence_cron + next_run_at on an automation row."""
         iso = next_run_at.isoformat() if next_run_at is not None else None
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         await self._conn.execute(
             "UPDATE automation SET active_cadence_cron = ?, next_run_at = ?, "
             "updated_at = ? WHERE id = ?",
@@ -155,7 +155,7 @@ class AutomationRepository:
     async def update_fields(self, automation_id: str, **fields) -> None:
         if not fields:
             return
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         json_cols = {"inputs", "alert_conditions", "alert_channels"}
         dt_cols = {"last_run_at", "next_run_at"}
         set_clauses: list[str] = []
@@ -191,7 +191,7 @@ class AutomationRepository:
         increment_run_count: bool,
         increment_failure_count: bool,
     ) -> None:
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         await self._conn.execute(
             "UPDATE automation SET "
             "last_run_at = ?, next_run_at = ?, "
@@ -245,7 +245,7 @@ class AutomationRepository:
         error: str | None,
         cost_usd: float | None,
     ) -> None:
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         await self._conn.execute(
             "UPDATE automation_run SET "
             "finished_at = ?, status = ?, output = ?, "

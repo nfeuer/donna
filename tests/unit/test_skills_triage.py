@@ -1,7 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from donna.skills.triage import TriageAgent, TriageDecision, TriageInput
 
 

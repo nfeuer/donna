@@ -66,9 +66,11 @@ class BackupManager:
         log.info("backup_starting", event_type="system.backup.started")
 
         try:
-            async with aiosqlite.connect(str(src_path)) as src_conn:
-                async with aiosqlite.connect(str(backup_path)) as dst_conn:
-                    await src_conn.backup(dst_conn)  # type: ignore[attr-defined]
+            async with (
+                aiosqlite.connect(str(src_path)) as src_conn,
+                aiosqlite.connect(str(backup_path)) as dst_conn,
+            ):
+                await src_conn.backup(dst_conn)  # type: ignore[attr-defined]
 
             log.info(
                 "backup_completed",

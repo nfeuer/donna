@@ -3,7 +3,6 @@
 Tests retry logic and circuit breaker behavior.
 """
 
-import asyncio
 
 import pytest
 

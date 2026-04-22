@@ -131,7 +131,7 @@ class DiscordIntentDispatcher:
                 fingerprint=fingerprint,
                 reasoning=reasoning,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             # logger.exception includes the full traceback by default.
             logger.exception(
                 "claude_native_pattern_write_failed",

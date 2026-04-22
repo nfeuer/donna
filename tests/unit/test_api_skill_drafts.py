@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 import aiosqlite
 import pytest
 
-
 SCHEMA = """
     CREATE TABLE skill (
         id TEXT PRIMARY KEY,

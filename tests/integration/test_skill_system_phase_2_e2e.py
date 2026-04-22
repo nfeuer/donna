@@ -9,7 +9,7 @@ Verifies the handoff contract from plan §7 Phase 2:
   H2.6: ToolRegistry allowlist prevents unauthorized dispatches
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -20,7 +20,7 @@ from donna.skills.executor import SkillExecutor
 from donna.skills.models import SkillRow, SkillVersionRow
 from donna.skills.run_persistence import SkillRunRepository
 from donna.skills.tool_registry import ToolRegistry
-from donna.skills.triage import TriageAgent, TriageDecision, TriageResult
+from donna.skills.triage import TriageDecision, TriageResult
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ def _skill() -> SkillRow:
     return SkillRow(
         id="s1", capability_name="demo", current_version_id="v1",
         state="sandbox", requires_human_gate=False, baseline_agreement=None,
-        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC), updated_at=datetime.now(UTC),
     )
 
 
@@ -64,7 +64,7 @@ def _version(yaml_backbone: str, step_content: dict, output_schemas: dict) -> Sk
         yaml_backbone=yaml_backbone,
         step_content=step_content, output_schemas=output_schemas,
         created_by="seed", changelog=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 

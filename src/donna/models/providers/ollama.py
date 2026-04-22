@@ -7,7 +7,6 @@ specification.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from typing import Any
 
@@ -96,10 +95,7 @@ class OllamaProvider:
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
         raw_text = data["message"]["content"]
-        if json_mode:
-            parsed = parse_json_response(raw_text)
-        else:
-            parsed = {"text": raw_text}
+        parsed = parse_json_response(raw_text) if json_mode else {"text": raw_text}
 
         # Token counts — Ollama provides these at top level.
         # Graceful fallback if fields are missing (older Ollama versions).
@@ -137,7 +133,7 @@ class OllamaProvider:
             session = self._get_session()
             async with session.get(f"{self._base_url}/api/tags") as resp:
                 return resp.status == 200
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (TimeoutError, aiohttp.ClientError):
             return False
 
     async def list_models(self) -> list[str]:
@@ -148,7 +144,7 @@ class OllamaProvider:
                 resp.raise_for_status()
                 data = await resp.json()
                 return [m["name"] for m in data.get("models", [])]
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (TimeoutError, aiohttp.ClientError):
             return []
 
     async def close(self) -> None:

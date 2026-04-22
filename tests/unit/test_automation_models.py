@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from donna.automations.models import (
     AutomationRow,
@@ -9,7 +9,7 @@ from donna.automations.models import (
 
 
 def test_row_to_automation_parses_json_and_datetime():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     row = (
         "a1", "nick", "Watch shirt", "Price monitor",
         "product_watch",
@@ -37,7 +37,7 @@ def test_row_to_automation_parses_json_and_datetime():
 
 
 def test_row_to_automation_run_parses_output():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     row = (
         "r1", "a1", now.isoformat(), now.isoformat(),
         "succeeded", "skill", "sk1", None,
@@ -50,7 +50,7 @@ def test_row_to_automation_run_parses_output():
 
 
 def test_row_to_automation_run_null_optional_fields():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     row = (
         "r1", "a1", now.isoformat(), None,
         "skipped_budget", "claude_native", None, None,

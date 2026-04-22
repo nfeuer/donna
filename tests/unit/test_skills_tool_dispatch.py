@@ -1,11 +1,11 @@
 import pytest
 
-from donna.skills.tool_registry import ToolRegistry
 from donna.skills.tool_dispatch import (
     ToolDispatcher,
     ToolInvocationError,
     ToolInvocationSpec,
 )
+from donna.skills.tool_registry import ToolRegistry
 
 
 async def test_basic_dispatch_with_jinja_args():

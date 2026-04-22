@@ -38,7 +38,7 @@ class TaskResponse(BaseModel):
     tags: list[str] | None = None
 
     @classmethod
-    def from_row(cls, row: Any) -> "TaskResponse":
+    def from_row(cls, row: Any) -> TaskResponse:
         tags: list[str] | None = None
         if row.tags:
             try:

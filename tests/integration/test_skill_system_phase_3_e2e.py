@@ -18,7 +18,7 @@ Verifies the Phase 3 handoff contract:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -33,11 +33,9 @@ from donna.skills.detector import SkillCandidateDetector
 from donna.skills.divergence import SkillDivergenceRepository
 from donna.skills.lifecycle import (
     HumanGateRequiredError,
-    IllegalTransitionError,
     SkillLifecycleManager,
 )
 from donna.tasks.db_models import SkillState
-
 
 # ---------------------------------------------------------------------------
 # Shared DB fixture
@@ -130,7 +128,7 @@ async def phase3_db(tmp_path: Path):
 # Helpers
 # ---------------------------------------------------------------------------
 
-_NOW = datetime.now(timezone.utc)
+_NOW = datetime.now(UTC)
 
 
 def _ts(delta_days: int = 0) -> str:

@@ -15,16 +15,15 @@ See docs/scheduling.md and slices/slice_04_calendar.md.
 from __future__ import annotations
 
 import dataclasses
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 
 from donna.config import CalendarConfig, TimeWindowConfig
 from donna.integrations.calendar import CalendarEvent, GoogleCalendarClient
 from donna.scheduling.dependency_resolver import topological_sort
-from donna.tasks.database import Database
+from donna.tasks.database import Database, TaskRow
 from donna.tasks.db_models import TaskDomain, TaskStatus
-from donna.tasks.database import TaskRow
 
 logger = structlog.get_logger()
 
@@ -90,7 +89,7 @@ class Scheduler:
         cfg = self._config.scheduling
         tw = self._config.time_windows
 
-        now = (now or datetime.now(tz=timezone.utc)).replace(second=0, microsecond=0)
+        now = (now or datetime.now(tz=UTC)).replace(second=0, microsecond=0)
         duration = timedelta(minutes=task.estimated_duration or cfg.default_duration_minutes)
         step = timedelta(minutes=cfg.slot_step_minutes)
         horizon = now + timedelta(days=cfg.search_horizon_days)
@@ -142,11 +141,7 @@ class Scheduler:
             return False
 
         # --- Calendar overlap check ---
-        for ev in existing_events:
-            if _overlaps(start, end, ev.start, ev.end):
-                return False
-
-        return True
+        return all(not _overlaps(start, end, ev.start, ev.end) for ev in existing_events)
 
     def _slot_in_domain_window(
         self,
@@ -223,8 +218,7 @@ class Scheduler:
             The ScheduledSlot that was booked.
         """
         cfg = self._config.scheduling
-        tw = self._config.time_windows
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         time_max = now + timedelta(days=cfg.search_horizon_days)
 
         # Fetch existing events to check for overlaps.
@@ -313,7 +307,7 @@ class Scheduler:
 
         # Fetch all existing calendar events once.
         cfg = self._config.scheduling
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         time_max = now + timedelta(days=cfg.search_horizon_days)
 
         try:
@@ -348,9 +342,8 @@ class Scheduler:
             )
 
             # Transition state and update DB.
-            from donna.tasks.db_models import TaskStatus as TS
-            if task.status == TS.BACKLOG.value:
-                await db.transition_task_state(task.id, TS.SCHEDULED)
+            if task.status == TaskStatus.BACKLOG.value:
+                await db.transition_task_state(task.id, TaskStatus.SCHEDULED)
 
             await db.update_task(
                 task.id,
@@ -424,5 +417,5 @@ def _overlaps(a_start: datetime, a_end: datetime, b_start: datetime, b_end: date
 
 def _ensure_tz(dt: datetime) -> datetime:
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=UTC)
     return dt

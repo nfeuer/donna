@@ -5,7 +5,6 @@ Tests backup creation (valid SQLite copy) and retention rotation.
 
 from __future__ import annotations
 
-import asyncio
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,8 +12,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from donna.resilience.backup import BackupManager, _parse_backup_datetime, _prune
-
+from donna.resilience.backup import BackupManager
 
 # ---------------------------------------------------------------------------
 # Helpers

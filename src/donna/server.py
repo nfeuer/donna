@@ -216,7 +216,7 @@ def create_app(
 
 
 async def run_server(
-    host: str = "0.0.0.0",  # noqa: S104
+    host: str = "0.0.0.0",
     port: int = 8100,
     notification_tasks: NotificationTasks | None = None,
     twilio_sms: TwilioSMS | None = None,

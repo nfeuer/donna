@@ -9,12 +9,12 @@ See the discord interaction expansion plan.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, TYPE_CHECKING
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import discord
-from discord import app_commands, Interaction
 import structlog
+from discord import Interaction, app_commands
 
 from donna.integrations.discord_views import (
     TaskEditModal,
@@ -61,7 +61,7 @@ async def _task_autocomplete(
 def register_commands(bot: DonnaBot, db: Database, user_id: str) -> None:
     """Register all slash commands on the bot's command tree."""
 
-    guild = discord.Object(id=bot._guild_id) if bot._guild_id else None  # noqa: SLF001
+    guild = discord.Object(id=bot._guild_id) if bot._guild_id else None
 
     # ------------------------------------------------------------------
     # /tasks
@@ -225,7 +225,7 @@ def register_commands(bot: DonnaBot, db: Database, user_id: str) -> None:
     @bot.tree.command(name="next", description="Show your next scheduled task", guild=guild)
     async def next_cmd(interaction: Interaction) -> None:
         tasks = await db.list_tasks(user_id=user_id)
-        now = datetime.now(tz=timezone.utc).isoformat()
+        now = datetime.now(tz=UTC).isoformat()
         scheduled = [
             t for t in tasks
             if t.scheduled_start and t.scheduled_start > now
@@ -350,7 +350,7 @@ async def _schedule_for_date(
     label: str,
 ) -> None:
     """Show tasks scheduled for a specific date."""
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     target = now + timedelta(days=offset_days)
     target_date = target.strftime("%Y-%m-%d")
 
@@ -398,11 +398,11 @@ def _parse_when(text: str) -> datetime | None:
     # ISO format
     for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+            return datetime.strptime(text, fmt).replace(tzinfo=UTC)
         except ValueError:
             continue
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     # Relative: +2h, +30m
     import re

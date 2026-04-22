@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from donna.skills.tool_fingerprint import fingerprint
 
 

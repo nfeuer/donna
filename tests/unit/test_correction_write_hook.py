@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
 import pytest
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 
 @pytest.fixture
@@ -21,7 +22,7 @@ async def seeded_db_with_trusted_skill(tmp_path):
     command.upgrade(cfg, "head")
 
     conn = await aiosqlite.connect(db)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     skill_id = str(uuid.uuid4())
     version_id = str(uuid.uuid4())
     await conn.execute(
@@ -53,7 +54,7 @@ async def test_log_correction_calls_scan_for_capability_when_detector_provided(
 ):
     from donna.preferences.correction_logger import log_correction
 
-    conn, skill_id = seeded_db_with_trusted_skill
+    conn, _skill_id = seeded_db_with_trusted_skill
     db = MagicMock()
     db.connection = conn
 
@@ -109,9 +110,9 @@ async def test_scan_for_capability_flags_when_threshold_exceeded(
     config = SkillSystemConfig(correction_cluster_threshold=2, correction_cluster_window_runs=10)
 
     # Seed 10 skill_runs and 2 corrections referencing task_type='test_cap'.
-    now = datetime.now(timezone.utc).isoformat()
-    version_id = str(uuid.uuid4())
-    for i in range(10):
+    now = datetime.now(UTC).isoformat()
+    str(uuid.uuid4())
+    for _i in range(10):
         await conn.execute(
             "INSERT INTO skill_run (id, skill_id, skill_version_id, status, "
             "state_object, started_at, finished_at, user_id) "

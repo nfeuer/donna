@@ -7,9 +7,8 @@ persists state across restarts, and sets up infrastructure.
 from __future__ import annotations
 
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable, Coroutine
 
 import questionary
 
@@ -76,7 +75,7 @@ def _backup_env_file(env_path: Path) -> Path | None:
     """Create a timestamped backup of the existing .env file."""
     if not env_path.is_file():
         return None
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     backup_path = env_path.with_suffix(f".backup.{ts}")
     shutil.copy2(env_path, backup_path)
     return backup_path

@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import os
 import sys
+from datetime import UTC
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -209,7 +210,7 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
             task.cancel()
             try:
                 await task
-            except BaseException:  # noqa: BLE001
+            except BaseException:
                 # Swallow cancellation + unexpected errors during cleanup;
                 # surfaced via task.exception() on the `done` set below.
                 pass
@@ -342,9 +343,9 @@ async def _run_eval(args: argparse.Namespace) -> None:
 
 def _render_eval_prompt(template: str, case_input: str | dict) -> str:
     """Render a prompt template with fixture case input."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = template
     result = result.replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
     result = result.replace("{{ current_time }}", now.strftime("%H:%M %Z"))

@@ -9,12 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import enum as _enum_module
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
-
-import enum as _enum_module
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 import structlog
@@ -29,7 +28,6 @@ from donna.tasks.db_models import (
 )
 from donna.tasks.state_machine import StateMachine
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from donna.integrations.supabase_sync import SupabaseSync
 
@@ -223,8 +221,9 @@ class Database:
 
     async def run_migrations(self) -> None:
         """Run alembic upgrade head programmatically."""
-        from alembic import command
         from alembic.config import Config
+
+        from alembic import command
 
         def _run() -> None:
             cfg = Config(str(self._alembic_config_path) if self._alembic_config_path else "alembic.ini")
@@ -342,9 +341,7 @@ class Database:
         # Serialize special types
         processed: dict[str, Any] = {}
         for key, value in fields.items():
-            if key in ("tags", "notes", "dependencies") and isinstance(value, list):
-                processed[key] = json.dumps(value)
-            elif key == "inputs_json" and isinstance(value, dict):
+            if (key in ("tags", "notes", "dependencies") and isinstance(value, list)) or (key == "inputs_json" and isinstance(value, dict)):
                 processed[key] = json.dumps(value)
             elif isinstance(value, datetime):
                 processed[key] = value.isoformat()
@@ -354,7 +351,7 @@ class Database:
                 processed[key] = value
 
         set_clause = ", ".join(f"{col} = ?" for col in processed)
-        values = list(processed.values()) + [task_id]
+        values = [*list(processed.values()), task_id]
 
         cursor = await conn.execute(
             f"UPDATE tasks SET {set_clause} WHERE id = ?",
@@ -595,7 +592,7 @@ class Database:
     ) -> ChatSession:
         """Convert a SQLite row + cursor.description to a ChatSession."""
         col_names = [d[0] for d in description]
-        data = dict(zip(col_names, row))
+        data = dict(zip(col_names, row, strict=False))
         return ChatSession(
             id=data["id"],
             user_id=data["user_id"],
@@ -615,7 +612,7 @@ class Database:
     ) -> ChatMessage:
         """Convert a SQLite row + cursor.description to a ChatMessage."""
         col_names = [d[0] for d in description]
-        data = dict(zip(col_names, row))
+        data = dict(zip(col_names, row, strict=False))
         return ChatMessage(
             id=data["id"],
             session_id=data["session_id"],
@@ -712,7 +709,7 @@ class Database:
 
         conn = self.connection
         set_clause = ", ".join(f"{col} = ?" for col in kwargs)
-        values = list(kwargs.values()) + [session_id]
+        values = [*list(kwargs.values()), session_id]
 
         await conn.execute(
             f"UPDATE conversation_sessions SET {set_clause} WHERE id = ?",

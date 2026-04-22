@@ -5,18 +5,21 @@ Tests component check logic and HTTP status codes.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiosqlite
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
-from donna.server import create_app, _check_sqlite, _check_discord, _check_scheduler, _check_api_freshness
-
+from donna.server import (
+    _check_api_freshness,
+    _check_discord,
+    _check_scheduler,
+    _check_sqlite,
+    create_app,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -54,7 +57,7 @@ class TestCheckSqlite:
 
     @pytest.mark.asyncio
     async def test_returns_not_ok_for_missing_db(self, tmp_path: Path) -> None:
-        result = await _check_sqlite(str(tmp_path / "nonexistent.db"))
+        await _check_sqlite(str(tmp_path / "nonexistent.db"))
         # aiosqlite creates the file, so this checks a genuinely invalid path
         # by pointing at a directory instead.
         result2 = await _check_sqlite(str(tmp_path))  # directory, not a db

@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from donna.cli_wiring import _try_build_gmail_client
 
 

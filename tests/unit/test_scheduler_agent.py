@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
-import pytest
-
 from donna.agents.scheduler_agent import SchedulerAgent
 
 

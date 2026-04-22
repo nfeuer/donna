@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, call, patch
 import uuid
-
-import pytest
+from unittest.mock import AsyncMock, MagicMock
 
 from donna.preferences.correction_logger import log_correction
 

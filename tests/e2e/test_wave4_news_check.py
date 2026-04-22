@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -128,7 +128,7 @@ async def test_news_check_nl_creation_then_first_tick_alerts(runtime) -> None:
     assert row is not None, "news_check skill should be seeded by migration"
     assert row[0] == "sandbox", f"expected sandbox, got {row[0]}"
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     past = (now - timedelta(minutes=5)).isoformat()
 
     # Canned claude_native response.  Dispatcher uses task_type=capability_name.
@@ -188,7 +188,7 @@ async def test_news_check_second_tick_filters_by_prior_run_end(runtime) -> None:
     """
     conn = runtime.db.connection
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     past = (now - timedelta(minutes=5)).isoformat()
     prior_run_time = (now - timedelta(hours=12)).isoformat()
 
@@ -256,7 +256,7 @@ async def test_news_check_second_tick_filters_by_prior_run_end(runtime) -> None:
     )
     rows = await cursor.fetchall()
     assert len(rows) == 1, f"expected 1 new run row, got {len(rows)}"
-    status, alert_sent, exec_path = rows[0]
+    status, alert_sent, _exec_path = rows[0]
     assert status == "succeeded", f"run status={status!r}"
     assert alert_sent == 0, "no alert should fire when triggers_alert=False"
 
@@ -300,9 +300,7 @@ async def test_news_check_promotion_to_shadow_primary_fires_skill_executor(
 
     Asserts: execution_path='skill', skill_run_id populated, alert_sent=1.
     """
-    from donna.skills.executor import SkillRunResult
     from donna.skills.run_persistence import SkillRunRepository
-    from donna.skills.models import row_to_skill, row_to_skill_version
     from donna.skills.tool_registry import ToolRegistry
     from donna.tasks.db_models import SkillState
 
@@ -315,7 +313,7 @@ async def test_news_check_promotion_to_shadow_primary_fires_skill_executor(
     )
     skill_row = await cursor.fetchone()
     assert skill_row is not None, "news_check skill should be seeded by migration"
-    skill_id, version_id, initial_state = skill_row
+    skill_id, _version_id, initial_state = skill_row
     assert initial_state == "sandbox", f"expected sandbox, got {initial_state}"
 
     lifecycle = runtime.skill_bundle.lifecycle_manager
@@ -411,7 +409,7 @@ async def test_news_check_promotion_to_shadow_primary_fires_skill_executor(
     runtime.automation_dispatcher._skill_executor_factory = _WrapExecutor
 
     # --- 4. Create a due automation. --------------------------------------------
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     past = (now - timedelta(minutes=5)).isoformat()
     automation_id = str(uuid.uuid4())
     await _insert_news_check_automation(

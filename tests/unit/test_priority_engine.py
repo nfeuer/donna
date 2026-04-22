@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock
-
-import pytest
 
 from donna.config import PriorityConfig
 from donna.scheduling.priority_engine import PriorityEngine

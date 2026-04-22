@@ -17,7 +17,7 @@ End-to-end flow:
 from __future__ import annotations
 
 from dataclasses import dataclass
-
+from datetime import UTC
 
 import pytest
 
@@ -90,9 +90,9 @@ async def test_high_confidence_nl_automation_creation_and_first_run(runtime) -> 
     assert row.target_cadence_cron == "0 12 * * *"
 
     # 4. Force next_run_at to the past so the scheduler dispatches this tick.
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await runtime.automation_repo.update_fields(
         automation_id, next_run_at=now - timedelta(minutes=5),
     )

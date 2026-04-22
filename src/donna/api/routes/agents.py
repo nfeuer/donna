@@ -6,7 +6,7 @@ All queries are scoped to the authenticated user_id.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import Request
@@ -83,7 +83,7 @@ async def get_cost_summary(
     db = request.app.state.db
     conn = db.connection
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
 

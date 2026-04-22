@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from donna.models.providers.ollama import OllamaProvider
-from donna.models.types import CompletionMetadata
 
 
 @pytest.fixture

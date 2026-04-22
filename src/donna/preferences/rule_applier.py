@@ -141,10 +141,7 @@ class PreferenceApplier:
 
         # task_type always matches "parse_task" at input time; other values skip.
         task_type = condition.get("task_type")
-        if task_type and task_type != "parse_task":
-            return False
-
-        return True
+        return not (task_type and task_type != "parse_task")
 
     async def apply_for_user(self, result: TaskParseResult, user_id: str) -> TaskParseResult:
         """Convenience async wrapper: load rules then apply."""

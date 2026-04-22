@@ -8,7 +8,7 @@ Verifies spec Phase 5 automation acceptance scenarios AS-5.1 through AS-5.5:
   AS-5.5: 5 consecutive failures pause the automation.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -62,7 +62,7 @@ async def phase5_db(tmp_path: Path):
             alert_content TEXT, error TEXT, cost_usd REAL
         );
     """)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await conn.execute(
         "INSERT INTO capability (id, name, description, input_schema, "
         "trigger_type, status, created_at, created_by) VALUES "
@@ -128,7 +128,7 @@ async def _seed_automation(db, *, alert_conditions=None, next_run_offset_minutes
         max_cost_per_run_usd=2.0,
         min_interval_seconds=300,
         created_via="dashboard",
-        next_run_at=datetime.now(timezone.utc) + timedelta(minutes=next_run_offset_minutes),
+        next_run_at=datetime.now(UTC) + timedelta(minutes=next_run_offset_minutes),
     )
 
 
@@ -144,7 +144,7 @@ async def test_as_5_1_create_automation_with_cron_schedule(phase5_db):
 
     cron = CronScheduleCalculator()
     schedule = "0 12 * * *"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expected_next = cron.next_run(expression=schedule, after=now)
 
     repo = AutomationRepository(phase5_db)
@@ -235,7 +235,7 @@ async def test_as_5_2_dispatch_due_automation_via_claude_native(phase5_db):
 async def test_as_5_3_skill_path_when_shadow_primary(phase5_db):
     from donna.automations.repository import AutomationRepository
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # Seed a skill in shadow_primary state with a valid skill_version
     await phase5_db.execute(
@@ -270,7 +270,7 @@ async def test_as_5_3_skill_path_when_shadow_primary(phase5_db):
     router = AsyncMock()
     router.complete = AsyncMock()  # should NOT be called
 
-    dispatcher, repo, router, notifier = _make_dispatcher(
+    dispatcher, repo, router, _notifier = _make_dispatcher(
         phase5_db,
         router=router,
         skill_factory=lambda: executor,
@@ -371,7 +371,7 @@ async def test_as_5_5_five_consecutive_failures_pause_automation(phase5_db):
         # Re-set next_run_at to the past so it remains dispatchable
         await repo.update_fields(
             auto_id,
-            next_run_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            next_run_at=datetime.now(UTC) - timedelta(minutes=1),
         )
         auto = await repo.get(auto_id)
         await dispatcher.dispatch(auto)

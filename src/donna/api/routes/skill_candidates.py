@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -63,10 +64,10 @@ async def draft_candidate_now(candidate_id: str, request: Request) -> dict:
 
     After Wave 2 F-W1-D — see docs/superpowers/specs/archive/2026-04-17-skill-system-wave-2-first-capability-design.md.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     conn = request.app.state.db.connection
-    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    now_iso = datetime.now(tz=UTC).isoformat()
     cursor = await conn.execute(
         "UPDATE skill_candidate_report SET manual_draft_at = ? "
         "WHERE id = ? AND status = 'new'",

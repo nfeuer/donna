@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from donna.models.router import ModelRouter
 from donna.tasks.database import Database, TaskRow
+
+if TYPE_CHECKING:
+    from donna.agents.tool_registry import ToolRegistry
 
 
 @dataclasses.dataclass(frozen=True)
@@ -33,7 +36,7 @@ class AgentContext:
     db: Database
     user_id: str
     project_root: Path
-    tool_registry: ToolRegistry  # type: ignore[name-defined]  # forward ref
+    tool_registry: ToolRegistry
 
 
 @dataclasses.dataclass
@@ -62,9 +65,3 @@ class Agent(Protocol):
     def timeout_seconds(self) -> int: ...
 
     async def execute(self, task: TaskRow, context: AgentContext) -> AgentResult: ...
-
-
-# Resolve the forward reference for AgentContext.tool_registry
-from donna.agents.tool_registry import ToolRegistry as _ToolRegistry  # noqa: E402
-
-AgentContext.__annotations__["tool_registry"] = _ToolRegistry

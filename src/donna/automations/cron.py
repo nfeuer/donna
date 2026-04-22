@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from croniter import CroniterBadCronError, croniter
 
@@ -15,7 +15,7 @@ class CronScheduleCalculator:
     def next_run(self, *, expression: str, after: datetime) -> datetime:
         """Compute the next execution time strictly AFTER *after* (timezone-aware UTC)."""
         if after.tzinfo is None:
-            after = after.replace(tzinfo=timezone.utc)
+            after = after.replace(tzinfo=UTC)
         try:
             it = croniter(expression, after)
         except (CroniterBadCronError, ValueError, KeyError) as exc:
@@ -24,5 +24,5 @@ class CronScheduleCalculator:
             ) from exc
         nxt = it.get_next(datetime)
         if nxt.tzinfo is None:
-            nxt = nxt.replace(tzinfo=timezone.utc)
-        return nxt.astimezone(timezone.utc)
+            nxt = nxt.replace(tzinfo=UTC)
+        return nxt.astimezone(UTC)

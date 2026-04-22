@@ -10,7 +10,7 @@ See docs/scheduling.md.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import structlog
 
@@ -55,7 +55,7 @@ class PriorityRecalculator:
         )
 
         while True:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             next_fire = _next_fire_time(now, self._fire_hour, self._fire_minute)
             wait_seconds = (next_fire - now).total_seconds()
 
@@ -67,7 +67,7 @@ class PriorityRecalculator:
             await asyncio.sleep(max(wait_seconds, 0))
 
             try:
-                await self.recalculate_and_apply(datetime.now(tz=timezone.utc))
+                await self.recalculate_and_apply(datetime.now(tz=UTC))
             except Exception:
                 logger.exception("priority_recalculator_failed", user_id=self._user_id)
 

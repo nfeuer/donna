@@ -1,7 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from donna.capabilities.input_extractor import LocalLLMInputExtractor
 
 

@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from donna.skills.tools.web_fetch import web_fetch, WebFetchError
+from donna.skills.tools.web_fetch import WebFetchError, web_fetch
 
 
 async def test_web_fetch_returns_structured_response():
@@ -50,6 +50,8 @@ async def test_web_fetch_raises_on_exception():
     mock_client.__aexit__.return_value = None
     mock_client.get.side_effect = RuntimeError("network down")
 
-    with patch("donna.skills.tools.web_fetch.httpx.AsyncClient", return_value=mock_client):
-        with pytest.raises(WebFetchError, match="network down"):
-            await web_fetch(url="https://example.com")
+    with (
+        patch("donna.skills.tools.web_fetch.httpx.AsyncClient", return_value=mock_client),
+        pytest.raises(WebFetchError, match="network down"),
+    ):
+        await web_fetch(url="https://example.com")

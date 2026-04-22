@@ -1,6 +1,6 @@
 import pytest
 
-from donna.skills.tool_registry import ToolRegistry, ToolNotAllowedError, ToolNotFoundError
+from donna.skills.tool_registry import ToolNotAllowedError, ToolNotFoundError, ToolRegistry
 
 
 async def _mock_tool(**kwargs):

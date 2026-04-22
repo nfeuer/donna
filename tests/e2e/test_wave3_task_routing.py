@@ -14,7 +14,7 @@ Flow:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -51,7 +51,7 @@ async def test_task_phrase_routes_to_task_not_automation(runtime) -> None:
 
     # Novelty judge: task with a concrete deadline.
     deadline_iso = (
-        datetime.now(timezone.utc) + timedelta(days=3)
+        datetime.now(UTC) + timedelta(days=3)
     ).replace(microsecond=0).isoformat()
     runtime.fake_claude.canned["claude_novelty"] = {
         "intent_kind": "task",

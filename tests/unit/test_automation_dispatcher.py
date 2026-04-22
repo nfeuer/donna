@@ -1,5 +1,4 @@
-import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -10,7 +9,6 @@ from donna.automations.alert import AlertEvaluator
 from donna.automations.cron import CronScheduleCalculator
 from donna.automations.dispatcher import (
     AutomationDispatcher,
-    DispatchReport,
 )
 from donna.automations.repository import AutomationRepository
 from donna.config import SkillSystemConfig
@@ -57,7 +55,7 @@ async def db(tmp_path: Path):
             alert_content TEXT, error TEXT, cost_usd REAL
         );
     """)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await conn.execute(
         "INSERT INTO capability (id, name, description, input_schema, "
         "trigger_type, status, created_at, created_by) VALUES "
@@ -81,7 +79,7 @@ async def _seed_automation(db, *, alert_conditions=None, max_cost=None):
         max_cost_per_run_usd=max_cost,
         min_interval_seconds=300,
         created_via="dashboard",
-        next_run_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        next_run_at=datetime.now(UTC) - timedelta(minutes=1),
     )
     return auto_id, await repo.get(auto_id)
 
@@ -98,9 +96,7 @@ def _make_dispatcher(db, **overrides):
     if router is _default_router:
         router = AsyncMock()
         router.complete = AsyncMock(return_value=({"price_usd": 89, "in_stock": True}, _ReasonerOutputMeta()))
-    elif not hasattr(router, "complete") or not callable(router.complete):
-        router.complete = AsyncMock(return_value=({"price_usd": 89, "in_stock": True}, _ReasonerOutputMeta()))
-    elif not getattr(router.complete, "return_value", None):
+    elif not hasattr(router, "complete") or not callable(router.complete) or not getattr(router.complete, "return_value", None):
         router.complete = AsyncMock(return_value=({"price_usd": 89, "in_stock": True}, _ReasonerOutputMeta()))
 
     budget_guard = overrides.pop("budget_guard", AsyncMock())
@@ -129,7 +125,7 @@ async def test_claude_native_succeeds_and_advances_schedule(db):
     _, auto = await _seed_automation(
         db, alert_conditions={"all_of": [{"field": "price_usd", "op": "<=", "value": 100}]},
     )
-    dispatcher, repo, router, budget_guard, notifier = _make_dispatcher(db)
+    dispatcher, repo, _router, _budget_guard, notifier = _make_dispatcher(db)
 
     report = await dispatcher.dispatch(auto)
 
@@ -147,7 +143,7 @@ async def test_claude_native_succeeds_and_advances_schedule(db):
 
 
 async def test_skill_path_is_used_when_skill_is_trusted(db):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO skill (id, capability_name, current_version_id, state, "
         "requires_human_gate, baseline_agreement, created_at, updated_at) "
@@ -237,13 +233,13 @@ async def test_success_resets_failure_count(db):
     _, auto = await _seed_automation(db)
     repo = AutomationRepository(db)
     await repo.advance_schedule(
-        automation_id=auto.id, last_run_at=datetime.now(timezone.utc),
-        next_run_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        automation_id=auto.id, last_run_at=datetime.now(UTC),
+        next_run_at=datetime.now(UTC) - timedelta(minutes=1),
         increment_run_count=True, increment_failure_count=True,
     )
     await repo.advance_schedule(
-        automation_id=auto.id, last_run_at=datetime.now(timezone.utc),
-        next_run_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+        automation_id=auto.id, last_run_at=datetime.now(UTC),
+        next_run_at=datetime.now(UTC) - timedelta(minutes=1),
         increment_run_count=True, increment_failure_count=True,
     )
     auto = await repo.get(auto.id)
@@ -278,7 +274,7 @@ async def test_alert_not_sent_when_conditions_false(db):
     _, auto = await _seed_automation(
         db, alert_conditions={"all_of": [{"field": "price_usd", "op": "<=", "value": 10}]},
     )
-    dispatcher, repo, *_, notifier = _make_dispatcher(db)
+    dispatcher, _repo, *_, notifier = _make_dispatcher(db)
     notifier.dispatch.reset_mock()
     report = await dispatcher.dispatch(auto)
     assert report.alert_sent is False

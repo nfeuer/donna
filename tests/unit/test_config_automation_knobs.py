@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from donna.config import SkillSystemConfig, load_skill_system_config
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -24,7 +24,6 @@ from donna.api.routes.automations import (
     update_automation,
 )
 from donna.automations.repository import AutomationRepository
-
 
 SCHEMA = """
 CREATE TABLE capability (
@@ -62,7 +61,7 @@ CREATE TABLE automation_run (
 async def db(tmp_path: Path):
     conn = await aiosqlite.connect(str(tmp_path / "t.db"))
     await conn.executescript(SCHEMA)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await conn.execute(
         "INSERT INTO capability VALUES (?, 'product_watch', 'cap', '{}', "
         "'on_schedule', 'active', ?, 'seed', NULL)",
@@ -110,7 +109,7 @@ async def _seed_run(conn, automation_id: str):
     repo = AutomationRepository(conn)
     run_id = await repo.insert_run(
         automation_id=automation_id,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         execution_path="claude_native",
     )
     return run_id
@@ -197,7 +196,7 @@ async def test_get_list_returns_active_by_default(db):
 
 async def test_get_list_filters_by_capability_name(db):
     # Seed a second capability
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO capability VALUES (?, 'price_alert', 'cap2', '{}', "
         "'on_schedule', 'active', ?, 'seed', NULL)",

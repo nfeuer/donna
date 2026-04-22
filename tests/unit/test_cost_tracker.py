@@ -7,8 +7,7 @@ from datetime import date, datetime
 import aiosqlite
 import pytest
 
-from donna.cost.tracker import CostSummary, CostTracker
-
+from donna.cost.tracker import CostTracker
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -163,8 +162,8 @@ class TestGetCostByAgent:
 class TestGetProjectedMonthlySpend:
     async def test_projection_uses_7_day_average(self, db_conn: aiosqlite.Connection) -> None:
         """Insert $7 over 7 days → $1/day average → projection = $1 × days_in_month."""
-        from datetime import date, timedelta
         import calendar as _cal
+        from datetime import date, timedelta
 
         today = date.today()
         for i in range(7):

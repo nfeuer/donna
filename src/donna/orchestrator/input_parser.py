@@ -9,19 +9,17 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from donna.logging.invocation_logger import InvocationLogger, InvocationMetadata
 from donna.models.router import ModelRouter
-from donna.models.types import CompletionMetadata
 from donna.models.validation import validate_output
 from donna.tasks.dedup import Deduplicator, DuplicateDetectedError  # noqa: F401 — re-exported
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from donna.preferences.rule_applier import PreferenceApplier
 
@@ -50,7 +48,7 @@ class TaskParseResult:
 
 def _render_template(template: str, user_input: str) -> str:
     """Fill template variables with current context."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return (
         template
         .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))

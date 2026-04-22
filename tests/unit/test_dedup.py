@@ -6,17 +6,16 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from rapidfuzz import fuzz
 
 from donna.config import ModelConfig, ModelsConfig, RoutingEntry, TaskTypeEntry, TaskTypesConfig
 from donna.models.router import ModelRouter
 from donna.models.types import CompletionMetadata
 from donna.tasks.database import TaskRow
 from donna.tasks.dedup import (
-    Deduplicator,
-    DuplicateDetectedError,
     _HIGH_THRESHOLD,
     _MID_THRESHOLD,
+    Deduplicator,
+    DuplicateDetectedError,
     _find_best_fuzzy_match,
     _render_dedup_template,
 )
@@ -166,7 +165,7 @@ class TestFuzzyScoreBucketing:
     async def test_score_exactly_70_calls_llm(self) -> None:
         """Score exactly 70 → mid range → LLM called."""
         task = _make_task_row(title="Get oil change")
-        dedup, router, inv_logger = self._make_deduplicator([task])
+        dedup, router, _inv_logger = self._make_deduplicator([task])
 
         with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=70):
             with pytest.raises(DuplicateDetectedError):

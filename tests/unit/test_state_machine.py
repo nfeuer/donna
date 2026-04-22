@@ -5,8 +5,12 @@ Tests pure state transition logic — no external dependencies.
 
 import pytest
 
-from donna.config import load_state_machine_config, StateMachineConfig, TransitionEntry, InvalidTransitionEntry
-from donna.tasks.state_machine import StateMachine, InvalidTransitionError
+from donna.config import (
+    InvalidTransitionEntry,
+    StateMachineConfig,
+    TransitionEntry,
+)
+from donna.tasks.state_machine import InvalidTransitionError, StateMachine
 
 
 @pytest.fixture

@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
 from fastapi.testclient import TestClient
 
 from donna.api.routes import auth_flow
 
 
 def test_request_access_unknown_email_returns_202(auth_test_app):
-    app, conn, gmail, immich = auth_test_app
+    app, _conn, gmail, _immich = auth_test_app
     app.include_router(auth_flow.router, prefix="/auth")
     client = TestClient(app)
 
@@ -21,7 +20,7 @@ def test_request_access_unknown_email_returns_202(auth_test_app):
 
 
 def test_request_access_known_email_sends_email(auth_test_app):
-    app, conn, gmail, immich = auth_test_app
+    app, _conn, gmail, _immich = auth_test_app
     app.include_router(auth_flow.router, prefix="/auth")
     client = TestClient(app)
 
@@ -35,7 +34,7 @@ def test_request_access_known_email_sends_email(auth_test_app):
 
 
 def test_request_access_malformed_returns_202_no_send(auth_test_app):
-    app, conn, gmail, immich = auth_test_app
+    app, _conn, gmail, _immich = auth_test_app
     app.include_router(auth_flow.router, prefix="/auth")
     client = TestClient(app)
 
@@ -48,7 +47,7 @@ def test_verify_marks_ip_trusted_and_burns_token(auth_test_app):
     """Full happy path: request -> verify -> IP is trusted."""
     from donna.api.auth import verification_tokens as vt
 
-    app, conn, gmail, immich = auth_test_app
+    app, conn, _gmail, _immich = auth_test_app
     app.include_router(auth_flow.router, prefix="/auth")
     client = TestClient(app)
 
@@ -68,7 +67,7 @@ def test_verify_get_from_email_trusts_ip(auth_test_app):
     """Clicking the magic link (GET) trusts the IP and returns HTML."""
     from donna.api.auth import verification_tokens as vt
 
-    app, conn, gmail, immich = auth_test_app
+    app, conn, _gmail, _immich = auth_test_app
     app.include_router(auth_flow.router, prefix="/auth")
     client = TestClient(app)
 
@@ -86,7 +85,7 @@ def test_verify_get_from_email_trusts_ip(auth_test_app):
 
 
 def test_status_reflects_ip_trust_state(auth_test_app):
-    app, conn, gmail, immich = auth_test_app
+    app, _conn, _gmail, _immich = auth_test_app
     app.include_router(auth_flow.router, prefix="/auth")
     client = TestClient(app)
 

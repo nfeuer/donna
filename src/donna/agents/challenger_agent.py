@@ -13,11 +13,10 @@ See docs/agents.md for the agent hierarchy.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import jinja2
@@ -113,7 +112,7 @@ class ChallengerAgent:
             user_message=user_message,
             # Emit strict ISO-8601 with `Z` suffix (not `+00:00`) so prompt
             # fixtures and schema examples match the rendered value exactly.
-            current_date_iso=datetime.now(timezone.utc).strftime(
+            current_date_iso=datetime.now(UTC).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             ),
         )
@@ -131,7 +130,7 @@ class ChallengerAgent:
         except (ContextOverflowError, BudgetPausedError):
             # Propagate: caller/state machine decides how to handle these.
             raise
-        except (asyncio.TimeoutError, json.JSONDecodeError, RoutingError) as exc:
+        except (TimeoutError, json.JSONDecodeError, RoutingError) as exc:
             logger.exception(
                 "challenger_parse_llm_failed",
                 user_id=user_id,
@@ -335,7 +334,7 @@ class ChallengerAgent:
             except ValueError:
                 if raw_deadline.endswith("Z"):
                     deadline = datetime.fromisoformat(raw_deadline[:-1]).replace(
-                        tzinfo=timezone.utc
+                        tzinfo=UTC
                     )
                 else:
                     deadline = None
@@ -362,7 +361,7 @@ class ChallengerAgent:
         prompt = self._build_challenge_prompt(task)
 
         try:
-            result, metadata = await context.router.complete(
+            result, _metadata = await context.router.complete(
                 prompt, task_type=_TASK_TYPE, user_id=context.user_id
             )
         except ContextOverflowError:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sys
 
-
 # ANSI color codes — disabled when not writing to a terminal.
 _USE_COLOR = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 

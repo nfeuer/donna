@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -15,7 +14,6 @@ from donna.api.routes.admin_agents import (
     get_agent_detail,
     list_agents,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -155,7 +153,7 @@ class TestListAgents:
 
 class TestGetAgentDetail:
     async def test_not_found_raises_404(self, mock_request: tuple) -> None:
-        request, conn = mock_request
+        request, _conn = mock_request
         with patch("donna.api.routes.admin_agents._load_yaml") as mock_yaml:
             mock_yaml.return_value = _make_agents_yaml()
             with pytest.raises(HTTPException) as exc_info:
@@ -163,7 +161,7 @@ class TestGetAgentDetail:
             assert exc_info.value.status_code == 404
 
     async def test_agent_with_no_task_types(self, mock_request: tuple) -> None:
-        request, conn = mock_request
+        request, _conn = mock_request
         with patch("donna.api.routes.admin_agents._load_yaml") as mock_yaml, \
              patch("donna.api.routes.admin_agents._build_agent_task_map") as mock_map:
             mock_yaml.return_value = _make_agents_yaml()

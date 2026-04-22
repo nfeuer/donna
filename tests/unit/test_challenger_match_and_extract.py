@@ -1,11 +1,9 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
-import pytest
-
+from donna.agents.challenger_agent import ChallengerAgent
 from donna.capabilities.matcher import MatchConfidence, MatchResult
 from donna.capabilities.models import CapabilityRow
-from donna.agents.challenger_agent import ChallengerAgent, ChallengerMatchResult
 
 
 def _cap(name: str, schema: dict | None = None) -> CapabilityRow:
@@ -15,7 +13,7 @@ def _cap(name: str, schema: dict | None = None) -> CapabilityRow:
         id="id", name=name, description="desc", input_schema=schema,
         trigger_type="on_message", default_output_shape=None,
         status="active", embedding=None,
-        created_at=datetime.now(timezone.utc), created_by="seed", notes=None,
+        created_at=datetime.now(UTC), created_by="seed", notes=None,
     )
 
 

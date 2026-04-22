@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from donna.integrations.twilio_voice import TwilioVoice, _escape_xml
 
 

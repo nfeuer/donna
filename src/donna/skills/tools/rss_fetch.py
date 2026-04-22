@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import calendar
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from time import struct_time
 from typing import Any
 
@@ -37,7 +37,7 @@ def _parsed_time_to_iso(pt: struct_time | None) -> str | None:
     if pt is None:
         return None
     try:
-        return datetime.fromtimestamp(calendar.timegm(pt), tz=timezone.utc).isoformat()
+        return datetime.fromtimestamp(calendar.timegm(pt), tz=UTC).isoformat()
     except Exception:
         return None
 
@@ -57,9 +57,9 @@ def _after(iso_a: str, iso_b: str) -> bool:
     dt_a = datetime.fromisoformat(iso_a)
     dt_b = datetime.fromisoformat(iso_b)
     if dt_a.tzinfo is None:
-        dt_a = dt_a.replace(tzinfo=timezone.utc)
+        dt_a = dt_a.replace(tzinfo=UTC)
     if dt_b.tzinfo is None:
-        dt_b = dt_b.replace(tzinfo=timezone.utc)
+        dt_b = dt_b.replace(tzinfo=UTC)
     return dt_a > dt_b
 
 

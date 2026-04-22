@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest_asyncio
 
-from tests.e2e.harness import build_wave1_test_runtime, Wave1Runtime
+from tests.e2e.harness import Wave1Runtime, build_wave1_test_runtime
 
 
 @pytest_asyncio.fixture

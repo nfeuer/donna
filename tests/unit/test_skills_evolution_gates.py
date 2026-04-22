@@ -3,7 +3,7 @@
 Spec §6.6: four validation gates a proposed new skill version must pass.
 """
 
-import json
+from datetime import UTC
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -13,7 +13,6 @@ import pytest
 from donna.config import SkillSystemConfig
 from donna.skills.evolution_gates import (
     EvolutionGates,
-    GateResult,
     run_structural_gate,
 )
 
@@ -177,8 +176,8 @@ async def test_fixture_regression_gate(db):
 
 
 async def test_recent_success_gate_requires_all_succeed(db):
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc).isoformat()
+    from datetime import datetime
+    now = datetime.now(UTC).isoformat()
     for i in range(3):
         await db.execute(
             "INSERT INTO skill_run (id, skill_id, status, state_object, "

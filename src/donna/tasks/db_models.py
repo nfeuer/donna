@@ -16,13 +16,13 @@ from sqlalchemy import (
     DateTime,
     Enum,
     Float,
+    ForeignKey,
     Integer,
     LargeBinary,
     String,
     Text,
-    ForeignKey,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -34,7 +34,7 @@ class Base(DeclarativeBase):
 # === Enums ===
 
 
-class TaskStatus(str, enum.Enum):
+class TaskStatus(enum.StrEnum):
     BACKLOG = "backlog"
     SCHEDULED = "scheduled"
     IN_PROGRESS = "in_progress"
@@ -44,19 +44,19 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
-class TaskDomain(str, enum.Enum):
+class TaskDomain(enum.StrEnum):
     PERSONAL = "personal"
     WORK = "work"
     FAMILY = "family"
 
 
-class DeadlineType(str, enum.Enum):
+class DeadlineType(enum.StrEnum):
     HARD = "hard"
     SOFT = "soft"
     NONE = "none"
 
 
-class AgentStatus(str, enum.Enum):
+class AgentStatus(enum.StrEnum):
     PENDING = "pending"
     GATHERING_REQUIREMENTS = "gathering_requirements"
     IN_PROGRESS = "in_progress"
@@ -65,7 +65,7 @@ class AgentStatus(str, enum.Enum):
     FAILED = "failed"
 
 
-class InputChannel(str, enum.Enum):
+class InputChannel(enum.StrEnum):
     SMS = "sms"
     DISCORD = "discord"
     SLACK = "slack"
@@ -74,19 +74,19 @@ class InputChannel(str, enum.Enum):
     VOICE = "voice"
 
 
-class ConversationStatus(str, enum.Enum):
+class ConversationStatus(enum.StrEnum):
     ACTIVE = "active"
     EXPIRED = "expired"
     COMPLETED = "completed"
 
 
-class TriggerType(str, enum.Enum):
+class TriggerType(enum.StrEnum):
     ON_MESSAGE = "on_message"
     ON_SCHEDULE = "on_schedule"
     ON_MANUAL = "on_manual"
 
 
-class SkillState(str, enum.Enum):
+class SkillState(enum.StrEnum):
     CLAUDE_NATIVE = "claude_native"
     SKILL_CANDIDATE = "skill_candidate"
     DRAFT = "draft"
@@ -319,13 +319,13 @@ class EscalationState(Base):
     )
 
 
-class ChatSessionStatus(str, enum.Enum):
+class ChatSessionStatus(enum.StrEnum):
     ACTIVE = "active"
     EXPIRED = "expired"
     CLOSED = "closed"
 
 
-class ChatMessageRole(str, enum.Enum):
+class ChatMessageRole(enum.StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
 

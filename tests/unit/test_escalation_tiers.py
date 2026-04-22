@@ -6,16 +6,18 @@ fast-path — all using an in-memory SQLite database (no real Twilio).
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
 import pytest
 
 from donna.config import SmsConfig, SmsEscalationConfig
-from donna.notifications.escalation import EscalationManager, STATUS_ACKNOWLEDGED, STATUS_BACKED_OFF, STATUS_PENDING
-
+from donna.notifications.escalation import (
+    STATUS_ACKNOWLEDGED,
+    STATUS_BACKED_OFF,
+    EscalationManager,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -113,7 +115,7 @@ class TestEscalateStartsTier1:
 
 class TestAdvanceTier:
     async def test_advance_to_tier2_after_timeout(self, db_conn) -> None:
-        manager, mock_service, mock_sms = _make_manager(db_conn)
+        manager, _mock_service, mock_sms = _make_manager(db_conn)
 
         # Start escalation at Tier 1.
         await manager.escalate("task-1", "Buy milk", "nudge", priority=2)
@@ -138,7 +140,7 @@ class TestAdvanceTier:
         assert row[0] == 2
 
     async def test_advance_stops_at_max_tier(self, db_conn) -> None:
-        manager, _, mock_sms = _make_manager(db_conn)
+        manager, _, _mock_sms = _make_manager(db_conn)
 
         # Start at tier 2 (already SMS-sent), backdate next_escalation_at.
         await manager.escalate("task-1", "Task", "nudge", priority=2, start_at_tier=2)

@@ -12,7 +12,7 @@ See docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import discord
 import structlog
@@ -58,7 +58,7 @@ class WeeklyDigest:
         )
 
         while True:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             next_fire = _next_sunday_fire(now)
             wait_seconds = (next_fire - now).total_seconds()
 
@@ -76,7 +76,7 @@ class WeeklyDigest:
 
     async def _fire(self) -> None:
         """Assemble stats, generate digest, and post."""
-        since = datetime.now(tz=timezone.utc) - timedelta(days=7)
+        since = datetime.now(tz=UTC) - timedelta(days=7)
         stats = await self._db.get_weekly_stats(self._user_id, since)
 
         # Try LLM-generated digest.

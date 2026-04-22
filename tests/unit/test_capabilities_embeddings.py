@@ -2,11 +2,11 @@ import numpy as np
 import pytest
 
 from donna.capabilities.embeddings import (
-    embed_text,
-    embedding_to_bytes,
+    EMBEDDING_DIM,
     bytes_to_embedding,
     cosine_similarity,
-    EMBEDDING_DIM,
+    embed_text,
+    embedding_to_bytes,
 )
 
 

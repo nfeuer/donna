@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiosqlite
@@ -28,7 +28,7 @@ class SkillRunRepository:
     ) -> str:
         """Create a skill_run row with status=running; return the new run_id."""
         run_id = str(uuid6.uuid7())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         await self._conn.execute(
             """
@@ -64,7 +64,7 @@ class SkillRunRepository:
         error: str | None = None,
     ) -> str:
         step_id = str(uuid6.uuid7())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         await self._conn.execute(
             """
@@ -97,7 +97,7 @@ class SkillRunRepository:
         escalation_reason: str | None,
         error: str | None,
     ) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         await self._conn.execute(
             """

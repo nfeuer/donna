@@ -8,7 +8,6 @@ import pytest
 
 from donna.agents.claude_novelty_judge import ClaudeNoveltyJudge, NoveltyVerdict
 
-
 _SCHEMA_PATH = (
     Path(__file__).resolve().parents[2] / "schemas" / "claude_novelty.json"
 )

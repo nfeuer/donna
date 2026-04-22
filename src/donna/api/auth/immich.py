@@ -52,17 +52,16 @@ class ImmichClient:
 
         headers = {"Authorization": f"Bearer {bearer}"}
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{self._url}/api/users/me",
-                    headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as resp:
-                    if resp.status == 401:
-                        self._cache_set(key, (now, None))
-                        return None
-                    resp.raise_for_status()
-                    data = await resp.json()
+            async with aiohttp.ClientSession() as session, session.get(
+                f"{self._url}/api/users/me",
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status == 401:
+                    self._cache_set(key, (now, None))
+                    return None
+                resp.raise_for_status()
+                data = await resp.json()
         except aiohttp.ClientError as exc:
             logger.warning("immich_resolve_failed", error=str(exc))
             return None

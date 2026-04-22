@@ -2,23 +2,17 @@
 """Unit tests for the LLM gateway routes."""
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from donna.api.routes.llm import (
-    CompletionRequest,
-    CompletionResponse,
-    llm_completion,
     llm_health,
     llm_models,
     llm_queue_item,
     llm_queue_status,
 )
-from fastapi import HTTPException
-from donna.llm.queue import LLMQueueWorker
-from donna.llm.rate_limiter import RateLimiter
 from donna.llm.types import GatewayConfig
 from donna.logging.invocation_logger import InvocationMetadata
 from donna.models.types import CompletionMetadata
@@ -155,8 +149,8 @@ async def llm_auth_app(tmp_path):
         BootstrapSettings,
         DeviceTokenSettings,
         EmailSettings,
-        IPGateConfig,
         ImmichSettings,
+        IPGateConfig,
         RateLimit,
     )
     from donna.api.routes import llm as llm_routes

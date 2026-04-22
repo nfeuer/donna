@@ -5,9 +5,7 @@ All tests mock the DB connection — no real SQLite needed.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+from unittest.mock import AsyncMock
 
 from donna.api.routes.admin_dashboard import (
     get_agent_performance,
@@ -17,7 +15,6 @@ from donna.api.routes.admin_dashboard import (
     get_skill_system,
     get_task_throughput,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

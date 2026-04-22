@@ -24,9 +24,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from donna.api.routes import (
-    admin_agents as admin_agents_routes,
-)
-from donna.api.routes import (
     admin_access,
     admin_config,
     admin_dashboard,
@@ -37,17 +34,34 @@ from donna.api.routes import (
     admin_shadow,
     admin_tasks,
     agents,
-    automations as automations_routes,
-    capabilities as capabilities_routes,
-    chat as chat_routes,
     health,
     llm,
     schedule,
-    skill_candidates as skill_candidates_routes,
-    skill_drafts as skill_drafts_routes,
-    skill_runs as skill_runs_routes,
-    skills as skills_routes,
     tasks,
+)
+from donna.api.routes import (
+    admin_agents as admin_agents_routes,
+)
+from donna.api.routes import (
+    automations as automations_routes,
+)
+from donna.api.routes import (
+    capabilities as capabilities_routes,
+)
+from donna.api.routes import (
+    chat as chat_routes,
+)
+from donna.api.routes import (
+    skill_candidates as skill_candidates_routes,
+)
+from donna.api.routes import (
+    skill_drafts as skill_drafts_routes,
+)
+from donna.api.routes import (
+    skill_runs as skill_runs_routes,
+)
+from donna.api.routes import (
+    skills as skills_routes,
 )
 from donna.chat.config import get_chat_config
 from donna.chat.engine import ConversationEngine

@@ -1,6 +1,6 @@
 """Tests for EvolutionScheduler — nightly batch runner for degraded skills."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -31,7 +31,7 @@ async def db(tmp_path: Path):
 
 
 async def _seed_skills(db, n_degraded: int):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for i in range(n_degraded):
         await db.execute(
             "INSERT INTO skill (id, capability_name, current_version_id, "
@@ -174,7 +174,7 @@ async def test_scheduler_emits_outcome_even_when_evolver_raises(db):
 
 async def test_scheduler_returns_empty_when_no_degraded_skills(db):
     """Test that scheduler returns empty list when no degraded skills."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO skill (id, capability_name, current_version_id, state, "
         "requires_human_gate, baseline_agreement, created_at, updated_at) "

@@ -6,14 +6,11 @@ and daily counter reset — all without a real Twilio account.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
-import pytest
-
-from donna.config import SmsConfig, SmsBlackoutConfig, SmsRateLimitConfig
+from donna.config import SmsBlackoutConfig, SmsConfig, SmsRateLimitConfig
 from donna.integrations.twilio_sms import TwilioSMS
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -28,7 +25,7 @@ def _make_config(max_per_day: int = 10) -> SmsConfig:
 
 
 def _utc(hour: int) -> datetime:
-    return datetime(2026, 3, 20, hour, 0, tzinfo=timezone.utc)
+    return datetime(2026, 3, 20, hour, 0, tzinfo=UTC)
 
 
 def _make_sms(max_per_day: int = 10) -> TwilioSMS:
@@ -111,7 +108,7 @@ class TestRateLimit:
             patch.object(sms, "_get_client", return_value=fake_client),
         ):
             # Day 1: use up the 1 allowed send.
-            mock_dt.now.return_value = datetime(2026, 3, 20, 10, 0, tzinfo=timezone.utc)
+            mock_dt.now.return_value = datetime(2026, 3, 20, 10, 0, tzinfo=UTC)
             ok = await sms.send(to="+15555555555", body="msg")
             assert ok is True
 
@@ -119,7 +116,7 @@ class TestRateLimit:
             assert blocked is False
 
             # Day 2: counter resets, send succeeds again.
-            mock_dt.now.return_value = datetime(2026, 3, 21, 10, 0, tzinfo=timezone.utc)
+            mock_dt.now.return_value = datetime(2026, 3, 21, 10, 0, tzinfo=UTC)
             ok2 = await sms.send(to="+15555555555", body="msg")
             assert ok2 is True
 
@@ -139,14 +136,27 @@ class TestSignatureVerification:
         mock_validator = MagicMock()
         mock_validator.validate.return_value = True
 
-        with patch("donna.integrations.twilio_sms.RequestValidator", return_value=mock_validator, create=True):
+        with (
+            patch(
+                "donna.integrations.twilio_sms.RequestValidator",
+                return_value=mock_validator,
+                create=True,
+            ),
             # Patch the import inside verify_signature
-            with patch.dict("sys.modules", {"twilio.request_validator": MagicMock(RequestValidator=lambda tok: mock_validator)}):
-                result = sms.verify_signature(
-                    url="https://example.com/sms/inbound",
-                    params={"From": "+15555555555", "Body": "hello"},
-                    signature="valid_sig",
-                )
+            patch.dict(
+                "sys.modules",
+                {
+                    "twilio.request_validator": MagicMock(
+                        RequestValidator=lambda tok: mock_validator
+                    )
+                },
+            ),
+        ):
+            result = sms.verify_signature(
+                url="https://example.com/sms/inbound",
+                params={"From": "+15555555555", "Body": "hello"},
+                signature="valid_sig",
+            )
         # The result depends on whether mock_validator.validate is called.
         # Since we mocked validate to return True, check the call.
         assert isinstance(result, bool)

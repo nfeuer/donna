@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -163,10 +163,10 @@ async def create_automation(
         try:
             next_run_at = cron.next_run(
                 expression=body.schedule,
-                after=datetime.now(timezone.utc),
+                after=datetime.now(UTC),
             )
         except InvalidCronExpressionError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     repo = AutomationRepository(conn)
     auto_id = await repo.create(
@@ -226,10 +226,10 @@ async def update_automation(
         try:
             next_run_at = cron.next_run(
                 expression=body.schedule,
-                after=datetime.now(timezone.utc),
+                after=datetime.now(UTC),
             )
         except InvalidCronExpressionError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         fields["schedule"] = body.schedule
         fields["next_run_at"] = next_run_at
 
@@ -273,7 +273,7 @@ async def resume_automation(automation_id: str, request: Request) -> dict[str, A
         try:
             next_run_at = cron.next_run(
                 expression=row.schedule,
-                after=datetime.now(timezone.utc),
+                after=datetime.now(UTC),
             )
             fields["next_run_at"] = next_run_at
         except InvalidCronExpressionError:
@@ -314,7 +314,7 @@ async def run_now(automation_id: str, request: Request) -> dict[str, Any]:
     (paused/deleted rows are not eligible for immediate run).
     """
     conn = request.app.state.db.connection
-    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    now_iso = datetime.now(tz=UTC).isoformat()
     cursor = await conn.execute(
         "UPDATE automation SET next_run_at = ?, updated_at = ? "
         "WHERE id = ? AND status = 'active'",

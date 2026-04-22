@@ -13,9 +13,9 @@ Verifies:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -28,8 +28,11 @@ from donna.config import (
     TimeWindowConfig,
     TimeWindowsConfig,
 )
-from donna.integrations.calendar import CalendarEvent, GoogleCalendarClient, _PROP_MANAGED, _PROP_TASK_ID
-
+from donna.integrations.calendar import (
+    _PROP_MANAGED,
+    _PROP_TASK_ID,
+    GoogleCalendarClient,
+)
 
 # ------------------------------------------------------------------
 # Helpers
@@ -37,7 +40,7 @@ from donna.integrations.calendar import CalendarEvent, GoogleCalendarClient, _PR
 
 
 def _utc(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
-    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+    return datetime(year, month, day, hour, minute, tzinfo=UTC)
 
 
 def _make_raw_event(

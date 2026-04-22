@@ -10,16 +10,15 @@ from functools import partial
 from typing import Any
 
 from donna.skills.tool_registry import ToolRegistry
-from donna.skills.tools.web_fetch import web_fetch
-from donna.skills.tools.rss_fetch import rss_fetch
-from donna.skills.tools.html_extract import html_extract
-from donna.skills.tools.gmail_search import gmail_search
-from donna.skills.tools.gmail_get_message import gmail_get_message
 from donna.skills.tools.calendar_read import calendar_read
-from donna.skills.tools.task_db_read import task_db_read
 from donna.skills.tools.cost_summary import cost_summary
 from donna.skills.tools.email_read import email_read
-
+from donna.skills.tools.gmail_get_message import gmail_get_message
+from donna.skills.tools.gmail_search import gmail_search
+from donna.skills.tools.html_extract import html_extract
+from donna.skills.tools.rss_fetch import rss_fetch
+from donna.skills.tools.task_db_read import task_db_read
+from donna.skills.tools.web_fetch import web_fetch
 
 # Module-level registry populated at orchestrator startup via
 # register_default_tools(DEFAULT_TOOL_REGISTRY). SkillExecutor instances

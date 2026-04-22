@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import inspect
 
-import pytest
-
 
 def test_baseline_query_does_not_use_literal_100() -> None:
     """The hardcoded 'LIMIT 100' must be replaced with a config-bound parameter."""

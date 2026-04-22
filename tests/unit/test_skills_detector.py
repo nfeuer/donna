@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -75,7 +75,7 @@ async def _insert_invocation(
     output: object = None,
     days_ago: float = 0,
 ) -> None:
-    ts = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    ts = (datetime.now(UTC) - timedelta(days=days_ago)).isoformat()
     row_id = str(uuid.uuid4())
     output_str = json.dumps(output) if output is not None else None
     await conn.execute(
@@ -96,7 +96,7 @@ async def _insert_skill(
     capability_name: str,
     state: str,
 ) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     skill_id = str(uuid.uuid4())
     await conn.execute(
         """
@@ -114,7 +114,7 @@ async def _insert_candidate(
     capability_name: str,
     status: str,
 ) -> str:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     candidate_id = str(uuid.uuid4())
     await conn.execute(
         """

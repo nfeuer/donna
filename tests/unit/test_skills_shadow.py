@@ -8,7 +8,7 @@ These tests use unittest.mock to avoid any I/O.  The ShadowSampler must:
     only the judge fails.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,7 +17,6 @@ from donna.config import SkillSystemConfig
 from donna.skills.models import SkillRow
 from donna.skills.shadow import ShadowSampler
 from donna.tasks.db_models import SkillState
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -31,8 +30,8 @@ def _make_skill(state: SkillState, capability_name: str = "parse_task") -> Skill
         state=state,
         requires_human_gate=False,
         baseline_agreement=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
 

@@ -10,11 +10,9 @@ import pytest
 from fastapi import HTTPException
 
 from donna.skills.lifecycle import (
-    HumanGateRequiredError,
     IllegalTransitionError,
     SkillNotFoundError,
 )
-
 
 SCHEMA = """
     CREATE TABLE skill (
@@ -283,6 +281,7 @@ async def test_post_state_transition_resets_baseline_on_save(db_with_skill):
     """When flagged_for_review → trusted with reason=human_approval,
     baseline_agreement is recomputed from recent divergences."""
     import pytest as _pytest
+
     from donna.api.routes.skills import TransitionRequest, transition_skill_state
 
     now = "2026-04-16T00:00:00+00:00"

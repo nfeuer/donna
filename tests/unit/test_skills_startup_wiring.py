@@ -5,7 +5,7 @@ import aiosqlite
 import pytest
 
 from donna.config import SkillSystemConfig
-from donna.skills.startup_wiring import SkillSystemBundle, assemble_skill_system
+from donna.skills.startup_wiring import assemble_skill_system
 
 
 @pytest.fixture

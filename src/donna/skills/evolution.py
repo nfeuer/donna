@@ -7,9 +7,10 @@ runs four validation gates, persists or rejects.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime
+from typing import Any
 
 import aiosqlite
 import structlog
@@ -346,7 +347,7 @@ class Evolver:
         changelog: str,
     ) -> str:
         new_version_id = str(uuid6.uuid7())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = await self._conn.execute(
             "SELECT COALESCE(MAX(version_number), 0) "
             "FROM skill_version WHERE skill_id = ?",

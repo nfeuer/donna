@@ -11,10 +11,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
-
-import pytest
-
+from datetime import UTC, datetime, timedelta
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -59,7 +56,7 @@ async def _insert_capability(
     conn, *, name: str, description: str = "", trigger_type: str = "on_message"
 ) -> str:
     cap_id = str(uuid.uuid4())
-    now = datetime.now(tz=timezone.utc).isoformat()
+    now = datetime.now(tz=UTC).isoformat()
     await conn.execute(
         "INSERT INTO capability (id, name, description, input_schema, "
         "trigger_type, status, created_at, created_by) "
@@ -82,7 +79,7 @@ async def _insert_skill_with_version(
     baseline_agreement: float | None = None,
 ) -> None:
     """Insert a skill, its version, and wire current_version_id."""
-    now = datetime.now(tz=timezone.utc).isoformat()
+    now = datetime.now(tz=UTC).isoformat()
     await conn.execute(
         "INSERT INTO skill (id, capability_name, current_version_id, state, "
         "requires_human_gate, baseline_agreement, created_at, updated_at) "
@@ -111,7 +108,7 @@ async def test_nightly_cycle_drafts_skill(runtime) -> None:
 
     conn = runtime.db.connection
     task_type = "test_capability_high_volume"
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     await _insert_capability(
         conn, name=task_type, description="High-volume test capability"
@@ -188,7 +185,7 @@ async def test_automation_tick_alerts(runtime) -> None:
     from donna.automations.repository import AutomationRepository
 
     conn = runtime.db.connection
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     # Canned claude_native response: the dispatcher calls the router with
     # task_type=automation.capability_name (see AutomationDispatcher.dispatch
@@ -251,7 +248,7 @@ async def test_automation_tick_alerts(runtime) -> None:
 
 async def test_sandbox_promotes_to_shadow_primary(runtime) -> None:
     conn = runtime.db.connection
-    now = datetime.now(tz=timezone.utc).isoformat()
+    now = datetime.now(tz=UTC).isoformat()
 
     skill_id = str(uuid.uuid4())
     version_id = str(uuid.uuid4())
@@ -308,7 +305,7 @@ async def test_sandbox_promotes_to_shadow_primary(runtime) -> None:
 
 async def test_trusted_degrades_to_flagged(runtime) -> None:
     conn = runtime.db.connection
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     skill_id = str(uuid.uuid4())
     version_id = str(uuid.uuid4())

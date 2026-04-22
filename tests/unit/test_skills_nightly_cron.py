@@ -7,14 +7,13 @@ database or LLM calls are made.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, call
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from donna.config import SkillSystemConfig
-from donna.skills.crons.nightly import NightlyDeps, NightlyReport, run_nightly_tasks
-
+from donna.skills.crons.nightly import NightlyDeps, run_nightly_tasks
 
 # ---------------------------------------------------------------------------
 # Fixture helper

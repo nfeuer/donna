@@ -11,8 +11,9 @@ from pathlib import Path
 
 import aiosqlite
 import pytest
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 
 def _cfg(db: Path) -> Config:

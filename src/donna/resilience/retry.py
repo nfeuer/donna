@@ -8,16 +8,17 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Callable, Awaitable
+from enum import StrEnum
+from typing import Any
 
 import structlog
 
 logger = structlog.get_logger()
 
 
-class TaskCategory(str, Enum):
+class TaskCategory(StrEnum):
     """Retry policy categories. See docs/resilience.md Section 3.6.1."""
 
     CRITICAL = "critical"   # digest, deadline reminders: 3 retries, degraded fallback
@@ -42,7 +43,7 @@ RETRY_POLICIES: dict[TaskCategory, RetryPolicy] = {
 }
 
 
-class CircuitBreakerState(str, Enum):
+class CircuitBreakerState(StrEnum):
     CLOSED = "closed"       # Normal operation
     OPEN = "open"           # Failing, all calls short-circuited
     HALF_OPEN = "half_open" # Testing recovery

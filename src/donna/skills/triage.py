@@ -13,7 +13,7 @@ logger = structlog.get_logger()
 MAX_RETRY_COUNT = 3
 
 
-class TriageDecision(str, enum.Enum):
+class TriageDecision(enum.StrEnum):
     RETRY_STEP = "retry_step_with_modified_prompt"
     SKIP_STEP = "skip_step"
     ESCALATE_TO_CLAUDE = "escalate_to_claude"

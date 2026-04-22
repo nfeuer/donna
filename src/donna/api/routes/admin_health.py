@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
@@ -40,14 +40,13 @@ async def _check_db(conn: Any) -> dict[str, Any]:
 async def _check_loki() -> dict[str, Any]:
     """HTTP GET to Loki /ready with a 3-second timeout."""
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{_LOKI_URL}/ready",
-                timeout=aiohttp.ClientTimeout(total=3),
-            ) as resp:
-                if resp.status == 200:
-                    return {"ok": True}
-                return {"ok": False, "detail": f"status {resp.status}"}
+        async with aiohttp.ClientSession() as session, session.get(
+            f"{_LOKI_URL}/ready",
+            timeout=aiohttp.ClientTimeout(total=3),
+        ) as resp:
+            if resp.status == 200:
+                return {"ok": True}
+            return {"ok": False, "detail": f"status {resp.status}"}
     except Exception as exc:
         return {"ok": False, "detail": str(exc)}
 
@@ -60,16 +59,15 @@ async def _check_ollama(check_enabled: bool = True) -> dict[str, Any] | None:
     if not check_enabled or not _OLLAMA_URL:
         return None
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{_OLLAMA_URL}/api/tags",
-                timeout=aiohttp.ClientTimeout(total=3),
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    models = [m["name"] for m in data.get("models", [])]
-                    return {"ok": True, "models": models}
-                return {"ok": False, "detail": f"status {resp.status}"}
+        async with aiohttp.ClientSession() as session, session.get(
+            f"{_OLLAMA_URL}/api/tags",
+            timeout=aiohttp.ClientTimeout(total=3),
+        ) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                models = [m["name"] for m in data.get("models", [])]
+                return {"ok": True, "models": models}
+            return {"ok": False, "detail": f"status {resp.status}"}
     except Exception as exc:
         return {"ok": False, "detail": str(exc)}
 
@@ -114,5 +112,5 @@ async def admin_health(request: Request) -> dict[str, Any]:
         "status": status,
         "checks": checks,
         "uptime_seconds": uptime_s,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }

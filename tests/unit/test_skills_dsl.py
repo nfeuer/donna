@@ -1,7 +1,6 @@
 import pytest
 
-from donna.skills.dsl import expand_for_each, DSLError
-from donna.skills.tool_dispatch import ToolInvocationSpec
+from donna.skills.dsl import DSLError, expand_for_each
 
 
 def test_for_each_over_list():

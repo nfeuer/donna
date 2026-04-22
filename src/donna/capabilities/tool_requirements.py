@@ -42,7 +42,7 @@ class SkillToolRequirementsLookup:
             if row is None or row[0] is None:
                 return []
             spec = yaml.safe_load(row[0]) or {}
-        except Exception:  # noqa: BLE001 — defensive; unknown capability is fine
+        except Exception:
             logger.warning("list_required_tools_failed", capability=capability_name, exc_info=True)
             return []
 

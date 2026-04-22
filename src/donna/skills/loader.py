@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -73,7 +73,7 @@ async def load_skill_from_directory(
 
     skill_id = str(uuid6.uuid7())
     version_id = str(uuid6.uuid7())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     await conn.execute(
         f"INSERT INTO skill ({SELECT_SKILL}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

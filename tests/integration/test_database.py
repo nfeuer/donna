@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from donna.logging.invocation_logger import InvocationLogger, InvocationMetadata
-from donna.tasks.database import Database, TaskRow
+from donna.tasks.database import Database
 from donna.tasks.db_models import (
     Base,
     DeadlineType,
@@ -19,7 +19,7 @@ from donna.tasks.db_models import (
     TaskDomain,
     TaskStatus,
 )
-from donna.tasks.state_machine import InvalidTransitionError, StateMachine
+from donna.tasks.state_machine import InvalidTransitionError
 
 pytestmark = pytest.mark.asyncio
 
@@ -306,8 +306,9 @@ class TestAlembicMigrations:
         """Run alembic upgrade head on a fresh DB and verify tables exist."""
         import sqlite3
 
-        from alembic import command
         from alembic.config import Config
+
+        from alembic import command
 
         db_path = tmp_path / "migration_test.db"
         cfg = Config("alembic.ini")
@@ -333,8 +334,9 @@ class TestAlembicMigrations:
         """Run upgrade then downgrade, verify tables are gone."""
         import sqlite3
 
-        from alembic import command
         from alembic.config import Config
+
+        from alembic import command
 
         db_path = tmp_path / "downgrade_test.db"
         cfg = Config("alembic.ini")

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import time
 from pathlib import Path
 from typing import Any
 
@@ -100,13 +99,15 @@ class SupabaseSync:
                     "Authorization": f"Bearer {self._key}",
                 }
                 url = f"{self._url}/rest/v1/"
-                async with aiohttp.ClientSession() as session:
-                    async with session.head(url, headers=headers) as resp:
-                        logger.info(
-                            "supabase_keepalive",
-                            event_type="sync.supabase.keepalive",
-                            status=resp.status,
-                        )
+                async with (
+                    aiohttp.ClientSession() as session,
+                    session.head(url, headers=headers) as resp,
+                ):
+                    logger.info(
+                        "supabase_keepalive",
+                        event_type="sync.supabase.keepalive",
+                        status=resp.status,
+                    )
             except Exception as exc:
                 logger.warning(
                     "supabase_keepalive_failed",
@@ -153,13 +154,15 @@ class SupabaseSync:
         }
         url = f"{self._url}/rest/v1/tasks"
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=task, headers=headers) as resp:
-                if resp.status not in (200, 201, 409):
-                    body = await resp.text()
-                    raise RuntimeError(
-                        f"Supabase push failed: HTTP {resp.status} — {body[:200]}"
-                    )
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(url, json=task, headers=headers) as resp,
+        ):
+            if resp.status not in (200, 201, 409):
+                body = await resp.text()
+                raise RuntimeError(
+                    f"Supabase push failed: HTTP {resp.status} — {body[:200]}"
+                )
 
         logger.info(
             "supabase_push_ok",

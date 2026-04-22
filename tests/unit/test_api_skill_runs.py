@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import MagicMock
+
 import aiosqlite
 import pytest
 from fastapi import HTTPException

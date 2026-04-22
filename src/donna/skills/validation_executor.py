@@ -54,7 +54,7 @@ class ValidationExecutor:
                               inputs=inputs, user_id=user_id),
                 timeout=self._config.validation_per_run_timeout_s,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "validation_run_timeout",
                 skill_id=skill.id, version_id=version.id,

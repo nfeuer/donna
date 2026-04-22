@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,11 +12,9 @@ import pytest
 
 from donna.config import SkillSystemConfig
 from donna.cost.budget import BudgetPausedError
-from donna.skills.auto_drafter import AutoDrafter, AutoDraftReport
+from donna.skills.auto_drafter import AutoDrafter
 from donna.skills.candidate_report import SkillCandidateRepository
-from donna.skills.fixtures import FixtureValidationReport
 from donna.skills.lifecycle import SkillLifecycleManager
-
 
 # ---------------------------------------------------------------------------
 # DB fixture with the full schema AutoDrafter touches
@@ -134,7 +132,7 @@ async def _insert_capability(
     description: str = "test capability",
     input_schema: str = '{"type": "object"}',
 ) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await conn.execute(
         """
         INSERT INTO capability
@@ -559,7 +557,7 @@ async def test_draft_persists_fixtures_with_tool_mocks(
     )
     rows = await cursor.fetchall()
     assert len(rows) == 3  # three well-formed fixtures
-    for case_name, source, _ in rows:
+    for _case_name, source, _ in rows:
         assert source == "claude_generated"
 
     # Find the fixture with the mocks we stamped on.

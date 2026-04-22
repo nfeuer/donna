@@ -1,14 +1,13 @@
 """Unit test: rss_fetch supports offset + has_more."""
 from __future__ import annotations
 
+import sys
 from unittest.mock import patch
 
 import pytest
 
-import importlib
-import sys
-
 import donna.skills.tools.rss_fetch  # noqa: F401 — ensure submodule is imported
+
 rss_mod = sys.modules["donna.skills.tools.rss_fetch"]
 
 

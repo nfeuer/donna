@@ -1,8 +1,6 @@
 """Direct unit tests for AutomationDispatcher._query_state_blob + _update_state_blob."""
 from __future__ import annotations
 
-import json
-
 import aiosqlite
 import pytest
 
