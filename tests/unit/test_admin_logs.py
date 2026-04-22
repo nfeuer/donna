@@ -44,7 +44,8 @@ class TestGetEventTypes:
         result = await get_event_types()
         expected_categories = {
             "task", "api", "agent", "scheduler", "notification",
-            "preference", "system", "cost", "sync",
+            "preference", "system", "cost", "sync", "admin",
+            "llm_gateway", "ui",
         }
         assert set(result.keys()) == expected_categories
 

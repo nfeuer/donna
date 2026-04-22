@@ -31,8 +31,8 @@ class GatewayAlerter:
     async def _send(self, key: str, message: str) -> None:
         """Send alert if not debounced."""
         now = time.monotonic()
-        last = self._last_sent.get(key, 0)
-        if now - last < self._debounce_seconds:
+        last = self._last_sent.get(key)
+        if last is not None and now - last < self._debounce_seconds:
             return
         self._last_sent[key] = now
         try:

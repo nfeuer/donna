@@ -12,7 +12,13 @@ class TestAdminHealth:
         request, conn = mock_request
         conn.execute = AsyncMock()
 
-        with patch("donna.api.routes.admin_health._check_loki", return_value={"ok": True}):
+        with (
+            patch("donna.api.routes.admin_health._check_loki", return_value={"ok": True}),
+            patch(
+                "donna.api.routes.admin_health._check_ollama",
+                return_value={"ok": True, "models": []},
+            ),
+        ):
             result = await admin_health(request)
 
         assert result["status"] == "healthy"
@@ -25,7 +31,13 @@ class TestAdminHealth:
         request, conn = mock_request
         conn.execute = AsyncMock(side_effect=Exception("connection refused"))
 
-        with patch("donna.api.routes.admin_health._check_loki", return_value={"ok": True}):
+        with (
+            patch("donna.api.routes.admin_health._check_loki", return_value={"ok": True}),
+            patch(
+                "donna.api.routes.admin_health._check_ollama",
+                return_value={"ok": True, "models": []},
+            ),
+        ):
             result = await admin_health(request)
 
         assert result["status"] == "degraded"
@@ -36,9 +48,15 @@ class TestAdminHealth:
         request, conn = mock_request
         conn.execute = AsyncMock()
 
-        with patch(
-            "donna.api.routes.admin_health._check_loki",
-            return_value={"ok": False, "detail": "status 503"},
+        with (
+            patch(
+                "donna.api.routes.admin_health._check_loki",
+                return_value={"ok": False, "detail": "status 503"},
+            ),
+            patch(
+                "donna.api.routes.admin_health._check_ollama",
+                return_value={"ok": True, "models": []},
+            ),
         ):
             result = await admin_health(request)
 

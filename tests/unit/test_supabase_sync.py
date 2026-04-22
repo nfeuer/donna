@@ -53,11 +53,17 @@ class TestKeepAlive:
     async def test_keepalive_survives_errors(self, sync: SupabaseSync) -> None:
         call_count = 0
 
+        class _FailingResp:
+            async def __aenter__(self):
+                raise ConnectionError("network down")
 
-        async def failing_head(*args, **kwargs):
+            async def __aexit__(self, *a):
+                return False
+
+        def failing_head(*args, **kwargs):
             nonlocal call_count
             call_count += 1
-            raise ConnectionError("network down")
+            return _FailingResp()
 
         mock_session = AsyncMock()
         mock_session.head = failing_head

@@ -140,7 +140,7 @@ async def test_confirm_reply_calls_apply_proposal():
     }
     planner._apply_proposal = AsyncMock()
 
-    handled = await planner.handle_plan_reply("confirm")
+    handled = await planner.handle_plan_reply("confirm", now=now)
     assert handled is True
     planner._apply_proposal.assert_called_once_with(proposal_id)
 
@@ -165,7 +165,7 @@ async def test_skip_reply_removes_task_from_proposal():
         "expires_at": now + timedelta(hours=10),
     }
 
-    handled = await planner.handle_plan_reply("skip Oil change")
+    handled = await planner.handle_plan_reply("skip Oil change", now=now)
     assert handled is True
     remaining = [t.id for t in planner._pending[proposal_id]["tasks"]]
     assert "b" in remaining
