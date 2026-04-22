@@ -12783,7 +12783,19 @@ wrapped in a try/except and this preserves that behaviour.</p>
 <span class="normal"><a href="#__codelineno-0-626">626</a></span>
 <span class="normal"><a href="#__codelineno-0-627">627</a></span>
 <span class="normal"><a href="#__codelineno-0-628">628</a></span>
-<span class="normal"><a href="#__codelineno-0-629">629</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-558"><a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">wire_automation_subsystem</span><span class="p">(</span>
+<span class="normal"><a href="#__codelineno-0-629">629</a></span>
+<span class="normal"><a href="#__codelineno-0-630">630</a></span>
+<span class="normal"><a href="#__codelineno-0-631">631</a></span>
+<span class="normal"><a href="#__codelineno-0-632">632</a></span>
+<span class="normal"><a href="#__codelineno-0-633">633</a></span>
+<span class="normal"><a href="#__codelineno-0-634">634</a></span>
+<span class="normal"><a href="#__codelineno-0-635">635</a></span>
+<span class="normal"><a href="#__codelineno-0-636">636</a></span>
+<span class="normal"><a href="#__codelineno-0-637">637</a></span>
+<span class="normal"><a href="#__codelineno-0-638">638</a></span>
+<span class="normal"><a href="#__codelineno-0-639">639</a></span>
+<span class="normal"><a href="#__codelineno-0-640">640</a></span>
+<span class="normal"><a href="#__codelineno-0-641">641</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-558"><a id="__codelineno-0-558" name="__codelineno-0-558"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">wire_automation_subsystem</span><span class="p">(</span>
 </span><span id="__span-0-559"><a id="__codelineno-0-559" name="__codelineno-0-559"></a>    <span class="n">ctx</span><span class="p">:</span> <span class="n">StartupContext</span><span class="p">,</span> <span class="n">skill_h</span><span class="p">:</span> <span class="n">SkillSystemHandle</span><span class="p">,</span>
 </span><span id="__span-0-560"><a id="__codelineno-0-560" name="__codelineno-0-560"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AutomationHandle</span><span class="p">:</span>
 </span><span id="__span-0-561"><a id="__codelineno-0-561" name="__codelineno-0-561"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct AutomationRepository + Dispatcher + Scheduler.</span>
@@ -12838,23 +12850,35 @@ wrapped in a try/except and this preserves that behaviour.</p>
 </span><span id="__span-0-610"><a id="__codelineno-0-610" name="__codelineno-0-610"></a>                        <span class="n">policy</span><span class="o">=</span><span class="n">policy</span><span class="p">,</span>
 </span><span id="__span-0-611"><a id="__codelineno-0-611" name="__codelineno-0-611"></a>                        <span class="n">scheduler</span><span class="o">=</span><span class="n">_ReclamperSchedulerAdapter</span><span class="p">(),</span>
 </span><span id="__span-0-612"><a id="__codelineno-0-612" name="__codelineno-0-612"></a>                    <span class="p">)</span>
-</span><span id="__span-0-613"><a id="__codelineno-0-613" name="__codelineno-0-613"></a>                    <span class="n">bundle</span><span class="o">.</span><span class="n">lifecycle_manager</span><span class="o">.</span><span class="n">after_state_change</span><span class="o">.</span><span class="n">register</span><span class="p">(</span>
-</span><span id="__span-0-614"><a id="__codelineno-0-614" name="__codelineno-0-614"></a>                        <span class="n">reclamper</span><span class="o">.</span><span class="n">reclamp_for_capability</span><span class="p">,</span>
-</span><span id="__span-0-615"><a id="__codelineno-0-615" name="__codelineno-0-615"></a>                    <span class="p">)</span>
-</span><span id="__span-0-616"><a id="__codelineno-0-616" name="__codelineno-0-616"></a>                    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;cadence_reclamper_registered&quot;</span><span class="p">)</span>
-</span><span id="__span-0-617"><a id="__codelineno-0-617" name="__codelineno-0-617"></a>                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-</span><span id="__span-0-618"><a id="__codelineno-0-618" name="__codelineno-0-618"></a>                    <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;cadence_reclamper_wiring_failed&quot;</span><span class="p">)</span>
+</span><span id="__span-0-613"><a id="__codelineno-0-613" name="__codelineno-0-613"></a>                    <span class="c1"># reclamp_for_capability returns int; the hook signature</span>
+</span><span id="__span-0-614"><a id="__codelineno-0-614" name="__codelineno-0-614"></a>                    <span class="c1"># expects Awaitable[None], so adapt via a wrapper that</span>
+</span><span id="__span-0-615"><a id="__codelineno-0-615" name="__codelineno-0-615"></a>                    <span class="c1"># discards the return value.</span>
+</span><span id="__span-0-616"><a id="__codelineno-0-616" name="__codelineno-0-616"></a>                    <span class="n">_reclamp_fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">(</span>
+</span><span id="__span-0-617"><a id="__codelineno-0-617" name="__codelineno-0-617"></a>                        <span class="n">reclamper</span><span class="o">.</span><span class="n">reclamp_for_capability</span>
+</span><span id="__span-0-618"><a id="__codelineno-0-618" name="__codelineno-0-618"></a>                    <span class="p">)</span>
 </span><span id="__span-0-619"><a id="__codelineno-0-619" name="__codelineno-0-619"></a>
-</span><span id="__span-0-620"><a id="__codelineno-0-620" name="__codelineno-0-620"></a>        <span class="k">return</span> <span class="n">AutomationHandle</span><span class="p">(</span>
-</span><span id="__span-0-621"><a id="__codelineno-0-621" name="__codelineno-0-621"></a>            <span class="n">repository</span><span class="o">=</span><span class="n">automation_repo</span><span class="p">,</span>
-</span><span id="__span-0-622"><a id="__codelineno-0-622" name="__codelineno-0-622"></a>            <span class="n">dispatcher</span><span class="o">=</span><span class="n">automation_dispatcher</span><span class="p">,</span>
-</span><span id="__span-0-623"><a id="__codelineno-0-623" name="__codelineno-0-623"></a>            <span class="n">scheduler</span><span class="o">=</span><span class="n">automation_scheduler</span><span class="p">,</span>
-</span><span id="__span-0-624"><a id="__codelineno-0-624" name="__codelineno-0-624"></a>        <span class="p">)</span>
-</span><span id="__span-0-625"><a id="__codelineno-0-625" name="__codelineno-0-625"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-</span><span id="__span-0-626"><a id="__codelineno-0-626" name="__codelineno-0-626"></a>        <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;automation_scheduler_wiring_failed&quot;</span><span class="p">)</span>
-</span><span id="__span-0-627"><a id="__codelineno-0-627" name="__codelineno-0-627"></a>        <span class="k">return</span> <span class="n">AutomationHandle</span><span class="p">(</span>
-</span><span id="__span-0-628"><a id="__codelineno-0-628" name="__codelineno-0-628"></a>            <span class="n">repository</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dispatcher</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scheduler</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-</span><span id="__span-0-629"><a id="__codelineno-0-629" name="__codelineno-0-629"></a>        <span class="p">)</span>
+</span><span id="__span-0-620"><a id="__codelineno-0-620" name="__codelineno-0-620"></a>                    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">_reclamp_adapter</span><span class="p">(</span>
+</span><span id="__span-0-621"><a id="__codelineno-0-621" name="__codelineno-0-621"></a>                        <span class="n">capability_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">new_state</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+</span><span id="__span-0-622"><a id="__codelineno-0-622" name="__codelineno-0-622"></a>                    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-623"><a id="__codelineno-0-623" name="__codelineno-0-623"></a>                        <span class="k">await</span> <span class="n">_reclamp_fn</span><span class="p">(</span><span class="n">capability_name</span><span class="p">,</span> <span class="n">new_state</span><span class="p">)</span>
+</span><span id="__span-0-624"><a id="__codelineno-0-624" name="__codelineno-0-624"></a>
+</span><span id="__span-0-625"><a id="__codelineno-0-625" name="__codelineno-0-625"></a>                    <span class="n">bundle</span><span class="o">.</span><span class="n">lifecycle_manager</span><span class="o">.</span><span class="n">after_state_change</span><span class="o">.</span><span class="n">register</span><span class="p">(</span>
+</span><span id="__span-0-626"><a id="__codelineno-0-626" name="__codelineno-0-626"></a>                        <span class="n">_reclamp_adapter</span><span class="p">,</span>
+</span><span id="__span-0-627"><a id="__codelineno-0-627" name="__codelineno-0-627"></a>                    <span class="p">)</span>
+</span><span id="__span-0-628"><a id="__codelineno-0-628" name="__codelineno-0-628"></a>                    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;cadence_reclamper_registered&quot;</span><span class="p">)</span>
+</span><span id="__span-0-629"><a id="__codelineno-0-629" name="__codelineno-0-629"></a>                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+</span><span id="__span-0-630"><a id="__codelineno-0-630" name="__codelineno-0-630"></a>                    <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;cadence_reclamper_wiring_failed&quot;</span><span class="p">)</span>
+</span><span id="__span-0-631"><a id="__codelineno-0-631" name="__codelineno-0-631"></a>
+</span><span id="__span-0-632"><a id="__codelineno-0-632" name="__codelineno-0-632"></a>        <span class="k">return</span> <span class="n">AutomationHandle</span><span class="p">(</span>
+</span><span id="__span-0-633"><a id="__codelineno-0-633" name="__codelineno-0-633"></a>            <span class="n">repository</span><span class="o">=</span><span class="n">automation_repo</span><span class="p">,</span>
+</span><span id="__span-0-634"><a id="__codelineno-0-634" name="__codelineno-0-634"></a>            <span class="n">dispatcher</span><span class="o">=</span><span class="n">automation_dispatcher</span><span class="p">,</span>
+</span><span id="__span-0-635"><a id="__codelineno-0-635" name="__codelineno-0-635"></a>            <span class="n">scheduler</span><span class="o">=</span><span class="n">automation_scheduler</span><span class="p">,</span>
+</span><span id="__span-0-636"><a id="__codelineno-0-636" name="__codelineno-0-636"></a>        <span class="p">)</span>
+</span><span id="__span-0-637"><a id="__codelineno-0-637" name="__codelineno-0-637"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+</span><span id="__span-0-638"><a id="__codelineno-0-638" name="__codelineno-0-638"></a>        <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;automation_scheduler_wiring_failed&quot;</span><span class="p">)</span>
+</span><span id="__span-0-639"><a id="__codelineno-0-639" name="__codelineno-0-639"></a>        <span class="k">return</span> <span class="n">AutomationHandle</span><span class="p">(</span>
+</span><span id="__span-0-640"><a id="__codelineno-0-640" name="__codelineno-0-640"></a>            <span class="n">repository</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dispatcher</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scheduler</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-0-641"><a id="__codelineno-0-641" name="__codelineno-0-641"></a>        <span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -12892,19 +12916,7 @@ utterances through the Wave 3 intent pipeline.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/donna/cli_wiring.py</code></summary>
-              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-637">637</a></span>
-<span class="normal"><a href="#__codelineno-0-638">638</a></span>
-<span class="normal"><a href="#__codelineno-0-639">639</a></span>
-<span class="normal"><a href="#__codelineno-0-640">640</a></span>
-<span class="normal"><a href="#__codelineno-0-641">641</a></span>
-<span class="normal"><a href="#__codelineno-0-642">642</a></span>
-<span class="normal"><a href="#__codelineno-0-643">643</a></span>
-<span class="normal"><a href="#__codelineno-0-644">644</a></span>
-<span class="normal"><a href="#__codelineno-0-645">645</a></span>
-<span class="normal"><a href="#__codelineno-0-646">646</a></span>
-<span class="normal"><a href="#__codelineno-0-647">647</a></span>
-<span class="normal"><a href="#__codelineno-0-648">648</a></span>
-<span class="normal"><a href="#__codelineno-0-649">649</a></span>
+              <div class="language-python highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-649">649</a></span>
 <span class="normal"><a href="#__codelineno-0-650">650</a></span>
 <span class="normal"><a href="#__codelineno-0-651">651</a></span>
 <span class="normal"><a href="#__codelineno-0-652">652</a></span>
@@ -13016,131 +13028,143 @@ utterances through the Wave 3 intent pipeline.</p>
 <span class="normal"><a href="#__codelineno-0-758">758</a></span>
 <span class="normal"><a href="#__codelineno-0-759">759</a></span>
 <span class="normal"><a href="#__codelineno-0-760">760</a></span>
-<span class="normal"><a href="#__codelineno-0-761">761</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-637"><a id="__codelineno-0-637" name="__codelineno-0-637"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">wire_discord</span><span class="p">(</span>
-</span><span id="__span-0-638"><a id="__codelineno-0-638" name="__codelineno-0-638"></a>    <span class="n">ctx</span><span class="p">:</span> <span class="n">StartupContext</span><span class="p">,</span>
-</span><span id="__span-0-639"><a id="__codelineno-0-639" name="__codelineno-0-639"></a>    <span class="n">skill_h</span><span class="p">:</span> <span class="n">SkillSystemHandle</span><span class="p">,</span>
-</span><span id="__span-0-640"><a id="__codelineno-0-640" name="__codelineno-0-640"></a>    <span class="n">automation_h</span><span class="p">:</span> <span class="n">AutomationHandle</span><span class="p">,</span>
-</span><span id="__span-0-641"><a id="__codelineno-0-641" name="__codelineno-0-641"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DiscordHandle</span><span class="p">:</span>
-</span><span id="__span-0-642"><a id="__codelineno-0-642" name="__codelineno-0-642"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Register slash commands, proactive-prompt config, start bot task.</span>
-</span><span id="__span-0-643"><a id="__codelineno-0-643" name="__codelineno-0-643"></a>
-</span><span id="__span-0-644"><a id="__codelineno-0-644" name="__codelineno-0-644"></a><span class="sd">    If `DISCORD_BOT_TOKEN` / `DISCORD_TASKS_CHANNEL_ID` were not present</span>
-</span><span id="__span-0-645"><a id="__codelineno-0-645" name="__codelineno-0-645"></a><span class="sd">    in the environment (checked in `build_startup_context`), no bot was</span>
-</span><span id="__span-0-646"><a id="__codelineno-0-646" name="__codelineno-0-646"></a><span class="sd">    constructed — this helper logs `discord_bot_disabled` and returns a</span>
-</span><span id="__span-0-647"><a id="__codelineno-0-647" name="__codelineno-0-647"></a><span class="sd">    handle with `bot=None`.</span>
-</span><span id="__span-0-648"><a id="__codelineno-0-648" name="__codelineno-0-648"></a>
-</span><span id="__span-0-649"><a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="sd">    Wave 3 Task 13: constructs a DiscordIntentDispatcher from the</span>
-</span><span id="__span-0-650"><a id="__codelineno-0-650" name="__codelineno-0-650"></a><span class="sd">    ChallengerAgent + ClaudeNoveltyJudge + PendingDraftRegistry +</span>
-</span><span id="__span-0-651"><a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">    CadencePolicy + lifecycle adapter + candidate-report writer, and</span>
-</span><span id="__span-0-652"><a id="__codelineno-0-652" name="__codelineno-0-652"></a><span class="sd">    wires it onto the running `DonnaBot` so `on_message` routes new</span>
-</span><span id="__span-0-653"><a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">    utterances through the Wave 3 intent pipeline.</span>
-</span><span id="__span-0-654"><a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="sd">    &quot;&quot;&quot;</span>
-</span><span id="__span-0-655"><a id="__codelineno-0-655" name="__codelineno-0-655"></a>    <span class="n">log</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span>
-</span><span id="__span-0-656"><a id="__codelineno-0-656" name="__codelineno-0-656"></a>
-</span><span id="__span-0-657"><a id="__codelineno-0-657" name="__codelineno-0-657"></a>    <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-0-658"><a id="__codelineno-0-658" name="__codelineno-0-658"></a>        <span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-</span><span id="__span-0-659"><a id="__codelineno-0-659" name="__codelineno-0-659"></a>            <span class="s2">&quot;discord_bot_disabled&quot;</span><span class="p">,</span>
-</span><span id="__span-0-660"><a id="__codelineno-0-660" name="__codelineno-0-660"></a>            <span class="n">reason</span><span class="o">=</span><span class="s2">&quot;DISCORD_BOT_TOKEN or DISCORD_TASKS_CHANNEL_ID not set&quot;</span><span class="p">,</span>
-</span><span id="__span-0-661"><a id="__codelineno-0-661" name="__codelineno-0-661"></a>        <span class="p">)</span>
-</span><span id="__span-0-662"><a id="__codelineno-0-662" name="__codelineno-0-662"></a>        <span class="k">return</span> <span class="n">DiscordHandle</span><span class="p">(</span><span class="n">bot</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">intent_dispatcher</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
-</span><span id="__span-0-663"><a id="__codelineno-0-663" name="__codelineno-0-663"></a>
-</span><span id="__span-0-664"><a id="__codelineno-0-664" name="__codelineno-0-664"></a>    <span class="c1"># Wave 3: construct the intent dispatcher. Failure here is logged</span>
-</span><span id="__span-0-665"><a id="__codelineno-0-665" name="__codelineno-0-665"></a>    <span class="c1"># but non-fatal — the bot falls back to the legacy InputParser path.</span>
-</span><span id="__span-0-666"><a id="__codelineno-0-666" name="__codelineno-0-666"></a>    <span class="n">intent_dispatcher</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_build_intent_dispatcher</span><span class="p">(</span>
-</span><span id="__span-0-667"><a id="__codelineno-0-667" name="__codelineno-0-667"></a>        <span class="n">ctx</span><span class="p">,</span> <span class="n">skill_h</span><span class="p">,</span> <span class="n">automation_h</span><span class="p">,</span> <span class="n">log</span><span class="p">,</span>
-</span><span id="__span-0-668"><a id="__codelineno-0-668" name="__codelineno-0-668"></a>    <span class="p">)</span>
-</span><span id="__span-0-669"><a id="__codelineno-0-669" name="__codelineno-0-669"></a>    <span class="k">if</span> <span class="n">intent_dispatcher</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-</span><span id="__span-0-670"><a id="__codelineno-0-670" name="__codelineno-0-670"></a>        <span class="c1"># Attach to the already-constructed DonnaBot so `on_message`</span>
-</span><span id="__span-0-671"><a id="__codelineno-0-671" name="__codelineno-0-671"></a>        <span class="c1"># routes via the Wave 3 path. automation_repo is needed for the</span>
-</span><span id="__span-0-672"><a id="__codelineno-0-672" name="__codelineno-0-672"></a>        <span class="c1"># AutomationConfirmationView approval coordinator.</span>
-</span><span id="__span-0-673"><a id="__codelineno-0-673" name="__codelineno-0-673"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_intent_dispatcher</span> <span class="o">=</span> <span class="n">intent_dispatcher</span>
-</span><span id="__span-0-674"><a id="__codelineno-0-674" name="__codelineno-0-674"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_automation_repo</span> <span class="o">=</span> <span class="n">automation_h</span><span class="o">.</span><span class="n">repository</span>
-</span><span id="__span-0-675"><a id="__codelineno-0-675" name="__codelineno-0-675"></a>        <span class="c1"># Wave 4: wire capability-availability guard into AutomationCreationPath.</span>
-</span><span id="__span-0-676"><a id="__codelineno-0-676" name="__codelineno-0-676"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.capabilities.tool_requirements</span><span class="w"> </span><span class="kn">import</span> <span class="n">SkillToolRequirementsLookup</span>
-</span><span id="__span-0-677"><a id="__codelineno-0-677" name="__codelineno-0-677"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.skills</span><span class="w"> </span><span class="kn">import</span> <span class="n">tools</span> <span class="k">as</span> <span class="n">_skill_tools_module</span>
-</span><span id="__span-0-678"><a id="__codelineno-0-678" name="__codelineno-0-678"></a>
-</span><span id="__span-0-679"><a id="__codelineno-0-679" name="__codelineno-0-679"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_automation_tool_registry</span> <span class="o">=</span> <span class="n">_skill_tools_module</span><span class="o">.</span><span class="n">DEFAULT_TOOL_REGISTRY</span>
-</span><span id="__span-0-680"><a id="__codelineno-0-680" name="__codelineno-0-680"></a>        <span class="n">_cap_lookup</span> <span class="o">=</span> <span class="n">SkillToolRequirementsLookup</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">db</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span>
-</span><span id="__span-0-681"><a id="__codelineno-0-681" name="__codelineno-0-681"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_automation_capability_lookup</span> <span class="o">=</span> <span class="n">_cap_lookup</span><span class="o">.</span><span class="n">list_required_tools</span>
-</span><span id="__span-0-682"><a id="__codelineno-0-682" name="__codelineno-0-682"></a>
-</span><span id="__span-0-683"><a id="__codelineno-0-683" name="__codelineno-0-683"></a>        <span class="c1"># F-W4-K: wire optional-input defaulting lookup into AutomationCreationPath.</span>
-</span><span id="__span-0-684"><a id="__codelineno-0-684" name="__codelineno-0-684"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.capabilities.repo_input_schema_lookup</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-0-685"><a id="__codelineno-0-685" name="__codelineno-0-685"></a>            <span class="n">CapabilityInputSchemaDBLookup</span><span class="p">,</span>
-</span><span id="__span-0-686"><a id="__codelineno-0-686" name="__codelineno-0-686"></a>        <span class="p">)</span>
-</span><span id="__span-0-687"><a id="__codelineno-0-687" name="__codelineno-0-687"></a>
-</span><span id="__span-0-688"><a id="__codelineno-0-688" name="__codelineno-0-688"></a>        <span class="n">_input_schema_lookup</span> <span class="o">=</span> <span class="n">CapabilityInputSchemaDBLookup</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">db</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span>
-</span><span id="__span-0-689"><a id="__codelineno-0-689" name="__codelineno-0-689"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_automation_input_schema_lookup</span> <span class="o">=</span> <span class="n">_input_schema_lookup</span><span class="o">.</span><span class="n">lookup</span>
-</span><span id="__span-0-690"><a id="__codelineno-0-690" name="__codelineno-0-690"></a>        <span class="c1"># Pull the Discord automation default min-interval from config so</span>
-</span><span id="__span-0-691"><a id="__codelineno-0-691" name="__codelineno-0-691"></a>        <span class="c1"># AutomationCreationPath doesn&#39;t hardcode the 300-second floor.</span>
-</span><span id="__span-0-692"><a id="__codelineno-0-692" name="__codelineno-0-692"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.automations.cadence_policy</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-</span><span id="__span-0-693"><a id="__codelineno-0-693" name="__codelineno-0-693"></a>            <span class="n">load_discord_automation_default_min_interval_seconds</span><span class="p">,</span>
-</span><span id="__span-0-694"><a id="__codelineno-0-694" name="__codelineno-0-694"></a>        <span class="p">)</span>
-</span><span id="__span-0-695"><a id="__codelineno-0-695" name="__codelineno-0-695"></a>
-</span><span id="__span-0-696"><a id="__codelineno-0-696" name="__codelineno-0-696"></a>        <span class="n">cadence_path</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">config_dir</span> <span class="o">/</span> <span class="s2">&quot;automations.yaml&quot;</span>
-</span><span id="__span-0-697"><a id="__codelineno-0-697" name="__codelineno-0-697"></a>        <span class="k">if</span> <span class="n">cadence_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-</span><span id="__span-0-698"><a id="__codelineno-0-698" name="__codelineno-0-698"></a>            <span class="k">try</span><span class="p">:</span>
-</span><span id="__span-0-699"><a id="__codelineno-0-699" name="__codelineno-0-699"></a>                <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_automation_default_min_interval_seconds</span> <span class="o">=</span> <span class="p">(</span>
-</span><span id="__span-0-700"><a id="__codelineno-0-700" name="__codelineno-0-700"></a>                    <span class="n">load_discord_automation_default_min_interval_seconds</span><span class="p">(</span>
-</span><span id="__span-0-701"><a id="__codelineno-0-701" name="__codelineno-0-701"></a>                        <span class="n">cadence_path</span>
-</span><span id="__span-0-702"><a id="__codelineno-0-702" name="__codelineno-0-702"></a>                    <span class="p">)</span>
-</span><span id="__span-0-703"><a id="__codelineno-0-703" name="__codelineno-0-703"></a>                <span class="p">)</span>
-</span><span id="__span-0-704"><a id="__codelineno-0-704" name="__codelineno-0-704"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-</span><span id="__span-0-705"><a id="__codelineno-0-705" name="__codelineno-0-705"></a>                <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;automation_default_min_interval_load_failed&quot;</span><span class="p">)</span>
-</span><span id="__span-0-706"><a id="__codelineno-0-706" name="__codelineno-0-706"></a>        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;discord_intent_dispatcher_wired&quot;</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-761">761</a></span>
+<span class="normal"><a href="#__codelineno-0-762">762</a></span>
+<span class="normal"><a href="#__codelineno-0-763">763</a></span>
+<span class="normal"><a href="#__codelineno-0-764">764</a></span>
+<span class="normal"><a href="#__codelineno-0-765">765</a></span>
+<span class="normal"><a href="#__codelineno-0-766">766</a></span>
+<span class="normal"><a href="#__codelineno-0-767">767</a></span>
+<span class="normal"><a href="#__codelineno-0-768">768</a></span>
+<span class="normal"><a href="#__codelineno-0-769">769</a></span>
+<span class="normal"><a href="#__codelineno-0-770">770</a></span>
+<span class="normal"><a href="#__codelineno-0-771">771</a></span>
+<span class="normal"><a href="#__codelineno-0-772">772</a></span>
+<span class="normal"><a href="#__codelineno-0-773">773</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-649"><a id="__codelineno-0-649" name="__codelineno-0-649"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">wire_discord</span><span class="p">(</span>
+</span><span id="__span-0-650"><a id="__codelineno-0-650" name="__codelineno-0-650"></a>    <span class="n">ctx</span><span class="p">:</span> <span class="n">StartupContext</span><span class="p">,</span>
+</span><span id="__span-0-651"><a id="__codelineno-0-651" name="__codelineno-0-651"></a>    <span class="n">skill_h</span><span class="p">:</span> <span class="n">SkillSystemHandle</span><span class="p">,</span>
+</span><span id="__span-0-652"><a id="__codelineno-0-652" name="__codelineno-0-652"></a>    <span class="n">automation_h</span><span class="p">:</span> <span class="n">AutomationHandle</span><span class="p">,</span>
+</span><span id="__span-0-653"><a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DiscordHandle</span><span class="p">:</span>
+</span><span id="__span-0-654"><a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Register slash commands, proactive-prompt config, start bot task.</span>
+</span><span id="__span-0-655"><a id="__codelineno-0-655" name="__codelineno-0-655"></a>
+</span><span id="__span-0-656"><a id="__codelineno-0-656" name="__codelineno-0-656"></a><span class="sd">    If `DISCORD_BOT_TOKEN` / `DISCORD_TASKS_CHANNEL_ID` were not present</span>
+</span><span id="__span-0-657"><a id="__codelineno-0-657" name="__codelineno-0-657"></a><span class="sd">    in the environment (checked in `build_startup_context`), no bot was</span>
+</span><span id="__span-0-658"><a id="__codelineno-0-658" name="__codelineno-0-658"></a><span class="sd">    constructed — this helper logs `discord_bot_disabled` and returns a</span>
+</span><span id="__span-0-659"><a id="__codelineno-0-659" name="__codelineno-0-659"></a><span class="sd">    handle with `bot=None`.</span>
+</span><span id="__span-0-660"><a id="__codelineno-0-660" name="__codelineno-0-660"></a>
+</span><span id="__span-0-661"><a id="__codelineno-0-661" name="__codelineno-0-661"></a><span class="sd">    Wave 3 Task 13: constructs a DiscordIntentDispatcher from the</span>
+</span><span id="__span-0-662"><a id="__codelineno-0-662" name="__codelineno-0-662"></a><span class="sd">    ChallengerAgent + ClaudeNoveltyJudge + PendingDraftRegistry +</span>
+</span><span id="__span-0-663"><a id="__codelineno-0-663" name="__codelineno-0-663"></a><span class="sd">    CadencePolicy + lifecycle adapter + candidate-report writer, and</span>
+</span><span id="__span-0-664"><a id="__codelineno-0-664" name="__codelineno-0-664"></a><span class="sd">    wires it onto the running `DonnaBot` so `on_message` routes new</span>
+</span><span id="__span-0-665"><a id="__codelineno-0-665" name="__codelineno-0-665"></a><span class="sd">    utterances through the Wave 3 intent pipeline.</span>
+</span><span id="__span-0-666"><a id="__codelineno-0-666" name="__codelineno-0-666"></a><span class="sd">    &quot;&quot;&quot;</span>
+</span><span id="__span-0-667"><a id="__codelineno-0-667" name="__codelineno-0-667"></a>    <span class="n">log</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span>
+</span><span id="__span-0-668"><a id="__codelineno-0-668" name="__codelineno-0-668"></a>
+</span><span id="__span-0-669"><a id="__codelineno-0-669" name="__codelineno-0-669"></a>    <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-670"><a id="__codelineno-0-670" name="__codelineno-0-670"></a>        <span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+</span><span id="__span-0-671"><a id="__codelineno-0-671" name="__codelineno-0-671"></a>            <span class="s2">&quot;discord_bot_disabled&quot;</span><span class="p">,</span>
+</span><span id="__span-0-672"><a id="__codelineno-0-672" name="__codelineno-0-672"></a>            <span class="n">reason</span><span class="o">=</span><span class="s2">&quot;DISCORD_BOT_TOKEN or DISCORD_TASKS_CHANNEL_ID not set&quot;</span><span class="p">,</span>
+</span><span id="__span-0-673"><a id="__codelineno-0-673" name="__codelineno-0-673"></a>        <span class="p">)</span>
+</span><span id="__span-0-674"><a id="__codelineno-0-674" name="__codelineno-0-674"></a>        <span class="k">return</span> <span class="n">DiscordHandle</span><span class="p">(</span><span class="n">bot</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">intent_dispatcher</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</span><span id="__span-0-675"><a id="__codelineno-0-675" name="__codelineno-0-675"></a>
+</span><span id="__span-0-676"><a id="__codelineno-0-676" name="__codelineno-0-676"></a>    <span class="c1"># Wave 3: construct the intent dispatcher. Failure here is logged</span>
+</span><span id="__span-0-677"><a id="__codelineno-0-677" name="__codelineno-0-677"></a>    <span class="c1"># but non-fatal — the bot falls back to the legacy InputParser path.</span>
+</span><span id="__span-0-678"><a id="__codelineno-0-678" name="__codelineno-0-678"></a>    <span class="n">intent_dispatcher</span> <span class="o">=</span> <span class="k">await</span> <span class="n">_build_intent_dispatcher</span><span class="p">(</span>
+</span><span id="__span-0-679"><a id="__codelineno-0-679" name="__codelineno-0-679"></a>        <span class="n">ctx</span><span class="p">,</span> <span class="n">skill_h</span><span class="p">,</span> <span class="n">automation_h</span><span class="p">,</span> <span class="n">log</span><span class="p">,</span>
+</span><span id="__span-0-680"><a id="__codelineno-0-680" name="__codelineno-0-680"></a>    <span class="p">)</span>
+</span><span id="__span-0-681"><a id="__codelineno-0-681" name="__codelineno-0-681"></a>    <span class="k">if</span> <span class="n">intent_dispatcher</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span><span id="__span-0-682"><a id="__codelineno-0-682" name="__codelineno-0-682"></a>        <span class="c1"># Attach to the already-constructed DonnaBot so `on_message`</span>
+</span><span id="__span-0-683"><a id="__codelineno-0-683" name="__codelineno-0-683"></a>        <span class="c1"># routes via the Wave 3 path. automation_repo is needed for the</span>
+</span><span id="__span-0-684"><a id="__codelineno-0-684" name="__codelineno-0-684"></a>        <span class="c1"># AutomationConfirmationView approval coordinator.</span>
+</span><span id="__span-0-685"><a id="__codelineno-0-685" name="__codelineno-0-685"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_intent_dispatcher</span> <span class="o">=</span> <span class="n">intent_dispatcher</span>
+</span><span id="__span-0-686"><a id="__codelineno-0-686" name="__codelineno-0-686"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_automation_repo</span> <span class="o">=</span> <span class="n">automation_h</span><span class="o">.</span><span class="n">repository</span>
+</span><span id="__span-0-687"><a id="__codelineno-0-687" name="__codelineno-0-687"></a>        <span class="c1"># Wave 4: wire capability-availability guard into AutomationCreationPath.</span>
+</span><span id="__span-0-688"><a id="__codelineno-0-688" name="__codelineno-0-688"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.capabilities.tool_requirements</span><span class="w"> </span><span class="kn">import</span> <span class="n">SkillToolRequirementsLookup</span>
+</span><span id="__span-0-689"><a id="__codelineno-0-689" name="__codelineno-0-689"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.skills</span><span class="w"> </span><span class="kn">import</span> <span class="n">tools</span> <span class="k">as</span> <span class="n">_skill_tools_module</span>
+</span><span id="__span-0-690"><a id="__codelineno-0-690" name="__codelineno-0-690"></a>
+</span><span id="__span-0-691"><a id="__codelineno-0-691" name="__codelineno-0-691"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_automation_tool_registry</span> <span class="o">=</span> <span class="n">_skill_tools_module</span><span class="o">.</span><span class="n">DEFAULT_TOOL_REGISTRY</span>
+</span><span id="__span-0-692"><a id="__codelineno-0-692" name="__codelineno-0-692"></a>        <span class="n">_cap_lookup</span> <span class="o">=</span> <span class="n">SkillToolRequirementsLookup</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">db</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span>
+</span><span id="__span-0-693"><a id="__codelineno-0-693" name="__codelineno-0-693"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_automation_capability_lookup</span> <span class="o">=</span> <span class="n">_cap_lookup</span><span class="o">.</span><span class="n">list_required_tools</span>
+</span><span id="__span-0-694"><a id="__codelineno-0-694" name="__codelineno-0-694"></a>
+</span><span id="__span-0-695"><a id="__codelineno-0-695" name="__codelineno-0-695"></a>        <span class="c1"># F-W4-K: wire optional-input defaulting lookup into AutomationCreationPath.</span>
+</span><span id="__span-0-696"><a id="__codelineno-0-696" name="__codelineno-0-696"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.capabilities.repo_input_schema_lookup</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-0-697"><a id="__codelineno-0-697" name="__codelineno-0-697"></a>            <span class="n">CapabilityInputSchemaDBLookup</span><span class="p">,</span>
+</span><span id="__span-0-698"><a id="__codelineno-0-698" name="__codelineno-0-698"></a>        <span class="p">)</span>
+</span><span id="__span-0-699"><a id="__codelineno-0-699" name="__codelineno-0-699"></a>
+</span><span id="__span-0-700"><a id="__codelineno-0-700" name="__codelineno-0-700"></a>        <span class="n">_input_schema_lookup</span> <span class="o">=</span> <span class="n">CapabilityInputSchemaDBLookup</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">db</span><span class="o">.</span><span class="n">connection</span><span class="p">)</span>
+</span><span id="__span-0-701"><a id="__codelineno-0-701" name="__codelineno-0-701"></a>        <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_automation_input_schema_lookup</span> <span class="o">=</span> <span class="n">_input_schema_lookup</span><span class="o">.</span><span class="n">lookup</span>
+</span><span id="__span-0-702"><a id="__codelineno-0-702" name="__codelineno-0-702"></a>        <span class="c1"># Pull the Discord automation default min-interval from config so</span>
+</span><span id="__span-0-703"><a id="__codelineno-0-703" name="__codelineno-0-703"></a>        <span class="c1"># AutomationCreationPath doesn&#39;t hardcode the 300-second floor.</span>
+</span><span id="__span-0-704"><a id="__codelineno-0-704" name="__codelineno-0-704"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.automations.cadence_policy</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+</span><span id="__span-0-705"><a id="__codelineno-0-705" name="__codelineno-0-705"></a>            <span class="n">load_discord_automation_default_min_interval_seconds</span><span class="p">,</span>
+</span><span id="__span-0-706"><a id="__codelineno-0-706" name="__codelineno-0-706"></a>        <span class="p">)</span>
 </span><span id="__span-0-707"><a id="__codelineno-0-707" name="__codelineno-0-707"></a>
-</span><span id="__span-0-708"><a id="__codelineno-0-708" name="__codelineno-0-708"></a>    <span class="n">bot</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span>
-</span><span id="__span-0-709"><a id="__codelineno-0-709" name="__codelineno-0-709"></a>    <span class="c1"># Load Discord config and register slash commands if enabled.</span>
-</span><span id="__span-0-710"><a id="__codelineno-0-710" name="__codelineno-0-710"></a>    <span class="k">try</span><span class="p">:</span>
-</span><span id="__span-0-711"><a id="__codelineno-0-711" name="__codelineno-0-711"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_discord_config</span>
-</span><span id="__span-0-712"><a id="__codelineno-0-712" name="__codelineno-0-712"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.integrations.discord_commands</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_commands</span>
-</span><span id="__span-0-713"><a id="__codelineno-0-713" name="__codelineno-0-713"></a>
-</span><span id="__span-0-714"><a id="__codelineno-0-714" name="__codelineno-0-714"></a>        <span class="n">discord_config</span> <span class="o">=</span> <span class="n">load_discord_config</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">config_dir</span><span class="p">)</span>
-</span><span id="__span-0-715"><a id="__codelineno-0-715" name="__codelineno-0-715"></a>        <span class="k">if</span> <span class="n">discord_config</span><span class="o">.</span><span class="n">commands</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
-</span><span id="__span-0-716"><a id="__codelineno-0-716" name="__codelineno-0-716"></a>            <span class="n">register_commands</span><span class="p">(</span><span class="n">bot</span><span class="p">,</span> <span class="n">ctx</span><span class="o">.</span><span class="n">db</span><span class="p">,</span> <span class="n">ctx</span><span class="o">.</span><span class="n">user_id</span><span class="p">)</span>
-</span><span id="__span-0-717"><a id="__codelineno-0-717" name="__codelineno-0-717"></a>            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;discord_slash_commands_registered&quot;</span><span class="p">)</span>
-</span><span id="__span-0-718"><a id="__codelineno-0-718" name="__codelineno-0-718"></a>
-</span><span id="__span-0-719"><a id="__codelineno-0-719" name="__codelineno-0-719"></a>        <span class="c1"># Wire agent activity feed if agents channel is configured.</span>
-</span><span id="__span-0-720"><a id="__codelineno-0-720" name="__codelineno-0-720"></a>        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">agents_channel_id_str</span><span class="p">:</span>
-</span><span id="__span-0-721"><a id="__codelineno-0-721" name="__codelineno-0-721"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">donna.integrations.discord_agent_feed</span><span class="w"> </span><span class="kn">import</span> <span class="n">AgentActivityFeed</span>
-</span><span id="__span-0-722"><a id="__codelineno-0-722" name="__codelineno-0-722"></a>
-</span><span id="__span-0-723"><a id="__codelineno-0-723" name="__codelineno-0-723"></a>            <span class="n">agent_feed</span> <span class="o">=</span> <span class="n">AgentActivityFeed</span><span class="p">(</span><span class="n">bot</span><span class="p">)</span>  <span class="c1"># noqa: F841 — side-effect ctor</span>
-</span><span id="__span-0-724"><a id="__codelineno-0-724" name="__codelineno-0-724"></a>            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;discord_agent_feed_enabled&quot;</span><span class="p">)</span>
+</span><span id="__span-0-708"><a id="__codelineno-0-708" name="__codelineno-0-708"></a>        <span class="n">cadence_path</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">config_dir</span> <span class="o">/</span> <span class="s2">&quot;automations.yaml&quot;</span>
+</span><span id="__span-0-709"><a id="__codelineno-0-709" name="__codelineno-0-709"></a>        <span class="k">if</span> <span class="n">cadence_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+</span><span id="__span-0-710"><a id="__codelineno-0-710" name="__codelineno-0-710"></a>            <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-0-711"><a id="__codelineno-0-711" name="__codelineno-0-711"></a>                <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span><span class="o">.</span><span class="n">_automation_default_min_interval_seconds</span> <span class="o">=</span> <span class="p">(</span>
+</span><span id="__span-0-712"><a id="__codelineno-0-712" name="__codelineno-0-712"></a>                    <span class="n">load_discord_automation_default_min_interval_seconds</span><span class="p">(</span>
+</span><span id="__span-0-713"><a id="__codelineno-0-713" name="__codelineno-0-713"></a>                        <span class="n">cadence_path</span>
+</span><span id="__span-0-714"><a id="__codelineno-0-714" name="__codelineno-0-714"></a>                    <span class="p">)</span>
+</span><span id="__span-0-715"><a id="__codelineno-0-715" name="__codelineno-0-715"></a>                <span class="p">)</span>
+</span><span id="__span-0-716"><a id="__codelineno-0-716" name="__codelineno-0-716"></a>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+</span><span id="__span-0-717"><a id="__codelineno-0-717" name="__codelineno-0-717"></a>                <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;automation_default_min_interval_load_failed&quot;</span><span class="p">)</span>
+</span><span id="__span-0-718"><a id="__codelineno-0-718" name="__codelineno-0-718"></a>        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;discord_intent_dispatcher_wired&quot;</span><span class="p">)</span>
+</span><span id="__span-0-719"><a id="__codelineno-0-719" name="__codelineno-0-719"></a>
+</span><span id="__span-0-720"><a id="__codelineno-0-720" name="__codelineno-0-720"></a>    <span class="n">bot</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">bot</span>
+</span><span id="__span-0-721"><a id="__codelineno-0-721" name="__codelineno-0-721"></a>    <span class="c1"># Load Discord config and register slash commands if enabled.</span>
+</span><span id="__span-0-722"><a id="__codelineno-0-722" name="__codelineno-0-722"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-0-723"><a id="__codelineno-0-723" name="__codelineno-0-723"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_discord_config</span>
+</span><span id="__span-0-724"><a id="__codelineno-0-724" name="__codelineno-0-724"></a>        <span class="kn">from</span><span class="w"> </span><span class="nn">donna.integrations.discord_commands</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_commands</span>
 </span><span id="__span-0-725"><a id="__codelineno-0-725" name="__codelineno-0-725"></a>
-</span><span id="__span-0-726"><a id="__codelineno-0-726" name="__codelineno-0-726"></a>        <span class="c1"># Start proactive prompt background tasks.</span>
-</span><span id="__span-0-727"><a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="n">prompts_cfg</span> <span class="o">=</span> <span class="n">discord_config</span><span class="o">.</span><span class="n">proactive_prompts</span>
-</span><span id="__span-0-728"><a id="__codelineno-0-728" name="__codelineno-0-728"></a>
-</span><span id="__span-0-729"><a id="__codelineno-0-729" name="__codelineno-0-729"></a>        <span class="c1"># NotificationService is needed for proactive prompts — lazy import.</span>
-</span><span id="__span-0-730"><a id="__codelineno-0-730" name="__codelineno-0-730"></a>        <span class="k">try</span><span class="p">:</span>
-</span><span id="__span-0-731"><a id="__codelineno-0-731" name="__codelineno-0-731"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">donna.notifications.proactive_prompts</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>  <span class="c1"># noqa: F401</span>
-</span><span id="__span-0-732"><a id="__codelineno-0-732" name="__codelineno-0-732"></a>                <span class="n">AfternoonInactivityCheck</span><span class="p">,</span>
-</span><span id="__span-0-733"><a id="__codelineno-0-733" name="__codelineno-0-733"></a>                <span class="n">EveningCheckin</span><span class="p">,</span>
-</span><span id="__span-0-734"><a id="__codelineno-0-734" name="__codelineno-0-734"></a>                <span class="n">PostMeetingCapture</span><span class="p">,</span>
-</span><span id="__span-0-735"><a id="__codelineno-0-735" name="__codelineno-0-735"></a>                <span class="n">StaleTaskDetector</span><span class="p">,</span>
-</span><span id="__span-0-736"><a id="__codelineno-0-736" name="__codelineno-0-736"></a>            <span class="p">)</span>
+</span><span id="__span-0-726"><a id="__codelineno-0-726" name="__codelineno-0-726"></a>        <span class="n">discord_config</span> <span class="o">=</span> <span class="n">load_discord_config</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">config_dir</span><span class="p">)</span>
+</span><span id="__span-0-727"><a id="__codelineno-0-727" name="__codelineno-0-727"></a>        <span class="k">if</span> <span class="n">discord_config</span><span class="o">.</span><span class="n">commands</span><span class="o">.</span><span class="n">enabled</span><span class="p">:</span>
+</span><span id="__span-0-728"><a id="__codelineno-0-728" name="__codelineno-0-728"></a>            <span class="n">register_commands</span><span class="p">(</span><span class="n">bot</span><span class="p">,</span> <span class="n">ctx</span><span class="o">.</span><span class="n">db</span><span class="p">,</span> <span class="n">ctx</span><span class="o">.</span><span class="n">user_id</span><span class="p">)</span>
+</span><span id="__span-0-729"><a id="__codelineno-0-729" name="__codelineno-0-729"></a>            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;discord_slash_commands_registered&quot;</span><span class="p">)</span>
+</span><span id="__span-0-730"><a id="__codelineno-0-730" name="__codelineno-0-730"></a>
+</span><span id="__span-0-731"><a id="__codelineno-0-731" name="__codelineno-0-731"></a>        <span class="c1"># Wire agent activity feed if agents channel is configured.</span>
+</span><span id="__span-0-732"><a id="__codelineno-0-732" name="__codelineno-0-732"></a>        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">agents_channel_id_str</span><span class="p">:</span>
+</span><span id="__span-0-733"><a id="__codelineno-0-733" name="__codelineno-0-733"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">donna.integrations.discord_agent_feed</span><span class="w"> </span><span class="kn">import</span> <span class="n">AgentActivityFeed</span>
+</span><span id="__span-0-734"><a id="__codelineno-0-734" name="__codelineno-0-734"></a>
+</span><span id="__span-0-735"><a id="__codelineno-0-735" name="__codelineno-0-735"></a>            <span class="n">agent_feed</span> <span class="o">=</span> <span class="n">AgentActivityFeed</span><span class="p">(</span><span class="n">bot</span><span class="p">)</span>  <span class="c1"># noqa: F841 — side-effect ctor</span>
+</span><span id="__span-0-736"><a id="__codelineno-0-736" name="__codelineno-0-736"></a>            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;discord_agent_feed_enabled&quot;</span><span class="p">)</span>
 </span><span id="__span-0-737"><a id="__codelineno-0-737" name="__codelineno-0-737"></a>
-</span><span id="__span-0-738"><a id="__codelineno-0-738" name="__codelineno-0-738"></a>            <span class="c1"># Proactive prompts need NotificationService. If it&#39;s not yet</span>
-</span><span id="__span-0-739"><a id="__codelineno-0-739" name="__codelineno-0-739"></a>            <span class="c1"># wired (e.g., no calendar config), skip gracefully.</span>
-</span><span id="__span-0-740"><a id="__codelineno-0-740" name="__codelineno-0-740"></a>            <span class="c1"># For now, log that proactive prompts are configured but will</span>
-</span><span id="__span-0-741"><a id="__codelineno-0-741" name="__codelineno-0-741"></a>            <span class="c1"># be started once the full notification stack is wired in server.py.</span>
-</span><span id="__span-0-742"><a id="__codelineno-0-742" name="__codelineno-0-742"></a>            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-</span><span id="__span-0-743"><a id="__codelineno-0-743" name="__codelineno-0-743"></a>                <span class="s2">&quot;discord_proactive_prompts_configured&quot;</span><span class="p">,</span>
-</span><span id="__span-0-744"><a id="__codelineno-0-744" name="__codelineno-0-744"></a>                <span class="n">evening_checkin</span><span class="o">=</span><span class="n">prompts_cfg</span><span class="o">.</span><span class="n">evening_checkin</span><span class="o">.</span><span class="n">enabled</span><span class="p">,</span>
-</span><span id="__span-0-745"><a id="__codelineno-0-745" name="__codelineno-0-745"></a>                <span class="n">stale_detection</span><span class="o">=</span><span class="n">prompts_cfg</span><span class="o">.</span><span class="n">stale_detection</span><span class="o">.</span><span class="n">enabled</span><span class="p">,</span>
-</span><span id="__span-0-746"><a id="__codelineno-0-746" name="__codelineno-0-746"></a>                <span class="n">post_meeting</span><span class="o">=</span><span class="n">prompts_cfg</span><span class="o">.</span><span class="n">post_meeting_capture</span><span class="o">.</span><span class="n">enabled</span><span class="p">,</span>
-</span><span id="__span-0-747"><a id="__codelineno-0-747" name="__codelineno-0-747"></a>                <span class="n">afternoon_inactivity</span><span class="o">=</span><span class="n">prompts_cfg</span><span class="o">.</span><span class="n">afternoon_inactivity</span><span class="o">.</span><span class="n">enabled</span><span class="p">,</span>
+</span><span id="__span-0-738"><a id="__codelineno-0-738" name="__codelineno-0-738"></a>        <span class="c1"># Start proactive prompt background tasks.</span>
+</span><span id="__span-0-739"><a id="__codelineno-0-739" name="__codelineno-0-739"></a>        <span class="n">prompts_cfg</span> <span class="o">=</span> <span class="n">discord_config</span><span class="o">.</span><span class="n">proactive_prompts</span>
+</span><span id="__span-0-740"><a id="__codelineno-0-740" name="__codelineno-0-740"></a>
+</span><span id="__span-0-741"><a id="__codelineno-0-741" name="__codelineno-0-741"></a>        <span class="c1"># NotificationService is needed for proactive prompts — lazy import.</span>
+</span><span id="__span-0-742"><a id="__codelineno-0-742" name="__codelineno-0-742"></a>        <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-0-743"><a id="__codelineno-0-743" name="__codelineno-0-743"></a>            <span class="kn">from</span><span class="w"> </span><span class="nn">donna.notifications.proactive_prompts</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>  <span class="c1"># noqa: F401</span>
+</span><span id="__span-0-744"><a id="__codelineno-0-744" name="__codelineno-0-744"></a>                <span class="n">AfternoonInactivityCheck</span><span class="p">,</span>
+</span><span id="__span-0-745"><a id="__codelineno-0-745" name="__codelineno-0-745"></a>                <span class="n">EveningCheckin</span><span class="p">,</span>
+</span><span id="__span-0-746"><a id="__codelineno-0-746" name="__codelineno-0-746"></a>                <span class="n">PostMeetingCapture</span><span class="p">,</span>
+</span><span id="__span-0-747"><a id="__codelineno-0-747" name="__codelineno-0-747"></a>                <span class="n">StaleTaskDetector</span><span class="p">,</span>
 </span><span id="__span-0-748"><a id="__codelineno-0-748" name="__codelineno-0-748"></a>            <span class="p">)</span>
-</span><span id="__span-0-749"><a id="__codelineno-0-749" name="__codelineno-0-749"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-</span><span id="__span-0-750"><a id="__codelineno-0-750" name="__codelineno-0-750"></a>            <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;discord_proactive_prompts_load_failed&quot;</span><span class="p">)</span>
-</span><span id="__span-0-751"><a id="__codelineno-0-751" name="__codelineno-0-751"></a>
-</span><span id="__span-0-752"><a id="__codelineno-0-752" name="__codelineno-0-752"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-</span><span id="__span-0-753"><a id="__codelineno-0-753" name="__codelineno-0-753"></a>        <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;discord_config_load_failed&quot;</span><span class="p">)</span>
-</span><span id="__span-0-754"><a id="__codelineno-0-754" name="__codelineno-0-754"></a>
-</span><span id="__span-0-755"><a id="__codelineno-0-755" name="__codelineno-0-755"></a>    <span class="n">ctx</span><span class="o">.</span><span class="n">tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">bot</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">discord_token</span><span class="p">)))</span>
-</span><span id="__span-0-756"><a id="__codelineno-0-756" name="__codelineno-0-756"></a>    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;discord_bot_enabled&quot;</span><span class="p">,</span> <span class="n">tasks_channel_id</span><span class="o">=</span><span class="n">ctx</span><span class="o">.</span><span class="n">tasks_channel_id_str</span><span class="p">)</span>
-</span><span id="__span-0-757"><a id="__codelineno-0-757" name="__codelineno-0-757"></a>
-</span><span id="__span-0-758"><a id="__codelineno-0-758" name="__codelineno-0-758"></a>    <span class="k">return</span> <span class="n">DiscordHandle</span><span class="p">(</span>
-</span><span id="__span-0-759"><a id="__codelineno-0-759" name="__codelineno-0-759"></a>        <span class="n">bot</span><span class="o">=</span><span class="n">bot</span><span class="p">,</span>
-</span><span id="__span-0-760"><a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="n">intent_dispatcher</span><span class="o">=</span><span class="n">intent_dispatcher</span><span class="p">,</span>
-</span><span id="__span-0-761"><a id="__codelineno-0-761" name="__codelineno-0-761"></a>    <span class="p">)</span>
+</span><span id="__span-0-749"><a id="__codelineno-0-749" name="__codelineno-0-749"></a>
+</span><span id="__span-0-750"><a id="__codelineno-0-750" name="__codelineno-0-750"></a>            <span class="c1"># Proactive prompts need NotificationService. If it&#39;s not yet</span>
+</span><span id="__span-0-751"><a id="__codelineno-0-751" name="__codelineno-0-751"></a>            <span class="c1"># wired (e.g., no calendar config), skip gracefully.</span>
+</span><span id="__span-0-752"><a id="__codelineno-0-752" name="__codelineno-0-752"></a>            <span class="c1"># For now, log that proactive prompts are configured but will</span>
+</span><span id="__span-0-753"><a id="__codelineno-0-753" name="__codelineno-0-753"></a>            <span class="c1"># be started once the full notification stack is wired in server.py.</span>
+</span><span id="__span-0-754"><a id="__codelineno-0-754" name="__codelineno-0-754"></a>            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+</span><span id="__span-0-755"><a id="__codelineno-0-755" name="__codelineno-0-755"></a>                <span class="s2">&quot;discord_proactive_prompts_configured&quot;</span><span class="p">,</span>
+</span><span id="__span-0-756"><a id="__codelineno-0-756" name="__codelineno-0-756"></a>                <span class="n">evening_checkin</span><span class="o">=</span><span class="n">prompts_cfg</span><span class="o">.</span><span class="n">evening_checkin</span><span class="o">.</span><span class="n">enabled</span><span class="p">,</span>
+</span><span id="__span-0-757"><a id="__codelineno-0-757" name="__codelineno-0-757"></a>                <span class="n">stale_detection</span><span class="o">=</span><span class="n">prompts_cfg</span><span class="o">.</span><span class="n">stale_detection</span><span class="o">.</span><span class="n">enabled</span><span class="p">,</span>
+</span><span id="__span-0-758"><a id="__codelineno-0-758" name="__codelineno-0-758"></a>                <span class="n">post_meeting</span><span class="o">=</span><span class="n">prompts_cfg</span><span class="o">.</span><span class="n">post_meeting_capture</span><span class="o">.</span><span class="n">enabled</span><span class="p">,</span>
+</span><span id="__span-0-759"><a id="__codelineno-0-759" name="__codelineno-0-759"></a>                <span class="n">afternoon_inactivity</span><span class="o">=</span><span class="n">prompts_cfg</span><span class="o">.</span><span class="n">afternoon_inactivity</span><span class="o">.</span><span class="n">enabled</span><span class="p">,</span>
+</span><span id="__span-0-760"><a id="__codelineno-0-760" name="__codelineno-0-760"></a>            <span class="p">)</span>
+</span><span id="__span-0-761"><a id="__codelineno-0-761" name="__codelineno-0-761"></a>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+</span><span id="__span-0-762"><a id="__codelineno-0-762" name="__codelineno-0-762"></a>            <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;discord_proactive_prompts_load_failed&quot;</span><span class="p">)</span>
+</span><span id="__span-0-763"><a id="__codelineno-0-763" name="__codelineno-0-763"></a>
+</span><span id="__span-0-764"><a id="__codelineno-0-764" name="__codelineno-0-764"></a>    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+</span><span id="__span-0-765"><a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">&quot;discord_config_load_failed&quot;</span><span class="p">)</span>
+</span><span id="__span-0-766"><a id="__codelineno-0-766" name="__codelineno-0-766"></a>
+</span><span id="__span-0-767"><a id="__codelineno-0-767" name="__codelineno-0-767"></a>    <span class="n">ctx</span><span class="o">.</span><span class="n">tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="n">bot</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">discord_token</span><span class="p">)))</span>
+</span><span id="__span-0-768"><a id="__codelineno-0-768" name="__codelineno-0-768"></a>    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;discord_bot_enabled&quot;</span><span class="p">,</span> <span class="n">tasks_channel_id</span><span class="o">=</span><span class="n">ctx</span><span class="o">.</span><span class="n">tasks_channel_id_str</span><span class="p">)</span>
+</span><span id="__span-0-769"><a id="__codelineno-0-769" name="__codelineno-0-769"></a>
+</span><span id="__span-0-770"><a id="__codelineno-0-770" name="__codelineno-0-770"></a>    <span class="k">return</span> <span class="n">DiscordHandle</span><span class="p">(</span>
+</span><span id="__span-0-771"><a id="__codelineno-0-771" name="__codelineno-0-771"></a>        <span class="n">bot</span><span class="o">=</span><span class="n">bot</span><span class="p">,</span>
+</span><span id="__span-0-772"><a id="__codelineno-0-772" name="__codelineno-0-772"></a>        <span class="n">intent_dispatcher</span><span class="o">=</span><span class="n">intent_dispatcher</span><span class="p">,</span>
+</span><span id="__span-0-773"><a id="__codelineno-0-773" name="__codelineno-0-773"></a>    <span class="p">)</span>
 </span></code></pre></div></td></tr></table></div>
             </details>
     </div>
