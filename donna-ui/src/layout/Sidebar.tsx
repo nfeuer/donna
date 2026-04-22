@@ -10,11 +10,16 @@ import {
   Lightbulb,
   Radio,
   Network,
+  BookOpen,
+  ExternalLink,
 } from "lucide-react";
 import { NavItem } from "./NavItem";
 import { useTheme } from "../hooks/useTheme";
 import { cn } from "../lib/cn";
+import navItemStyles from "./NavItem.module.css";
 import styles from "./Sidebar.module.css";
+
+const DOCS_URL = "https://nfeuer.github.io/donna/";
 
 interface NavEntry {
   path: string;
@@ -68,6 +73,24 @@ export function Sidebar() {
               active={isActive(location.pathname, item.path)}
             />
           ))}
+          <li className={navItemStyles.listItem}>
+            <a
+              href={DOCS_URL}
+              target="_blank"
+              rel="noreferrer"
+              className={navItemStyles.link}
+            >
+              <span className={navItemStyles.icon} aria-hidden="true">
+                <BookOpen size={18} />
+              </span>
+              <span className={navItemStyles.label}>Docs</span>
+              <ExternalLink
+                size={12}
+                aria-label="opens in new tab"
+                className={styles.externalHint}
+              />
+            </a>
+          </li>
         </ul>
       </nav>
 

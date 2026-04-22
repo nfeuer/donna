@@ -120,6 +120,11 @@
   background: var(--color-accent-soft);
 }
 
+.externalHint {
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
 .shortcutHint {
   display: flex;
   align-items: center;
