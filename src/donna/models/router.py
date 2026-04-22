@@ -15,7 +15,7 @@ from pathlib import Path
 # Imported lazily to avoid circular dependency: budget → tracker → aiosqlite,
 # while router is used by dedup which is used by budget.
 # Type-only import is sufficient here.
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 
@@ -351,6 +351,6 @@ class ModelRouter:
 
         path = self._project_root / tt.output_schema
         with open(path) as f:
-            schema = json.load(f)
+            schema = cast(dict[str, Any], json.load(f))
         self._schema_cache[task_type] = schema
         return schema

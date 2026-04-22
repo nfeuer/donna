@@ -169,7 +169,7 @@ class EvolutionGates:
             "SELECT id, input, tool_mocks FROM skill_fixture WHERE skill_id = ?",
             (skill_id,),
         )
-        rows = await cursor.fetchall()
+        rows = list(await cursor.fetchall())
         if not rows:
             return GateResult(
                 name="fixture_regression",
@@ -223,7 +223,7 @@ class EvolutionGates:
             "ORDER BY started_at DESC LIMIT ?",
             (skill_id, window_start, self._config.evolution_recent_success_count),
         )
-        rows = await cursor.fetchall()
+        rows = list(await cursor.fetchall())
         if not rows:
             return GateResult(
                 name="recent_success", passed=True,

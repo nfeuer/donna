@@ -113,7 +113,7 @@ async def _prompt_for_value(prompt_def: StepPrompt, current_value: str) -> str |
     if value is None:
         return None
 
-    return value.strip()
+    return str(value).strip()
 
 
 async def _run_validator(

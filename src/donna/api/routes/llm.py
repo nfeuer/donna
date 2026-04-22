@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from collections.abc import AsyncGenerator
+from typing import Any, cast
 
 import structlog
 from fastapi import HTTPException, Request
@@ -50,7 +51,7 @@ def _resolve_model(request: Request, requested: str | None) -> str:
         models_cfg = getattr(request.app.state, "models_config", None) or {}
         default_alias = "local_parser"
         model_entry = models_cfg.get("models", {}).get(default_alias, {})
-        return model_entry.get("model", "qwen2.5:32b-instruct-q6_K")
+        return str(model_entry.get("model", "qwen2.5:32b-instruct-q6_K"))
     return "qwen2.5:32b-instruct-q6_K"
 
 
@@ -80,7 +81,7 @@ async def llm_queue_status(request: Request) -> dict[str, Any]:
     queue = getattr(request.app.state, "llm_queue", None)
     if queue is None:
         return {"error": "Queue worker not initialised"}
-    return queue.get_status()
+    return cast(dict[str, Any], queue.get_status())
 
 
 @router.get("/queue/item/{sequence}")
@@ -92,7 +93,7 @@ async def llm_queue_item(sequence: int, request: Request) -> dict[str, Any]:
     item = queue.get_item(sequence)
     if item is None:
         raise HTTPException(404, "Item not found in queue")
-    return item
+    return cast(dict[str, Any], item)
 
 
 @router.get("/queue/stream")
@@ -102,7 +103,7 @@ async def llm_queue_stream(request: Request) -> StreamingResponse:
     if queue is None:
         raise HTTPException(503, "Queue worker not initialised")
 
-    async def event_generator():
+    async def event_generator() -> AsyncGenerator[str, None]:
         try:
             # Send initial state immediately
             status = queue.get_status()

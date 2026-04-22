@@ -76,7 +76,15 @@ class AnthropicProvider:
         tokens_in = response.usage.input_tokens
         tokens_out = response.usage.output_tokens
 
-        raw_text = response.content[0].text
+        first_block = response.content[0]
+        # The first block is a TextBlock for non-tool responses; narrow the
+        # union so mypy accepts `.text`. If the API ever returns a non-text
+        # block first, .text access would have raised before — preserve that
+        # crash behavior via assert.
+        assert isinstance(first_block, anthropic.types.TextBlock), (
+            f"expected TextBlock, got {type(first_block).__name__}"
+        )
+        raw_text = first_block.text
         parsed = parse_json_response(raw_text)
 
         metadata = CompletionMetadata(

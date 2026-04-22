@@ -110,7 +110,7 @@ async def _consume_verification_token(request: Request, token: str) -> tuple[boo
 
 
 @router.post("/verify")
-async def verify(body: VerifyBody, request: Request):
+async def verify(body: VerifyBody, request: Request) -> Any:
     ok, payload = await _consume_verification_token(request, body.token)
     if not ok:
         return JSONResponse(status_code=400, content=payload)
@@ -118,7 +118,7 @@ async def verify(body: VerifyBody, request: Request):
 
 
 @router.get("/verify")
-async def verify_from_email(token: str, request: Request):
+async def verify_from_email(token: str, request: Request) -> HTMLResponse:
     """Email magic-link target (GET).
 
     Users click the link directly from their inbox — serve a minimal HTML
@@ -157,7 +157,7 @@ async def auth_status(request: Request) -> dict[str, Any]:
 
 
 @router.post("/logout")
-async def logout(request: Request):
+async def logout(request: Request) -> JSONResponse:
     """Clear the donna_device cookie and revoke the underlying token row."""
     from donna.api.auth import device_tokens
 

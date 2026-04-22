@@ -167,4 +167,4 @@ class PrepAgent:
         if action_items:
             items_text = "; ".join(action_items[:3])
             return f"{summary} Actions: {items_text}"
-        return summary
+        return str(summary)

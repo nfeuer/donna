@@ -9,6 +9,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from donna.skills.runs import (
     SELECT_SKILL_RUN,
     SELECT_SKILL_STEP_RESULT,
+    SkillRunRow,
+    SkillStepResultRow,
     row_to_skill_run,
     row_to_step_result,
 )
@@ -16,7 +18,7 @@ from donna.skills.runs import (
 router = APIRouter()
 
 
-def _run_to_dict(run) -> dict[str, Any]:
+def _run_to_dict(run: SkillRunRow) -> dict[str, Any]:
     return {
         "id": run.id,
         "skill_id": run.skill_id,
@@ -32,7 +34,7 @@ def _run_to_dict(run) -> dict[str, Any]:
     }
 
 
-def _step_to_dict(step) -> dict[str, Any]:
+def _step_to_dict(step: SkillStepResultRow) -> dict[str, Any]:
     return {
         "id": step.id,
         "step_name": step.step_name,

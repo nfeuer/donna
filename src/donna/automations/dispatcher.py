@@ -356,7 +356,10 @@ class AutomationDispatcher:
         if automation.trigger_type != "on_schedule" or not automation.schedule:
             return None
         try:
-            return self._cron.next_run(expression=automation.schedule, after=now)
+            next_run: datetime = self._cron.next_run(
+                expression=automation.schedule, after=now
+            )
+            return next_run
         except Exception as exc:
             logger.warning(
                 "automation_invalid_cron",

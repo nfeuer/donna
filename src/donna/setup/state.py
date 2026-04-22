@@ -32,7 +32,7 @@ def load_state(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
-        data = json.loads(path.read_text())
+        data: dict[str, Any] = json.loads(path.read_text())
         if data.get("version") != STATE_VERSION:
             return None
         return data

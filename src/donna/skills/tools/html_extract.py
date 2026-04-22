@@ -31,7 +31,7 @@ async def html_extract(html: str, base_url: str | None = None) -> dict[str, Any]
     if not html or not html.strip():
         return {"ok": False, "reason": "no_content"}
 
-    def _run():
+    def _run() -> str | None:
         return trafilatura.extract(
             html,
             url=base_url,

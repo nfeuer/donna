@@ -149,7 +149,7 @@ class SkillCandidateRepository:
         )
         existing = await cursor.fetchone()
         if existing is not None:
-            candidate_id = existing[0]
+            candidate_id = str(existing[0])
             await self._conn.execute(
                 "UPDATE skill_candidate_report "
                 "SET resolved_at = ?, reasoning = ? "

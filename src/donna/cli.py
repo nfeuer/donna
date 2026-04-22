@@ -16,7 +16,7 @@ import contextlib
 import os
 import sys
 from datetime import UTC
-from typing import Any
+from typing import Any, cast
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -271,6 +271,7 @@ async def _run_eval(args: argparse.Namespace) -> None:
     # This bypasses routing so eval can test any provider/model combo.
     provider_name, model_id = _parse_model_arg(args.model)
 
+    provider: Any
     if provider_name == "ollama":
         from donna.models.providers.ollama import OllamaProvider
 
@@ -464,9 +465,11 @@ async def _test_notification(args: argparse.Namespace) -> None:
     user_id = os.environ.get("DONNA_USER_ID", "nick")
     config_dir = Path(args.config_dir)
 
+    # Dev-only path: notification test doesn't route messages through the
+    # parser/DB, so we pass None via cast to satisfy DonnaBot's signature.
     bot = DonnaBot(
-        input_parser=None,
-        database=None,
+        input_parser=cast(Any, None),
+        database=cast(Any, None),
         tasks_channel_id=tasks_channel_id,
         debug_channel_id=int(debug_channel_id_env) if debug_channel_id_env else None,
         agents_channel_id=int(agents_channel_id_env) if agents_channel_id_env else None,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC
 from typing import Any
 
@@ -83,7 +84,7 @@ async def draft_candidate_now(candidate_id: str, request: Request) -> dict[str, 
     return {"status": "scheduled", "manual_draft_at": now_iso}
 
 
-def _row_to_candidate_dict(row) -> dict[str, Any]:
+def _row_to_candidate_dict(row: Sequence[Any]) -> dict[str, Any]:
     return {
         "id": row[0],
         "capability_name": row[1],

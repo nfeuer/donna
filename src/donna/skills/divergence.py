@@ -6,7 +6,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import aiosqlite
 import structlog
@@ -115,7 +115,7 @@ def _parse_json(value: Any) -> dict[str, Any] | None:
         return None
     if isinstance(value, dict):
         return value
-    return json.loads(value)
+    return cast(dict[str, Any], json.loads(value))
 
 
 def _parse_dt(value: Any) -> datetime:

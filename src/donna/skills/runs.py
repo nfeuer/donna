@@ -6,7 +6,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 SKILL_RUN_COLUMNS = (
     "id", "skill_id", "skill_version_id", "task_id", "automation_run_id",
@@ -93,7 +93,7 @@ def _parse_json(value: Any) -> dict[str, Any] | None:
         return None
     if isinstance(value, dict):
         return value
-    return json.loads(value)
+    return cast(dict[str, Any], json.loads(value))
 
 
 def _parse_json_list(value: Any) -> list[Any] | None:
@@ -101,7 +101,7 @@ def _parse_json_list(value: Any) -> list[Any] | None:
         return None
     if isinstance(value, list):
         return value
-    return json.loads(value)
+    return cast(list[Any], json.loads(value))
 
 
 def _parse_dt(value: Any) -> datetime:

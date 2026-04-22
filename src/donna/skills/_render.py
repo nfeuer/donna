@@ -39,7 +39,7 @@ class _AttrDict:
         # Recursively wrap nested dicts so dotted paths keep working.
         return _AttrDict(val) if isinstance(val, dict) else val
 
-    def __iter__(self):  # needed if Jinja iterates the value
+    def __iter__(self) -> Any:  # needed if Jinja iterates the value
         return iter(object.__getattribute__(self, "_d"))
 
     def __repr__(self) -> str:  # pragma: no cover

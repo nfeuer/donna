@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -130,7 +130,9 @@ class GoogleCalendarClient:
 
             creds = None
             if token_path.exists():
-                creds = Credentials.from_authorized_user_file(str(token_path), scopes)
+                creds = Credentials.from_authorized_user_file(  # type: ignore[no-untyped-call]
+                    str(token_path), scopes
+                )
 
             if not creds or not creds.valid:
                 if creds and creds.expired and creds.refresh_token:
@@ -231,7 +233,10 @@ class GoogleCalendarClient:
         }
 
         def _create() -> dict[str, Any]:
-            return self._svc.events().insert(calendarId=calendar_id, body=body).execute()
+            return cast(
+                dict[str, Any],
+                self._svc.events().insert(calendarId=calendar_id, body=body).execute(),
+            )
 
         raw = await asyncio.to_thread(_create)
         event = _parse_event(raw, calendar_id)
@@ -259,10 +264,11 @@ class GoogleCalendarClient:
         }
 
         def _update() -> dict[str, Any]:
-            return (
+            return cast(
+                dict[str, Any],
                 self._svc.events()
                 .patch(calendarId=calendar_id, eventId=event_id, body=body)
-                .execute()
+                .execute(),
             )
 
         raw = await asyncio.to_thread(_update)

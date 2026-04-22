@@ -153,7 +153,7 @@ class AutomationRepository:
         rows = await cursor.fetchall()
         return [row_to_automation(r) for r in rows]
 
-    async def update_fields(self, automation_id: str, **fields) -> None:
+    async def update_fields(self, automation_id: str, **fields: Any) -> None:
         if not fields:
             return
         now_iso = datetime.now(UTC).isoformat()

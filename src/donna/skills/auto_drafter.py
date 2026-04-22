@@ -209,6 +209,13 @@ class AutoDrafter:
             )
 
         # 5. Fixture validation in sandbox (or deferred).
+        # After the skill_yaml None-check above, _extract_draft_payload
+        # guarantees step_prompts / output_schemas / fixtures_data are also
+        # non-None and of their declared types; assert to narrow for mypy.
+        assert step_prompts is not None
+        assert output_schemas is not None
+        assert fixtures_data is not None
+        assert candidate.capability_name is not None
         pass_rate = await self._validate_fixtures(
             skill_yaml=skill_yaml,
             step_prompts=step_prompts,
@@ -490,7 +497,7 @@ class AutoDrafter:
         )
         existing = await cursor.fetchone()
         if existing is not None:
-            return existing[0]
+            return str(existing[0])
 
         now = datetime.now(UTC).isoformat()
         skill_id = str(uuid6.uuid7())

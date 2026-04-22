@@ -63,7 +63,7 @@ async def _resolve_user_id(
             absolute_max_days=absolute_max_days,
         )
         if row:
-            return row["user_id"]
+            return str(row["user_id"])
 
     ip = trusted_proxies_module_client_ip(request, trusted_proxies)
     result = await ip_gate.check_ip_access(ctx.conn, ip, service="donna")
@@ -97,7 +97,7 @@ async def _resolve_user_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "user_not_provisioned"},
         )
-    return row[0]
+    return str(row[0])
 
 
 async def _resolve_admin_user_id(
@@ -138,8 +138,8 @@ async def _resolve_admin_user_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "admin_role_required"},
         )
-    return row[0]
+    return str(row[0])
 
 
-def trusted_proxies_module_client_ip(request, proxies):
+def trusted_proxies_module_client_ip(request: Request, proxies: list[Any]) -> str:
     return trusted_proxies.client_ip(request, trusted_proxies=proxies)

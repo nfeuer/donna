@@ -25,7 +25,7 @@ import dataclasses
 import email as email_lib
 from datetime import UTC, datetime
 from email.mime.text import MIMEText
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -95,7 +95,9 @@ class GmailClient:
 
             creds = None
             if token_path.exists():
-                creds = Credentials.from_authorized_user_file(str(token_path), scopes)
+                creds = Credentials.from_authorized_user_file(  # type: ignore[no-untyped-call]
+                    str(token_path), scopes
+                )
 
             if not creds or not creds.valid:
                 if creds and creds.expired and creds.refresh_token:
@@ -148,7 +150,7 @@ class GmailClient:
                 list_kwargs["pageToken"] = page_token
             resp = self._svc.users().messages().list(**list_kwargs).execute()
             self._last_next_page_token = resp.get("nextPageToken")
-            return resp.get("messages", [])
+            return cast(list[dict[str, Any]], resp.get("messages", []))
 
         stubs = await asyncio.to_thread(_do_search)
         logger.info("gmail_search", query=query, count=len(stubs))
@@ -177,11 +179,12 @@ class GmailClient:
             Parsed EmailMessage.
         """
         def _do_fetch() -> dict[str, Any]:
-            return (
+            return cast(
+                dict[str, Any],
                 self._svc.users()
                 .messages()
                 .get(userId="me", id=message_id, format="full")
-                .execute()
+                .execute(),
             )
 
         raw = await asyncio.to_thread(_do_fetch)
@@ -224,11 +227,12 @@ class GmailClient:
         raw_bytes = base64.urlsafe_b64encode(mime.as_bytes()).decode()
 
         def _do_create() -> dict[str, Any]:
-            return (
+            return cast(
+                dict[str, Any],
                 self._svc.users()
                 .drafts()
                 .create(userId="me", body={"message": {"raw": raw_bytes}})
-                .execute()
+                .execute(),
             )
 
         result = await asyncio.to_thread(_do_create)
@@ -254,11 +258,12 @@ class GmailClient:
             )
 
         def _do_send() -> dict[str, Any]:
-            return (
+            return cast(
+                dict[str, Any],
                 self._svc.users()
                 .drafts()
                 .send(userId="me", body={"id": draft_id})
-                .execute()
+                .execute(),
             )
 
         result = await asyncio.to_thread(_do_send)

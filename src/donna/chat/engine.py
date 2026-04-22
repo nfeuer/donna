@@ -111,6 +111,7 @@ class ConversationEngine:
         history = await self._db.list_chat_messages(session.id)
         pinned_task = None
         if getattr(session, "pinned_task_id", None):
+            assert session.pinned_task_id is not None
             task_row = await self._db.get_task(session.pinned_task_id)
             if task_row:
                 pinned_task = {
@@ -358,7 +359,7 @@ class ConversationEngine:
             task_type="chat_summarize",
             user_id="system",
         )
-        return result.get("summary", "Session ended.")
+        return str(result.get("summary", "Session ended."))
 
     def _estimate_escalation_cost(self) -> float:
         """Rough cost estimate for a Claude escalation call."""

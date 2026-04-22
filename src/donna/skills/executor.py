@@ -662,5 +662,5 @@ class SkillExecutor:
     def _extract_escalate_reason(output: Any) -> str:
         esc = output.get("escalate") if isinstance(output, dict) else None
         if isinstance(esc, dict):
-            return esc.get("reason", "unspecified")
+            return str(esc.get("reason", "unspecified"))
         return str(esc) if esc is not None else "unspecified"

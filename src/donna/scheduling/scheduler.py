@@ -357,16 +357,7 @@ class Scheduler:
             slot_ends[task.id] = slot.end
 
             # Add the new event to the list so subsequent tasks see it.
-            existing_events.append(
-                CalendarEvent(
-                    event_id=event.event_id,
-                    summary=task.title,
-                    start=slot.start,
-                    end=slot.end,
-                    donna_managed=True,
-                    task_id=task.id,
-                )
-            )
+            existing_events.append(event)
 
             booked_slots.append(slot)
             logger.info(

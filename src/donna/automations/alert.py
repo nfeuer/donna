@@ -58,23 +58,23 @@ class AlertEvaluator:
             return False
         value = leaf.get("value")
         if op == "==":
-            return actual == value
+            return bool(actual == value)
         if op == "!=":
-            return actual != value
+            return bool(actual != value)
         if op == "contains":
             try:
-                return value in actual
+                return bool(value in actual)
             except TypeError:
                 return False
         try:
             if op == "<":
-                return actual < value
+                return bool(actual < value)
             if op == "<=":
-                return actual <= value
+                return bool(actual <= value)
             if op == ">":
-                return actual > value
+                return bool(actual > value)
             if op == ">=":
-                return actual >= value
+                return bool(actual >= value)
         except TypeError:
             return False
         return False

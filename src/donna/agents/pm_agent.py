@@ -136,7 +136,7 @@ Respond with JSON:
         """Determine which execution agent should handle this task."""
         suggested = assessment.get("suggested_agent", "")
         if suggested in ("scheduler", "research", "coding", "communication"):
-            return suggested
+            return str(suggested)
 
         # Fallback heuristics based on task properties.
         if task.prep_work_flag:

@@ -7,7 +7,7 @@ on a MockToolRegistry — :meth:`register` raises.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import structlog
 
@@ -85,4 +85,4 @@ class MockToolRegistry(ToolRegistry):
                 logger.warning("unknown_error_class_in_mock", requested_class=exc_class_name)
                 exc_class = RuntimeError
             raise exc_class(message)
-        return mock
+        return cast(dict[str, Any], mock)

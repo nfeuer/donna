@@ -26,10 +26,11 @@ import structlog
 from discord import app_commands
 
 from donna.integrations.discord_pending_drafts import PendingDraft
-from donna.orchestrator.input_parser import DuplicateDetectedError, InputParser
+from donna.orchestrator.input_parser import InputParser
 from donna.preferences.correction_logger import log_correction
 from donna.tasks.database import Database, TaskRow
 from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain
+from donna.tasks.dedup import DuplicateDetectedError
 
 if TYPE_CHECKING:
     from donna.orchestrator.dispatcher import AgentDispatcher
@@ -466,6 +467,10 @@ class DonnaBot(discord.Client):
 
         _Msg.thread_id = thread_id  # type: ignore[attr-defined]
 
+        # Caller (on_message) guards that _intent_dispatcher is not None
+        # before dispatching here; assert narrows the Optional for mypy.
+        assert self._intent_dispatcher is not None
+
         try:
             result = await self._intent_dispatcher.dispatch(_Msg())
         except Exception:
@@ -582,6 +587,7 @@ class DonnaBot(discord.Client):
             "target_cadence_cron": getattr(draft, "target_cadence_cron", None),
             "active_cadence_cron": getattr(draft, "active_cadence_cron", None),
         }
+        capability_name_snapshot = draft_snapshot["capability_name"]
         pending = PendingDraft(
             user_id=str(message.author.id),
             thread_id=f"dm:{message.author.id}",
@@ -590,7 +596,11 @@ class DonnaBot(discord.Client):
                 "extracted_inputs": draft_snapshot["inputs"],
                 "edit_snapshot": draft_snapshot,
             },
-            capability_name=draft_snapshot["capability_name"],
+            capability_name=(
+                capability_name_snapshot
+                if isinstance(capability_name_snapshot, str)
+                else None
+            ),
         )
         try:
             self._intent_dispatcher._drafts.set(pending)
@@ -877,6 +887,10 @@ class DonnaBot(discord.Client):
         user_id = str(message.author.id)
         text = message.content.strip()
         log = logger.bind(user_id=user_id, channel="discord_chat")
+
+        # Caller (on_message) guards that _chat_engine is not None before
+        # invoking this handler; assert narrows the Optional for mypy.
+        assert self._chat_engine is not None
 
         try:
             resp = await self._chat_engine.handle_message(

@@ -90,6 +90,10 @@ def _parse_dt(value: Any) -> datetime | None:
 
 
 def row_to_automation(row: Sequence[Any]) -> AutomationRow:
+    created_at = _parse_dt(row[17])
+    updated_at = _parse_dt(row[18])
+    assert created_at is not None
+    assert updated_at is not None
     return AutomationRow(
         id=row[0], user_id=row[1], name=row[2], description=row[3],
         capability_name=row[4],
@@ -103,17 +107,19 @@ def row_to_automation(row: Sequence[Any]) -> AutomationRow:
         last_run_at=_parse_dt(row[13]),
         next_run_at=_parse_dt(row[14]),
         run_count=row[15], failure_count=row[16],
-        created_at=_parse_dt(row[17]),
-        updated_at=_parse_dt(row[18]),
+        created_at=created_at,
+        updated_at=updated_at,
         created_via=row[19],
         active_cadence_cron=row[20] if len(row) > 20 else None,
     )
 
 
 def row_to_automation_run(row: Sequence[Any]) -> AutomationRunRow:
+    started_at = _parse_dt(row[2])
+    assert started_at is not None
     return AutomationRunRow(
         id=row[0], automation_id=row[1],
-        started_at=_parse_dt(row[2]),
+        started_at=started_at,
         finished_at=_parse_dt(row[3]),
         status=row[4], execution_path=row[5],
         skill_run_id=row[6], invocation_log_id=row[7],

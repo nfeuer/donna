@@ -4,7 +4,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 SKILL_COLUMNS = (
     "id", "capability_name", "current_version_id", "state",
@@ -66,7 +66,7 @@ def _parse_json(value: str | dict[str, Any] | None) -> dict[str, Any]:
         return {}
     if isinstance(value, dict):
         return value
-    return json.loads(value)
+    return cast(dict[str, Any], json.loads(value))
 
 
 def _parse_dt(value: str | datetime) -> datetime:

@@ -108,7 +108,10 @@ async def list_shadow_comparisons(
 
     # If we got fewer than limit by input_hash, also try task_id proximity
     if len(comparisons) < limit:
-        existing_shadow_ids = {c["shadow"]["id"] for c in comparisons}
+        existing_shadow_ids = {
+            c["shadow"]["id"] for c in comparisons
+            if isinstance(c["shadow"], dict)
+        }
         remaining = limit - len(comparisons)
 
         prox_where = ""
