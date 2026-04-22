@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -43,7 +44,7 @@ class SkillVersionRow:
     created_at: datetime
 
 
-def row_to_skill(row: tuple[Any, ...]) -> SkillRow:
+def row_to_skill(row: Sequence[Any]) -> SkillRow:
     return SkillRow(
         id=row[0], capability_name=row[1], current_version_id=row[2],
         state=row[3], requires_human_gate=bool(row[4]),
@@ -51,7 +52,7 @@ def row_to_skill(row: tuple[Any, ...]) -> SkillRow:
     )
 
 
-def row_to_skill_version(row: tuple[Any, ...]) -> SkillVersionRow:
+def row_to_skill_version(row: Sequence[Any]) -> SkillVersionRow:
     return SkillVersionRow(
         id=row[0], skill_id=row[1], version_number=row[2],
         yaml_backbone=row[3], step_content=_parse_json(row[4]),

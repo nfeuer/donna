@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -39,7 +40,7 @@ class CapabilityRow:
     notes: str | None
 
 
-def row_to_capability(row: tuple[Any, ...]) -> CapabilityRow:
+def row_to_capability(row: Sequence[Any]) -> CapabilityRow:
     return CapabilityRow(
         id=row[0],
         name=row[1],

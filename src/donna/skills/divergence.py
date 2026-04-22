@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -31,7 +32,7 @@ class SkillDivergenceRow:
     created_at: datetime
 
 
-def row_to_divergence(row: tuple[Any, ...]) -> SkillDivergenceRow:
+def row_to_divergence(row: Sequence[Any]) -> SkillDivergenceRow:
     return SkillDivergenceRow(
         id=row[0], skill_run_id=row[1], shadow_invocation_id=row[2],
         overall_agreement=row[3],

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -88,7 +89,7 @@ def _parse_dt(value: Any) -> datetime | None:
     return datetime.fromisoformat(value)
 
 
-def row_to_automation(row: tuple[Any, ...]) -> AutomationRow:
+def row_to_automation(row: Sequence[Any]) -> AutomationRow:
     return AutomationRow(
         id=row[0], user_id=row[1], name=row[2], description=row[3],
         capability_name=row[4],
@@ -109,7 +110,7 @@ def row_to_automation(row: tuple[Any, ...]) -> AutomationRow:
     )
 
 
-def row_to_automation_run(row: tuple[Any, ...]) -> AutomationRunRow:
+def row_to_automation_run(row: Sequence[Any]) -> AutomationRunRow:
     return AutomationRunRow(
         id=row[0], automation_id=row[1],
         started_at=_parse_dt(row[2]),

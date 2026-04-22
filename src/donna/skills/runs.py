@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -61,7 +62,7 @@ class SkillStepResultRow:
     created_at: datetime
 
 
-def row_to_skill_run(row: tuple[Any, ...]) -> SkillRunRow:
+def row_to_skill_run(row: Sequence[Any]) -> SkillRunRow:
     return SkillRunRow(
         id=row[0], skill_id=row[1], skill_version_id=row[2],
         task_id=row[3], automation_run_id=row[4],
@@ -75,7 +76,7 @@ def row_to_skill_run(row: tuple[Any, ...]) -> SkillRunRow:
     )
 
 
-def row_to_step_result(row: tuple[Any, ...]) -> SkillStepResultRow:
+def row_to_step_result(row: Sequence[Any]) -> SkillStepResultRow:
     return SkillStepResultRow(
         id=row[0], skill_run_id=row[1], step_name=row[2],
         step_index=row[3], step_kind=row[4],
