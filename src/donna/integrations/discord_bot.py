@@ -121,7 +121,7 @@ class DonnaBot(discord.Client):
         if self._debug_channel_id is not None:
             channel = self.get_channel(self._debug_channel_id)
             if channel is not None and hasattr(channel, "send"):
-                await channel.send("Donna is online.")  # type: ignore[union-attr]
+                await channel.send("Donna is online.")
 
     # ------------------------------------------------------------------
     # Outbound messaging (Slice 5)
@@ -153,7 +153,7 @@ class DonnaBot(discord.Client):
         if channel is None:
             logger.warning("send_message_channel_unavailable", channel_name=channel_name)
             return None
-        msg: discord.Message = await channel.send(text)  # type: ignore[union-attr]
+        msg: discord.Message = await channel.send(text)
         return msg
 
     async def send_embed(self, channel_name: str, embed: discord.Embed) -> discord.Message | None:
@@ -165,7 +165,7 @@ class DonnaBot(discord.Client):
         if channel is None:
             logger.warning("send_embed_channel_unavailable", channel_name=channel_name)
             return None
-        msg: discord.Message = await channel.send(embed=embed)  # type: ignore[union-attr]
+        msg: discord.Message = await channel.send(embed=embed)
         return msg
 
     async def send_message_with_view(
@@ -183,7 +183,7 @@ class DonnaBot(discord.Client):
         kwargs: dict[str, Any] = {"content": text, "view": view}
         if embed is not None:
             kwargs["embed"] = embed
-        msg: discord.Message = await channel.send(**kwargs)  # type: ignore[union-attr]
+        msg: discord.Message = await channel.send(**kwargs)
         return msg
 
     async def send_to_thread(self, thread_id: int, text: str) -> None:
@@ -192,7 +192,7 @@ class DonnaBot(discord.Client):
         if thread is None or not hasattr(thread, "send"):
             logger.warning("send_to_thread_unavailable", thread_id=thread_id)
             return
-        await thread.send(text)  # type: ignore[union-attr]
+        await thread.send(text)
 
     async def create_overdue_thread(
         self,
@@ -214,7 +214,7 @@ class DonnaBot(discord.Client):
         if not hasattr(channel, "send"):
             return None
 
-        msg: discord.Message = await channel.send(nudge_text)  # type: ignore[union-attr]
+        msg: discord.Message = await channel.send(nudge_text)
 
         if hasattr(msg, "create_thread"):
             thread = await msg.create_thread(name=f"Overdue: {task_title[:80]}")

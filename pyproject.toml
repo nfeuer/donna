@@ -67,6 +67,9 @@ dev = [
     "aioresponses>=0.7.6",
     "ruff>=0.4.0",
     "mypy>=1.8.0",
+    "types-PyYAML>=6.0",
+    "types-jsonschema>=4.20",
+    "types-croniter>=2.0",
 ]
 docs = [
     "mkdocs>=1.6.0",
@@ -124,6 +127,16 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
+[[tool.mypy.overrides]]
+module = [
+    "feedparser",
+    "google_auth_oauthlib.*",
+    "googleapiclient.*",
+    "twilio",
+    "twilio.*",
+]
+ignore_missing_imports = true
+
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
@@ -132,4 +145,7 @@ dev = [
     "aioresponses>=0.7.6",
     "ruff>=0.4.0",
     "mypy>=1.8.0",
+    "types-PyYAML>=6.0",
+    "types-jsonschema>=4.20",
+    "types-croniter>=2.0",
 ]
