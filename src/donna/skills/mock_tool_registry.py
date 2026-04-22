@@ -7,7 +7,7 @@ on a MockToolRegistry — :meth:`register` raises.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import structlog
 
@@ -36,7 +36,7 @@ class UnmockedToolError(Exception):
 class MockToolRegistry(ToolRegistry):
     """ToolRegistry that dispatches from a precomputed mock map."""
 
-    _ERROR_WHITELIST: dict[str, type[Exception]] = {
+    _ERROR_WHITELIST: ClassVar[dict[str, type[Exception]]] = {
         "TimeoutError": TimeoutError,
         "ConnectionError": ConnectionError,
         "ValueError": ValueError,

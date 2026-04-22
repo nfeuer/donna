@@ -125,7 +125,9 @@ class CostTracker:
         today = date.today()
         window_start = today - timedelta(days=6)  # 7-day window including today
 
-        start_str = datetime(window_start.year, window_start.month, window_start.day, 0, 0, 0).isoformat()
+        start_str = datetime(
+            window_start.year, window_start.month, window_start.day, 0, 0, 0,
+        ).isoformat()
         end_str = datetime(today.year, today.month, today.day, 23, 59, 59, 999999).isoformat()
 
         total, _ = await self._sum_range(start_str, end_str)

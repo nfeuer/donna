@@ -114,7 +114,8 @@ async def test_execute_skill_injects_prior_run_end_into_inputs():
         "version_number INT, yaml_backbone TEXT, step_content TEXT, "
         "output_schemas TEXT, created_by TEXT, changelog TEXT, created_at TEXT)"
     )
-    skill_id = str(uuid.uuid4()); vid = str(uuid.uuid4())
+    skill_id = str(uuid.uuid4())
+    vid = str(uuid.uuid4())
     await conn.execute(
         "INSERT INTO skill VALUES (?, ?, ?, 'sandbox', 0, 0.0, ?, ?)",
         (skill_id, "news_check", vid, prior, prior),

@@ -213,7 +213,9 @@ class TaskConfirmationView(discord.ui.View):
         )
         await interaction.response.send_modal(modal)
 
-    @discord.ui.button(label="Reschedule", style=ButtonStyle.blurple, custom_id="confirm_reschedule")
+    @discord.ui.button(
+        label="Reschedule", style=ButtonStyle.blurple, custom_id="confirm_reschedule",
+    )
     async def reschedule(self, interaction: Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
         await interaction.response.send_message(
             "Use `/reschedule` to pick a new time, or reply with a time like 'tomorrow 2pm'.",

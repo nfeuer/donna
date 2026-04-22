@@ -51,7 +51,8 @@ class NightlyReport:
     evolved: list[dict] = field(default_factory=list)                  # EvolutionReport as dicts
     correction_flagged: list[dict] = field(default_factory=list)       # correction-cluster hits
     degraded: list[dict] = field(default_factory=list)                 # DegradationReport as dicts
-    errors: list[dict] = field(default_factory=list)                   # [{"step": "...", "error": "..."}]
+    # [{"step": "...", "error": "..."}]
+    errors: list[dict] = field(default_factory=list)
 
 
 async def run_nightly_tasks(deps: NightlyDeps) -> NightlyReport:

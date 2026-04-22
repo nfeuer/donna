@@ -111,7 +111,8 @@ async def list_recent_runs(
     conn = request.app.state.db.connection
     if status:
         cursor = await conn.execute(
-            f"SELECT {SELECT_SKILL_RUN} FROM skill_run WHERE status = ? ORDER BY started_at DESC LIMIT ?",
+            f"SELECT {SELECT_SKILL_RUN} FROM skill_run WHERE status = ? "
+            "ORDER BY started_at DESC LIMIT ?",
             (status, limit),
         )
     else:

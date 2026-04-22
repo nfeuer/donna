@@ -214,7 +214,10 @@ class MorningDigest:
                     duration_min = task.estimated_duration or 0
                     overdue_at = start + timedelta(minutes=duration_min + OVERDUE_BUFFER_MINUTES)
                     if now > overdue_at:
-                        overdue_tasks.append(f"- {task.title} (overdue since {overdue_at.strftime('%Y-%m-%d %H:%M')})")
+                        overdue_tasks.append(
+                            f"- {task.title} (overdue since "
+                            f"{overdue_at.strftime('%Y-%m-%d %H:%M')})"
+                        )
 
         # Cost summary from invocation_log.
         yesterday_cost = 0.0
@@ -275,7 +278,10 @@ class MorningDigest:
             data["overdue_tasks"],
             "",
             "**Cost Summary**",
-            f"Yesterday: ${data['yesterday_cost']} | Month-to-date: ${data['mtd_cost']} / ${data['monthly_budget']}",
+            (
+                f"Yesterday: ${data['yesterday_cost']} | "
+                f"Month-to-date: ${data['mtd_cost']} / ${data['monthly_budget']}"
+            ),
         ]
         text = "\n".join(lines)
         # Discord message limit.

@@ -62,7 +62,8 @@ async def draft_candidate_now(candidate_id: str, request: Request) -> dict:
     ManualDraftPoller picks it up on its 15s poll and runs AutoDrafter.
     Returns 202 Accepted — the actual draft runs asynchronously.
 
-    After Wave 2 F-W1-D — see docs/superpowers/specs/archive/2026-04-17-skill-system-wave-2-first-capability-design.md.
+    After Wave 2 F-W1-D — see
+    docs/superpowers/specs/archive/2026-04-17-skill-system-wave-2-first-capability-design.md.
     """
     from datetime import datetime
 

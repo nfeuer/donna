@@ -109,6 +109,9 @@ class ModelRouter:
         # Cache for loaded prompt templates and schemas.
         self._prompt_cache: dict[str, str] = {}
         self._schema_cache: dict[str, dict[str, Any]] = {}
+        # Strong references to fire-and-forget shadow tasks so they are
+        # not garbage-collected before completion.
+        self._shadow_tasks: set[asyncio.Task[None]] = set()
 
     def _resolve_route(self, task_type: str) -> tuple[ModelProvider, str, str]:
         """Resolve task_type → (provider instance, model ID, model alias).
@@ -278,9 +281,11 @@ class ModelRouter:
         # Shadow mode: fire secondary model in parallel if configured.
         routing = self._models_config.routing.get(task_type)
         if routing and routing.shadow and self._on_shadow_complete:
-            asyncio.create_task(
+            shadow_task = asyncio.create_task(
                 self._run_shadow(prompt, task_type, routing.shadow)
             )
+            self._shadow_tasks.add(shadow_task)
+            shadow_task.add_done_callback(self._shadow_tasks.discard)
 
         return result, enriched_metadata
 

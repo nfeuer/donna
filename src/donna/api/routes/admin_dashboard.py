@@ -321,7 +321,8 @@ async def get_task_throughput(
     # Domain breakdown
     cursor = await conn.execute(
         """SELECT domain, COUNT(*) as total,
-               COUNT(CASE WHEN completed_at IS NOT NULL AND completed_at >= ? THEN 1 END) as completed
+               COUNT(CASE WHEN completed_at IS NOT NULL AND completed_at >= ? THEN 1 END)
+                   as completed
            FROM tasks WHERE created_at >= ?
            GROUP BY domain""",
         (since, since),
@@ -335,7 +336,11 @@ async def get_task_throughput(
         "summary": {
             "total_created": total_created,
             "total_completed": total_completed,
-            "completion_rate": round(total_completed / total_created * 100, 1) if total_created > 0 else 0,
+            "completion_rate": (
+                round(total_completed / total_created * 100, 1)
+                if total_created > 0
+                else 0
+            ),
             "overdue_count": overdue_count,
             "avg_reschedules": float(avg_reschedules),
             "avg_completion_hours": float(avg_completion_hours) if avg_completion_hours else None,

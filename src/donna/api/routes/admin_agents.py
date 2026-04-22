@@ -34,7 +34,10 @@ def _build_agent_task_map(config_dir: Path) -> dict[str, list[str]]:
 
     # Well-known agent → task_type mappings
     known_map: dict[str, list[str]] = {
-        "pm": ["parse_task", "parse_task_local", "classify_priority", "dedup_check", "task_decompose"],
+        "pm": [
+            "parse_task", "parse_task_local", "classify_priority",
+            "dedup_check", "task_decompose",
+        ],
         "scheduler": ["generate_reminder"],
         "research": ["prep_research"],
         "coding": [],
@@ -72,7 +75,12 @@ async def list_agents(request: Request) -> dict[str, Any]:
         task_types = agent_task_map.get(name, [])
 
         # Query summary metrics for this agent's task_types
-        metrics = {"total_calls": 0, "avg_latency_ms": 0, "total_cost_usd": 0.0, "last_invocation": None}
+        metrics = {
+            "total_calls": 0,
+            "avg_latency_ms": 0,
+            "total_cost_usd": 0.0,
+            "last_invocation": None,
+        }
         if task_types:
             placeholders = ",".join("?" for _ in task_types)
             # Safe: {placeholders} is built from static "?" chars; values go through params
@@ -194,7 +202,10 @@ async def get_agent_detail(request: Request, name: str) -> dict[str, Any]:
                     tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
         except (json.JSONDecodeError, TypeError):
             pass
-    result["tool_usage"] = [{"tool": k, "count": v} for k, v in sorted(tool_counts.items(), key=lambda x: -x[1])]
+    result["tool_usage"] = [
+        {"tool": k, "count": v}
+        for k, v in sorted(tool_counts.items(), key=lambda x: -x[1])
+    ]
 
     # Cost summary
     cursor = await conn.execute(

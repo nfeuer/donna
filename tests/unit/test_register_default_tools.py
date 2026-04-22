@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import UTC
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import pytest
@@ -35,9 +36,12 @@ async def test_registered_gmail_search_binds_the_client():
     from unittest.mock import AsyncMock
 
     class _FakeMsg:
-        id = "m1"; sender = "x@y"; subject = "s"; snippet = "sn"
+        id = "m1"
+        sender = "x@y"
+        subject = "s"
+        snippet = "sn"
         date = datetime(2026, 4, 20, tzinfo=UTC)
-        recipients = []
+        recipients: ClassVar[list] = []
 
     fake = MagicMock()
     fake.search_emails = AsyncMock(return_value=[_FakeMsg()])

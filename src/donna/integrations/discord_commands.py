@@ -245,7 +245,10 @@ def register_commands(bot: DonnaBot, db: Database, user_id: str) -> None:
             description=f"**{t.title}**",
             colour=EMBED_COLOUR,
         )
-        embed.add_field(name="Scheduled", value=t.scheduled_start[:16] if t.scheduled_start else "N/A")
+        embed.add_field(
+            name="Scheduled",
+            value=t.scheduled_start[:16] if t.scheduled_start else "N/A",
+        )
         embed.add_field(name="Priority", value=str(t.priority))
         embed.add_field(name="Domain", value=t.domain)
         if t.estimated_duration:
@@ -370,7 +373,11 @@ async def _schedule_for_date(
 
     lines = []
     for t in day_tasks:
-        time_str = t.scheduled_start[11:16] if t.scheduled_start and len(t.scheduled_start) > 16 else "??:??"
+        time_str = (
+            t.scheduled_start[11:16]
+            if t.scheduled_start and len(t.scheduled_start) > 16
+            else "??:??"
+        )
         duration = f" ({t.estimated_duration}min)" if t.estimated_duration else ""
         lines.append(f"**{time_str}** — {t.title} [P{t.priority}]{duration}")
 

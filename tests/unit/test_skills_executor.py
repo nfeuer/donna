@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 from donna.skills.executor import SkillExecutor
 from donna.skills.models import SkillRow, SkillVersionRow
+from donna.skills.tool_registry import ToolRegistry
+from donna.skills.triage import TriageDecision, TriageResult
 
 
 def _make_skill() -> SkillRow:
@@ -166,9 +168,6 @@ async def test_executor_handles_empty_steps():
 
 
 # --- Phase 2 multi-step tests ---
-
-from donna.skills.tool_registry import ToolRegistry
-from donna.skills.triage import TriageDecision, TriageResult
 
 
 def _multistep_version(yaml_backbone: str, step_content: dict, output_schemas: dict) -> SkillVersionRow:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import os
 import sys
 from datetime import UTC
@@ -208,12 +209,10 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         )
         for task in pending:
             task.cancel()
-            try:
+            # Swallow cancellation + unexpected errors during cleanup;
+            # surfaced via task.exception() on the `done` set below.
+            with contextlib.suppress(BaseException):
                 await task
-            except BaseException:
-                # Swallow cancellation + unexpected errors during cleanup;
-                # surfaced via task.exception() on the `done` set below.
-                pass
         # Surface any exception from the completed task
         for task in done:
             if task.exception() is not None:

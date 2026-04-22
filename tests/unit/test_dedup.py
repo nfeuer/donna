@@ -132,9 +132,11 @@ class TestFuzzyScoreBucketing:
         task = _make_task_row(title="Get oil change")
         dedup, router, _ = self._make_deduplicator([task])
 
-        with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=90):
-            with pytest.raises(DuplicateDetectedError) as exc_info:
-                await dedup.check("Oil change needed", None, "personal", "nick")
+        with (
+            patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=90),
+            pytest.raises(DuplicateDetectedError) as exc_info,
+        ):
+            await dedup.check("Oil change needed", None, "personal", "nick")
 
         assert exc_info.value.verdict == "same"
         assert exc_info.value.fuzzy_score == 90
@@ -146,9 +148,11 @@ class TestFuzzyScoreBucketing:
         task = _make_task_row(title="Get oil change")
         dedup, router, _ = self._make_deduplicator([task])
 
-        with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=85):
-            with pytest.raises(DuplicateDetectedError):
-                await dedup.check("Oil change needed", None, "personal", "nick")
+        with (
+            patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=85),
+            pytest.raises(DuplicateDetectedError),
+        ):
+            await dedup.check("Oil change needed", None, "personal", "nick")
 
         router.complete.assert_not_called()
 
@@ -167,9 +171,11 @@ class TestFuzzyScoreBucketing:
         task = _make_task_row(title="Get oil change")
         dedup, router, _inv_logger = self._make_deduplicator([task])
 
-        with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=70):
-            with pytest.raises(DuplicateDetectedError):
-                await dedup.check("Oil change for car", None, "personal", "nick")
+        with (
+            patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=70),
+            pytest.raises(DuplicateDetectedError),
+        ):
+            await dedup.check("Oil change for car", None, "personal", "nick")
 
         router.complete.assert_called_once()
 
@@ -190,9 +196,11 @@ class TestFuzzyScoreBucketing:
         dedup, router, _ = self._make_deduplicator([task])
         router.complete = AsyncMock(return_value=(_dedup_response("related"), _make_metadata()))
 
-        with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=75):
-            with pytest.raises(DuplicateDetectedError) as exc_info:
-                await dedup.check("Oil change for car", None, "personal", "nick")
+        with (
+            patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=75),
+            pytest.raises(DuplicateDetectedError) as exc_info,
+        ):
+            await dedup.check("Oil change for car", None, "personal", "nick")
 
         assert exc_info.value.verdict == "related"
 
@@ -202,9 +210,11 @@ class TestFuzzyScoreBucketing:
         dedup, router, inv_logger = self._make_deduplicator([task])
         router.complete = AsyncMock(return_value=(_dedup_response("same"), _make_metadata()))
 
-        with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=78):
-            with pytest.raises(DuplicateDetectedError) as exc_info:
-                await dedup.check("Oil change for car", None, "personal", "nick")
+        with (
+            patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=78),
+            pytest.raises(DuplicateDetectedError) as exc_info,
+        ):
+            await dedup.check("Oil change for car", None, "personal", "nick")
 
         assert exc_info.value.verdict == "same"
         inv_logger.log.assert_called_once()

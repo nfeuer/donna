@@ -143,7 +143,11 @@ class DecompositionService:
         for subtask_data in ordered:
             try:
                 domain_str = parent.domain
-                domain = TaskDomain(domain_str) if domain_str in TaskDomain._value2member_map_ else TaskDomain.PERSONAL
+                domain = (
+                    TaskDomain(domain_str)
+                    if domain_str in TaskDomain._value2member_map_
+                    else TaskDomain.PERSONAL
+                )
             except (ValueError, AttributeError):
                 domain = TaskDomain.PERSONAL
 

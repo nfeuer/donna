@@ -107,7 +107,10 @@ class AutomationDispatcher:
                 run_status = result.status
                 skill_run_id = getattr(result, "run_id", None)
                 if result.status != "succeeded":
-                    error = getattr(result, "error", None) or getattr(result, "escalation_reason", None)
+                    error = (
+                        getattr(result, "error", None)
+                        or getattr(result, "escalation_reason", None)
+                    )
             else:
                 prior_run_end = await self._query_prior_run_end(automation_id=automation.id)
                 parsed, metadata = await self._router.complete(
@@ -285,7 +288,9 @@ class AutomationDispatcher:
 
         # F-W4-D: persist state_write keys from skill output
         try:
-            _parsed_backbone = yaml.safe_load(version.yaml_backbone) if version.yaml_backbone else {}
+            _parsed_backbone = (
+                yaml.safe_load(version.yaml_backbone) if version.yaml_backbone else {}
+            )
             backbone = _parsed_backbone if isinstance(_parsed_backbone, dict) else {}
         except yaml.YAMLError:
             backbone = {}

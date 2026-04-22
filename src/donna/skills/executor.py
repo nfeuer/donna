@@ -141,6 +141,9 @@ class SkillExecutor:
         self._config = config
         self._task_type_prefix = task_type_prefix
         self._shadow_sampler = shadow_sampler
+        # Strong references to fire-and-forget shadow sampling tasks so
+        # they are not garbage-collected before completion.
+        self._shadow_sampling_tasks: set[asyncio.Task[None]] = set()
         self._jinja = jinja2.Environment(
             autoescape=False,
             undefined=jinja2.StrictUndefined,
@@ -477,7 +480,7 @@ class SkillExecutor:
                 if isinstance(result.final_output, dict)
                 else {"output": result.final_output}
             )
-            asyncio.create_task(
+            shadow_task = asyncio.create_task(
                 self._shadow_sampler.sample_if_applicable(
                     skill=skill,
                     skill_run_id=skill_run_id,
@@ -487,6 +490,8 @@ class SkillExecutor:
                     claude_prompt=claude_prompt,
                 )
             )
+            self._shadow_sampling_tasks.add(shadow_task)
+            shadow_task.add_done_callback(self._shadow_sampling_tasks.discard)
 
         return result
 

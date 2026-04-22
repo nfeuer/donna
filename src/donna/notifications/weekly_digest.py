@@ -168,8 +168,11 @@ Respond with JSON:
         lines = [
             "**Weekly Efficiency Report**",
             "",
-            f"Tasks: {stats.get('tasks_completed', 0)} completed / {stats.get('tasks_created', 0)} created "
-            f"({stats.get('completion_rate', 0)}% rate)",
+            (
+                f"Tasks: {stats.get('tasks_completed', 0)} completed / "
+                f"{stats.get('tasks_created', 0)} created "
+                f"({stats.get('completion_rate', 0)}% rate)"
+            ),
         ]
 
         avg = stats.get("avg_hours_to_complete")

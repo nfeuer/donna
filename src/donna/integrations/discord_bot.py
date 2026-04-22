@@ -400,7 +400,11 @@ class DonnaBot(discord.Client):
                 verdict=dup.verdict,
                 fuzzy_score=dup.fuzzy_score,
             )
-            created_at = dup.existing_task.created_at[:10] if dup.existing_task.created_at else "unknown date"
+            created_at = (
+                dup.existing_task.created_at[:10]
+                if dup.existing_task.created_at
+                else "unknown date"
+            )
             await message.channel.send(
                 f"This looks like a duplicate of **'{dup.existing_task.title}'** "
                 f"(created {created_at}). "
@@ -629,7 +633,10 @@ class DonnaBot(discord.Client):
                 tools_str = f"`{exc.missing[0]}`"
                 verb = "is"
             else:
-                tools_str = ", ".join(f"`{t}`" for t in exc.missing[:-1]) + f" and `{exc.missing[-1]}`"
+                tools_str = (
+                    ", ".join(f"`{t}`" for t in exc.missing[:-1])
+                    + f" and `{exc.missing[-1]}`"
+                )
                 verb = "are"
             msg = (
                 f"I can't run `{exc.capability}` until "

@@ -184,7 +184,11 @@ class EveningCheckin:
         preview = ""
         if tomorrow_tasks:
             first = tomorrow_tasks[0]
-            time_str = first.scheduled_start[11:16] if first.scheduled_start and len(first.scheduled_start) > 16 else ""
+            time_str = (
+                first.scheduled_start[11:16]
+                if first.scheduled_start and len(first.scheduled_start) > 16
+                else ""
+            )
             preview = f"\n\nTomorrow's first task: **{first.title}** at {time_str}"
 
         embed = discord.Embed(

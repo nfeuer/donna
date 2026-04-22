@@ -692,7 +692,7 @@ class Database:
         Allowed fields: status, summary, pinned_task_id, last_activity,
         expires_at, message_count.
         """
-        _ALLOWED = {
+        _allowed = {
             "status",
             "summary",
             "pinned_task_id",
@@ -703,7 +703,7 @@ class Database:
         if not kwargs:
             return
 
-        invalid = set(kwargs.keys()) - _ALLOWED
+        invalid = set(kwargs.keys()) - _allowed
         if invalid:
             raise ValueError(f"Invalid fields for update_chat_session: {invalid}")
 

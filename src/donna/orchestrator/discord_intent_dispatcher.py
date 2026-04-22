@@ -51,7 +51,8 @@ class DraftAutomation:
 
 @dataclass
 class DispatchResult:
-    kind: str  # task_created | automation_confirmation_needed | clarification_posted | chat | no_action
+    # task_created | automation_confirmation_needed | clarification_posted | chat | no_action
+    kind: str
     task_id: str | None = None
     draft_automation: DraftAutomation | None = None
     clarifying_question: str | None = None

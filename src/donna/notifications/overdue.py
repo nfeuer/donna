@@ -252,7 +252,9 @@ class OverdueDetector:
             try:
                 await self._db.transition_task_state(task_id, TaskStatus.IN_PROGRESS)
             except Exception:
-                logger.exception("overdue_mark_done_transition_to_in_progress_failed", task_id=task_id)
+                logger.exception(
+                    "overdue_mark_done_transition_to_in_progress_failed", task_id=task_id,
+                )
                 return
 
         try:
@@ -271,7 +273,9 @@ class OverdueDetector:
             try:
                 await self._db.transition_task_state(task_id, TaskStatus.IN_PROGRESS)
             except Exception:
-                logger.exception("overdue_reschedule_transition_in_progress_failed", task_id=task_id)
+                logger.exception(
+                    "overdue_reschedule_transition_in_progress_failed", task_id=task_id,
+                )
                 return
 
         try:

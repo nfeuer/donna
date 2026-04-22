@@ -48,6 +48,9 @@ class SupabaseSync:
         # Pending queue for reconcile on recovery.
         self._pending: list[dict[str, Any]] = []
         self._lock = asyncio.Lock()
+        # Keep strong references to fire-and-forget push tasks so they
+        # are not garbage-collected before completing.
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     @property
     def configured(self) -> bool:
@@ -62,7 +65,9 @@ class SupabaseSync:
         """
         if not self.configured:
             return
-        asyncio.create_task(self._push_with_retry(task))
+        bg_task = asyncio.create_task(self._push_with_retry(task))
+        self._background_tasks.add(bg_task)
+        bg_task.add_done_callback(self._background_tasks.discard)
 
     async def reconcile(self) -> None:
         """Push all pending (failed) tasks to Supabase.

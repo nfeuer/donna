@@ -39,7 +39,9 @@ class RetryPolicy:
 RETRY_POLICIES: dict[TaskCategory, RetryPolicy] = {
     TaskCategory.CRITICAL: RetryPolicy(max_retries=3, base_delay_s=2.0, max_delay_s=30.0),
     TaskCategory.STANDARD: RetryPolicy(max_retries=2, base_delay_s=1.0, max_delay_s=15.0),
-    TaskCategory.AGENT: RetryPolicy(max_retries=1, base_delay_s=5.0, max_delay_s=5.0, exponential=False),
+    TaskCategory.AGENT: RetryPolicy(
+        max_retries=1, base_delay_s=5.0, max_delay_s=5.0, exponential=False,
+    ),
 }
 
 

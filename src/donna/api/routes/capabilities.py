@@ -35,7 +35,8 @@ async def list_capabilities(
 
     if status is not None:
         cursor = await conn.execute(
-            f"SELECT {SELECT_CAPABILITY} FROM capability WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+            f"SELECT {SELECT_CAPABILITY} FROM capability WHERE status = ? "
+            "ORDER BY created_at DESC LIMIT ?",
             (status, limit),
         )
     else:

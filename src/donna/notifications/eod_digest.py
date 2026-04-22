@@ -240,7 +240,10 @@ class EodDigest:
             SELECT COALESCE(SUM(cost_usd), 0)
               FROM invocation_log
              WHERE timestamp >= ?
-               AND task_type IN ('skill_auto_draft', 'skill_equivalence_judge', 'triage_failure', 'skill_evolution')
+               AND task_type IN (
+                   'skill_auto_draft', 'skill_equivalence_judge',
+                   'triage_failure', 'skill_evolution'
+               )
             """,
             (since_iso,),
         )
