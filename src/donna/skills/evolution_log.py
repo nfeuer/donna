@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 import aiosqlite
 import structlog
@@ -23,9 +24,9 @@ class SkillEvolutionLogRepository:
         to_version_id: str | None,
         triggered_by: str,
         claude_invocation_id: str | None,
-        diagnosis: dict | None,
+        diagnosis: dict[str, Any] | None,
         targeted_case_ids: list[str] | None,
-        validation_results: dict | None,
+        validation_results: dict[str, Any] | None,
         outcome: str,
     ) -> str:
         entry_id = str(uuid6.uuid7())

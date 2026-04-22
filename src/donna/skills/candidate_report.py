@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -46,7 +47,7 @@ class SkillCandidateReportRow:
     reasoning: str | None = None
 
 
-def row_to_candidate_report(row: tuple) -> SkillCandidateReportRow:
+def row_to_candidate_report(row: Sequence[Any]) -> SkillCandidateReportRow:
     return SkillCandidateReportRow(
         id=row[0],
         capability_name=row[1],
@@ -148,7 +149,7 @@ class SkillCandidateRepository:
         )
         existing = await cursor.fetchone()
         if existing is not None:
-            candidate_id = existing[0]
+            candidate_id = str(existing[0])
             await self._conn.execute(
                 "UPDATE skill_candidate_report "
                 "SET resolved_at = ?, reasoning = ? "

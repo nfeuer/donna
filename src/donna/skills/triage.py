@@ -27,7 +27,7 @@ class TriageInput:
     step_name: str
     error_type: str
     error_message: str
-    state: dict
+    state: dict[str, Any]
     skill_yaml_preview: str
     user_id: str
     retry_count: int

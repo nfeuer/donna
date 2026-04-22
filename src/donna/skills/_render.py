@@ -27,7 +27,7 @@ class _AttrDict:
     ``inputs.items`` resolves to ``inputs["items"]`` as intended.
     """
 
-    def __init__(self, d: dict) -> None:
+    def __init__(self, d: dict[str, Any]) -> None:
         object.__setattr__(self, "_d", d)
 
     def __getattr__(self, name: str) -> Any:
@@ -39,7 +39,7 @@ class _AttrDict:
         # Recursively wrap nested dicts so dotted paths keep working.
         return _AttrDict(val) if isinstance(val, dict) else val
 
-    def __iter__(self):  # needed if Jinja iterates the value
+    def __iter__(self) -> Any:  # needed if Jinja iterates the value
         return iter(object.__getattribute__(self, "_d"))
 
     def __repr__(self) -> str:  # pragma: no cover

@@ -27,7 +27,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC
 from pathlib import Path
@@ -610,8 +610,20 @@ async def wire_automation_subsystem(
                         policy=policy,
                         scheduler=_ReclamperSchedulerAdapter(),
                     )
+                    # reclamp_for_capability returns int; the hook signature
+                    # expects Awaitable[None], so adapt via a wrapper that
+                    # discards the return value.
+                    _reclamp_fn: Callable[[str, str], Awaitable[int]] = (
+                        reclamper.reclamp_for_capability
+                    )
+
+                    async def _reclamp_adapter(
+                        capability_name: str, new_state: str,
+                    ) -> None:
+                        await _reclamp_fn(capability_name, new_state)
+
                     bundle.lifecycle_manager.after_state_change.register(
-                        reclamper.reclamp_for_capability,
+                        _reclamp_adapter,
                     )
                     log.info("cadence_reclamper_registered")
                 except Exception:
@@ -790,7 +802,7 @@ class _SkillLifecycleStateAdapter:
             return "claude_native"
         if row is None:
             return "claude_native"
-        return row[0]
+        return str(row[0])
 
 
 class _TasksDbAdapter:
@@ -824,7 +836,7 @@ class _TasksDbAdapter:
             capability_name=capability_name,
             inputs=inputs,
         )
-        return row.id
+        return str(row.id)
 
 
 async def _build_intent_dispatcher(

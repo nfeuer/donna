@@ -40,9 +40,9 @@ class EquivalenceJudge:
 
     async def judge(
         self,
-        output_a: dict,
-        output_b: dict,
-        context: dict | None = None,
+        output_a: dict[str, Any],
+        output_b: dict[str, Any],
+        context: dict[str, Any] | None = None,
     ) -> float:
         """Compare two skill outputs for semantic equivalence.
 

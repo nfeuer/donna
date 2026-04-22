@@ -27,7 +27,7 @@ async def gmail_search(
     query: str,
     max_results: int = 20,
     page_token: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Search Gmail. Returns lightweight summaries, never bodies.
 
     Pagination: pass `page_token` to fetch the next page; the response

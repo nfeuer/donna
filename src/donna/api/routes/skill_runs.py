@@ -9,6 +9,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from donna.skills.runs import (
     SELECT_SKILL_RUN,
     SELECT_SKILL_STEP_RESULT,
+    SkillRunRow,
+    SkillStepResultRow,
     row_to_skill_run,
     row_to_step_result,
 )
@@ -16,7 +18,7 @@ from donna.skills.runs import (
 router = APIRouter()
 
 
-def _run_to_dict(run) -> dict[str, Any]:
+def _run_to_dict(run: SkillRunRow) -> dict[str, Any]:
     return {
         "id": run.id,
         "skill_id": run.skill_id,
@@ -32,7 +34,7 @@ def _run_to_dict(run) -> dict[str, Any]:
     }
 
 
-def _step_to_dict(step) -> dict[str, Any]:
+def _step_to_dict(step: SkillStepResultRow) -> dict[str, Any]:
     return {
         "id": step.id,
         "step_name": step.step_name,
@@ -126,7 +128,7 @@ async def list_recent_runs(
 
 
 @router.get("/skill-runs/{skill_run_id}/divergence")
-async def get_skill_run_divergence(skill_run_id: str, request: Request) -> dict:
+async def get_skill_run_divergence(skill_run_id: str, request: Request) -> dict[str, Any]:
     """Shadow divergence details for a skill run (if any)."""
     import json
 
@@ -154,7 +156,7 @@ async def get_skill_run_divergence(skill_run_id: str, request: Request) -> dict:
 
 
 @router.post("/skill-runs/{run_id}/capture-fixture", status_code=201)
-async def capture_fixture(run_id: str, request: Request) -> dict:
+async def capture_fixture(run_id: str, request: Request) -> dict[str, Any]:
     """Capture a succeeded skill_run into a reusable skill_fixture row.
 
     Reads the run's final_output + tool_result_cache, infers a structural

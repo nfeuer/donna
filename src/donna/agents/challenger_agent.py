@@ -272,7 +272,7 @@ class ChallengerAgent:
 
     def _build_result_from_parse(
         self,
-        parse: dict,
+        parse: dict[str, Any],
         caps: list[CapabilityRow],
     ) -> ChallengerMatchResult:
         """Convert the LLM's JSON parse into a ChallengerMatchResult.

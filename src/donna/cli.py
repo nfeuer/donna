@@ -16,6 +16,7 @@ import contextlib
 import os
 import sys
 from datetime import UTC
+from typing import Any, cast
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -270,6 +271,7 @@ async def _run_eval(args: argparse.Namespace) -> None:
     # This bypasses routing so eval can test any provider/model combo.
     provider_name, model_id = _parse_model_arg(args.model)
 
+    provider: Any
     if provider_name == "ollama":
         from donna.models.providers.ollama import OllamaProvider
 
@@ -304,7 +306,7 @@ async def _run_eval(args: argparse.Namespace) -> None:
         tier = fixture["tier"]
         name = fixture["name"]
         pass_gate: float = fixture["pass_gate"]
-        cases: list[dict] = fixture["cases"]
+        cases: list[dict[str, Any]] = fixture["cases"]
 
         passed = 0
         print(f"\nTier {tier} — {name}  ({len(cases)} cases, gate: {pass_gate:.0%})")
@@ -312,7 +314,7 @@ async def _run_eval(args: argparse.Namespace) -> None:
 
         for case in cases:
             case_id = case["id"]
-            expected: dict = case["expected"]
+            expected: dict[str, Any] = case["expected"]
             prompt = _render_eval_prompt(template, case["input"])
 
             try:
@@ -340,7 +342,7 @@ async def _run_eval(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def _render_eval_prompt(template: str, case_input: str | dict) -> str:
+def _render_eval_prompt(template: str, case_input: str | dict[str, Any]) -> str:
     """Render a prompt template with fixture case input."""
     from datetime import datetime
 
@@ -358,7 +360,7 @@ def _render_eval_prompt(template: str, case_input: str | dict) -> str:
     return result
 
 
-def _compare_fields(expected: dict, actual: dict) -> list[str]:
+def _compare_fields(expected: dict[str, Any], actual: dict[str, Any]) -> list[str]:
     """Return mismatch descriptions for fields declared in expected."""
     mismatches: list[str] = []
     for key, exp_val in expected.items():
@@ -463,9 +465,11 @@ async def _test_notification(args: argparse.Namespace) -> None:
     user_id = os.environ.get("DONNA_USER_ID", "nick")
     config_dir = Path(args.config_dir)
 
+    # Dev-only path: notification test doesn't route messages through the
+    # parser/DB, so we pass None via cast to satisfy DonnaBot's signature.
     bot = DonnaBot(
-        input_parser=None,
-        database=None,
+        input_parser=cast(Any, None),
+        database=cast(Any, None),
         tasks_channel_id=tasks_channel_id,
         debug_channel_id=int(debug_channel_id_env) if debug_channel_id_env else None,
         agents_channel_id=int(agents_channel_id_env) if agents_channel_id_env else None,

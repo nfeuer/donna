@@ -35,7 +35,7 @@ class GateResult:
     failure_reason: str | None = None
 
 
-def run_structural_gate(new_version: dict) -> GateResult:
+def run_structural_gate(new_version: dict[str, Any]) -> GateResult:
     """Gate 1: YAML parses, step_content/output_schemas complete, JSON schemas valid."""
     yaml_backbone = new_version.get("yaml_backbone", "")
     step_content = new_version.get("step_content", {})
@@ -113,12 +113,12 @@ class EvolutionGates:
         self._config = config
         self._executor = executor
 
-    def run_structural_gate(self, new_version: dict) -> GateResult:
+    def run_structural_gate(self, new_version: dict[str, Any]) -> GateResult:
         return run_structural_gate(new_version)
 
     async def run_targeted_case_gate(
         self,
-        new_version: dict,
+        new_version: dict[str, Any],
         skill_id: str,
         targeted_case_ids: list[str],
     ) -> GateResult:
@@ -162,14 +162,14 @@ class EvolutionGates:
 
     async def run_fixture_regression_gate(
         self,
-        new_version: dict,
+        new_version: dict[str, Any],
         skill_id: str,
     ) -> GateResult:
         cursor = await self._conn.execute(
             "SELECT id, input, tool_mocks FROM skill_fixture WHERE skill_id = ?",
             (skill_id,),
         )
-        rows = await cursor.fetchall()
+        rows = list(await cursor.fetchall())
         if not rows:
             return GateResult(
                 name="fixture_regression",
@@ -209,7 +209,7 @@ class EvolutionGates:
 
     async def run_recent_success_gate(
         self,
-        new_version: dict,
+        new_version: dict[str, Any],
         skill_id: str,
     ) -> GateResult:
         window_start = (
@@ -223,7 +223,7 @@ class EvolutionGates:
             "ORDER BY started_at DESC LIMIT ?",
             (skill_id, window_start, self._config.evolution_recent_success_count),
         )
-        rows = await cursor.fetchall()
+        rows = list(await cursor.fetchall())
         if not rows:
             return GateResult(
                 name="recent_success", passed=True,
@@ -270,7 +270,7 @@ class EvolutionGates:
 
     async def _load_inputs_and_mocks_for_run(
         self, run_id: str,
-    ) -> tuple[dict, dict] | None:
+    ) -> tuple[dict[str, Any], dict[str, Any]] | None:
         cursor = await self._conn.execute(
             "SELECT state_object, tool_result_cache FROM skill_run WHERE id = ?",
             (run_id,),
@@ -293,7 +293,7 @@ class EvolutionGates:
         return inputs, tool_mocks
 
 
-def _synthetic_skill(skill_id: str, new_version: dict) -> SkillRow:
+def _synthetic_skill(skill_id: str, new_version: dict[str, Any]) -> SkillRow:
     now = datetime.now(UTC)
     return SkillRow(
         id=skill_id,
@@ -306,7 +306,7 @@ def _synthetic_skill(skill_id: str, new_version: dict) -> SkillRow:
     )
 
 
-def _synthetic_version(skill_id: str, new_version: dict) -> SkillVersionRow:
+def _synthetic_version(skill_id: str, new_version: dict[str, Any]) -> SkillVersionRow:
     now = datetime.now(UTC)
     return SkillVersionRow(
         id="v_proposed", skill_id=skill_id, version_number=999,

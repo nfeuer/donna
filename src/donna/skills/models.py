@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, cast
 
 SKILL_COLUMNS = (
     "id", "capability_name", "current_version_id", "state",
@@ -35,14 +37,14 @@ class SkillVersionRow:
     skill_id: str
     version_number: int
     yaml_backbone: str
-    step_content: dict
-    output_schemas: dict
+    step_content: dict[str, Any]
+    output_schemas: dict[str, Any]
     created_by: str
     changelog: str | None
     created_at: datetime
 
 
-def row_to_skill(row: tuple) -> SkillRow:
+def row_to_skill(row: Sequence[Any]) -> SkillRow:
     return SkillRow(
         id=row[0], capability_name=row[1], current_version_id=row[2],
         state=row[3], requires_human_gate=bool(row[4]),
@@ -50,7 +52,7 @@ def row_to_skill(row: tuple) -> SkillRow:
     )
 
 
-def row_to_skill_version(row: tuple) -> SkillVersionRow:
+def row_to_skill_version(row: Sequence[Any]) -> SkillVersionRow:
     return SkillVersionRow(
         id=row[0], skill_id=row[1], version_number=row[2],
         yaml_backbone=row[3], step_content=_parse_json(row[4]),
@@ -59,12 +61,12 @@ def row_to_skill_version(row: tuple) -> SkillVersionRow:
     )
 
 
-def _parse_json(value: str | dict | None) -> dict:
+def _parse_json(value: str | dict[str, Any] | None) -> dict[str, Any]:
     if value is None:
         return {}
     if isinstance(value, dict):
         return value
-    return json.loads(value)
+    return cast(dict[str, Any], json.loads(value))
 
 
 def _parse_dt(value: str | datetime) -> datetime:

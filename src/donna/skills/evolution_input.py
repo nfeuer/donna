@@ -67,7 +67,7 @@ class EvolutionInputBuilder:
             "stats": stats,
         }
 
-    async def _fetch_skill(self, skill_id: str) -> dict | None:
+    async def _fetch_skill(self, skill_id: str) -> dict[str, Any] | None:
         cursor = await self._conn.execute(
             "SELECT id, capability_name, current_version_id, state, "
             "requires_human_gate, baseline_agreement "
@@ -84,7 +84,7 @@ class EvolutionInputBuilder:
             "baseline_agreement": row[5],
         }
 
-    async def _fetch_capability(self, name: str) -> dict:
+    async def _fetch_capability(self, name: str) -> dict[str, Any]:
         cursor = await self._conn.execute(
             "SELECT id, name, description, input_schema, trigger_type "
             "FROM capability WHERE name = ?",
@@ -99,7 +99,7 @@ class EvolutionInputBuilder:
             "trigger_type": row[4],
         }
 
-    async def _fetch_version(self, version_id: str | None) -> dict | None:
+    async def _fetch_version(self, version_id: str | None) -> dict[str, Any] | None:
         if not version_id:
             return None
         cursor = await self._conn.execute(
@@ -119,7 +119,7 @@ class EvolutionInputBuilder:
 
     async def _fetch_divergences(
         self, skill_id: str, limit: int,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         cursor = await self._conn.execute(
             """
             SELECT d.id, d.skill_run_id, d.overall_agreement,
@@ -134,7 +134,7 @@ class EvolutionInputBuilder:
             (skill_id, limit),
         )
         rows = await cursor.fetchall()
-        result: list[dict] = []
+        result: list[dict[str, Any]] = []
         for row in rows:
             result.append({
                 "divergence_id": row[0],
@@ -147,7 +147,7 @@ class EvolutionInputBuilder:
             })
         return result
 
-    async def _fetch_correction_log(self, capability_name: str) -> list[dict]:
+    async def _fetch_correction_log(self, capability_name: str) -> list[dict[str, Any]]:
         cursor = await self._conn.execute(
             "SELECT id, timestamp, task_id, field_corrected, "
             "original_value, corrected_value "
@@ -165,7 +165,7 @@ class EvolutionInputBuilder:
             for r in rows
         ]
 
-    async def _fetch_prior_evolution_log(self, skill_id: str) -> list[dict]:
+    async def _fetch_prior_evolution_log(self, skill_id: str) -> list[dict[str, Any]]:
         cursor = await self._conn.execute(
             "SELECT id, from_version_id, to_version_id, triggered_by, "
             "outcome, at FROM skill_evolution_log "
@@ -181,7 +181,7 @@ class EvolutionInputBuilder:
             for r in rows
         ]
 
-    async def _fetch_fixtures(self, skill_id: str) -> list[dict]:
+    async def _fetch_fixtures(self, skill_id: str) -> list[dict[str, Any]]:
         cursor = await self._conn.execute(
             "SELECT id, case_name, input, expected_output_shape, source "
             "FROM skill_fixture WHERE skill_id = ?",
@@ -202,7 +202,7 @@ class EvolutionInputBuilder:
 
     async def _fetch_stats(
         self, skill_id: str, baseline_agreement: float | None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         # Current rolling mean agreement.
         cursor = await self._conn.execute(
             """

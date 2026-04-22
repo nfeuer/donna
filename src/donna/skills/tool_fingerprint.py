@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from typing import Any
 
-_RULES: dict[str, Callable[[dict], dict]] = {
+_RULES: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "web_fetch": lambda args: {"url": args["url"]},
     "gmail_read": lambda args: {"message_id": args["message_id"]},
     "gmail_send": lambda args: {
@@ -24,7 +25,7 @@ _RULES: dict[str, Callable[[dict], dict]] = {
 }
 
 
-def fingerprint(tool_name: str, args: dict) -> str:
+def fingerprint(tool_name: str, args: dict[str, Any]) -> str:
     """Return a stable fingerprint for a tool invocation.
 
     Raises ``KeyError`` if an explicit rule requires a field absent from

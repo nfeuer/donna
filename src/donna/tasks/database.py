@@ -11,6 +11,7 @@ import asyncio
 import dataclasses
 import enum as _enum_module
 import json
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -158,7 +159,7 @@ _BOOL_INDEXES = {
 _INPUTS_JSON_INDEX = _TASK_COLUMNS.index("inputs_json")
 
 
-def _row_to_task(row: tuple[Any, ...]) -> TaskRow:
+def _row_to_task(row: Sequence[Any]) -> TaskRow:
     """Map a raw SQLite row to a TaskRow, converting int booleans.
 
     The ``inputs_json`` column is the final SELECT column; it's parsed from
@@ -507,14 +508,18 @@ class Database:
             "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND completed_at >= ?",
             (user_id, since_iso),
         )
-        tasks_completed = (await cursor.fetchone())[0]
+        row = await cursor.fetchone()
+        assert row is not None
+        tasks_completed = row[0]
 
         # Tasks created this period
         cursor = await conn.execute(
             "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND created_at >= ?",
             (user_id, since_iso),
         )
-        tasks_created = (await cursor.fetchone())[0]
+        row = await cursor.fetchone()
+        assert row is not None
+        tasks_created = row[0]
 
         # Average time to complete (hours) for tasks completed this period
         cursor = await conn.execute(
@@ -524,7 +529,9 @@ class Database:
                WHERE user_id = ? AND completed_at >= ? AND completed_at IS NOT NULL""",
             (user_id, since_iso),
         )
-        avg_hours_to_complete = (await cursor.fetchone())[0]
+        row = await cursor.fetchone()
+        assert row is not None
+        avg_hours_to_complete = row[0]
 
         # Most nudged tasks (top 5)
         cursor = await conn.execute(
@@ -583,7 +590,9 @@ class Database:
             "SELECT COUNT(*) FROM nudge_events WHERE user_id = ? AND created_at >= ?",
             (user_id, since_iso),
         )
-        total_nudges = (await cursor.fetchone())[0]
+        row = await cursor.fetchone()
+        assert row is not None
+        total_nudges = row[0]
 
         # LLM cost this period (from invocation_log)
         cursor = await conn.execute(
@@ -591,7 +600,9 @@ class Database:
             "WHERE user_id = ? AND timestamp >= ?",
             (user_id, since_iso),
         )
-        weekly_cost = round((await cursor.fetchone())[0], 2)
+        row = await cursor.fetchone()
+        assert row is not None
+        weekly_cost = round(row[0], 2)
 
         return {
             "tasks_completed": tasks_completed,
@@ -617,7 +628,7 @@ class Database:
 
     @staticmethod
     def _row_to_chat_session(
-        row: tuple[Any, ...], description: tuple[Any, ...]
+        row: Sequence[Any], description: Sequence[Any]
     ) -> ChatSession:
         """Convert a SQLite row + cursor.description to a ChatSession."""
         col_names = [d[0] for d in description]
@@ -637,7 +648,7 @@ class Database:
 
     @staticmethod
     def _row_to_chat_message(
-        row: tuple[Any, ...], description: tuple[Any, ...]
+        row: Sequence[Any], description: Sequence[Any]
     ) -> ChatMessage:
         """Convert a SQLite row + cursor.description to a ChatMessage."""
         col_names = [d[0] for d in description]
@@ -799,6 +810,7 @@ class Database:
             (message_id,),
         )
         row = await cursor.fetchone()
+        assert row is not None
         return self._row_to_chat_message(row, cursor.description)
 
     async def list_chat_messages(

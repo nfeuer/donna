@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 
@@ -53,9 +54,9 @@ class TwilioSMS:
         hour = now.hour
         return self._config.blackout.start_hour <= hour < self._config.blackout.end_hour
 
-    def _get_client(self):  # type: ignore[return]
+    def _get_client(self) -> Any:
         """Lazily import and return a Twilio REST client."""
-        from twilio.rest import Client  # type: ignore[import-untyped]
+        from twilio.rest import Client
         return Client(self._account_sid, self._auth_token)
 
     async def send(self, to: str, body: str) -> bool:
@@ -92,7 +93,7 @@ class TwilioSMS:
                 from_=self._from_number,
                 to=to,
             )
-            return message.sid
+            return str(message.sid)
 
         try:
             sid = await asyncio.to_thread(_do_send)
@@ -120,7 +121,7 @@ class TwilioSMS:
             True if signature is valid, False otherwise.
         """
         try:
-            from twilio.request_validator import RequestValidator  # type: ignore[import-untyped]
+            from twilio.request_validator import RequestValidator
             validator = RequestValidator(self._auth_token)
             result: bool = validator.validate(url, params, signature)
             return result

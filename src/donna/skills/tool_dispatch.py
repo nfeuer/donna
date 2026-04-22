@@ -61,10 +61,10 @@ class ToolDispatcher:
     async def run_invocation(
         self,
         spec: ToolInvocationSpec,
-        state: dict,
-        inputs: dict,
+        state: dict[str, Any],
+        inputs: dict[str, Any],
         allowed_tools: list[str],
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Run a single tool invocation; return {store_as_key: tool_result}.
 
         If the invocation fails (after retries) the ``spec.on_failure`` DSL
@@ -86,10 +86,10 @@ class ToolDispatcher:
     async def _dispatch_with_retry(
         self,
         spec: ToolInvocationSpec,
-        state: dict,
-        inputs: dict,
+        state: dict[str, Any],
+        inputs: dict[str, Any],
         allowed_tools: list[str],
-    ) -> dict:
+    ) -> dict[str, Any]:
         try:
             resolved_args = render_value(
                 spec.args,
@@ -138,7 +138,7 @@ class ToolDispatcher:
 
     def _apply_on_failure(
         self, spec: ToolInvocationSpec, exc: ToolInvocationError,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Translate a ToolInvocationError into the configured on_failure action."""
         on_failure = spec.on_failure
         if on_failure == "continue":

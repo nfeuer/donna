@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 import structlog
@@ -54,7 +55,7 @@ async def load_skill_from_directory(
         )
 
     step_content: dict[str, str] = {}
-    output_schemas: dict[str, dict] = {}
+    output_schemas: dict[str, dict[str, Any]] = {}
     for step in skill_data.get("steps", []):
         if step.get("kind") != "llm":
             continue

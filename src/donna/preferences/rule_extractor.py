@@ -15,7 +15,7 @@ import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -189,7 +189,7 @@ class PreferenceRuleExtractor:
         schema = self._router.get_output_schema(TASK_TYPE)
         result, _ = await self._router.complete(prompt, task_type=TASK_TYPE, user_id=self._user_id)
         validated = validate_output(result, schema)
-        return validated.get("rules", [])
+        return cast(list[dict[str, Any]], validated.get("rules", []))
 
     async def _save_rules(self, rules: list[dict[str, Any]]) -> list[str]:
         """Persist rules and mark corrections as processed. Returns new rule IDs."""

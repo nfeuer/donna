@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
@@ -22,11 +23,11 @@ async def list_skill_drafts(
         "FROM skill WHERE state = 'draft' ORDER BY updated_at DESC LIMIT ?",
         (limit,),
     )
-    rows = await cursor.fetchall()
+    rows = list(await cursor.fetchall())
     return {"drafts": [_draft_to_dict(r) for r in rows], "count": len(rows)}
 
 
-def _draft_to_dict(row) -> dict:
+def _draft_to_dict(row: Sequence[Any]) -> dict[str, Any]:
     return {
         "id": row[0],
         "capability_name": row[1],

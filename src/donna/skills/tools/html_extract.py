@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 
 import structlog
 import trafilatura
@@ -16,7 +17,7 @@ logger = structlog.get_logger()
 EXCERPT_CHARS = 280
 
 
-async def html_extract(html: str, base_url: str | None = None) -> dict:
+async def html_extract(html: str, base_url: str | None = None) -> dict[str, Any]:
     """Extract article content.
 
     Returns
@@ -30,7 +31,7 @@ async def html_extract(html: str, base_url: str | None = None) -> dict:
     if not html or not html.strip():
         return {"ok": False, "reason": "no_content"}
 
-    def _run():
+    def _run() -> str | None:
         return trafilatura.extract(
             html,
             url=base_url,

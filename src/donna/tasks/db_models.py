@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import enum
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     JSON,
@@ -386,9 +387,9 @@ class Capability(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    input_schema: Mapped[dict] = mapped_column(JSON, nullable=False)
+    input_schema: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     trigger_type: Mapped[TriggerType] = mapped_column(Enum(TriggerType), nullable=False, index=True)
-    default_output_shape: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    default_output_shape: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     tools_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active", index=True)
     embedding: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
@@ -425,8 +426,8 @@ class SkillVersion(Base):
     )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     yaml_backbone: Mapped[str] = mapped_column(Text, nullable=False)
-    step_content: Mapped[dict] = mapped_column(JSON, nullable=False)
-    output_schemas: Mapped[dict] = mapped_column(JSON, nullable=False)
+    step_content: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    output_schemas: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     created_by: Mapped[str] = mapped_column(String(20), nullable=False)
     changelog: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -465,9 +466,9 @@ class SkillRun(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     total_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
-    state_object: Mapped[dict] = mapped_column(JSON, nullable=False)
-    tool_result_cache: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    final_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    state_object: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    tool_result_cache: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    final_output: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     escalation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     user_id: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -489,8 +490,8 @@ class SkillStepResult(Base):
     step_kind: Mapped[str] = mapped_column(String(20), nullable=False)
     invocation_log_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    tool_calls: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    output: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    tool_calls: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     validation_status: Mapped[str] = mapped_column(String(30), nullable=False)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -505,8 +506,8 @@ class SkillFixture(Base):
         String(36), ForeignKey("skill.id"), nullable=False, index=True,
     )
     case_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    input: Mapped[dict] = mapped_column(JSON, nullable=False)
-    expected_output_shape: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    input: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    expected_output_shape: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     source: Mapped[str] = mapped_column(String(30), nullable=False)
     captured_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -523,7 +524,7 @@ class SkillDivergence(Base):
     )
     shadow_invocation_id: Mapped[str] = mapped_column(String(36), nullable=False)
     overall_agreement: Mapped[float] = mapped_column(Float, nullable=False)
-    diff_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    diff_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     flagged_for_evolution: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True,
@@ -563,9 +564,9 @@ class SkillEvolutionLog(Base):
     to_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     triggered_by: Mapped[str] = mapped_column(String(30), nullable=False)
     claude_invocation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    diagnosis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    targeted_case_ids: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    validation_results: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    diagnosis: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    targeted_case_ids: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    validation_results: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     outcome: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
@@ -582,11 +583,11 @@ class Automation(Base):
     capability_name: Mapped[str] = mapped_column(
         String(200), ForeignKey("capability.name"), nullable=False, index=True,
     )
-    inputs: Mapped[dict] = mapped_column(JSON, nullable=False)
+    inputs: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     trigger_type: Mapped[str] = mapped_column(String(20), nullable=False)
     schedule: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    alert_conditions: Mapped[dict] = mapped_column(JSON, nullable=False)
-    alert_channels: Mapped[list] = mapped_column(JSON, nullable=False)
+    alert_conditions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    alert_channels: Mapped[list[Any]] = mapped_column(JSON, nullable=False)
     max_cost_per_run_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     min_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
@@ -618,7 +619,7 @@ class AutomationRun(Base):
     execution_path: Mapped[str] = mapped_column(String(20), nullable=False)
     skill_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     invocation_log_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    output: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     alert_sent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     alert_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

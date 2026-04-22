@@ -70,7 +70,7 @@ class BackupManager:
                 aiosqlite.connect(str(src_path)) as src_conn,
                 aiosqlite.connect(str(backup_path)) as dst_conn,
             ):
-                await src_conn.backup(dst_conn)  # type: ignore[attr-defined]
+                await src_conn.backup(dst_conn)
 
             log.info(
                 "backup_completed",

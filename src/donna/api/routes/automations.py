@@ -25,11 +25,11 @@ class CreateAutomationRequest(BaseModel):
     name: str
     description: str | None = None
     capability_name: str
-    inputs: dict
+    inputs: dict[str, Any]
     trigger_type: str  # "on_schedule" | "on_manual"
     schedule: str | None = None
-    alert_conditions: dict = {}
-    alert_channels: list = []
+    alert_conditions: dict[str, Any] = {}
+    alert_channels: list[Any] = []
     max_cost_per_run_usd: float | None = None
     min_interval_seconds: int = 300
     created_via: str = "dashboard"
@@ -38,10 +38,10 @@ class CreateAutomationRequest(BaseModel):
 class UpdateAutomationRequest(BaseModel):
     name: str | None = None
     description: str | None = None
-    inputs: dict | None = None
+    inputs: dict[str, Any] | None = None
     schedule: str | None = None
-    alert_conditions: dict | None = None
-    alert_channels: list | None = None
+    alert_conditions: dict[str, Any] | None = None
+    alert_channels: list[Any] | None = None
     max_cost_per_run_usd: float | None = None
     min_interval_seconds: int | None = None
 

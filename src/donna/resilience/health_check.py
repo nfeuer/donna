@@ -85,7 +85,7 @@ class SelfDiagnostic:
         try:
             async with aiosqlite.connect(str(db_path)) as conn:
                 cursor = await conn.execute("PRAGMA integrity_check")
-                rows = await cursor.fetchall()
+                rows = list(await cursor.fetchall())
                 if rows and rows[0][0] != "ok":
                     detail = "; ".join(r[0] for r in rows[:3])
                     return [f"[{label}] Integrity check failed: {detail}"]

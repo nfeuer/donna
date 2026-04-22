@@ -28,7 +28,7 @@ def client_ip(
     return the rightmost entry (the client as seen by the trusted proxy).
     Otherwise, return request.client.host unchanged.
     """
-    raw_host = request.client.host if request.client else ""
+    raw_host: str = request.client.host if request.client else ""
     try:
         host = ipaddress.ip_address(raw_host)
     except ValueError:
@@ -37,11 +37,11 @@ def client_ip(
     if not any(host in cidr for cidr in trusted_proxies):
         return raw_host
 
-    xff = request.headers.get("x-forwarded-for", "")
+    xff: str = request.headers.get("x-forwarded-for", "")
     if not xff:
         return raw_host
 
-    parts = [p.strip() for p in xff.split(",") if p.strip()]
+    parts: list[str] = [p.strip() for p in xff.split(",") if p.strip()]
     for candidate in reversed(parts):
         try:
             ipaddress.ip_address(candidate)

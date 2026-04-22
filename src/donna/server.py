@@ -23,6 +23,7 @@ import asyncio
 import dataclasses
 import os
 import signal
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -159,7 +160,7 @@ def make_sms_inbound_handler(
     twilio_sms: TwilioSMS,
     sms_router: SmsRouter,
     webhook_url: str,
-) -> web.RequestHandler:
+) -> Callable[[web.Request], Awaitable[web.StreamResponse]]:
     """Return a handler for POST /sms/inbound that validates Twilio signatures."""
 
     async def sms_inbound_handler(request: web.Request) -> web.Response:
@@ -191,7 +192,7 @@ def make_sms_inbound_handler(
             text='<?xml version="1.0" encoding="UTF-8"?><Response/>',
         )
 
-    return sms_inbound_handler  # type: ignore[return-value]
+    return sms_inbound_handler
 
 
 def create_app(

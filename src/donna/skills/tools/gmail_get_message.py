@@ -21,7 +21,7 @@ async def gmail_get_message(
     *,
     client: Any,
     message_id: str,
-) -> dict:
+) -> dict[str, Any]:
     if not message_id or not message_id.strip():
         raise GmailToolError("message_id must be non-empty")
     try:

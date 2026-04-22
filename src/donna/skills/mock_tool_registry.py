@@ -7,7 +7,7 @@ on a MockToolRegistry — :meth:`register` raises.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import structlog
 
@@ -61,9 +61,9 @@ class MockToolRegistry(ToolRegistry):
     async def dispatch(
         self,
         tool_name: str,
-        args: dict,
+        args: dict[str, Any],
         allowed_tools: list[str],
-    ) -> dict:
+    ) -> dict[str, Any]:
         if tool_name not in allowed_tools:
             raise ToolNotAllowedError(
                 f"tool {tool_name!r} not in step allowlist {allowed_tools}"
@@ -85,4 +85,4 @@ class MockToolRegistry(ToolRegistry):
                 logger.warning("unknown_error_class_in_mock", requested_class=exc_class_name)
                 exc_class = RuntimeError
             raise exc_class(message)
-        return mock
+        return cast(dict[str, Any], mock)

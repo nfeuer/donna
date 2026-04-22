@@ -17,9 +17,9 @@ logger = structlog.get_logger()
 @dataclass(slots=True)
 class Fixture:
     case_name: str
-    input: dict
-    expected_output_shape: dict | None = None
-    tool_mocks: dict | None = None  # Keyed by fingerprint. See tool_fingerprint.
+    input: dict[str, Any]
+    expected_output_shape: dict[str, Any] | None = None
+    tool_mocks: dict[str, Any] | None = None  # Keyed by fingerprint. See tool_fingerprint.
 
 
 @dataclass(slots=True)
@@ -64,9 +64,9 @@ class FixtureLoader:
     @staticmethod
     def _make_fixture(
         case_name: str,
-        input: dict,
-        expected_output_shape: dict | None = None,
-        tool_mocks: dict | None = None,
+        input: dict[str, Any],
+        expected_output_shape: dict[str, Any] | None = None,
+        tool_mocks: dict[str, Any] | None = None,
     ) -> Fixture:
         return Fixture(
             case_name=case_name,

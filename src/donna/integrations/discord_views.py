@@ -34,30 +34,30 @@ class TaskEditModal(discord.ui.Modal, title="Edit Task"):
     sends a confirmation with changed fields highlighted.
     """
 
-    title_input = discord.ui.TextInput(
+    title_input: discord.ui.TextInput[Any] = discord.ui.TextInput(
         label="Title",
         placeholder="Task title",
         max_length=500,
     )
-    description_input = discord.ui.TextInput(
+    description_input: discord.ui.TextInput[Any] = discord.ui.TextInput(
         label="Description",
         style=TextStyle.paragraph,
         required=False,
         max_length=2000,
     )
-    notes_input = discord.ui.TextInput(
+    notes_input: discord.ui.TextInput[Any] = discord.ui.TextInput(
         label="Notes",
         style=TextStyle.paragraph,
         required=False,
         max_length=2000,
     )
-    priority_input = discord.ui.TextInput(
+    priority_input: discord.ui.TextInput[Any] = discord.ui.TextInput(
         label="Priority (1-5)",
         placeholder="1=low, 5=critical",
         max_length=1,
         required=False,
     )
-    domain_input = discord.ui.TextInput(
+    domain_input: discord.ui.TextInput[Any] = discord.ui.TextInput(
         label="Domain (personal/work/family)",
         placeholder="personal, work, or family",
         max_length=10,

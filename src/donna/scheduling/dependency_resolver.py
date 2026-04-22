@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict, deque
+from typing import Any
 
 import structlog
 
@@ -97,7 +98,7 @@ def tasks_ready_to_schedule(all_tasks: list[TaskRow]) -> list[TaskRow]:
     return ready
 
 
-def _parse_deps(dependencies: str | list | None) -> list[str]:
+def _parse_deps(dependencies: str | list[Any] | None) -> list[str]:
     """Parse the dependencies field into a list of task ID strings."""
     if not dependencies:
         return []

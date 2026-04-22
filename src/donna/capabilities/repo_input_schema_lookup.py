@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import aiosqlite
 
@@ -10,7 +11,7 @@ class CapabilityInputSchemaDBLookup:
     def __init__(self, connection: aiosqlite.Connection) -> None:
         self._conn = connection
 
-    async def lookup(self, capability_name: str) -> dict:
+    async def lookup(self, capability_name: str) -> dict[str, Any]:
         cursor = await self._conn.execute(
             "SELECT input_schema FROM capability WHERE name = ?",
             (capability_name,),

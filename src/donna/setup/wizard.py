@@ -9,6 +9,7 @@ from __future__ import annotations
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import questionary
 
@@ -112,7 +113,7 @@ async def _prompt_for_value(prompt_def: StepPrompt, current_value: str) -> str |
     if value is None:
         return None
 
-    return value.strip()
+    return str(value).strip()
 
 
 async def _run_validator(
@@ -132,7 +133,7 @@ async def _run_step(
     step_num: int,
     total_steps: int,
     env: dict[str, str],
-    state: dict,
+    state: dict[str, Any],
     state_path: Path,
     env_path: Path,
     example_path: Path,

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import discord
 import structlog
@@ -116,7 +117,7 @@ class WeeklyDigest:
             )
             logger.info("weekly_digest_sent_fallback")
 
-    def _build_prompt(self, stats: dict) -> str:
+    def _build_prompt(self, stats: dict[str, Any]) -> str:
         """Render the weekly digest prompt with stats context."""
         most_nudged_str = "\n".join(
             f"  - {t['title']} ({t['nudge_count']} nudges, {t['domain']})"
@@ -163,7 +164,7 @@ Respond with JSON:
   "digest_text": "The full weekly report text"
 }}"""
 
-    def _render_fallback(self, stats: dict) -> str:
+    def _render_fallback(self, stats: dict[str, Any]) -> str:
         """Plain-text fallback when the LLM is unavailable."""
         lines = [
             "**Weekly Efficiency Report**",

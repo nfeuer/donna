@@ -324,7 +324,7 @@ class Evolver:
                     skill_id=skill_id, error=str(exc),
                 )
 
-    async def _fetch_skill(self, skill_id: str) -> dict | None:
+    async def _fetch_skill(self, skill_id: str) -> dict[str, Any] | None:
         cursor = await self._conn.execute(
             "SELECT id, capability_name, current_version_id, state, "
             "requires_human_gate FROM skill WHERE id = ?",
@@ -343,7 +343,7 @@ class Evolver:
         self,
         skill_id: str,
         current_version_id: str,
-        new_version: dict,
+        new_version: dict[str, Any],
         changelog: str,
     ) -> str:
         new_version_id = str(uuid6.uuid7())
@@ -375,7 +375,7 @@ class Evolver:
         await self._conn.commit()
         return new_version_id
 
-    def _build_prompt(self, package: dict) -> str:
+    def _build_prompt(self, package: dict[str, Any]) -> str:
         return (
             "You are evolving a Donna skill. Use the divergence cases + "
             "correction log to diagnose the problem and produce a repaired "

@@ -19,7 +19,7 @@ from typing import Any
 from donna.skills.tool_fingerprint import fingerprint
 
 
-def cache_to_mocks(tool_result_cache: dict) -> dict[str, Any]:
+def cache_to_mocks(tool_result_cache: dict[str, Any]) -> dict[str, Any]:
     """Transform cache_id-keyed entries into fingerprint-keyed mocks.
 
     Input: ``{cache_id: {"tool": str, "args": dict, "result": Any}}``

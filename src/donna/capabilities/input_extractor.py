@@ -18,7 +18,7 @@ class LocalLLMInputExtractor:
     async def extract(
         self,
         user_message: str,
-        schema: dict,
+        schema: dict[str, Any],
         user_id: str,
     ) -> dict[str, Any]:
         prompt = self._build_prompt(user_message, schema)
@@ -40,7 +40,7 @@ class LocalLLMInputExtractor:
             return {}
 
     @staticmethod
-    def _build_prompt(user_message: str, schema: dict) -> str:
+    def _build_prompt(user_message: str, schema: dict[str, Any]) -> str:
         props = schema.get("properties", {})
         field_lines = []
         for field_name, field_def in props.items():

@@ -17,8 +17,9 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 import uuid6
@@ -419,7 +420,7 @@ class EscalationManager:
         await conn.commit()
 
 
-def _row_to_state(row: tuple) -> EscalationState:  # type: ignore[type-arg]
+def _row_to_state(row: Sequence[Any]) -> EscalationState:
     """Map a raw SQLite row to an EscalationState."""
     return EscalationState(
         id=row[0],

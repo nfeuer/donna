@@ -88,7 +88,7 @@ class CorrectionClusterDetector:
             "WHERE skill_id = ? ORDER BY started_at DESC LIMIT ?",
             (skill_id, self._config.correction_cluster_window_runs),
         )
-        recent_runs = await cursor.fetchall()
+        recent_runs = list(await cursor.fetchall())
         if not recent_runs:
             return None
 

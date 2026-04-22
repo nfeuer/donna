@@ -16,6 +16,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import structlog
 import yaml
@@ -129,7 +130,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Load models config for LLM gateway
     models_path = config_dir / "donna_models.yaml"
-    models_config: dict = {}
+    models_config: dict[str, Any] = {}
     if models_path.exists():
         with open(models_path) as f:
             models_config = yaml.safe_load(f) or {}

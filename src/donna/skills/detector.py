@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import aiosqlite
 import structlog
@@ -176,12 +177,12 @@ class SkillCandidateDetector:
         if not outputs:
             return 0.0
 
-        shapes: set[tuple] = set()
+        shapes: set[tuple[Any, ...]] = set()
         for o in outputs:
             try:
                 parsed = json.loads(o) if isinstance(o, str) else o
                 if isinstance(parsed, dict):
-                    shape: tuple = tuple(sorted(parsed.keys()))
+                    shape: tuple[Any, ...] = tuple(sorted(parsed.keys()))
                 else:
                     shape = (type(parsed).__name__,)
             except (json.JSONDecodeError, TypeError):

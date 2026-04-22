@@ -65,6 +65,7 @@ def setup_logging(
         structlog.processors.StackInfoRenderer(),
     ]
 
+    renderer: structlog.types.Processor
     if json_output:
         renderer = structlog.processors.JSONRenderer()
     else:

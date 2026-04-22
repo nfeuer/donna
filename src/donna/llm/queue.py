@@ -57,7 +57,7 @@ class LLMQueueWorker:
 
         self._sequence = 0
         self._current_task: QueueItem | None = None
-        self._current_aio_task: asyncio.Task | None = None
+        self._current_aio_task: asyncio.Task[Any] | None = None
         self._running = False
 
         # Notify event for when internal items arrive (for preemption)
@@ -270,7 +270,7 @@ class LLMQueueWorker:
 
         return None
 
-    async def _execute(self, item: QueueItem) -> tuple[dict, CompletionMetadata]:
+    async def _execute(self, item: QueueItem) -> tuple[dict[str, Any], CompletionMetadata]:
         """Execute an LLM call for the given queue item."""
         result, meta = await self._ollama.complete(
             prompt=item.prompt,

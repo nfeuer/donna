@@ -18,6 +18,7 @@ import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -159,11 +160,11 @@ class PrepAgent:
             result = result.replace(key, value)
         return result
 
-    def _format_summary(self, validated: dict) -> str:
+    def _format_summary(self, validated: dict[str, Any]) -> str:
         """Build a concise summary string from the prep output."""
         summary = validated.get("summary", "")
         action_items = validated.get("action_items", [])
         if action_items:
             items_text = "; ".join(action_items[:3])
             return f"{summary} Actions: {items_text}"
-        return summary
+        return str(summary)

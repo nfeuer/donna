@@ -7,17 +7,18 @@ The model is lazy-loaded on first use to avoid import-time cost.
 from __future__ import annotations
 
 import threading
+from typing import Any, cast
 
 import numpy as np
 
 EMBEDDING_DIM = 384
 _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
-_model = None
+_model: Any = None
 _model_lock = threading.Lock()
 
 
-def _get_model():
+def _get_model() -> Any:
     global _model
     if _model is None:
         with _model_lock:
@@ -30,7 +31,7 @@ def _get_model():
 def embed_text(text: str) -> np.ndarray:
     model = _get_model()
     vec = model.encode(text, convert_to_numpy=True, show_progress_bar=False)
-    return vec.astype(np.float32)
+    return cast(np.ndarray, vec.astype(np.float32))
 
 
 def embedding_to_bytes(vec: np.ndarray) -> bytes:

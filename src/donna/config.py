@@ -8,7 +8,7 @@ not hardcoded in application logic.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 from pydantic import BaseModel, Field
@@ -125,7 +125,7 @@ class StateMachineConfig(BaseModel):
 def load_yaml(path: Path) -> dict[str, Any]:
     """Load a YAML file and return its contents as a dict."""
     with open(path) as f:
-        return yaml.safe_load(f)
+        return cast(dict[str, Any], yaml.safe_load(f))
 
 
 def load_models_config(config_dir: Path) -> ModelsConfig:
@@ -231,7 +231,7 @@ class PreferencesConfig(BaseModel):
     """Top-level preferences configuration."""
 
     schedule: PreferenceScheduleConfig = Field(default_factory=PreferenceScheduleConfig)
-    rules: list[dict] = Field(default_factory=list)
+    rules: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def load_preferences_config(config_dir: Path) -> PreferencesConfig:

@@ -209,6 +209,13 @@ class AutoDrafter:
             )
 
         # 5. Fixture validation in sandbox (or deferred).
+        # After the skill_yaml None-check above, _extract_draft_payload
+        # guarantees step_prompts / output_schemas / fixtures_data are also
+        # non-None and of their declared types; assert to narrow for mypy.
+        assert step_prompts is not None
+        assert output_schemas is not None
+        assert fixtures_data is not None
+        assert candidate.capability_name is not None
         pass_rate = await self._validate_fixtures(
             skill_yaml=skill_yaml,
             step_prompts=step_prompts,
@@ -385,7 +392,7 @@ class AutoDrafter:
     @staticmethod
     def _extract_draft_payload(
         parsed: Any,
-    ) -> tuple[str | None, dict | None, dict | None, list | None]:
+    ) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None, list[Any] | None]:
         """Pull the four required keys out of the LLM response.
 
         Returns ``(None, None, None, None)`` when the payload is malformed.
@@ -413,9 +420,9 @@ class AutoDrafter:
         self,
         *,
         skill_yaml: str,
-        step_prompts: dict,
-        output_schemas: dict,
-        fixtures_data: list,
+        step_prompts: dict[str, Any],
+        output_schemas: dict[str, Any],
+        fixtures_data: list[Any],
         capability_name: str,
     ) -> float:
         """Run generated fixtures through a sandbox executor.
@@ -474,8 +481,8 @@ class AutoDrafter:
         *,
         capability_name: str,
         skill_yaml: str,
-        step_prompts: dict,
-        output_schemas: dict,
+        step_prompts: dict[str, Any],
+        output_schemas: dict[str, Any],
     ) -> str:
         """Insert skill + skill_version in claude_native state; return skill_id.
 
@@ -490,7 +497,7 @@ class AutoDrafter:
         )
         existing = await cursor.fetchone()
         if existing is not None:
-            return existing[0]
+            return str(existing[0])
 
         now = datetime.now(UTC).isoformat()
         skill_id = str(uuid6.uuid7())
@@ -532,7 +539,7 @@ class AutoDrafter:
         self,
         *,
         skill_id: str,
-        fixtures_data: list,
+        fixtures_data: list[Any],
     ) -> None:
         """Write each Claude-generated fixture row to ``skill_fixture``.
 
@@ -559,9 +566,9 @@ async def _persist_fixture(
     conn: aiosqlite.Connection,
     skill_id: str,
     case_name: str,
-    input_: dict,
-    expected_output_shape: dict | None,
-    tool_mocks: dict | None,
+    input_: dict[str, Any],
+    expected_output_shape: dict[str, Any] | None,
+    tool_mocks: dict[str, Any] | None,
     source: str,
     captured_run_id: str | None = None,
 ) -> str:

@@ -211,7 +211,7 @@ class CalendarSync:
         from donna.scheduling.scheduler import NoSlotFoundError, Scheduler
 
         scheduler = Scheduler(self._config)
-        personal_cal_id = self._config.calendars.get("personal", {})
+        personal_cal_id: Any = self._config.calendars.get("personal", {})
         if hasattr(personal_cal_id, "calendar_id"):
             cal_id = personal_cal_id.calendar_id
         else:

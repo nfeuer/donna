@@ -16,10 +16,11 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
 
-from donna.config import CalendarConfig, TimeWindowConfig
+from donna.config import CalendarConfig, TimeWindowConfig, TimeWindowsConfig
 from donna.integrations.calendar import CalendarEvent, GoogleCalendarClient
 from donna.scheduling.dependency_resolver import topological_sort
 from donna.tasks.database import Database, TaskRow
@@ -117,7 +118,7 @@ class Scheduler:
         end: datetime,
         domain: str,
         priority: int,
-        tw: object,
+        tw: TimeWindowsConfig,
         existing_events: list[CalendarEvent],
     ) -> bool:
         """Return True if [start, end) is a valid scheduling window."""
@@ -149,7 +150,7 @@ class Scheduler:
         end: datetime,
         domain: str,
         priority: int,
-        tw: object,
+        tw: TimeWindowsConfig,
     ) -> bool:
         """Return True if the slot is within the permitted window for domain."""
         start_hour = start.hour
@@ -258,7 +259,7 @@ class Scheduler:
             pass
 
         # Update task with calendar details.
-        update_fields: dict = dict(
+        update_fields: dict[str, Any] = dict(
             scheduled_start=slot.start,
             calendar_event_id=event.event_id,
             donna_managed=True,
@@ -356,16 +357,7 @@ class Scheduler:
             slot_ends[task.id] = slot.end
 
             # Add the new event to the list so subsequent tasks see it.
-            existing_events.append(
-                CalendarEvent(
-                    event_id=event.event_id,
-                    summary=task.title,
-                    start=slot.start,
-                    end=slot.end,
-                    donna_managed=True,
-                    task_id=task.id,
-                )
-            )
+            existing_events.append(event)
 
             booked_slots.append(slot)
             logger.info(

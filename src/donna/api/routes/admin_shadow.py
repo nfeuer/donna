@@ -17,7 +17,7 @@ from donna.api.auth import admin_router
 router = admin_router()
 
 
-def _invocation_dict(row: tuple, columns: list[str]) -> dict[str, Any]:
+def _invocation_dict(row: tuple[Any, ...], columns: list[str]) -> dict[str, Any]:
     """Convert a row tuple to a dict using column names."""
     d: dict[str, Any] = {}
     for i, col in enumerate(columns):
@@ -108,7 +108,10 @@ async def list_shadow_comparisons(
 
     # If we got fewer than limit by input_hash, also try task_id proximity
     if len(comparisons) < limit:
-        existing_shadow_ids = {c["shadow"]["id"] for c in comparisons}
+        existing_shadow_ids = {
+            c["shadow"]["id"] for c in comparisons
+            if isinstance(c["shadow"], dict)
+        }
         remaining = limit - len(comparisons)
 
         prox_where = ""

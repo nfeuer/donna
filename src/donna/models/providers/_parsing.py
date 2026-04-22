@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, cast
 
 # Regex to strip markdown code fences from LLM output.
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?\s*```$", re.DOTALL)
@@ -20,4 +20,4 @@ def parse_json_response(text: str) -> dict[str, Any]:
     match = _JSON_FENCE_RE.match(stripped)
     if match:
         stripped = match.group(1).strip()
-    return json.loads(stripped)
+    return cast(dict[str, Any], json.loads(stripped))

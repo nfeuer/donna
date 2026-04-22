@@ -7,7 +7,7 @@ is the single public way to get a router of its auth class, which makes
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -38,7 +38,7 @@ async def _admin_dep(request: Request) -> str:
     )
 
 
-async def _service_dep(request: Request) -> dict:
+async def _service_dep(request: Request) -> dict[str, Any]:
     from donna.api.auth import service_keys
 
     ctx: dep.AuthContext = request.app.state.auth_context
@@ -63,7 +63,7 @@ async def _service_dep(request: Request) -> dict:
 
 CurrentUser = Annotated[str, Depends(_user_dep)]
 CurrentAdmin = Annotated[str, Depends(_admin_dep)]
-CurrentServiceCaller = Annotated[dict, Depends(_service_dep)]
+CurrentServiceCaller = Annotated[dict[str, Any], Depends(_service_dep)]
 
 
 def public_liveness_router() -> APIRouter:

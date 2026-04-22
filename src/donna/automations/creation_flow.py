@@ -33,7 +33,7 @@ class MissingToolError(Exception):
 
 
 CapabilityToolLookup = Callable[[str], Awaitable[list[str]]]
-CapabilityInputSchemaLookup = Callable[[str], Awaitable[dict]]
+CapabilityInputSchemaLookup = Callable[[str], Awaitable[dict[str, Any]]]
 
 
 class AutomationCreationPath:
@@ -89,10 +89,10 @@ class AutomationCreationPath:
         ):
             try:
                 schema = await self._capability_input_schema_lookup(draft.capability_name)
-                required = set(schema.get("required", []) or [])
+                required_keys = set(schema.get("required", []) or [])
                 props = (schema.get("properties") or {}).keys()
                 for key in props:
-                    if key not in required and key not in inputs:
+                    if key not in required_keys and key not in inputs:
                         inputs[key] = None
             except Exception:
                 logger.exception("capability_input_schema_lookup_failed")
@@ -122,7 +122,7 @@ class AutomationCreationPath:
                 target_cadence=draft.target_cadence_cron,
                 active_cadence=draft.active_cadence_cron,
             )
-            return automation_id
+            return str(automation_id) if automation_id is not None else None
         except AlreadyExistsError:
             logger.info(
                 "automation_creation_already_exists",
