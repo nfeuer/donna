@@ -69,7 +69,7 @@ async def rss_fetch(
     max_items: int = 50,
     offset: int = 0,
     timeout_s: float = 10.0,
-) -> dict:
+) -> dict[str, Any]:
     """Fetch + parse an RSS/Atom feed.
 
     Pagination: `offset` skips leading filtered items. The response

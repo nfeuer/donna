@@ -18,12 +18,12 @@ class InvalidAlertExpressionError(ValueError):
 
 
 class AlertEvaluator:
-    def evaluate(self, expression: Any, output: dict) -> bool:
+    def evaluate(self, expression: Any, output: dict[str, Any]) -> bool:
         if not isinstance(expression, dict) or not expression:
             return False
         return self._check(expression, output)
 
-    def _check(self, node: Any, output: dict) -> bool:
+    def _check(self, node: Any, output: dict[str, Any]) -> bool:
         if not isinstance(node, dict):
             raise InvalidAlertExpressionError(
                 f"expected dict, got {type(node).__name__}"
@@ -46,7 +46,7 @@ class AlertEvaluator:
             return self._check_leaf(node, output)
         raise InvalidAlertExpressionError(f"unknown node shape: keys={list(node)}")
 
-    def _check_leaf(self, leaf: dict, output: dict) -> bool:
+    def _check_leaf(self, leaf: dict[str, Any], output: dict[str, Any]) -> bool:
         op = leaf["op"]
         if op not in _LEAF_OPS:
             raise InvalidAlertExpressionError(f"unknown op {op!r}")
@@ -80,7 +80,7 @@ class AlertEvaluator:
         return False
 
 
-def _walk(output: dict, dotted_path: str) -> tuple[bool, Any]:
+def _walk(output: dict[str, Any], dotted_path: str) -> tuple[bool, Any]:
     """Walk a.b.c into nested dicts. Returns (present, value)."""
     parts = dotted_path.split(".")
     cur: Any = output

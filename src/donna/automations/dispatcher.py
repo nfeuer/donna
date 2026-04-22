@@ -87,7 +87,7 @@ class AutomationDispatcher:
             execution_path=path,
         )
 
-        output: dict | None = None
+        output: dict[str, Any] | None = None
         skill_run_id: str | None = None
         invocation_log_id: str | None = None
         cost_usd: float = 0.0
@@ -322,7 +322,7 @@ class AutomationDispatcher:
         row = await cursor.fetchone()
         return row[0] if row is not None else None
 
-    async def _query_state_blob(self, *, automation_id: str) -> dict | None:
+    async def _query_state_blob(self, *, automation_id: str) -> dict[str, Any] | None:
         """Return the parsed state_blob for an automation, or None if absent/invalid.
 
         Returns None if the column does not exist (pre-migration schema) or the
@@ -344,7 +344,7 @@ class AutomationDispatcher:
         except (ValueError, TypeError):
             return None
 
-    async def _update_state_blob(self, *, automation_id: str, state_blob: dict) -> None:
+    async def _update_state_blob(self, *, automation_id: str, state_blob: dict[str, Any]) -> None:
         """Persist an updated state_blob for an automation."""
         await self._conn.execute(
             "UPDATE automation SET state_blob = ? WHERE id = ?",
@@ -378,7 +378,7 @@ class AutomationDispatcher:
             f"Inputs:\n{json.dumps(inputs, indent=2)}"
         )
 
-    def _render_alert_content(self, automation: AutomationRow, output: dict) -> str:
+    def _render_alert_content(self, automation: AutomationRow, output: dict[str, Any]) -> str:
         return (
             f"Automation '{automation.name}' alert:\n"
             f"Output: {json.dumps(output, indent=2)}"

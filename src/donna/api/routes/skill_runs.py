@@ -126,7 +126,7 @@ async def list_recent_runs(
 
 
 @router.get("/skill-runs/{skill_run_id}/divergence")
-async def get_skill_run_divergence(skill_run_id: str, request: Request) -> dict:
+async def get_skill_run_divergence(skill_run_id: str, request: Request) -> dict[str, Any]:
     """Shadow divergence details for a skill run (if any)."""
     import json
 
@@ -154,7 +154,7 @@ async def get_skill_run_divergence(skill_run_id: str, request: Request) -> dict:
 
 
 @router.post("/skill-runs/{run_id}/capture-fixture", status_code=201)
-async def capture_fixture(run_id: str, request: Request) -> dict:
+async def capture_fixture(run_id: str, request: Request) -> dict[str, Any]:
     """Capture a succeeded skill_run into a reusable skill_fixture row.
 
     Reads the run's final_output + tool_result_cache, infers a structural

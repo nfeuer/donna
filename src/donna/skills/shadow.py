@@ -59,8 +59,8 @@ class ShadowSampler:
         self,
         skill: SkillRow,
         skill_run_id: str,
-        inputs: dict,
-        skill_output: dict,
+        inputs: dict[str, Any],
+        skill_output: dict[str, Any],
         claude_task_type: str,
         claude_prompt: str,
     ) -> None:
@@ -89,8 +89,8 @@ class ShadowSampler:
         self,
         skill: SkillRow,
         skill_run_id: str,
-        inputs: dict,
-        skill_output: dict,
+        inputs: dict[str, Any],
+        skill_output: dict[str, Any],
         claude_task_type: str,
         claude_prompt: str,
     ) -> None:
@@ -111,7 +111,7 @@ class ShadowSampler:
 
         # Step 3: Run the Claude path.
         invocation_id: str
-        claude_output: dict
+        claude_output: dict[str, Any]
         try:
             parsed, metadata = await self._router.complete(
                 prompt=claude_prompt,

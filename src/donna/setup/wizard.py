@@ -9,6 +9,7 @@ from __future__ import annotations
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import questionary
 
@@ -132,7 +133,7 @@ async def _run_step(
     step_num: int,
     total_steps: int,
     env: dict[str, str],
-    state: dict,
+    state: dict[str, Any],
     state_path: Path,
     env_path: Path,
     example_path: Path,

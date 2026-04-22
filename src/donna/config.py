@@ -231,7 +231,7 @@ class PreferencesConfig(BaseModel):
     """Top-level preferences configuration."""
 
     schedule: PreferenceScheduleConfig = Field(default_factory=PreferenceScheduleConfig)
-    rules: list[dict] = Field(default_factory=list)
+    rules: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def load_preferences_config(config_dir: Path) -> PreferencesConfig:

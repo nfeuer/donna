@@ -78,8 +78,8 @@ class StepResultRecord:
     step_name: str
     step_index: int
     step_kind: str
-    output: dict | None = None
-    tool_calls: list | None = None
+    output: dict[str, Any] | None = None
+    tool_calls: list[Any] | None = None
     latency_ms: int = 0
     validation_status: str = "valid"
     error: str | None = None
@@ -103,7 +103,7 @@ class SkillRunResult:
     total_latency_ms: int = 0
     total_cost_usd: float = 0.0
     step_results: list[StepResultRecord] = field(default_factory=list)
-    tool_result_cache: dict = field(default_factory=dict)
+    tool_result_cache: dict[str, Any] = field(default_factory=dict)
     run_id: str | None = None  # Wave 2 F-2: populated from SkillRunRepository.start_run
 
 
@@ -153,7 +153,7 @@ class SkillExecutor:
         self,
         skill: SkillRow,
         version: SkillVersionRow,
-        inputs: dict,
+        inputs: dict[str, Any],
         user_id: str,
         task_id: str | None = None,
         automation_run_id: str | None = None,
@@ -543,8 +543,8 @@ class SkillExecutor:
             logger.exception("skill_run_persistence_finish_failed", skill_run_id=skill_run_id)
 
     async def _run_llm_step(
-        self, step: dict, step_name: str, version: SkillVersionRow,
-        state: StateObject, inputs: dict, user_id: str, skill: SkillRow,
+        self, step: dict[str, Any], step_name: str, version: SkillVersionRow,
+        state: StateObject, inputs: dict[str, Any], user_id: str, skill: SkillRow,
         prompt_additions: str | None = None,
     ) -> tuple[Any, str, float]:
         prompt_template = version.step_content.get(step_name, "")
@@ -577,11 +577,11 @@ class SkillExecutor:
         return output, meta.invocation_id, getattr(meta, "cost_usd", 0.0)
 
     async def _run_tool_invocations(
-        self, invocations: list[dict], state: StateObject,
-        inputs: dict, allowed_tools: list[str],
-    ) -> dict:
+        self, invocations: list[dict[str, Any]], state: StateObject,
+        inputs: dict[str, Any], allowed_tools: list[str],
+    ) -> dict[str, Any]:
         """Resolve DSL (for_each) and run all tool invocations for a step."""
-        collected: dict = {}
+        collected: dict[str, Any] = {}
         state_dict = state.to_dict()
 
         for raw_spec in invocations:

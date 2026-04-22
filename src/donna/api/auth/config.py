@@ -64,7 +64,7 @@ class AuthConfig:
     bootstrap: BootstrapSettings
 
 
-def _parse_cidrs(raw: list) -> list:
+def _parse_cidrs(raw: list[str]) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
     if not raw:
         raise ValueError("trusted_proxies/internal_cidrs must be non-empty")
     return [ipaddress.ip_network(c) for c in raw]

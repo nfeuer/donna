@@ -17,7 +17,7 @@ from donna.api.auth import admin_router
 router = admin_router()
 
 
-def _invocation_dict(row: tuple, columns: list[str]) -> dict[str, Any]:
+def _invocation_dict(row: tuple[Any, ...], columns: list[str]) -> dict[str, Any]:
     """Convert a row tuple to a dict using column names."""
     d: dict[str, Any] = {}
     for i, col in enumerate(columns):

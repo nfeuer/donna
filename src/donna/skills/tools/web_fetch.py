@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import structlog
 
@@ -18,7 +20,7 @@ async def web_fetch(
     url: str,
     timeout_s: float = 10.0,
     method: str = "GET",
-) -> dict:
+) -> dict[str, Any]:
     """Fetch a URL. Returns {status_code, headers, body, truncated}."""
     try:
         async with httpx.AsyncClient(timeout=timeout_s, follow_redirects=True) as client:

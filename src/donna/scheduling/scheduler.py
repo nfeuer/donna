@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
 
@@ -258,7 +259,7 @@ class Scheduler:
             pass
 
         # Update task with calendar details.
-        update_fields: dict = dict(
+        update_fields: dict[str, Any] = dict(
             scheduled_start=slot.start,
             calendar_event_id=event.event_id,
             donna_managed=True,

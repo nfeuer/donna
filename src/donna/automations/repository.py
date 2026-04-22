@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 import aiosqlite
 import structlog
@@ -38,11 +39,11 @@ class AutomationRepository:
         name: str,
         description: str | None,
         capability_name: str,
-        inputs: dict,
+        inputs: dict[str, Any],
         trigger_type: str,
         schedule: str | None,
-        alert_conditions: dict,
-        alert_channels: list,
+        alert_conditions: dict[str, Any],
+        alert_channels: list[Any],
         max_cost_per_run_usd: float | None,
         min_interval_seconds: int,
         created_via: str,
@@ -101,7 +102,7 @@ class AutomationRepository:
         offset: int = 0,
     ) -> list[AutomationRow]:
         clauses: list[str] = []
-        params: list = []
+        params: list[Any] = []
         if status is not None:
             clauses.append("status = ?")
             params.append(status)
@@ -159,7 +160,7 @@ class AutomationRepository:
         json_cols = {"inputs", "alert_conditions", "alert_channels"}
         dt_cols = {"last_run_at", "next_run_at"}
         set_clauses: list[str] = []
-        params: list = []
+        params: list[Any] = []
         for key, value in fields.items():
             if key in json_cols and value is not None:
                 set_clauses.append(f"{key} = ?")
@@ -237,7 +238,7 @@ class AutomationRepository:
         *,
         run_id: str,
         status: str,
-        output: dict | None,
+        output: dict[str, Any] | None,
         skill_run_id: str | None,
         invocation_log_id: str | None,
         alert_sent: bool,

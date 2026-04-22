@@ -61,9 +61,9 @@ class MockToolRegistry(ToolRegistry):
     async def dispatch(
         self,
         tool_name: str,
-        args: dict,
+        args: dict[str, Any],
         allowed_tools: list[str],
-    ) -> dict:
+    ) -> dict[str, Any]:
         if tool_name not in allowed_tools:
             raise ToolNotAllowedError(
                 f"tool {tool_name!r} not in step allowlist {allowed_tools}"

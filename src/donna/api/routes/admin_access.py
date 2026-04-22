@@ -37,7 +37,7 @@ async def revoke_ip_route(
     request: Request,
     ip: str,
     user_id: CurrentAdmin,
-    body: dict = Body(default_factory=dict),
+    body: dict[str, Any] = Body(default_factory=dict),
 ) -> dict[str, str]:
     conn = request.app.state.auth_context.conn
     reason = body.get("reason") if isinstance(body, dict) else None
@@ -50,7 +50,7 @@ async def trust_ip_route(
     request: Request,
     ip: str,
     user_id: CurrentAdmin,
-    body: dict = Body(default_factory=dict),
+    body: dict[str, Any] = Body(default_factory=dict),
 ) -> dict[str, str]:
     conn = request.app.state.auth_context.conn
     access_level = body.get("access_level", "user")
@@ -106,7 +106,7 @@ async def rotate_caller(
     request: Request,
     caller_id: str,
     user_id: CurrentAdmin,
-    body: dict = Body(default_factory=dict),
+    body: dict[str, Any] = Body(default_factory=dict),
 ) -> dict[str, Any]:
     conn = request.app.state.auth_context.conn
     budget = float(body.get("monthly_budget_usd", 0.0))

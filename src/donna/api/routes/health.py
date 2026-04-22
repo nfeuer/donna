@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Request
 
@@ -17,7 +18,7 @@ _start_time = time.monotonic()
 
 
 @router.get("/health")
-async def health(request: Request) -> dict:
+async def health(request: Request) -> dict[str, Any]:
     """Return service health. Does not require authentication."""
     db_ok = getattr(request.app.state, "db", None) is not None
     uptime_s = int(time.monotonic() - _start_time)

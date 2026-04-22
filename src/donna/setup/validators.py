@@ -13,6 +13,7 @@ import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -48,7 +49,7 @@ async def _http_get(
 async def _http_post(
     url: str,
     headers: dict[str, str] | None = None,
-    json_body: dict | None = None,
+    json_body: dict[str, Any] | None = None,
     timeout_s: float = 15,
 ) -> tuple[int, str]:
     """Lightweight async HTTP POST.  Returns (status_code, body_text)."""

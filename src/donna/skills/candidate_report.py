@@ -46,7 +46,7 @@ class SkillCandidateReportRow:
     reasoning: str | None = None
 
 
-def row_to_candidate_report(row: tuple) -> SkillCandidateReportRow:
+def row_to_candidate_report(row: tuple[Any, ...]) -> SkillCandidateReportRow:
     return SkillCandidateReportRow(
         id=row[0],
         capability_name=row[1],

@@ -23,11 +23,11 @@ class _StepRecord:
     step_name: str
     step_index: int
     step_kind: str
-    output: dict | None
+    output: dict[str, Any] | None
     latency_ms: int
     validation_status: str
     invocation_log_id: str | None
-    tool_calls: list | None
+    tool_calls: list[Any] | None
     prompt_tokens: int | None
     error: str | None
 
@@ -39,15 +39,15 @@ class ValidationRunSink:
         self.run_id: str | None = None
         self.skill_id: str | None = None
         self.skill_version_id: str | None = None
-        self.inputs: dict | None = None
+        self.inputs: dict[str, Any] | None = None
         self.user_id: str | None = None
         self.task_id: str | None = None
         self.automation_run_id: str | None = None
         self.step_records: list[_StepRecord] = []
         self.final_status: str | None = None
         self.final_output: Any = None
-        self.state_object: dict | None = None
-        self.tool_result_cache: dict | None = None
+        self.state_object: dict[str, Any] | None = None
+        self.tool_result_cache: dict[str, Any] | None = None
         self.total_latency_ms: int = 0
         self.total_cost_usd: float = 0.0
         self.escalation_reason: str | None = None
@@ -57,7 +57,7 @@ class ValidationRunSink:
         self,
         skill_id: str,
         skill_version_id: str,
-        inputs: dict,
+        inputs: dict[str, Any],
         user_id: str,
         task_id: str | None,
         automation_run_id: str | None,
@@ -77,11 +77,11 @@ class ValidationRunSink:
         step_name: str,
         step_index: int,
         step_kind: str,
-        output: dict | None,
+        output: dict[str, Any] | None,
         latency_ms: int,
         validation_status: str,
         invocation_log_id: str | None = None,
-        tool_calls: list | None = None,
+        tool_calls: list[Any] | None = None,
         prompt_tokens: int | None = None,
         error: str | None = None,
     ) -> str:
@@ -106,8 +106,8 @@ class ValidationRunSink:
         skill_run_id: str,
         status: str,
         final_output: Any,
-        state_object: dict,
-        tool_result_cache: dict,
+        state_object: dict[str, Any],
+        tool_result_cache: dict[str, Any],
         total_latency_ms: int,
         total_cost_usd: float,
         escalation_reason: str | None,

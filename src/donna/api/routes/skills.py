@@ -130,7 +130,7 @@ async def transition_skill_state(
     skill_id: str,
     body: TransitionRequest,
     request: Request,
-) -> dict:
+) -> dict[str, Any]:
     """User-initiated state transition via SkillLifecycleManager."""
     conn = request.app.state.db.connection
 
@@ -210,7 +210,7 @@ async def set_requires_human_gate(
     skill_id: str,
     body: HumanGateRequest,
     request: Request,
-) -> dict:
+) -> dict[str, Any]:
     """Toggle the requires_human_gate flag on a skill."""
     conn = request.app.state.db.connection
     cursor = await conn.execute("SELECT id FROM skill WHERE id = ?", (skill_id,))

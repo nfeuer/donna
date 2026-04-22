@@ -16,6 +16,7 @@ import contextlib
 import os
 import sys
 from datetime import UTC
+from typing import Any
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -304,7 +305,7 @@ async def _run_eval(args: argparse.Namespace) -> None:
         tier = fixture["tier"]
         name = fixture["name"]
         pass_gate: float = fixture["pass_gate"]
-        cases: list[dict] = fixture["cases"]
+        cases: list[dict[str, Any]] = fixture["cases"]
 
         passed = 0
         print(f"\nTier {tier} — {name}  ({len(cases)} cases, gate: {pass_gate:.0%})")
@@ -312,7 +313,7 @@ async def _run_eval(args: argparse.Namespace) -> None:
 
         for case in cases:
             case_id = case["id"]
-            expected: dict = case["expected"]
+            expected: dict[str, Any] = case["expected"]
             prompt = _render_eval_prompt(template, case["input"])
 
             try:
@@ -340,7 +341,7 @@ async def _run_eval(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
-def _render_eval_prompt(template: str, case_input: str | dict) -> str:
+def _render_eval_prompt(template: str, case_input: str | dict[str, Any]) -> str:
     """Render a prompt template with fixture case input."""
     from datetime import datetime
 
@@ -358,7 +359,7 @@ def _render_eval_prompt(template: str, case_input: str | dict) -> str:
     return result
 
 
-def _compare_fields(expected: dict, actual: dict) -> list[str]:
+def _compare_fields(expected: dict[str, Any], actual: dict[str, Any]) -> list[str]:
     """Return mismatch descriptions for fields declared in expected."""
     mismatches: list[str] = []
     for key, exp_val in expected.items():

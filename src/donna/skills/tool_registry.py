@@ -11,13 +11,14 @@ JSON-serializable dict.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 import structlog
 
 logger = structlog.get_logger()
 
 
-ToolCallable = Callable[..., Awaitable[dict]]
+ToolCallable = Callable[..., Awaitable[dict[str, Any]]]
 
 
 class ToolNotFoundError(Exception):
@@ -52,9 +53,9 @@ class ToolRegistry:
     async def dispatch(
         self,
         tool_name: str,
-        args: dict,
+        args: dict[str, Any],
         allowed_tools: list[str],
-    ) -> dict:
+    ) -> dict[str, Any]:
         if tool_name not in allowed_tools:
             raise ToolNotAllowedError(
                 f"tool {tool_name!r} not in step allowlist {allowed_tools}"

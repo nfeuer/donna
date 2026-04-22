@@ -34,9 +34,9 @@ class SkillRunRow:
     status: str
     total_latency_ms: int | None
     total_cost_usd: float | None
-    state_object: dict
-    tool_result_cache: dict | None
-    final_output: dict | None
+    state_object: dict[str, Any]
+    tool_result_cache: dict[str, Any] | None
+    final_output: dict[str, Any] | None
     escalation_reason: str | None
     error: str | None
     user_id: str
@@ -53,15 +53,15 @@ class SkillStepResultRow:
     step_kind: str
     invocation_log_id: str | None
     prompt_tokens: int | None
-    output: dict | None
-    tool_calls: list | None
+    output: dict[str, Any] | None
+    tool_calls: list[Any] | None
     latency_ms: int | None
     validation_status: str
     error: str | None
     created_at: datetime
 
 
-def row_to_skill_run(row: tuple) -> SkillRunRow:
+def row_to_skill_run(row: tuple[Any, ...]) -> SkillRunRow:
     return SkillRunRow(
         id=row[0], skill_id=row[1], skill_version_id=row[2],
         task_id=row[3], automation_run_id=row[4],
@@ -75,7 +75,7 @@ def row_to_skill_run(row: tuple) -> SkillRunRow:
     )
 
 
-def row_to_step_result(row: tuple) -> SkillStepResultRow:
+def row_to_step_result(row: tuple[Any, ...]) -> SkillStepResultRow:
     return SkillStepResultRow(
         id=row[0], skill_run_id=row[1], step_name=row[2],
         step_index=row[3], step_kind=row[4],
@@ -87,7 +87,7 @@ def row_to_step_result(row: tuple) -> SkillStepResultRow:
     )
 
 
-def _parse_json(value: Any) -> dict | None:
+def _parse_json(value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
     if isinstance(value, dict):
@@ -95,7 +95,7 @@ def _parse_json(value: Any) -> dict | None:
     return json.loads(value)
 
 
-def _parse_json_list(value: Any) -> list | None:
+def _parse_json_list(value: Any) -> list[Any] | None:
     if value is None:
         return None
     if isinstance(value, list):

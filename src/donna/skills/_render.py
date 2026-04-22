@@ -27,7 +27,7 @@ class _AttrDict:
     ``inputs.items`` resolves to ``inputs["items"]`` as intended.
     """
 
-    def __init__(self, d: dict) -> None:
+    def __init__(self, d: dict[str, Any]) -> None:
         object.__setattr__(self, "_d", d)
 
     def __getattr__(self, name: str) -> Any:

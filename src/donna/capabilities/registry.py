@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import aiosqlite
 import structlog
@@ -29,7 +30,7 @@ from donna.config import SkillSystemConfig
 logger = structlog.get_logger()
 
 
-def _embedding_text(name: str, description: str, input_schema: dict) -> str:
+def _embedding_text(name: str, description: str, input_schema: dict[str, Any]) -> str:
     field_names = list(input_schema.get("properties", {}).keys())
     field_part = " ".join(field_names) if field_names else ""
     return f"{name}. {description}. Inputs: {field_part}".strip()
@@ -41,9 +42,9 @@ class CapabilityInput:
 
     name: str
     description: str
-    input_schema: dict
+    input_schema: dict[str, Any]
     trigger_type: str  # on_message | on_schedule | on_manual
-    default_output_shape: dict | None = None
+    default_output_shape: dict[str, Any] | None = None
     notes: str | None = None
 
 

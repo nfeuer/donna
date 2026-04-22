@@ -20,8 +20,8 @@ class DSLError(Exception):
 
 def expand_for_each(
     block: dict[str, Any],
-    state: dict,
-    inputs: dict,
+    state: dict[str, Any],
+    inputs: dict[str, Any],
 ) -> list[ToolInvocationSpec]:
     """Expand a for_each block into concrete ToolInvocationSpec list."""
     iterable_expr = block.get("for_each")

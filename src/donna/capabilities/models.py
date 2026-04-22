@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 CAPABILITY_COLUMNS = (
     "id",
@@ -28,9 +29,9 @@ class CapabilityRow:
     id: str
     name: str
     description: str
-    input_schema: dict
+    input_schema: dict[str, Any]
     trigger_type: str
-    default_output_shape: dict | None
+    default_output_shape: dict[str, Any] | None
     status: str
     embedding: bytes | None
     created_at: datetime
@@ -38,7 +39,7 @@ class CapabilityRow:
     notes: str | None
 
 
-def row_to_capability(row: tuple) -> CapabilityRow:
+def row_to_capability(row: tuple[Any, ...]) -> CapabilityRow:
     return CapabilityRow(
         id=row[0],
         name=row[1],
@@ -54,7 +55,7 @@ def row_to_capability(row: tuple) -> CapabilityRow:
     )
 
 
-def _parse_json(value: str | dict | None) -> dict:
+def _parse_json(value: str | dict[str, Any] | None) -> dict[str, Any]:
     if value is None:
         return {}
     if isinstance(value, dict):

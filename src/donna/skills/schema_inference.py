@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def json_to_schema(value: Any) -> dict:
+def json_to_schema(value: Any) -> dict[str, Any]:
     """Infer a structural JSON Schema from ``value``."""
     if value is None:
         return {"type": "null"}

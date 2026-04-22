@@ -9,7 +9,7 @@ class SchemaValidationError(Exception):
     pass
 
 
-def validate_output(output: Any, schema: dict) -> None:
+def validate_output(output: Any, schema: dict[str, Any]) -> None:
     try:
         jsonschema.validate(instance=output, schema=schema)
     except jsonschema.ValidationError as exc:

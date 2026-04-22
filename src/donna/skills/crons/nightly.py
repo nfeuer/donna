@@ -47,12 +47,16 @@ class NightlyReport:
     started_at: str                                                    # ISO timestamp
     finished_at: str                                                   # ISO timestamp
     new_candidates: list[str] = field(default_factory=list)            # candidate IDs
-    drafted: list[dict] = field(default_factory=list)                  # AutoDraftReport as dicts
-    evolved: list[dict] = field(default_factory=list)                  # EvolutionReport as dicts
-    correction_flagged: list[dict] = field(default_factory=list)       # correction-cluster hits
-    degraded: list[dict] = field(default_factory=list)                 # DegradationReport as dicts
+    # AutoDraftReport as dicts
+    drafted: list[dict[str, Any]] = field(default_factory=list)
+    # EvolutionReport as dicts
+    evolved: list[dict[str, Any]] = field(default_factory=list)
+    # correction-cluster hits
+    correction_flagged: list[dict[str, Any]] = field(default_factory=list)
+    # DegradationReport as dicts
+    degraded: list[dict[str, Any]] = field(default_factory=list)
     # [{"step": "...", "error": "..."}]
-    errors: list[dict] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
 
 
 async def run_nightly_tasks(deps: NightlyDeps) -> NightlyReport:
@@ -153,7 +157,7 @@ async def run_nightly_tasks(deps: NightlyDeps) -> NightlyReport:
     return report
 
 
-def _as_dict(obj: Any) -> dict:
+def _as_dict(obj: Any) -> dict[str, Any]:
     """Serialize a dataclass instance or plain dict to a dict."""
     if hasattr(obj, "__dataclass_fields__"):
         return asdict(obj)

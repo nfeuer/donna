@@ -33,7 +33,7 @@ class MissingToolError(Exception):
 
 
 CapabilityToolLookup = Callable[[str], Awaitable[list[str]]]
-CapabilityInputSchemaLookup = Callable[[str], Awaitable[dict]]
+CapabilityInputSchemaLookup = Callable[[str], Awaitable[dict[str, Any]]]
 
 
 class AutomationCreationPath:

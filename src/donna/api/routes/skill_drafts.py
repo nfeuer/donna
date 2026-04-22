@@ -26,7 +26,7 @@ async def list_skill_drafts(
     return {"drafts": [_draft_to_dict(r) for r in rows], "count": len(rows)}
 
 
-def _draft_to_dict(row) -> dict:
+def _draft_to_dict(row) -> dict[str, Any]:
     return {
         "id": row[0],
         "capability_name": row[1],

@@ -34,7 +34,7 @@ async def list_skill_candidates(
 
 
 @router.post("/skill-candidates/{candidate_id}/dismiss")
-async def dismiss_candidate(candidate_id: str, request: Request) -> dict:
+async def dismiss_candidate(candidate_id: str, request: Request) -> dict[str, Any]:
     """Mark a candidate as dismissed (no skill will be drafted)."""
     from donna.skills.candidate_report import SkillCandidateRepository
 
@@ -55,7 +55,7 @@ async def dismiss_candidate(candidate_id: str, request: Request) -> dict:
 
 
 @router.post("/skill-candidates/{candidate_id}/draft-now", status_code=202)
-async def draft_candidate_now(candidate_id: str, request: Request) -> dict:
+async def draft_candidate_now(candidate_id: str, request: Request) -> dict[str, Any]:
     """Schedule the candidate for immediate drafting.
 
     Sets skill_candidate_report.manual_draft_at to now. The orchestrator's
@@ -83,7 +83,7 @@ async def draft_candidate_now(candidate_id: str, request: Request) -> dict:
     return {"status": "scheduled", "manual_draft_at": now_iso}
 
 
-def _row_to_candidate_dict(row) -> dict:
+def _row_to_candidate_dict(row) -> dict[str, Any]:
     return {
         "id": row[0],
         "capability_name": row[1],

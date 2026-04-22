@@ -7,6 +7,7 @@ is the ONLY input; responses are constant-time and enumeration-resistant.
 from __future__ import annotations
 
 import hashlib
+from typing import Any
 
 import structlog
 from fastapi import APIRouter, Request, status
@@ -40,7 +41,7 @@ _GENERIC_ACCEPTED = {
 
 
 @router.post("/request-access", status_code=status.HTTP_202_ACCEPTED)
-async def request_access(body: RequestAccessBody, request: Request) -> dict:
+async def request_access(body: RequestAccessBody, request: Request) -> dict[str, Any]:
     ctx = request.app.state.auth_context
     cfg = request.app.state.auth_config
 
@@ -82,7 +83,7 @@ async def request_access(body: RequestAccessBody, request: Request) -> dict:
     return _GENERIC_ACCEPTED
 
 
-async def _consume_verification_token(request: Request, token: str) -> tuple[bool, dict]:
+async def _consume_verification_token(request: Request, token: str) -> tuple[bool, dict[str, Any]]:
     """Validate + burn the magic-link token and trust the client IP.
 
     Returns (ok, payload). `ok=False` means the token was invalid/expired
@@ -147,7 +148,7 @@ async def verify_from_email(token: str, request: Request):
 
 
 @router.get("/status")
-async def auth_status(request: Request) -> dict:
+async def auth_status(request: Request) -> dict[str, Any]:
     ctx = request.app.state.auth_context
     cfg = request.app.state.auth_config
     client_host = trusted_proxies.client_ip(request, trusted_proxies=cfg.trusted_proxies)

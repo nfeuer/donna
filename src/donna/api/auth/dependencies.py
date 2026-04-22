@@ -50,7 +50,7 @@ async def _resolve_user_id(
     *,
     sliding_window_days: int,
     absolute_max_days: int,
-    trusted_proxies: list,
+    trusted_proxies: list[Any],
 ) -> str:
     raw_token = _device_token_from_request(request)
     if raw_token:
@@ -106,7 +106,7 @@ async def _resolve_admin_user_id(
     *,
     sliding_window_days: int,
     absolute_max_days: int,
-    trusted_proxies: list,
+    trusted_proxies: list[Any],
 ) -> str:
     ip = trusted_proxies_module_client_ip(request, trusted_proxies)
     result = await ip_gate.check_ip_access(ctx.conn, ip, service="admin")

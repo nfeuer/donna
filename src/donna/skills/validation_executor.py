@@ -42,9 +42,9 @@ class ValidationExecutor:
         *,
         skill: SkillRow,
         version: SkillVersionRow,
-        inputs: dict,
+        inputs: dict[str, Any],
         user_id: str,
-        tool_mocks: dict | None = None,
+        tool_mocks: dict[str, Any] | None = None,
         **_ignored_kwargs: Any,
     ) -> SkillRunResult:
         inner = self._build_inner_executor(tool_mocks)
@@ -62,7 +62,7 @@ class ValidationExecutor:
             )
             raise
 
-    def _build_inner_executor(self, tool_mocks: dict | None) -> SkillExecutor:
+    def _build_inner_executor(self, tool_mocks: dict[str, Any] | None) -> SkillExecutor:
         tool_registry = MockToolRegistry.from_mocks(tool_mocks)
         sink = ValidationRunSink()
         return SkillExecutor(

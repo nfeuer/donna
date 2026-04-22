@@ -26,12 +26,12 @@ class SkillDivergenceRow:
     skill_run_id: str
     shadow_invocation_id: str
     overall_agreement: float
-    diff_summary: dict | None
+    diff_summary: dict[str, Any] | None
     flagged_for_evolution: bool
     created_at: datetime
 
 
-def row_to_divergence(row: tuple) -> SkillDivergenceRow:
+def row_to_divergence(row: tuple[Any, ...]) -> SkillDivergenceRow:
     return SkillDivergenceRow(
         id=row[0], skill_run_id=row[1], shadow_invocation_id=row[2],
         overall_agreement=row[3],
@@ -50,7 +50,7 @@ class SkillDivergenceRepository:
         skill_run_id: str,
         shadow_invocation_id: str,
         overall_agreement: float,
-        diff_summary: dict | None,
+        diff_summary: dict[str, Any] | None,
         flagged_for_evolution: bool = False,
     ) -> str:
         div_id = str(uuid6.uuid7())
@@ -109,7 +109,7 @@ class SkillDivergenceRepository:
         return [row_to_divergence(r) for r in rows]
 
 
-def _parse_json(value: Any) -> dict | None:
+def _parse_json(value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
     if isinstance(value, dict):
