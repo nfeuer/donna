@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import aiohttp
@@ -117,7 +117,7 @@ async def get_trace(
     entries = [
         {
             "timestamp": row[1],
-            "event_type": f"api.call.completed",
+            "event_type": "api.call.completed",
             "level": "INFO",
             "service": "model_router",
             "message": f"{row[2]} via {row[3]} ({row[4]}ms)",
@@ -225,7 +225,7 @@ async def _query_loki(
         stream = stream_with_filter
 
     if level:
-        levels = "|".join(l.strip() for l in level.split(","))
+        levels = "|".join(lvl.strip() for lvl in level.split(","))
         pipeline_parts.append(f'level=~"{levels}"')
 
     if event_type:
@@ -241,7 +241,7 @@ async def _query_loki(
     query = stream + " | " + " | ".join(pipeline_parts)
 
     # Time range
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     start_ts = start or (now - timedelta(hours=24)).isoformat()
     end_ts = end or now.isoformat()
 
@@ -253,16 +253,15 @@ async def _query_loki(
         "direction": "backward",
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            f"{_LOKI_URL}/loki/api/v1/query_range",
-            params=params,
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as resp:
-            if resp.status != 200:
-                logger.warning("loki_query_failed", status=resp.status)
-                return None
-            data = await resp.json()
+    async with aiohttp.ClientSession() as session, session.get(
+        f"{_LOKI_URL}/loki/api/v1/query_range",
+        params=params,
+        timeout=aiohttp.ClientTimeout(total=10),
+    ) as resp:
+        if resp.status != 200:
+            logger.warning("loki_query_failed", status=resp.status)
+            return None
+        data = await resp.json()
 
     entries: list[dict[str, Any]] = []
     for stream_result in data.get("data", {}).get("result", []):
@@ -376,7 +375,7 @@ async def _query_invocation_log_fallback(
             WHERE {where}
             ORDER BY timestamp DESC
             LIMIT ? OFFSET ?""",
-        params + [limit, offset],
+        [*params, limit, offset],
     )
     rows = await cursor.fetchall()
 
@@ -384,7 +383,7 @@ async def _query_invocation_log_fallback(
         {
             "timestamp": row[1],
             "level": "INFO",
-            "event_type": f"api.call.completed",
+            "event_type": "api.call.completed",
             "message": f"{row[2]} via {row[3]} ({row[4]}ms, ${row[7]:.4f})",
             "service": "model_router",
             "component": row[2],

@@ -13,7 +13,7 @@ logger = structlog.get_logger()
 MAX_RETRY_COUNT = 3
 
 
-class TriageDecision(str, enum.Enum):
+class TriageDecision(enum.StrEnum):
     RETRY_STEP = "retry_step_with_modified_prompt"
     SKIP_STEP = "skip_step"
     ESCALATE_TO_CLAUDE = "escalate_to_claude"
@@ -134,7 +134,8 @@ class TriageAgent:
             f"Current state object:\n{input_.state}\n\n"
             f"Skill YAML (first part):\n{input_.skill_yaml_preview[:1000]}\n\n"
             "Available decisions:\n"
-            "- retry_step_with_modified_prompt: the prompt could be improved and retrying might work\n"
+            "- retry_step_with_modified_prompt: the prompt could be improved "
+            "and retrying might work\n"
             "- skip_step: the step was non-essential; continue with empty state for it\n"
             "- escalate_to_claude: substantive failure; hand the whole task to Claude\n"
             "- alert_user: needs user intervention; don't proceed\n"

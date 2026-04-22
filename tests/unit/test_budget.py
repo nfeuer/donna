@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import date
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from donna.config import CostConfig, ModelsConfig, ModelConfig, RoutingEntry
+from donna.config import CostConfig, ModelConfig, ModelsConfig, RoutingEntry
 from donna.cost.budget import BudgetGuard, BudgetPausedError
 from donna.cost.tracker import CostSummary, CostTracker
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,7 +37,11 @@ def _make_tracker(daily_total: float, monthly_total: float = 0.0) -> CostTracker
         return_value=CostSummary(total_usd=daily_total, call_count=5, breakdown={})
     )
     tracker.get_monthly_cost = AsyncMock(
-        return_value=CostSummary(total_usd=monthly_total, call_count=20, breakdown={"parse_task": monthly_total})
+        return_value=CostSummary(
+            total_usd=monthly_total,
+            call_count=20,
+            breakdown={"parse_task": monthly_total},
+        ),
     )
     return tracker
 
@@ -110,20 +112,28 @@ class TestCheckMonthlyWarning:
         """$91 of $100 budget (91%) → warning sent, returns True."""
         notifier = AsyncMock()
         tracker = _make_tracker(daily_total=3.0, monthly_total=91.0)
-        guard = BudgetGuard(tracker, _make_models_config(monthly_budget=100.0, monthly_warning_pct=0.90), notifier=notifier)
+        guard = BudgetGuard(
+            tracker,
+            _make_models_config(monthly_budget=100.0, monthly_warning_pct=0.90),
+            notifier=notifier,
+        )
 
         result = await guard.check_monthly_warning("nick")
 
         assert result is True
         notifier.assert_called_once()
-        channel, message = notifier.call_args[0]
+        channel, _message = notifier.call_args[0]
         assert channel == "debug"
 
     async def test_below_threshold_no_warning(self) -> None:
         """$80 of $100 (80%) → no warning."""
         notifier = AsyncMock()
         tracker = _make_tracker(daily_total=3.0, monthly_total=80.0)
-        guard = BudgetGuard(tracker, _make_models_config(monthly_budget=100.0, monthly_warning_pct=0.90), notifier=notifier)
+        guard = BudgetGuard(
+            tracker,
+            _make_models_config(monthly_budget=100.0, monthly_warning_pct=0.90),
+            notifier=notifier,
+        )
 
         result = await guard.check_monthly_warning("nick")
 

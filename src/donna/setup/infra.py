@@ -62,7 +62,7 @@ async def ensure_docker_network(network_name: str = "homelab") -> bool:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await proc.communicate()
+    _stdout, stderr = await proc.communicate()
 
     if proc.returncode == 0:
         output.passed(f"Docker network '{network_name}'", "created")

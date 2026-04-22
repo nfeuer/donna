@@ -16,13 +16,13 @@ from sqlalchemy import (
     DateTime,
     Enum,
     Float,
+    ForeignKey,
     Integer,
     LargeBinary,
     String,
     Text,
-    ForeignKey,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -34,7 +34,7 @@ class Base(DeclarativeBase):
 # === Enums ===
 
 
-class TaskStatus(str, enum.Enum):
+class TaskStatus(enum.StrEnum):
     BACKLOG = "backlog"
     SCHEDULED = "scheduled"
     IN_PROGRESS = "in_progress"
@@ -44,19 +44,19 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
-class TaskDomain(str, enum.Enum):
+class TaskDomain(enum.StrEnum):
     PERSONAL = "personal"
     WORK = "work"
     FAMILY = "family"
 
 
-class DeadlineType(str, enum.Enum):
+class DeadlineType(enum.StrEnum):
     HARD = "hard"
     SOFT = "soft"
     NONE = "none"
 
 
-class AgentStatus(str, enum.Enum):
+class AgentStatus(enum.StrEnum):
     PENDING = "pending"
     GATHERING_REQUIREMENTS = "gathering_requirements"
     IN_PROGRESS = "in_progress"
@@ -65,7 +65,7 @@ class AgentStatus(str, enum.Enum):
     FAILED = "failed"
 
 
-class InputChannel(str, enum.Enum):
+class InputChannel(enum.StrEnum):
     SMS = "sms"
     DISCORD = "discord"
     SLACK = "slack"
@@ -74,19 +74,19 @@ class InputChannel(str, enum.Enum):
     VOICE = "voice"
 
 
-class ConversationStatus(str, enum.Enum):
+class ConversationStatus(enum.StrEnum):
     ACTIVE = "active"
     EXPIRED = "expired"
     COMPLETED = "completed"
 
 
-class TriggerType(str, enum.Enum):
+class TriggerType(enum.StrEnum):
     ON_MESSAGE = "on_message"
     ON_SCHEDULE = "on_schedule"
     ON_MANUAL = "on_manual"
 
 
-class SkillState(str, enum.Enum):
+class SkillState(enum.StrEnum):
     CLAUDE_NATIVE = "claude_native"
     SKILL_CANDIDATE = "skill_candidate"
     DRAFT = "draft"
@@ -319,13 +319,13 @@ class EscalationState(Base):
     )
 
 
-class ChatSessionStatus(str, enum.Enum):
+class ChatSessionStatus(enum.StrEnum):
     ACTIVE = "active"
     EXPIRED = "expired"
     CLOSED = "closed"
 
 
-class ChatMessageRole(str, enum.Enum):
+class ChatMessageRole(enum.StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
 
@@ -403,7 +403,9 @@ class Skill(Base):
     __tablename__ = "skill"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    capability_name: Mapped[str] = mapped_column(String(200), ForeignKey("capability.name"), nullable=False, unique=True)
+    capability_name: Mapped[str] = mapped_column(
+        String(200), ForeignKey("capability.name"), nullable=False, unique=True,
+    )
     current_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     state: Mapped[SkillState] = mapped_column(Enum(SkillState), nullable=False, index=True)
     requires_human_gate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -418,7 +420,9 @@ class SkillVersion(Base):
     __tablename__ = "skill_version"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
+    skill_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill.id"), nullable=False, index=True,
+    )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     yaml_backbone: Mapped[str] = mapped_column(Text, nullable=False)
     step_content: Mapped[dict] = mapped_column(JSON, nullable=False)
@@ -434,7 +438,9 @@ class SkillStateTransition(Base):
     __tablename__ = "skill_state_transition"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
+    skill_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill.id"), nullable=False, index=True,
+    )
     from_state: Mapped[str] = mapped_column(String(30), nullable=False)
     to_state: Mapped[str] = mapped_column(String(30), nullable=False)
     reason: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -448,8 +454,12 @@ class SkillRun(Base):
     __tablename__ = "skill_run"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
-    skill_version_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill_version.id"), nullable=False)
+    skill_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill.id"), nullable=False, index=True,
+    )
+    skill_version_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill_version.id"), nullable=False,
+    )
     task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     automation_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
@@ -461,7 +471,9 @@ class SkillRun(Base):
     escalation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     user_id: Mapped[str] = mapped_column(String(100), nullable=False)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True,
+    )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
@@ -469,7 +481,9 @@ class SkillStepResult(Base):
     __tablename__ = "skill_step_result"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    skill_run_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill_run.id"), nullable=False, index=True)
+    skill_run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill_run.id"), nullable=False, index=True,
+    )
     step_name: Mapped[str] = mapped_column(String(100), nullable=False)
     step_index: Mapped[int] = mapped_column(Integer, nullable=False)
     step_kind: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -487,7 +501,9 @@ class SkillFixture(Base):
     __tablename__ = "skill_fixture"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
+    skill_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill.id"), nullable=False, index=True,
+    )
     case_name: Mapped[str] = mapped_column(String(200), nullable=False)
     input: Mapped[dict] = mapped_column(JSON, nullable=False)
     expected_output_shape: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -502,12 +518,16 @@ class SkillDivergence(Base):
     __tablename__ = "skill_divergence"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    skill_run_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill_run.id"), nullable=False, index=True)
+    skill_run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill_run.id"), nullable=False, index=True,
+    )
     shadow_invocation_id: Mapped[str] = mapped_column(String(36), nullable=False)
     overall_agreement: Mapped[float] = mapped_column(Float, nullable=False)
     diff_summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     flagged_for_evolution: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True,
+    )
 
 
 class SkillCandidateReport(Base):
@@ -528,12 +548,17 @@ class SkillCandidateReport(Base):
 
 
 class SkillEvolutionLog(Base):
-    """Audit log of skill evolution events (diagnosis + rewrite attempts). See docs/skills-system.md."""
+    """Audit log of skill evolution events (diagnosis + rewrite attempts).
+
+    See docs/skills-system.md.
+    """
 
     __tablename__ = "skill_evolution_log"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    skill_id: Mapped[str] = mapped_column(String(36), ForeignKey("skill.id"), nullable=False, index=True)
+    skill_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("skill.id"), nullable=False, index=True,
+    )
     from_version_id: Mapped[str] = mapped_column(String(36), nullable=False)
     to_version_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     triggered_by: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -566,7 +591,9 @@ class Automation(Base):
     min_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True,
+    )
     run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failure_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -583,7 +610,9 @@ class AutomationRun(Base):
     automation_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("automation.id"), nullable=False, index=True,
     )
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True,
+    )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     execution_path: Mapped[str] = mapped_column(String(20), nullable=False)

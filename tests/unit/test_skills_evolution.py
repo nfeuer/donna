@@ -1,5 +1,4 @@
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -8,7 +7,7 @@ import pytest
 
 from donna.config import SkillSystemConfig
 from donna.cost.budget import BudgetPausedError
-from donna.skills.evolution import EvolutionReport, Evolver
+from donna.skills.evolution import Evolver
 
 
 @pytest.fixture
@@ -87,7 +86,7 @@ async def db(tmp_path: Path):
 async def _seed_degraded_skill(
     db, *, skill_id="s1", n_divergences=20, requires_human_gate=False,
 ):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO capability (id, name, description, input_schema, "
         "trigger_type, status, created_at, created_by) VALUES "
@@ -240,7 +239,7 @@ async def test_evolve_malformed_output_marks_rejected(db):
 async def test_evolve_validation_failure_marks_rejected(db):
     await _seed_degraded_skill(db)
     # Seed 10 skill_fixture rows so fixture gate can meaningfully fail.
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for i in range(10):
         await db.execute(
             "INSERT INTO skill_fixture (id, skill_id, case_name, input, "
@@ -276,7 +275,7 @@ async def test_two_consecutive_failures_demote_to_claude_native(db):
     await _seed_degraded_skill(db)
     # Pre-seed one rejected_validation in the log.
     import uuid6
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO skill_evolution_log (id, skill_id, from_version_id, "
         "to_version_id, triggered_by, claude_invocation_id, diagnosis, "
@@ -364,7 +363,7 @@ async def test_evolve_skill_not_in_degraded_state_skips(db):
 async def test_evolve_includes_fixture_library_in_prompt(db):
     await _seed_degraded_skill(db)
     # Seed 2 fixtures for skill s1.
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for i in range(2):
         await db.execute(
             "INSERT INTO skill_fixture (id, skill_id, case_name, input, "

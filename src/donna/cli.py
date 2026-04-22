@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import os
 import sys
+from datetime import UTC
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -207,12 +209,10 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         )
         for task in pending:
             task.cancel()
-            try:
+            # Swallow cancellation + unexpected errors during cleanup;
+            # surfaced via task.exception() on the `done` set below.
+            with contextlib.suppress(BaseException):
                 await task
-            except BaseException:  # noqa: BLE001
-                # Swallow cancellation + unexpected errors during cleanup;
-                # surfaced via task.exception() on the `done` set below.
-                pass
         # Surface any exception from the completed task
         for task in done:
             if task.exception() is not None:
@@ -342,9 +342,9 @@ async def _run_eval(args: argparse.Namespace) -> None:
 
 def _render_eval_prompt(template: str, case_input: str | dict) -> str:
     """Render a prompt template with fixture case input."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = template
     result = result.replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
     result = result.replace("{{ current_time }}", now.strftime("%H:%M %Z"))

@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 import aiosqlite
 import pytest
 
-
 SCHEMA = """
     CREATE TABLE skill (
         id TEXT PRIMARY KEY,
@@ -44,7 +43,10 @@ async def db_with_skills(tmp_path: Path):
         "INSERT INTO skill (id, capability_name, current_version_id, state, "
         "requires_human_gate, baseline_agreement, created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        ("s3", "extract_dates", "v3", "sandbox", 0, None, "2026-04-03T00:00:00", "2026-04-12T00:00:00"),
+        (
+            "s3", "extract_dates", "v3", "sandbox", 0, None,
+            "2026-04-03T00:00:00", "2026-04-12T00:00:00",
+        ),
     )
     await conn.commit()
     yield conn

@@ -10,11 +10,9 @@ import pytest
 from fastapi import HTTPException
 
 from donna.skills.lifecycle import (
-    HumanGateRequiredError,
     IllegalTransitionError,
     SkillNotFoundError,
 )
-
 
 SCHEMA = """
     CREATE TABLE skill (
@@ -78,13 +76,19 @@ async def db_with_skill(tmp_path: Path):
         "INSERT INTO skill (id, capability_name, current_version_id, state, "
         "requires_human_gate, baseline_agreement, created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        ("s1", "parse_task", "v1", "sandbox", 0, None, "2026-04-01T00:00:00", "2026-04-10T00:00:00"),
+        (
+            "s1", "parse_task", "v1", "sandbox", 0, None,
+            "2026-04-01T00:00:00", "2026-04-10T00:00:00",
+        ),
     )
     await conn.execute(
         "INSERT INTO skill_version (id, skill_id, version_number, yaml_backbone, "
         "step_content, output_schemas, created_by, changelog, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ("v1", "s1", 1, "yaml: x", '{"extract":"md"}', '{"extract":{}}', "human", None, "2026-04-01T00:00:00"),
+        (
+            "v1", "s1", 1, "yaml: x", '{"extract":"md"}',
+            '{"extract":{}}', "human", None, "2026-04-01T00:00:00",
+        ),
     )
     await conn.commit()
     yield conn
@@ -283,6 +287,7 @@ async def test_post_state_transition_resets_baseline_on_save(db_with_skill):
     """When flagged_for_review → trusted with reason=human_approval,
     baseline_agreement is recomputed from recent divergences."""
     import pytest as _pytest
+
     from donna.api.routes.skills import TransitionRequest, transition_skill_state
 
     now = "2026-04-16T00:00:00+00:00"

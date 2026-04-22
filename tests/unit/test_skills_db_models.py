@@ -1,13 +1,10 @@
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from donna.tasks.db_models import (
     Capability,
     Skill,
-    SkillVersion,
-    SkillStateTransition,
-    TriggerType,
     SkillState,
+    TriggerType,
 )
 
 
@@ -20,7 +17,7 @@ def test_capability_construction():
         trigger_type=TriggerType.ON_SCHEDULE,
         status="active",
         embedding=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         created_by="seed",
     )
     assert cap.name == "product_watch"
@@ -35,8 +32,8 @@ def test_skill_construction():
         state=SkillState.DRAFT,
         requires_human_gate=False,
         baseline_agreement=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     assert skill.state == SkillState.DRAFT
 

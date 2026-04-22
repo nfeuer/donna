@@ -10,7 +10,7 @@ from donna.api.routes import admin_access
 
 
 def test_list_trusted_ips_as_admin(auth_test_app_with_admin):
-    app, conn = auth_test_app_with_admin
+    app, _conn = auth_test_app_with_admin
     app.include_router(admin_access.router, prefix="/admin")
     client = TestClient(app)
 
@@ -37,7 +37,7 @@ def test_revoke_ip_as_admin(auth_test_app_with_admin):
 
 
 def test_list_devices_as_admin(auth_test_app_with_admin):
-    app, conn = auth_test_app_with_admin
+    app, _conn = auth_test_app_with_admin
     app.include_router(admin_access.router, prefix="/admin")
     client = TestClient(app)
 
@@ -46,7 +46,7 @@ def test_list_devices_as_admin(auth_test_app_with_admin):
 
 
 def test_non_admin_gets_403(auth_test_app_user_only):
-    app, conn = auth_test_app_user_only
+    app, _conn = auth_test_app_user_only
     app.include_router(admin_access.router, prefix="/admin")
     client = TestClient(app)
 

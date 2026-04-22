@@ -1,38 +1,49 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from donna.skills.executor import SkillExecutor, SkillRunResult
+from donna.skills.executor import SkillExecutor
 from donna.skills.models import SkillRow, SkillVersionRow
+from donna.skills.tool_registry import ToolRegistry
+from donna.skills.triage import TriageDecision, TriageResult
 
 
 def _make_skill() -> SkillRow:
     return SkillRow(
         id="s1", capability_name="parse_task", current_version_id="v1",
         state="sandbox", requires_human_gate=False, baseline_agreement=None,
-        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC), updated_at=datetime.now(UTC),
     )
 
 
-def _make_version(step_content: dict, output_schemas: dict, yaml_backbone: str | None = None) -> SkillVersionRow:
+def _make_version(
+    step_content: dict,
+    output_schemas: dict,
+    yaml_backbone: str | None = None,
+) -> SkillVersionRow:
     if yaml_backbone is None:
         step_names = list(step_content.keys())
         steps_yaml = "\n".join(
-            f"  - name: {name}\n    kind: llm\n    prompt: steps/{name}.md\n    output_schema: schemas/{name}_v1.json"
+            f"  - name: {name}\n    kind: llm\n    prompt: steps/{name}.md\n"
+            f"    output_schema: schemas/{name}_v1.json"
             for name in step_names
         )
-        yaml_backbone = f"capability_name: parse_task\nversion: 1\nsteps:\n{steps_yaml}\nfinal_output: '{{{{ state.{step_names[0]} }}}}'"
+        yaml_backbone = (
+            f"capability_name: parse_task\nversion: 1\nsteps:\n{steps_yaml}\n"
+            f"final_output: '{{{{ state.{step_names[0]} }}}}'"
+        )
 
     return SkillVersionRow(
         id="v1", skill_id="s1", version_number=1, yaml_backbone=yaml_backbone,
         step_content=step_content, output_schemas=output_schemas,
-        created_by="seed", changelog=None, created_at=datetime.now(timezone.utc),
+        created_by="seed", changelog=None, created_at=datetime.now(UTC),
     )
 
 
 def _mock_meta(**kwargs):
-    defaults = {"invocation_id": "inv-1", "latency_ms": 100, "tokens_in": 50, "tokens_out": 20, "cost_usd": 0.0}
+    defaults = {
+        "invocation_id": "inv-1", "latency_ms": 100, "tokens_in": 50,
+        "tokens_out": 20, "cost_usd": 0.0,
+    }
     defaults.update(kwargs)
     return MagicMock(**defaults)
 
@@ -169,17 +180,16 @@ async def test_executor_handles_empty_steps():
 
 # --- Phase 2 multi-step tests ---
 
-from donna.skills.tool_registry import ToolRegistry
-from donna.skills.triage import TriageAgent, TriageDecision, TriageResult
 
-
-def _multistep_version(yaml_backbone: str, step_content: dict, output_schemas: dict) -> SkillVersionRow:
+def _multistep_version(
+    yaml_backbone: str, step_content: dict, output_schemas: dict,
+) -> SkillVersionRow:
     return SkillVersionRow(
         id="v1", skill_id="s1", version_number=1,
         yaml_backbone=yaml_backbone,
         step_content=step_content, output_schemas=output_schemas,
         created_by="seed", changelog=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -206,8 +216,16 @@ final_output: "{{ state.classify }}"
             "classify": "Classify: {{ state.extract.title }}",
         },
         output_schemas={
-            "extract": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]},
-            "classify": {"type": "object", "properties": {"priority": {"type": "integer"}}, "required": ["priority"]},
+            "extract": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            },
+            "classify": {
+                "type": "object",
+                "properties": {"priority": {"type": "integer"}},
+                "required": ["priority"],
+            },
         },
     )
 
@@ -322,7 +340,13 @@ final_output: "{{ state.step1 }}"
     version = _multistep_version(
         yaml_backbone,
         step_content={"step1": "prompt"},
-        output_schemas={"step1": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]}},
+        output_schemas={
+            "step1": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            },
+        },
     )
 
     router = AsyncMock()
@@ -365,8 +389,16 @@ final_output: "{{ state.step2 }}"
         yaml_backbone,
         step_content={"step1": "p1", "step2": "p2"},
         output_schemas={
-            "step1": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]},
-            "step2": {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]},
+            "step1": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            },
+            "step2": {
+                "type": "object",
+                "properties": {"ok": {"type": "boolean"}},
+                "required": ["ok"],
+            },
         },
     )
 
@@ -406,7 +438,13 @@ final_output: "{{ state.only }}"
     version = _multistep_version(
         yaml_backbone,
         step_content={"only": "prompt"},
-        output_schemas={"only": {"type": "object", "properties": {"v": {"type": "integer"}}, "required": ["v"]}},
+        output_schemas={
+            "only": {
+                "type": "object",
+                "properties": {"v": {"type": "integer"}},
+                "required": ["v"],
+            },
+        },
     )
 
     router = AsyncMock()
@@ -643,8 +681,16 @@ final_output: "{{ state.step2 }}"
         yaml_backbone,
         step_content={"step1": "p1", "step2": "p2"},
         output_schemas={
-            "step1": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]},
-            "step2": {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]},
+            "step1": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            },
+            "step2": {
+                "type": "object",
+                "properties": {"ok": {"type": "boolean"}},
+                "required": ["ok"],
+            },
         },
     )
 

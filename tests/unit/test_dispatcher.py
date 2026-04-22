@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from donna.agents.base import AgentResult
 from donna.agents.tool_registry import ToolRegistry
 from donna.config import TaskTypesConfig

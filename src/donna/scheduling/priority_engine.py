@@ -12,8 +12,7 @@ See docs/scheduling.md and config/calendar.yaml priority block.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 import structlog
 
@@ -49,7 +48,7 @@ class PriorityEngine:
         Returns:
             List of (task_id, old_priority, new_priority) for changed tasks.
         """
-        now = now or datetime.now(tz=timezone.utc)
+        now = now or datetime.now(tz=UTC)
         active = [
             t for t in tasks
             if t.status not in ("done", "cancelled")
@@ -142,5 +141,5 @@ def _parse_dt(value: str) -> datetime | None:
         return None
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt

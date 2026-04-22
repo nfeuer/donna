@@ -11,8 +11,9 @@ from pathlib import Path
 
 import aiosqlite
 import pytest
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 
 def _cfg(db: Path) -> Config:
@@ -31,11 +32,19 @@ async def test_wave3_migrations_apply_and_rollback(tmp_path: Path) -> None:
 
     # Confirm new columns / indexes landed.
     async with aiosqlite.connect(db) as conn:
-        cols = {row[1] async for row in await conn.execute("PRAGMA table_info(skill_candidate_report)")}
+        cols = {
+            row[1] async for row in await conn.execute(
+                "PRAGMA table_info(skill_candidate_report)",
+            )
+        }
         assert "pattern_fingerprint" in cols
         assert "reasoning" in cols
 
-        idx = {row[1] async for row in await conn.execute("PRAGMA index_list(skill_candidate_report)")}
+        idx = {
+            row[1] async for row in await conn.execute(
+                "PRAGMA index_list(skill_candidate_report)",
+            )
+        }
         assert "ix_skill_candidate_report_pattern_fingerprint" in idx
 
         auto_cols = {row[1] async for row in await conn.execute("PRAGMA table_info(automation)")}
@@ -48,7 +57,11 @@ async def test_wave3_migrations_apply_and_rollback(tmp_path: Path) -> None:
     command.downgrade(cfg, "e1f2a3b4c5d6")
 
     async with aiosqlite.connect(db) as conn:
-        cols = {row[1] async for row in await conn.execute("PRAGMA table_info(skill_candidate_report)")}
+        cols = {
+            row[1] async for row in await conn.execute(
+                "PRAGMA table_info(skill_candidate_report)",
+            )
+        }
         assert "pattern_fingerprint" not in cols
 
         auto_cols = {row[1] async for row in await conn.execute("PRAGMA table_info(automation)")}

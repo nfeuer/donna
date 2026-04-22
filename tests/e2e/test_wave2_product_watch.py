@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -29,7 +29,7 @@ async def test_product_watch_automation_tick_fires_alert(runtime) -> None:
     assert row is not None, "product_watch skill should be seeded by migration"
     assert row[0] == "sandbox", f"expected sandbox, got {row[0]}"
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     past = (now - timedelta(minutes=5)).isoformat()
 
     # Canned claude_native output. Dispatcher uses task_type=capability_name.
@@ -98,7 +98,7 @@ async def test_product_watch_automation_tick_fires_alert(runtime) -> None:
 async def test_product_watch_alert_does_not_fire_when_condition_false(runtime) -> None:
     """When triggers_alert=False in the run output, NO Discord message."""
     conn = runtime.db.connection
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     past = (now - timedelta(minutes=5)).isoformat()
 
     runtime.fake_claude.canned["product_watch"] = {
@@ -162,7 +162,6 @@ async def test_product_watch_runs_via_skill_executor_at_shadow_primary(runtime) 
     """
     from donna.skills.executor import SkillRunResult
     from donna.skills.run_persistence import SkillRunRepository
-    from donna.skills.models import row_to_skill, row_to_skill_version
     from donna.tasks.db_models import SkillState
 
     conn = runtime.db.connection
@@ -174,7 +173,7 @@ async def test_product_watch_runs_via_skill_executor_at_shadow_primary(runtime) 
     )
     skill_row = await cursor.fetchone()
     assert skill_row is not None, "product_watch skill should be seeded"
-    skill_id, version_id, initial_state = skill_row
+    skill_id, _version_id, initial_state = skill_row
     assert initial_state == "sandbox", f"expected sandbox, got {initial_state}"
 
     # Promote sandbox -> shadow_primary through the real lifecycle (human_approval
@@ -259,7 +258,7 @@ async def test_product_watch_runs_via_skill_executor_at_shadow_primary(runtime) 
     runtime.automation_dispatcher._skill_executor_factory = _StubSkillExecutor
 
     # --- 3. Create an automation that is due now. ------------------------------
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     past = (now - timedelta(minutes=5)).isoformat()
     automation_id = str(uuid.uuid4())
     await conn.execute(

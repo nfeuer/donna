@@ -193,7 +193,10 @@ class TestPrioritySelectView:
 
         select_item = view.children[0]
         # discord.py Select.values is a read-only property; patch it.
-        with patch.object(type(select_item), "values", new_callable=lambda: property(lambda self: ["4"])):
+        with patch.object(
+            type(select_item), "values",
+            new_callable=lambda: property(lambda self: ["4"]),
+        ):
             await select_item.callback(interaction)
 
         db.update_task.assert_called_once_with("task-abc-123", priority=4)
@@ -208,7 +211,10 @@ class TestDomainSelectView:
         interaction = _make_interaction()
 
         select_item = view.children[0]
-        with patch.object(type(select_item), "values", new_callable=lambda: property(lambda self: ["work"])):
+        with patch.object(
+            type(select_item), "values",
+            new_callable=lambda: property(lambda self: ["work"]),
+        ):
             await select_item.callback(interaction)
 
         db.update_task.assert_called_once()

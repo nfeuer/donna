@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -16,7 +16,6 @@ from donna.api.routes.admin_preferences import (
     preference_stats,
     toggle_preference_rule,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

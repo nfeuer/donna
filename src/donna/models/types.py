@@ -6,7 +6,6 @@ See docs/model-layer.md for the complete interface specification.
 from __future__ import annotations
 
 import dataclasses
-from typing import Any
 
 
 @dataclasses.dataclass(frozen=True)

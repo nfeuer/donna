@@ -17,7 +17,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -60,14 +59,16 @@ def _load_capability_schema(capability_name: str | None) -> dict | None:
 
 
 def _is_key_optional(schema: dict | None, key: str) -> bool:
-    """Return True if the key is in properties but NOT in required. None-schema → True (assume optional)."""
+    """Return True if the key is in properties but NOT in required.
+
+    None-schema → True (assume optional).
+    """
     if schema is None:
         return True
     required = set(schema.get("required", []) or [])
-    props = (schema.get("properties") or {}).keys()
-    if key in required:
-        return False
-    return True  # either listed as optional or unknown — default to optional
+    (schema.get("properties") or {}).keys()
+    # either listed as optional or unknown — default to optional
+    return key not in required
 
 
 def test_no_unsafe_optional_input_references() -> None:
@@ -80,10 +81,13 @@ def test_no_unsafe_optional_input_references() -> None:
     input_schema at ALL (not even as optional), the defaulting layer can't help
     and the template needs the guard.
 
-    This lint reads every skill.yaml and its step prompts, finds bare `{% if inputs.X %}`
-    references, and checks: is X a property declared in the capability's input_schema?
-    - If yes (required or optional): OK. The defaulting layer + required semantics cover it.
-    - If no (truly undeclared): FAIL. Template needs `is defined and` guard, OR the schema needs the key added.
+    This lint reads every skill.yaml and its step prompts, finds bare
+    `{% if inputs.X %}` references, and checks: is X a property declared in the
+    capability's input_schema?
+    - If yes (required or optional): OK. The defaulting layer + required semantics
+      cover it.
+    - If no (truly undeclared): FAIL. Template needs `is defined and` guard, OR
+      the schema needs the key added.
     """
     violations: list[tuple[str, int, str, str]] = []
 
@@ -108,12 +112,15 @@ def test_no_unsafe_optional_input_references() -> None:
                     # If schema doesn't exist at all → skip (can't lint).
                     if schema is not None and key not in declared_keys:
                         violations.append(
-                            (str(file_path), lineno, line.strip(), capability_name or "<no capability>")
+                            (
+                                str(file_path), lineno, line.strip(),
+                                capability_name or "<no capability>",
+                            )
                         )
 
     assert not violations, (
         "skill.yaml/template references undeclared inputs without `is defined and` guard:\n"
         + "\n".join(
-            f"  {p}:{l} [cap: {c}]: {line}" for p, l, line, c in violations
+            f"  {p}:{lineno} [cap: {c}]: {line}" for p, lineno, line, c in violations
         )
     )

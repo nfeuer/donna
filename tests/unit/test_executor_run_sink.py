@@ -8,7 +8,6 @@ from donna.skills.executor import SkillExecutor
 from donna.skills.models import SkillRow, SkillVersionRow
 from donna.skills.validation_run_sink import ValidationRunSink
 
-
 _YAML_BACKBONE = (
     "capability_name: cap\n"
     "version: 1\n"
@@ -62,7 +61,7 @@ async def test_executor_delegates_to_run_sink_when_provided(fake_router) -> None
         output_schemas={"extract": {}},
         created_by="test", changelog=None, created_at=None,
     )
-    result = await executor.execute(skill=skill, version=version, inputs={}, user_id="test")
+    await executor.execute(skill=skill, version=version, inputs={}, user_id="test")
     assert sink.run_id is not None
     assert sink.final_status in ("succeeded", "failed", "escalated")
 

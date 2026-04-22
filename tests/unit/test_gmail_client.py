@@ -6,13 +6,13 @@ so no network or OAuth2 is required.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from donna.config import EmailConfig
 from donna.integrations.gmail import GmailClient, _extract_body_text, _parse_date, _parse_message
-
 
 # ------------------------------------------------------------------
 # Fixtures
@@ -260,14 +260,14 @@ class TestParseDate:
         assert dt.day == 20
 
     def test_returns_min_for_empty(self) -> None:
-        from datetime import datetime, timezone
+        from datetime import datetime
         result = _parse_date("")
-        assert result == datetime.min.replace(tzinfo=timezone.utc)
+        assert result == datetime.min.replace(tzinfo=UTC)
 
     def test_returns_min_for_garbage(self) -> None:
-        from datetime import datetime, timezone
+        from datetime import datetime
         result = _parse_date("not-a-date")
-        assert result == datetime.min.replace(tzinfo=timezone.utc)
+        assert result == datetime.min.replace(tzinfo=UTC)
 
 
 # ------------------------------------------------------------------

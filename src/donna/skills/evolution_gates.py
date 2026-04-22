@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import aiosqlite
@@ -213,7 +213,7 @@ class EvolutionGates:
         skill_id: str,
     ) -> GateResult:
         window_start = (
-            datetime.now(timezone.utc)
+            datetime.now(UTC)
             - timedelta(days=self._config.evolution_recent_success_window_days)
         ).isoformat()
         cursor = await self._conn.execute(
@@ -294,7 +294,7 @@ class EvolutionGates:
 
 
 def _synthetic_skill(skill_id: str, new_version: dict) -> SkillRow:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return SkillRow(
         id=skill_id,
         capability_name="__evolution_harness__",
@@ -307,7 +307,7 @@ def _synthetic_skill(skill_id: str, new_version: dict) -> SkillRow:
 
 
 def _synthetic_version(skill_id: str, new_version: dict) -> SkillVersionRow:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return SkillVersionRow(
         id="v_proposed", skill_id=skill_id, version_number=999,
         yaml_backbone=new_version.get("yaml_backbone", ""),

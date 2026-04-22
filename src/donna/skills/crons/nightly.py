@@ -14,7 +14,7 @@ Failures in any step are caught and recorded; remaining steps continue.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -51,7 +51,8 @@ class NightlyReport:
     evolved: list[dict] = field(default_factory=list)                  # EvolutionReport as dicts
     correction_flagged: list[dict] = field(default_factory=list)       # correction-cluster hits
     degraded: list[dict] = field(default_factory=list)                 # DegradationReport as dicts
-    errors: list[dict] = field(default_factory=list)                   # [{"step": "...", "error": "..."}]
+    # [{"step": "...", "error": "..."}]
+    errors: list[dict] = field(default_factory=list)
 
 
 async def run_nightly_tasks(deps: NightlyDeps) -> NightlyReport:
@@ -66,12 +67,12 @@ async def run_nightly_tasks(deps: NightlyDeps) -> NightlyReport:
     Returns:
         A :class:`NightlyReport` with counts and error details.
     """
-    started = datetime.now(timezone.utc).isoformat()
+    started = datetime.now(UTC).isoformat()
     report = NightlyReport(started_at=started, finished_at="")
 
     if not deps.config.enabled:
         logger.info("nightly_tasks_skipped_disabled")
-        report.finished_at = datetime.now(timezone.utc).isoformat()
+        report.finished_at = datetime.now(UTC).isoformat()
         return report
 
     # Step 1: Detect new skill candidates.
@@ -139,7 +140,7 @@ async def run_nightly_tasks(deps: NightlyDeps) -> NightlyReport:
         report.errors.append({"step": "correction_cluster", "error": str(exc)})
         logger.exception("nightly_correction_cluster_failed")
 
-    report.finished_at = datetime.now(timezone.utc).isoformat()
+    report.finished_at = datetime.now(UTC).isoformat()
     logger.info(
         "nightly_tasks_completed",
         new_candidates=len(report.new_candidates),

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -41,7 +41,7 @@ async def db(tmp_path: Path):
             alert_content TEXT, error TEXT, cost_usd REAL
         );
     """)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await conn.execute(
         "INSERT INTO capability (id, name, description, input_schema, "
         "trigger_type, status, created_at, created_by) VALUES "
@@ -101,7 +101,7 @@ async def test_list_all_filters_by_status(db):
 
 async def test_list_due_returns_rows_with_next_run_before_now_and_active(db):
     repo = AutomationRepository(db)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     past = now - timedelta(minutes=5)
     future = now + timedelta(minutes=5)
     await _create(repo, name="Due", next_run_at=past)
@@ -120,7 +120,7 @@ async def test_list_due_returns_rows_with_next_run_before_now_and_active(db):
 async def test_advance_schedule_updates_counters_and_times(db):
     repo = AutomationRepository(db)
     auto_id = await _create(repo, name="Auto")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     later = now + timedelta(days=1)
 
     await repo.advance_schedule(
@@ -137,7 +137,7 @@ async def test_advance_schedule_updates_counters_and_times(db):
 async def test_advance_schedule_increments_failure_counter(db):
     repo = AutomationRepository(db)
     auto_id = await _create(repo, name="Auto")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await repo.advance_schedule(
         automation_id=auto_id, last_run_at=now, next_run_at=None,
         increment_run_count=True, increment_failure_count=True,
@@ -150,7 +150,7 @@ async def test_advance_schedule_increments_failure_counter(db):
 async def test_reset_failure_count(db):
     repo = AutomationRepository(db)
     auto_id = await _create(repo, name="Auto")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await repo.advance_schedule(
         automation_id=auto_id, last_run_at=now, next_run_at=None,
         increment_run_count=True, increment_failure_count=True,
@@ -163,7 +163,7 @@ async def test_reset_failure_count(db):
 async def test_insert_and_finish_run(db):
     repo = AutomationRepository(db)
     auto_id = await _create(repo, name="Auto")
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
 
     run_id = await repo.insert_run(
         automation_id=auto_id, started_at=started,
@@ -186,7 +186,7 @@ async def test_list_runs_ordered_newest_first(db):
     repo = AutomationRepository(db)
     auto_id = await _create(repo, name="Auto")
     for i in range(3):
-        started = datetime.now(timezone.utc) + timedelta(seconds=i)
+        started = datetime.now(UTC) + timedelta(seconds=i)
         run_id = await repo.insert_run(
             automation_id=auto_id, started_at=started,
             execution_path="claude_native",

@@ -6,7 +6,7 @@ from the executor's final_output and persisted via _update_state_blob.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
@@ -16,7 +16,7 @@ import pytest
 async def _make_conn() -> aiosqlite.Connection:
     """Return an in-memory DB with the tables _execute_skill needs."""
     conn = await aiosqlite.connect(":memory:")
-    now = datetime.now(timezone.utc).isoformat()
+    datetime.now(UTC).isoformat()
 
     await conn.execute(
         "CREATE TABLE automation ("
@@ -50,7 +50,7 @@ async def _insert_skill_and_version(
     yaml_backbone: str,
 ) -> tuple[str, str]:
     """Insert a skill + version row; return (skill_id, version_id)."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     skill_id = str(uuid.uuid4())
     version_id = str(uuid.uuid4())
     await conn.execute(
@@ -164,6 +164,7 @@ async def test_state_write_updates_key_on_second_run() -> None:
 async def test_state_write_no_update_when_value_unchanged() -> None:
     """If the key value didn't change, _update_state_blob must NOT be called."""
     from unittest.mock import patch
+
     from donna.automations.dispatcher import AutomationDispatcher
 
     conn = await _make_conn()

@@ -7,7 +7,7 @@ score comparisons, and manage the spot-check review queue.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import Query, Request
@@ -62,7 +62,7 @@ async def list_shadow_comparisons(
 ) -> dict[str, Any]:
     """Pair primary and shadow invocations by input_hash or task_id proximity."""
     conn = request.app.state.db.connection
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
     where_extra = ""
     params: list[Any] = [since, since]
@@ -70,7 +70,7 @@ async def list_shadow_comparisons(
         where_extra = " AND p.task_type = ?"
         params.append(task_type)
 
-    col_list = ", ".join(_COMPARISON_COLS)
+    ", ".join(_COMPARISON_COLS)
     p_cols = ", ".join(f"p.{c}" for c in _COMPARISON_COLS)
     s_cols = ", ".join(f"s.{c}" for c in _COMPARISON_COLS)
 
@@ -162,7 +162,7 @@ async def shadow_stats(
 ) -> dict[str, Any]:
     """Aggregate shadow vs primary quality and cost stats."""
     conn = request.app.state.db.connection
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
     # Average quality scores
     cursor = await conn.execute(

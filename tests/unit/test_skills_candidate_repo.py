@@ -1,6 +1,7 @@
-import pytest
 from pathlib import Path
+
 import aiosqlite
+import pytest
 
 from donna.skills.candidate_report import SkillCandidateRepository
 
@@ -30,7 +31,7 @@ async def db(tmp_path: Path):
 
 async def test_create_and_get_new(db):
     repo = SkillCandidateRepository(db)
-    report_id = await repo.create(
+    await repo.create(
         capability_name="parse_task",
         task_pattern_hash=None,
         expected_savings_usd=18.5,

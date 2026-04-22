@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiosqlite
 import structlog
@@ -75,7 +75,7 @@ class CapabilityRegistry:
             raise ValueError(f"Capability '{payload.name}' already exists")
 
         cap_id = str(uuid6.uuid7())
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         embedding_text = _embedding_text(payload.name, payload.description, payload.input_schema)
         embedding_blob = embedding_to_bytes(embed_text(embedding_text))
@@ -130,7 +130,8 @@ class CapabilityRegistry:
             )
         else:
             cursor = await self._conn.execute(
-                f"SELECT {SELECT_CAPABILITY} FROM capability WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+                f"SELECT {SELECT_CAPABILITY} FROM capability WHERE status = ? "
+                "ORDER BY created_at DESC LIMIT ?",
                 (status, limit),
             )
         rows = await cursor.fetchall()

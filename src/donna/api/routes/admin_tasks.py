@@ -69,7 +69,7 @@ async def list_tasks_admin(
             WHERE {where}
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?""",
-        params + [limit, offset],
+        [*params, limit, offset],
     )
     rows = await cursor.fetchall()
 

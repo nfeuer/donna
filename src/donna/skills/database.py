@@ -21,7 +21,8 @@ class SkillDatabase:
     async def list_all(self, state: str | None = None, limit: int = 200) -> list[SkillRow]:
         if state:
             cursor = await self._conn.execute(
-                f"SELECT {SELECT_SKILL} FROM skill WHERE state = ? ORDER BY updated_at DESC LIMIT ?",
+                f"SELECT {SELECT_SKILL} FROM skill WHERE state = ? "
+                "ORDER BY updated_at DESC LIMIT ?",
                 (state, limit),
             )
         else:

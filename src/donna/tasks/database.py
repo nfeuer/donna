@@ -9,12 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import enum as _enum_module
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
-
-import enum as _enum_module
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 import structlog
@@ -29,7 +28,6 @@ from donna.tasks.db_models import (
 )
 from donna.tasks.state_machine import StateMachine
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from donna.integrations.supabase_sync import SupabaseSync
 
@@ -223,11 +221,16 @@ class Database:
 
     async def run_migrations(self) -> None:
         """Run alembic upgrade head programmatically."""
-        from alembic import command
         from alembic.config import Config
 
+        from alembic import command
+
         def _run() -> None:
-            cfg = Config(str(self._alembic_config_path) if self._alembic_config_path else "alembic.ini")
+            cfg = Config(
+                str(self._alembic_config_path)
+                if self._alembic_config_path
+                else "alembic.ini"
+            )
             cfg.set_main_option("sqlalchemy.url", f"sqlite:///{self._db_path}")
             command.upgrade(cfg, "head")
 
@@ -270,7 +273,8 @@ class Database:
         now = datetime.utcnow().isoformat()
 
         await conn.execute(
-            f"INSERT INTO tasks ({_SELECT_COLUMNS}) VALUES ({', '.join('?' for _ in _TASK_COLUMNS)})",
+            f"INSERT INTO tasks ({_SELECT_COLUMNS}) "
+            f"VALUES ({', '.join('?' for _ in _TASK_COLUMNS)})",
             (
                 task_id,
                 user_id,
@@ -342,9 +346,11 @@ class Database:
         # Serialize special types
         processed: dict[str, Any] = {}
         for key, value in fields.items():
-            if key in ("tags", "notes", "dependencies") and isinstance(value, list):
-                processed[key] = json.dumps(value)
-            elif key == "inputs_json" and isinstance(value, dict):
+            if (
+                key in ("tags", "notes", "dependencies") and isinstance(value, list)
+            ) or (
+                key == "inputs_json" and isinstance(value, dict)
+            ):
                 processed[key] = json.dumps(value)
             elif isinstance(value, datetime):
                 processed[key] = value.isoformat()
@@ -354,7 +360,7 @@ class Database:
                 processed[key] = value
 
         set_clause = ", ".join(f"{col} = ?" for col in processed)
-        values = list(processed.values()) + [task_id]
+        values = [*list(processed.values()), task_id]
 
         cursor = await conn.execute(
             f"UPDATE tasks SET {set_clause} WHERE id = ?",
@@ -482,7 +488,10 @@ class Database:
             ),
         )
         await conn.commit()
-        logger.info("nudge_event_recorded", event_id=event_id, task_id=task_id, nudge_type=nudge_type)
+        logger.info(
+            "nudge_event_recorded",
+            event_id=event_id, task_id=task_id, nudge_type=nudge_type,
+        )
         return event_id
 
     async def get_weekly_stats(self, user_id: str, since: datetime) -> dict[str, Any]:
@@ -525,7 +534,10 @@ class Database:
             (user_id,),
         )
         most_nudged = [
-            {"id": r[0], "title": r[1], "nudge_count": r[2], "reschedule_count": r[3], "domain": r[4]}
+            {
+                "id": r[0], "title": r[1], "nudge_count": r[2],
+                "reschedule_count": r[3], "domain": r[4],
+            }
             for r in await cursor.fetchall()
         ]
 
@@ -537,7 +549,10 @@ class Database:
             (user_id,),
         )
         most_rescheduled = [
-            {"id": r[0], "title": r[1], "reschedule_count": r[2], "nudge_count": r[3], "domain": r[4]}
+            {
+                "id": r[0], "title": r[1], "reschedule_count": r[2],
+                "nudge_count": r[3], "domain": r[4],
+            }
             for r in await cursor.fetchall()
         ]
 
@@ -545,7 +560,11 @@ class Database:
         cursor = await conn.execute(
             """SELECT domain,
                       COUNT(*) FILTER (WHERE completed_at >= ?) as completed,
-                      COUNT(*) FILTER (WHERE status IN ('backlog','scheduled','in_progress','blocked','waiting_input')) as open_count,
+                      COUNT(*) FILTER (
+                          WHERE status IN (
+                              'backlog','scheduled','in_progress','blocked','waiting_input'
+                          )
+                      ) as open_count,
                       AVG(nudge_count) as avg_nudges
                FROM tasks WHERE user_id = ?
                GROUP BY domain""",
@@ -568,7 +587,8 @@ class Database:
 
         # LLM cost this period (from invocation_log)
         cursor = await conn.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0) FROM invocation_log WHERE user_id = ? AND timestamp >= ?",
+            "SELECT COALESCE(SUM(cost_usd), 0) FROM invocation_log "
+            "WHERE user_id = ? AND timestamp >= ?",
             (user_id, since_iso),
         )
         weekly_cost = round((await cursor.fetchone())[0], 2)
@@ -576,13 +596,19 @@ class Database:
         return {
             "tasks_completed": tasks_completed,
             "tasks_created": tasks_created,
-            "avg_hours_to_complete": round(avg_hours_to_complete, 1) if avg_hours_to_complete else None,
+            "avg_hours_to_complete": (
+                round(avg_hours_to_complete, 1) if avg_hours_to_complete else None
+            ),
             "most_nudged": most_nudged,
             "most_rescheduled": most_rescheduled,
             "domain_breakdown": domain_breakdown,
             "total_nudges": total_nudges,
             "weekly_cost": weekly_cost,
-            "completion_rate": round(tasks_completed / tasks_created * 100, 1) if tasks_created > 0 else 0,
+            "completion_rate": (
+                round(tasks_completed / tasks_created * 100, 1)
+                if tasks_created > 0
+                else 0
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -595,7 +621,7 @@ class Database:
     ) -> ChatSession:
         """Convert a SQLite row + cursor.description to a ChatSession."""
         col_names = [d[0] for d in description]
-        data = dict(zip(col_names, row))
+        data = dict(zip(col_names, row, strict=False))
         return ChatSession(
             id=data["id"],
             user_id=data["user_id"],
@@ -615,7 +641,7 @@ class Database:
     ) -> ChatMessage:
         """Convert a SQLite row + cursor.description to a ChatMessage."""
         col_names = [d[0] for d in description]
-        data = dict(zip(col_names, row))
+        data = dict(zip(col_names, row, strict=False))
         return ChatMessage(
             id=data["id"],
             session_id=data["session_id"],
@@ -695,7 +721,7 @@ class Database:
         Allowed fields: status, summary, pinned_task_id, last_activity,
         expires_at, message_count.
         """
-        _ALLOWED = {
+        _allowed = {
             "status",
             "summary",
             "pinned_task_id",
@@ -706,13 +732,13 @@ class Database:
         if not kwargs:
             return
 
-        invalid = set(kwargs.keys()) - _ALLOWED
+        invalid = set(kwargs.keys()) - _allowed
         if invalid:
             raise ValueError(f"Invalid fields for update_chat_session: {invalid}")
 
         conn = self.connection
         set_clause = ", ".join(f"{col} = ?" for col in kwargs)
-        values = list(kwargs.values()) + [session_id]
+        values = [*list(kwargs.values()), session_id]
 
         await conn.execute(
             f"UPDATE conversation_sessions SET {set_clause} WHERE id = ?",

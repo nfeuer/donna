@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import Request
@@ -37,7 +37,7 @@ async def get_schedule(
     are included. Results are sorted by scheduled_start ascending.
     """
     db = request.app.state.db
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now + timedelta(days=max(1, min(days, 90)))
 
     all_scheduled = await db.list_tasks(user_id=user_id, status=TaskStatus.SCHEDULED)
@@ -49,7 +49,7 @@ async def get_schedule(
         try:
             start = datetime.fromisoformat(task.scheduled_start)
             if start.tzinfo is None:
-                start = start.replace(tzinfo=timezone.utc)
+                start = start.replace(tzinfo=UTC)
             if now <= start <= cutoff:
                 window.append(_scheduled_task_to_dict(task))
         except ValueError:

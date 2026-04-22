@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
 
 from donna.api.routes.admin_tasks import get_task_admin, list_tasks_admin
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -180,7 +179,10 @@ class TestGetTaskAdmin:
         request, conn = mock_request
         inv_row = ("inv-1", "2026-04-02", "parse_task", "claude-sonnet", 500, 1000, 200, 0.003, 0)
         nudge_row = ("nudge-1", "reminder", "discord", 1, "Hey!", 0, "2026-04-02")
-        correction_row = ("corr-1", "2026-04-02", "title", "Milk", "Buy milk", "parse_task", "get milk")
+        correction_row = (
+            "corr-1", "2026-04-02", "title", "Milk", "Buy milk",
+            "parse_task", "get milk",
+        )
         subtask_row = ("task-002", "Get 2% milk", "done", 1, "pm", "completed")
 
         conn.execute = AsyncMock(

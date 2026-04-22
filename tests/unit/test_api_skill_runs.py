@@ -1,5 +1,6 @@
 from pathlib import Path
 from unittest.mock import MagicMock
+
 import aiosqlite
 import pytest
 from fastapi import HTTPException
@@ -28,18 +29,27 @@ async def db_with_runs(tmp_path: Path):
             created_at TEXT
         );
     """)
-    await conn.execute("""
-        INSERT INTO skill_run (id, skill_id, skill_version_id, status, state_object, user_id, started_at, total_latency_ms)
-        VALUES ('r1', 's1', 'v1', 'succeeded', '{}', 'nick', '2026-04-15T10:00:00', 150)
-    """)
-    await conn.execute("""
-        INSERT INTO skill_run (id, skill_id, skill_version_id, status, state_object, user_id, started_at, total_latency_ms)
-        VALUES ('r2', 's1', 'v1', 'failed', '{}', 'nick', '2026-04-15T11:00:00', 75)
-    """)
-    await conn.execute("""
-        INSERT INTO skill_step_result (id, skill_run_id, step_name, step_index, step_kind, output, latency_ms, validation_status, created_at)
-        VALUES ('sr1', 'r1', 'extract', 0, 'llm', '{"title":"x"}', 50, 'valid', '2026-04-15T10:00:01')
-    """)
+    await conn.execute(
+        "INSERT INTO skill_run "
+        "(id, skill_id, skill_version_id, status, state_object, "
+        "user_id, started_at, total_latency_ms) "
+        "VALUES ('r1', 's1', 'v1', 'succeeded', '{}', 'nick', "
+        "'2026-04-15T10:00:00', 150)"
+    )
+    await conn.execute(
+        "INSERT INTO skill_run "
+        "(id, skill_id, skill_version_id, status, state_object, "
+        "user_id, started_at, total_latency_ms) "
+        "VALUES ('r2', 's1', 'v1', 'failed', '{}', 'nick', "
+        "'2026-04-15T11:00:00', 75)"
+    )
+    await conn.execute(
+        "INSERT INTO skill_step_result "
+        "(id, skill_run_id, step_name, step_index, step_kind, output, "
+        "latency_ms, validation_status, created_at) "
+        "VALUES ('sr1', 'r1', 'extract', 0, 'llm', '{\"title\":\"x\"}', "
+        "50, 'valid', '2026-04-15T10:00:01')"
+    )
     await conn.commit()
     yield conn
     await conn.close()

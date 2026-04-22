@@ -7,14 +7,14 @@ global BudgetGuard, alert evaluation + dispatch, consecutive-failure pause.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Callable
-
-import yaml
+from datetime import UTC, datetime
+from typing import Any
 
 import aiosqlite
 import structlog
+import yaml
 
 from donna.automations.models import AutomationRow
 from donna.automations.repository import AutomationRepository
@@ -63,7 +63,7 @@ class AutomationDispatcher:
         self._config = config
 
     async def dispatch(self, automation: AutomationRow) -> DispatchReport:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         try:
             if self._budget_guard is not None:
@@ -107,7 +107,10 @@ class AutomationDispatcher:
                 run_status = result.status
                 skill_run_id = getattr(result, "run_id", None)
                 if result.status != "succeeded":
-                    error = getattr(result, "error", None) or getattr(result, "escalation_reason", None)
+                    error = (
+                        getattr(result, "error", None)
+                        or getattr(result, "escalation_reason", None)
+                    )
             else:
                 prior_run_end = await self._query_prior_run_end(automation_id=automation.id)
                 parsed, metadata = await self._router.complete(
@@ -285,7 +288,9 @@ class AutomationDispatcher:
 
         # F-W4-D: persist state_write keys from skill output
         try:
-            _parsed_backbone = yaml.safe_load(version.yaml_backbone) if version.yaml_backbone else {}
+            _parsed_backbone = (
+                yaml.safe_load(version.yaml_backbone) if version.yaml_backbone else {}
+            )
             backbone = _parsed_backbone if isinstance(_parsed_backbone, dict) else {}
         except yaml.YAMLError:
             backbone = {}

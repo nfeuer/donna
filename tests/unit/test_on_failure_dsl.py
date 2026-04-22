@@ -5,7 +5,7 @@ broken tool, plus unit-level ToolDispatcher tests for the failure branches.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -23,7 +23,6 @@ from donna.skills.tool_dispatch import (
 )
 from donna.skills.tool_registry import ToolRegistry
 
-
 # -------------------- fixtures & helpers --------------------
 
 
@@ -35,8 +34,8 @@ def _make_skill() -> SkillRow:
         state="sandbox",
         requires_human_gate=False,
         baseline_agreement=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
 
 
@@ -54,7 +53,7 @@ def _make_version(yaml_backbone: str) -> SkillVersionRow:
         },
         created_by="seed",
         changelog=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 

@@ -5,10 +5,7 @@ Mocks Loki HTTP calls with aioresponses and DB connection with AsyncMock.
 
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, patch
 
 from donna.api.routes.admin_logs import (
     EVENT_TYPE_TREE,
@@ -17,7 +14,6 @@ from donna.api.routes.admin_logs import (
     get_logs,
     get_trace,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -46,7 +42,10 @@ class TestGetEventTypes:
 
     async def test_tree_has_expected_categories(self) -> None:
         result = await get_event_types()
-        expected_categories = {"task", "api", "agent", "scheduler", "notification", "preference", "system", "cost", "sync"}
+        expected_categories = {
+            "task", "api", "agent", "scheduler", "notification",
+            "preference", "system", "cost", "sync",
+        }
         assert set(result.keys()) == expected_categories
 
 
@@ -58,10 +57,16 @@ class TestGetEventTypes:
 class TestGetTrace:
     async def test_loki_failure_falls_back_to_invocation_log(self, mock_request: tuple) -> None:
         request, conn = mock_request
-        inv_row = ("inv-1", "2026-04-01T10:00:00Z", "parse_task", "claude-sonnet", 500, 1000, 200, 0.003, "task-001")
+        inv_row = (
+            "inv-1", "2026-04-01T10:00:00Z", "parse_task", "claude-sonnet",
+            500, 1000, 200, 0.003, "task-001",
+        )
         conn.execute = AsyncMock(return_value=_cursor(fetchall=[inv_row]))
 
-        with patch("donna.api.routes.admin_logs._query_loki_trace", side_effect=Exception("Loki down")):
+        with patch(
+            "donna.api.routes.admin_logs._query_loki_trace",
+            side_effect=Exception("Loki down"),
+        ):
             result = await get_trace(request, correlation_id="corr-123")
 
         assert result["source"] == "invocation_log_fallback"
@@ -73,16 +78,23 @@ class TestGetTrace:
         request, conn = mock_request
         conn.execute = AsyncMock(return_value=_cursor())
 
-        with patch("donna.api.routes.admin_logs._query_loki_trace", side_effect=Exception("Loki down")):
+        with patch(
+            "donna.api.routes.admin_logs._query_loki_trace",
+            side_effect=Exception("Loki down"),
+        ):
             result = await get_trace(request, correlation_id="unknown")
 
         assert result["count"] == 0
         assert result["entries"] == []
 
     async def test_loki_success_returns_loki_source(self, mock_request: tuple) -> None:
-        request, conn = mock_request
+        request, _conn = mock_request
         loki_entries = [
-            {"timestamp": "2026-04-01T10:00:00Z", "event_type": "agent.dispatched", "level": "INFO"},
+            {
+                "timestamp": "2026-04-01T10:00:00Z",
+                "event_type": "agent.dispatched",
+                "level": "INFO",
+            },
         ]
         with patch("donna.api.routes.admin_logs._query_loki_trace", return_value=loki_entries):
             result = await get_trace(request, correlation_id="corr-123")
@@ -99,7 +111,10 @@ class TestGetTrace:
 class TestGetLogsFallback:
     async def test_loki_failure_uses_invocation_log_fallback(self, mock_request: tuple) -> None:
         request, conn = mock_request
-        inv_row = ("inv-1", "2026-04-01T10:00:00Z", "parse_task", "claude-sonnet", 500, 1000, 200, 0.003, "task-001", 0.9, 0)
+        inv_row = (
+            "inv-1", "2026-04-01T10:00:00Z", "parse_task", "claude-sonnet",
+            500, 1000, 200, 0.003, "task-001", 0.9, 0,
+        )
         conn.execute = AsyncMock(
             side_effect=[
                 _cursor(fetchone=(1,)),  # count
@@ -118,7 +133,7 @@ class TestGetLogsFallback:
         assert len(result["entries"]) == 1
 
     async def test_loki_success_returns_loki_entries(self, mock_request: tuple) -> None:
-        request, conn = mock_request
+        request, _conn = mock_request
         entries = [
             {"timestamp": "2026-04-01T10:00:00Z", "event_type": "task.created"},
             {"timestamp": "2026-04-01T10:01:00Z", "event_type": "agent.dispatched"},
@@ -134,7 +149,7 @@ class TestGetLogsFallback:
         assert len(result["entries"]) == 2
 
     async def test_loki_with_offset(self, mock_request: tuple) -> None:
-        request, conn = mock_request
+        request, _conn = mock_request
         entries = [{"event_type": f"entry-{i}"} for i in range(10)]
         with patch("donna.api.routes.admin_logs._query_loki", return_value=entries):
             result = await get_logs(

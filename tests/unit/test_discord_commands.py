@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
-import discord
 import pytest
 
 from donna.integrations.discord_commands import (
@@ -59,13 +58,13 @@ class TestParseWhen:
         assert result.hour == 14
 
     def test_relative_hours(self) -> None:
-        before = datetime.now(tz=timezone.utc)
+        before = datetime.now(tz=UTC)
         result = _parse_when("+2h")
         assert result is not None
         assert result >= before + timedelta(hours=1, minutes=59)
 
     def test_relative_minutes(self) -> None:
-        before = datetime.now(tz=timezone.utc)
+        before = datetime.now(tz=UTC)
         result = _parse_when("+30m")
         assert result is not None
         assert result >= before + timedelta(minutes=29)
@@ -74,7 +73,7 @@ class TestParseWhen:
         result = _parse_when("tomorrow 2pm")
         assert result is not None
         assert result.hour == 14
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         assert result.date() == (now + timedelta(days=1)).date()
 
     def test_today_am(self) -> None:
@@ -146,5 +145,8 @@ class TestRegisterCommands:
 
         register_commands(bot, db, "nick")
 
-        expected = {"tasks", "done", "cancel", "reschedule", "next", "today", "tomorrow", "edit", "status"}
+        expected = {
+            "tasks", "done", "cancel", "reschedule", "next",
+            "today", "tomorrow", "edit", "status",
+        }
         assert set(registered) == expected

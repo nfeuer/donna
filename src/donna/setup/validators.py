@@ -35,15 +35,14 @@ async def _http_get(
 
     connector = aiohttp.TCPConnector(ssl=True)
     auth_obj = aiohttp.BasicAuth(auth[0], auth[1]) if auth else None
-    async with aiohttp.ClientSession(connector=connector) as session:
-        async with session.get(
-            url,
-            headers=headers or {},
-            auth=auth_obj,
-            timeout=aiohttp.ClientTimeout(total=timeout_s),
-        ) as resp:
-            body = await resp.text()
-            return resp.status, body
+    async with aiohttp.ClientSession(connector=connector) as session, session.get(
+        url,
+        headers=headers or {},
+        auth=auth_obj,
+        timeout=aiohttp.ClientTimeout(total=timeout_s),
+    ) as resp:
+        body = await resp.text()
+        return resp.status, body
 
 
 async def _http_post(
@@ -56,15 +55,14 @@ async def _http_post(
     import aiohttp
 
     connector = aiohttp.TCPConnector(ssl=True)
-    async with aiohttp.ClientSession(connector=connector) as session:
-        async with session.post(
-            url,
-            headers=headers or {},
-            json=json_body,
-            timeout=aiohttp.ClientTimeout(total=timeout_s),
-        ) as resp:
-            body = await resp.text()
-            return resp.status, body
+    async with aiohttp.ClientSession(connector=connector) as session, session.post(
+        url,
+        headers=headers or {},
+        json=json_body,
+        timeout=aiohttp.ClientTimeout(total=timeout_s),
+    ) as resp:
+        body = await resp.text()
+        return resp.status, body
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +166,7 @@ async def validate_discord_channels(env: dict[str, str]) -> ValidatorResult:
     ]
 
     errors: list[str] = []
-    for var_name, required in channel_vars:
+    for var_name, _required in channel_vars:
         channel_id = env.get(var_name, "")
         if not channel_id:
             continue
@@ -176,7 +174,7 @@ async def validate_discord_channels(env: dict[str, str]) -> ValidatorResult:
             errors.append(f"{var_name} must be numeric")
             continue
         try:
-            status, body = await _http_get(
+            status, _body = await _http_get(
                 f"https://discord.com/api/v10/channels/{channel_id}",
                 headers={"Authorization": f"Bot {token}"},
             )
@@ -357,7 +355,7 @@ async def validate_nvidia_gpu(env: dict[str, str]) -> ValidatorResult:
                 False, f"GPU {gpu_id} not found. Available: {available}"
             )
 
-        gpu_line = [l for l in lines if l.split(",")[0].strip() == gpu_id][0]
+        gpu_line = next(line for line in lines if line.split(",")[0].strip() == gpu_id)
         return ValidatorResult(True, f"GPU {gpu_id}: {gpu_line.strip()}")
     except Exception as exc:
         return ValidatorResult(False, f"Error checking GPU: {exc}")

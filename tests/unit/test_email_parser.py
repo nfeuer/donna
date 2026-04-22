@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+from datetime import UTC
+from unittest.mock import AsyncMock
 
 from donna.integrations.email_parser import (
     ForwardedEmail,
@@ -12,7 +11,6 @@ from donna.integrations.email_parser import (
     parse_forwarded,
     poll_and_create_tasks,
 )
-
 
 # ------------------------------------------------------------------
 # parse_forwarded
@@ -126,8 +124,9 @@ class TestPollAndCreateTasks:
     async def test_poll_creates_task_from_forwarded_email(self) -> None:
         """poll_and_create_tasks calls input_parser and creates a task."""
         # Build a mock EmailMessage with forwarded content.
+        from datetime import datetime
+
         from donna.integrations.gmail import EmailMessage
-        from datetime import datetime, timezone
 
         forwarded_body = """\
 -------- Forwarded Message --------
@@ -143,7 +142,7 @@ Please update the roadmap document.
             recipients=["donna-tasks@example.com"],
             body_text=forwarded_body,
             snippet="forwarded",
-            date=datetime.now(tz=timezone.utc),
+            date=datetime.now(tz=UTC),
         )
 
         mock_gmail = AsyncMock()
@@ -184,8 +183,9 @@ Please update the roadmap document.
 
     async def test_poll_skips_non_forwarded_emails(self) -> None:
         """Messages without forwarded structure are skipped."""
+        from datetime import datetime
+
         from donna.integrations.gmail import EmailMessage
-        from datetime import datetime, timezone
 
         mock_msg = EmailMessage(
             id="msg-002",
@@ -194,7 +194,7 @@ Please update the roadmap document.
             recipients=["donna-tasks@example.com"],
             body_text="Hey Nick, how's it going?",  # Not forwarded.
             snippet="hey",
-            date=datetime.now(tz=timezone.utc),
+            date=datetime.now(tz=UTC),
         )
 
         mock_gmail = AsyncMock()

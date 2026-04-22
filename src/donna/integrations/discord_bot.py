@@ -14,23 +14,22 @@ See docs/notifications.md and slices/slice_03_discord.md.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import uuid
-from collections.abc import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import discord
-from discord import app_commands
 import structlog
+from discord import app_commands
 
 from donna.integrations.discord_pending_drafts import PendingDraft
 from donna.orchestrator.input_parser import DuplicateDetectedError, InputParser
 from donna.preferences.correction_logger import log_correction
 from donna.tasks.database import Database, TaskRow
-from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain, TaskStatus
-
-from typing import TYPE_CHECKING
+from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain
 
 if TYPE_CHECKING:
     from donna.orchestrator.dispatcher import AgentDispatcher
@@ -401,7 +400,11 @@ class DonnaBot(discord.Client):
                 verdict=dup.verdict,
                 fuzzy_score=dup.fuzzy_score,
             )
-            created_at = dup.existing_task.created_at[:10] if dup.existing_task.created_at else "unknown date"
+            created_at = (
+                dup.existing_task.created_at[:10]
+                if dup.existing_task.created_at
+                else "unknown date"
+            )
             await message.channel.send(
                 f"This looks like a duplicate of **'{dup.existing_task.title}'** "
                 f"(created {created_at}). "
@@ -630,7 +633,10 @@ class DonnaBot(discord.Client):
                 tools_str = f"`{exc.missing[0]}`"
                 verb = "is"
             else:
-                tools_str = ", ".join(f"`{t}`" for t in exc.missing[:-1]) + f" and `{exc.missing[-1]}`"
+                tools_str = (
+                    ", ".join(f"`{t}`" for t in exc.missing[:-1])
+                    + f" and `{exc.missing[-1]}`"
+                )
                 verb = "are"
             msg = (
                 f"I can't run `{exc.capability}` until "
@@ -672,11 +678,9 @@ class DonnaBot(discord.Client):
             import json as _json
             existing_notes: list[str] = []
             if existing_task.notes:
-                try:
+                with contextlib.suppress(Exception):
                     existing_notes = _json.loads(existing_task.notes)
-                except Exception:
-                    pass
-            merged_notes = existing_notes + [f"[merged from: {new_title}]"]
+            merged_notes = [*existing_notes, f"[merged from: {new_title}]"]
             await self._database.update_task(existing_task.id, notes=merged_notes)
             log.info("dedup_merged", existing_task_id=existing_task.id, new_title=new_title)
             await message.channel.send(

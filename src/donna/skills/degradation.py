@@ -155,7 +155,10 @@ class DegradationDetector:
                 current_lower=current_lower,
                 current_upper=current_upper,
                 baseline=baseline_agreement,
-                notes=f"CI=[{current_lower:.2f}, {current_upper:.2f}], baseline={baseline_agreement:.2f}",
+                notes=(
+                    f"CI=[{current_lower:.2f}, {current_upper:.2f}], "
+                    f"baseline={baseline_agreement:.2f}"
+                ),
             )
 
         logger.debug(

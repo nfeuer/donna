@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
 import aiosqlite
-from alembic import command
+import pytest
 from alembic.config import Config as AlembicConfig
+
+from alembic import command
 
 
 @pytest.mark.asyncio

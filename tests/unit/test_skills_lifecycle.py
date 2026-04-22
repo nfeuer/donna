@@ -4,16 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import json
-import pytest
-import aiosqlite
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
+
+import aiosqlite
+import pytest
 
 from donna.config import SkillSystemConfig
 from donna.skills.lifecycle import (
-    SkillLifecycleManager,
-    IllegalTransitionError,
     HumanGateRequiredError,
+    IllegalTransitionError,
+    SkillLifecycleManager,
     SkillNotFoundError,
 )
 from donna.tasks.db_models import SkillState
@@ -56,9 +57,10 @@ async def _insert_skill(
     state: str = "sandbox",
     requires_human_gate: bool = False,
 ) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
-        "INSERT INTO skill (id, capability_name, state, requires_human_gate, created_at, updated_at) "
+        "INSERT INTO skill "
+        "(id, capability_name, state, requires_human_gate, created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?)",
         (skill_id, f"cap-{skill_id}", state, 1 if requires_human_gate else 0, now, now),
     )
@@ -124,7 +126,9 @@ async def test_trusted_to_flagged_for_review(db: aiosqlite.Connection) -> None:
     assert row[0] == "flagged_for_review"
 
 
-async def test_shadow_primary_to_flagged_for_review_is_legal(db_with_runs: aiosqlite.Connection) -> None:
+async def test_shadow_primary_to_flagged_for_review_is_legal(
+    db_with_runs: aiosqlite.Connection,
+) -> None:
     await _insert_skill(db_with_runs, skill_id="s1", state="shadow_primary")
     manager = SkillLifecycleManager(db_with_runs, SkillSystemConfig())
     await manager.transition(
@@ -432,7 +436,7 @@ async def _insert_skill_full(
     requires_human_gate: bool = False,
     baseline_agreement: float | None = None,
 ) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO skill (id, capability_name, state, requires_human_gate, "
         "baseline_agreement, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -451,7 +455,7 @@ async def _insert_skill_runs(
     run_ids = []
     for i, status in enumerate(statuses):
         run_id = f"run-{skill_id}-{i}"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         await db.execute(
             "INSERT INTO skill_run (id, skill_id, status, started_at) VALUES (?, ?, ?, ?)",
             (run_id, skill_id, status, now),
@@ -467,9 +471,9 @@ async def _insert_divergences(
     agreements: list[float],
 ) -> None:
     """Insert skill_divergence rows for the given run_ids and agreement values."""
-    for i, (run_id, agreement) in enumerate(zip(run_ids, agreements)):
+    for i, (run_id, agreement) in enumerate(zip(run_ids, agreements, strict=False)):
         div_id = f"div-{run_id}"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         await db.execute(
             "INSERT INTO skill_divergence "
             "(id, skill_run_id, shadow_invocation_id, overall_agreement, created_at) "
@@ -482,7 +486,7 @@ async def _insert_divergences(
 async def test_promotion_sandbox_to_shadow_primary_fires_with_enough_runs(
     db_with_runs: aiosqlite.Connection,
 ) -> None:
-    """20 succeeded skill_runs for a sandbox skill with validity 1.0 → transitions to shadow_primary."""
+    """20 succeeded skill_runs for sandbox skill with validity 1.0 → shadow_primary."""
     await _insert_skill_full(db_with_runs, state="sandbox")
     await _insert_skill_runs(db_with_runs, "s1", ["succeeded"] * 20)
 
@@ -552,7 +556,7 @@ async def test_promotion_sandbox_blocked_by_human_gate(
 async def test_promotion_shadow_primary_to_trusted_fires(
     db_with_runs: aiosqlite.Connection,
 ) -> None:
-    """100 divergences averaging 0.9 agreement → transitions to trusted AND baseline_agreement updated."""
+    """100 divergences averaging 0.9 agreement → trusted AND baseline_agreement set."""
     await _insert_skill_full(db_with_runs, state="shadow_primary")
     run_ids = await _insert_skill_runs(db_with_runs, "s1", ["succeeded"] * 100)
     await _insert_divergences(db_with_runs, run_ids, [0.9] * 100)

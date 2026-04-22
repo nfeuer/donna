@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import aiosqlite
 import structlog
@@ -44,7 +44,7 @@ class SkillCandidateDetector:
         Returns a list of newly created candidate IDs.
         """
         window_start = (
-            datetime.now(timezone.utc) - timedelta(days=30)
+            datetime.now(UTC) - timedelta(days=30)
         ).isoformat()
 
         claude_native_task_types = await self._claude_native_task_types()

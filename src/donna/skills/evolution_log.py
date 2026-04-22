@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiosqlite
 import structlog
@@ -29,7 +29,7 @@ class SkillEvolutionLogRepository:
         outcome: str,
     ) -> str:
         entry_id = str(uuid6.uuid7())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         await self._conn.execute(
             """
             INSERT INTO skill_evolution_log

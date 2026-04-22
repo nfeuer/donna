@@ -2,9 +2,6 @@
 from __future__ import annotations
 
 import time
-from unittest.mock import AsyncMock
-
-import pytest
 
 from donna.llm.rate_limiter import RateLimiter
 
@@ -58,7 +55,7 @@ class TestRateLimiter:
     def test_rebuild_from_records(self) -> None:
         """Simulate rebuilding counters from invocation_log on startup."""
         rl = RateLimiter(default_rpm=10, default_rph=5, caller_limits={})
-        now = time.monotonic()
+        time.monotonic()
         # Simulate 5 recent calls from a caller
         rl.rebuild_from_records("busy-caller", call_count_last_hour=5)
         assert rl.check("busy-caller") is False  # at hour limit

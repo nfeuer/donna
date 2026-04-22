@@ -7,7 +7,7 @@ and toggle rule enabled/disabled state.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, Query, Request
@@ -71,7 +71,7 @@ async def list_preference_rules(
             WHERE {where}
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?""",
-        params + [limit, offset],
+        [*params, limit, offset],
     )
     rows = await cursor.fetchall()
 
@@ -115,7 +115,7 @@ async def toggle_preference_rule(
     if not await cursor.fetchone():
         raise HTTPException(status_code=404, detail="Rule not found")
 
-    disabled_at = None if body.enabled else datetime.now(timezone.utc).isoformat()
+    disabled_at = None if body.enabled else datetime.now(UTC).isoformat()
 
     await conn.execute(
         "UPDATE learned_preferences SET enabled = ?, disabled_at = ? WHERE id = ?",
@@ -206,7 +206,7 @@ async def list_corrections(
             WHERE {where}
             ORDER BY timestamp DESC
             LIMIT ? OFFSET ?""",
-        params + [limit, offset],
+        [*params, limit, offset],
     )
     rows = await cursor.fetchall()
 

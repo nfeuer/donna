@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import aiosqlite
 import pytest
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 
 def test_skill_run_result_has_run_id_field():
@@ -32,7 +32,7 @@ async def test_executor_populates_result_run_id_and_writes_automation_run_id(tmp
 
     async with aiosqlite.connect(db) as conn:
         # Prereq rows: capability, skill, skill_version, automation_run.
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         await conn.execute(
             "INSERT INTO capability (id, name, description, input_schema, "
             "trigger_type, status, created_at, created_by) "
@@ -77,7 +77,10 @@ async def test_executor_populates_result_run_id_and_writes_automation_run_id(tmp
         )
         version = SkillVersionRow(
             id="v1", skill_id="s1", version_number=1,
-            yaml_backbone="steps:\n  - name: parse\n    kind: llm\n    prompt: \"parse\"\n    output_schema:\n      type: object\n",
+            yaml_backbone=(
+                "steps:\n  - name: parse\n    kind: llm\n"
+                "    prompt: \"parse\"\n    output_schema:\n      type: object\n"
+            ),
             step_content={"parse": "parse"},
             output_schemas={"parse": {"type": "object"}},
             created_by="test", changelog=None, created_at=None,
@@ -102,7 +105,7 @@ async def test_executor_populates_result_run_id_and_writes_automation_run_id(tmp
 
 @pytest.mark.asyncio
 async def test_dispatcher_writes_skill_run_id_into_automation_run(tmp_path, monkeypatch):
-    """Dispatcher passes automation_run_id into executor and records result.run_id on automation_run."""
+    """Dispatcher passes automation_run_id into executor and records result.run_id."""
     from donna.automations.dispatcher import AutomationDispatcher
     from donna.automations.repository import AutomationRepository
     from donna.config import SkillSystemConfig
@@ -117,7 +120,7 @@ async def test_dispatcher_writes_skill_run_id_into_automation_run(tmp_path, monk
         # Use a unique capability name to avoid collision with Wave 2's
         # seeded `product_watch` (state=sandbox) — this test needs
         # shadow_primary to exercise the skill path.
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         capability_name = "test_cap_linkage"
         await conn.execute(
             "INSERT INTO capability (id, name, description, input_schema, "

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -74,13 +74,13 @@ def _parse_event(raw: dict[str, Any], calendar_id: str) -> CalendarEvent:
 def _parse_dt(value: str) -> datetime:
     """Parse an ISO-8601 datetime or date string to a UTC-aware datetime."""
     if not value:
-        return datetime.min.replace(tzinfo=timezone.utc)
+        return datetime.min.replace(tzinfo=UTC)
     # All-day events use "YYYY-MM-DD" format.
     if "T" not in value and len(value) == 10:
-        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+        return datetime.fromisoformat(value).replace(tzinfo=UTC)
     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -299,5 +299,5 @@ class GoogleCalendarClient:
 def _to_rfc3339(dt: datetime) -> str:
     """Format a datetime as RFC 3339 (Google Calendar API requirement)."""
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.isoformat()

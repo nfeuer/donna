@@ -1,12 +1,13 @@
-from datetime import datetime, timezone
-from donna.skills.models import SkillRow, SkillVersionRow, row_to_skill, row_to_skill_version
+from datetime import UTC, datetime
+
+from donna.skills.models import SkillRow, row_to_skill_version
 
 
 def test_skill_row_basic():
     s = SkillRow(
         id="s1", capability_name="product_watch", current_version_id="v1",
         state="sandbox", requires_human_gate=False, baseline_agreement=None,
-        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC), updated_at=datetime.now(UTC),
     )
     assert s.state == "sandbox"
 

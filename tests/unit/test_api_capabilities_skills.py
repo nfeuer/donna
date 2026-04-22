@@ -4,14 +4,11 @@ These are lightweight tests that verify the routes exist and return
 correct shapes. Full integration tests are in test_skill_system_phase_1_e2e.py.
 """
 
-import json
 from pathlib import Path
 
 import aiosqlite
 import pytest
 
-from donna.capabilities.models import SELECT_CAPABILITY, row_to_capability
-from donna.skills.models import SELECT_SKILL, SELECT_SKILL_VERSION, row_to_skill, row_to_skill_version
 from donna.skills.database import SkillDatabase
 
 
@@ -37,18 +34,27 @@ async def db(tmp_path: Path):
             created_by TEXT, changelog TEXT, created_at TEXT
         );
     """)
-    await conn.execute("""
-        INSERT INTO capability (id, name, description, input_schema, trigger_type, status, created_at, created_by)
-        VALUES ('c1', 'parse_task', 'desc', '{"type":"object"}', 'on_message', 'active', '2026-04-15', 'seed')
-    """)
-    await conn.execute("""
-        INSERT INTO skill (id, capability_name, current_version_id, state, requires_human_gate, baseline_agreement, created_at, updated_at)
-        VALUES ('s1', 'parse_task', 'v1', 'sandbox', 0, NULL, '2026-04-15', '2026-04-15')
-    """)
-    await conn.execute("""
-        INSERT INTO skill_version (id, skill_id, version_number, yaml_backbone, step_content, output_schemas, created_by, changelog, created_at)
-        VALUES ('v1', 's1', 1, 'yaml: x', '{"extract":"md"}', '{"extract":{}}', 'human', NULL, '2026-04-15')
-    """)
+    await conn.execute(
+        "INSERT INTO capability "
+        "(id, name, description, input_schema, trigger_type, status, "
+        "created_at, created_by) "
+        "VALUES ('c1', 'parse_task', 'desc', '{\"type\":\"object\"}', "
+        "'on_message', 'active', '2026-04-15', 'seed')"
+    )
+    await conn.execute(
+        "INSERT INTO skill "
+        "(id, capability_name, current_version_id, state, requires_human_gate, "
+        "baseline_agreement, created_at, updated_at) "
+        "VALUES ('s1', 'parse_task', 'v1', 'sandbox', 0, NULL, "
+        "'2026-04-15', '2026-04-15')"
+    )
+    await conn.execute(
+        "INSERT INTO skill_version "
+        "(id, skill_id, version_number, yaml_backbone, step_content, "
+        "output_schemas, created_by, changelog, created_at) "
+        "VALUES ('v1', 's1', 1, 'yaml: x', '{\"extract\":\"md\"}', "
+        "'{\"extract\":{}}', 'human', NULL, '2026-04-15')"
+    )
     await conn.commit()
     yield conn
     await conn.close()

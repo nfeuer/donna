@@ -6,17 +6,16 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from rapidfuzz import fuzz
 
 from donna.config import ModelConfig, ModelsConfig, RoutingEntry, TaskTypeEntry, TaskTypesConfig
 from donna.models.router import ModelRouter
 from donna.models.types import CompletionMetadata
 from donna.tasks.database import TaskRow
 from donna.tasks.dedup import (
-    Deduplicator,
-    DuplicateDetectedError,
     _HIGH_THRESHOLD,
     _MID_THRESHOLD,
+    Deduplicator,
+    DuplicateDetectedError,
     _find_best_fuzzy_match,
     _render_dedup_template,
 )
@@ -83,7 +82,9 @@ def _make_router() -> ModelRouter:
             "reasoner": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
         },
         routing={
-            "dedup_check": RoutingEntry(model="parser", fallback="reasoner", confidence_threshold=0.7),
+            "dedup_check": RoutingEntry(
+                model="parser", fallback="reasoner", confidence_threshold=0.7,
+            ),
         },
     )
     task_types_config = TaskTypesConfig(
@@ -104,7 +105,10 @@ def _dedup_response(verdict: str = "same") -> dict:
         "verdict": verdict,
         "confidence": 0.9,
         "reasoning": f"These tasks are {verdict}.",
-        "suggested_action": "merge" if verdict == "same" else ("link" if verdict == "related" else "none"),
+        "suggested_action": (
+            "merge" if verdict == "same"
+            else ("link" if verdict == "related" else "none")
+        ),
     }
 
 
@@ -125,7 +129,10 @@ class TestFuzzyScoreBucketing:
         router.complete = AsyncMock(return_value=(_dedup_response("same"), _make_metadata()))
         inv_logger = AsyncMock()
         inv_logger.log = AsyncMock(return_value="inv-001")
-        dedup = Deduplicator(db=db, router=router, invocation_logger=inv_logger, project_root=PROJECT_ROOT)
+        dedup = Deduplicator(
+            db=db, router=router, invocation_logger=inv_logger,
+            project_root=PROJECT_ROOT,
+        )
         return dedup, router, inv_logger
 
     async def test_score_above_85_raises_without_llm_call(self) -> None:
@@ -133,9 +140,11 @@ class TestFuzzyScoreBucketing:
         task = _make_task_row(title="Get oil change")
         dedup, router, _ = self._make_deduplicator([task])
 
-        with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=90):
-            with pytest.raises(DuplicateDetectedError) as exc_info:
-                await dedup.check("Oil change needed", None, "personal", "nick")
+        with (
+            patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=90),
+            pytest.raises(DuplicateDetectedError) as exc_info,
+        ):
+            await dedup.check("Oil change needed", None, "personal", "nick")
 
         assert exc_info.value.verdict == "same"
         assert exc_info.value.fuzzy_score == 90
@@ -147,9 +156,11 @@ class TestFuzzyScoreBucketing:
         task = _make_task_row(title="Get oil change")
         dedup, router, _ = self._make_deduplicator([task])
 
-        with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=85):
-            with pytest.raises(DuplicateDetectedError):
-                await dedup.check("Oil change needed", None, "personal", "nick")
+        with (
+            patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=85),
+            pytest.raises(DuplicateDetectedError),
+        ):
+            await dedup.check("Oil change needed", None, "personal", "nick")
 
         router.complete.assert_not_called()
 
@@ -166,11 +177,13 @@ class TestFuzzyScoreBucketing:
     async def test_score_exactly_70_calls_llm(self) -> None:
         """Score exactly 70 → mid range → LLM called."""
         task = _make_task_row(title="Get oil change")
-        dedup, router, inv_logger = self._make_deduplicator([task])
+        dedup, router, _inv_logger = self._make_deduplicator([task])
 
-        with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=70):
-            with pytest.raises(DuplicateDetectedError):
-                await dedup.check("Oil change for car", None, "personal", "nick")
+        with (
+            patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=70),
+            pytest.raises(DuplicateDetectedError),
+        ):
+            await dedup.check("Oil change for car", None, "personal", "nick")
 
         router.complete.assert_called_once()
 
@@ -186,14 +199,16 @@ class TestFuzzyScoreBucketing:
         router.complete.assert_called_once()
 
     async def test_mid_range_llm_related_raises(self) -> None:
-        """Mid-range score, LLM returns 'related' → DuplicateDetectedError with verdict='related'."""
+        """Mid-range score, LLM 'related' → DuplicateDetectedError with verdict='related'."""
         task = _make_task_row(title="Oil change for lawn mower")
         dedup, router, _ = self._make_deduplicator([task])
         router.complete = AsyncMock(return_value=(_dedup_response("related"), _make_metadata()))
 
-        with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=75):
-            with pytest.raises(DuplicateDetectedError) as exc_info:
-                await dedup.check("Oil change for car", None, "personal", "nick")
+        with (
+            patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=75),
+            pytest.raises(DuplicateDetectedError) as exc_info,
+        ):
+            await dedup.check("Oil change for car", None, "personal", "nick")
 
         assert exc_info.value.verdict == "related"
 
@@ -203,9 +218,11 @@ class TestFuzzyScoreBucketing:
         dedup, router, inv_logger = self._make_deduplicator([task])
         router.complete = AsyncMock(return_value=(_dedup_response("same"), _make_metadata()))
 
-        with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=78):
-            with pytest.raises(DuplicateDetectedError) as exc_info:
-                await dedup.check("Oil change for car", None, "personal", "nick")
+        with (
+            patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=78),
+            pytest.raises(DuplicateDetectedError) as exc_info,
+        ):
+            await dedup.check("Oil change for car", None, "personal", "nick")
 
         assert exc_info.value.verdict == "same"
         inv_logger.log.assert_called_once()
@@ -217,7 +234,10 @@ class TestFuzzyScoreBucketing:
         router = _make_router()
         router.complete = AsyncMock()
         inv_logger = AsyncMock()
-        dedup = Deduplicator(db=db, router=router, invocation_logger=inv_logger, project_root=PROJECT_ROOT)
+        dedup = Deduplicator(
+            db=db, router=router, invocation_logger=inv_logger,
+            project_root=PROJECT_ROOT,
+        )
 
         await dedup.check("Get oil change", None, "personal", "nick")
         router.complete.assert_not_called()

@@ -9,7 +9,7 @@ Verifies the handoff contract from plan §7 Phase 2:
   H2.6: ToolRegistry allowlist prevents unauthorized dispatches
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -20,7 +20,7 @@ from donna.skills.executor import SkillExecutor
 from donna.skills.models import SkillRow, SkillVersionRow
 from donna.skills.run_persistence import SkillRunRepository
 from donna.skills.tool_registry import ToolRegistry
-from donna.skills.triage import TriageAgent, TriageDecision, TriageResult
+from donna.skills.triage import TriageDecision, TriageResult
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ def _skill() -> SkillRow:
     return SkillRow(
         id="s1", capability_name="demo", current_version_id="v1",
         state="sandbox", requires_human_gate=False, baseline_agreement=None,
-        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC), updated_at=datetime.now(UTC),
     )
 
 
@@ -64,12 +64,15 @@ def _version(yaml_backbone: str, step_content: dict, output_schemas: dict) -> Sk
         yaml_backbone=yaml_backbone,
         step_content=step_content, output_schemas=output_schemas,
         created_by="seed", changelog=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
 def _mock_meta(invocation_id="i1"):
-    return MagicMock(invocation_id=invocation_id, latency_ms=50, tokens_in=20, tokens_out=5, cost_usd=0.0)
+    return MagicMock(
+        invocation_id=invocation_id, latency_ms=50,
+        tokens_in=20, tokens_out=5, cost_usd=0.0,
+    )
 
 
 @pytest.mark.integration
@@ -90,10 +93,21 @@ final_output: "{{ state.step_b }}"
 """
     version = _version(
         yaml_backbone,
-        step_content={"step_a": "Extract from: {{ inputs.raw }}", "step_b": "Classify: {{ state.step_a.title }}"},
+        step_content={
+            "step_a": "Extract from: {{ inputs.raw }}",
+            "step_b": "Classify: {{ state.step_a.title }}",
+        },
         output_schemas={
-            "step_a": {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]},
-            "step_b": {"type": "object", "properties": {"priority": {"type": "integer"}}, "required": ["priority"]},
+            "step_a": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            },
+            "step_b": {
+                "type": "object",
+                "properties": {"priority": {"type": "integer"}},
+                "required": ["priority"],
+            },
         },
     )
 
@@ -106,7 +120,10 @@ final_output: "{{ state.step_b }}"
     repo = SkillRunRepository(db_with_run_tables)
     executor = SkillExecutor(router, ToolRegistry(), triage=None, run_repository=repo)
 
-    result = await executor.execute(skill=_skill(), version=version, inputs={"raw": "draft the review"}, user_id="nick")
+    result = await executor.execute(
+        skill=_skill(), version=version,
+        inputs={"raw": "draft the review"}, user_id="nick",
+    )
 
     assert result.status == "succeeded"
     assert result.state["step_a"]["title"] == "review"
@@ -137,7 +154,10 @@ final_output: "{{ state.fetch_many }}"
 
     registry = ToolRegistry()
     registry.register("mock_tool", mock_tool)
-    executor = SkillExecutor(AsyncMock(), registry, triage=None, run_repository=SkillRunRepository(db_with_run_tables))
+    executor = SkillExecutor(
+        AsyncMock(), registry, triage=None,
+        run_repository=SkillRunRepository(db_with_run_tables),
+    )
 
     result = await executor.execute(
         skill=_skill(), version=version,
@@ -168,14 +188,25 @@ final_output: "{{ state.s2 }}"
     version = _version(
         yaml_backbone,
         step_content={"s1": "x", "s2": "y"},
-        output_schemas={"s1": {"type": "object", "properties": {"escalate": {"type": "object"}}}, "s2": {"type": "object"}},
+        output_schemas={
+            "s1": {
+                "type": "object",
+                "properties": {"escalate": {"type": "object"}},
+            },
+            "s2": {"type": "object"},
+        },
     )
 
     router = AsyncMock()
     router.complete.return_value = ({"escalate": {"reason": "no idea"}}, _mock_meta("i1"))
 
-    executor = SkillExecutor(router, ToolRegistry(), triage=None, run_repository=SkillRunRepository(db_with_run_tables))
-    result = await executor.execute(skill=_skill(), version=version, inputs={}, user_id="nick")
+    executor = SkillExecutor(
+        router, ToolRegistry(), triage=None,
+        run_repository=SkillRunRepository(db_with_run_tables),
+    )
+    result = await executor.execute(
+        skill=_skill(), version=version, inputs={}, user_id="nick",
+    )
 
     assert result.status == "escalated"
     assert result.escalation_reason == "no idea"
@@ -212,9 +243,14 @@ final_output: "{{ state.tool_step }}"
         rationale="tool unreachable",
     )
 
-    executor = SkillExecutor(AsyncMock(), registry, triage=triage, run_repository=SkillRunRepository(db_with_run_tables))
+    executor = SkillExecutor(
+        AsyncMock(), registry, triage=triage,
+        run_repository=SkillRunRepository(db_with_run_tables),
+    )
 
-    result = await executor.execute(skill=_skill(), version=version, inputs={}, user_id="nick")
+    result = await executor.execute(
+        skill=_skill(), version=version, inputs={}, user_id="nick",
+    )
 
     assert result.status == "escalated"
     triage.handle_failure.assert_awaited_once()
@@ -235,7 +271,13 @@ final_output: "{{ state.only }}"
     version = _version(
         yaml_backbone,
         step_content={"only": "prompt"},
-        output_schemas={"only": {"type": "object", "properties": {"v": {"type": "integer"}}, "required": ["v"]}},
+        output_schemas={
+            "only": {
+                "type": "object",
+                "properties": {"v": {"type": "integer"}},
+                "required": ["v"],
+            },
+        },
     )
 
     router = AsyncMock()
@@ -286,9 +328,14 @@ final_output: "{}"
         rationale="tool not allowed",
     )
 
-    executor = SkillExecutor(AsyncMock(), registry, triage=triage, run_repository=SkillRunRepository(db_with_run_tables))
+    executor = SkillExecutor(
+        AsyncMock(), registry, triage=triage,
+        run_repository=SkillRunRepository(db_with_run_tables),
+    )
 
-    result = await executor.execute(skill=_skill(), version=version, inputs={}, user_id="nick")
+    result = await executor.execute(
+        skill=_skill(), version=version, inputs={}, user_id="nick",
+    )
 
     # Result should be escalated (triage caught the ToolInvocationError).
     assert result.status == "escalated"

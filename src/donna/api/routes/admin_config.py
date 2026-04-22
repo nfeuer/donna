@@ -113,7 +113,7 @@ async def put_config(
     try:
         yaml.safe_load(content)
     except yaml.YAMLError as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid YAML: {exc}")
+        raise HTTPException(status_code=422, detail=f"Invalid YAML: {exc}") from exc
 
     config_dir = _get_config_dir(request)
     path = config_dir / filename

@@ -1,6 +1,7 @@
 """Unit tests for SupabaseSync keep-alive."""
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -33,10 +34,8 @@ class TestKeepAlive:
             task = asyncio.create_task(sync.keep_alive(interval_hours=0.001))
             await asyncio.sleep(0.05)
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         mock_session.head.assert_called()
         call_args = mock_session.head.call_args
@@ -54,7 +53,6 @@ class TestKeepAlive:
     async def test_keepalive_survives_errors(self, sync: SupabaseSync) -> None:
         call_count = 0
 
-        original_head = None
 
         async def failing_head(*args, **kwargs):
             nonlocal call_count
@@ -70,10 +68,8 @@ class TestKeepAlive:
             task = asyncio.create_task(sync.keep_alive(interval_hours=0.001))
             await asyncio.sleep(0.05)
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
         # Should have retried at least once despite errors
         assert call_count >= 1

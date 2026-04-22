@@ -1,8 +1,6 @@
 """Unit test: NotificationService truncates digest content exceeding the cap."""
 from __future__ import annotations
 
-import pytest
-
 
 def test_truncate_helper_passes_short_content_unchanged() -> None:
     from donna.notifications.service import NotificationService

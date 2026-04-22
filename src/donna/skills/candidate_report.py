@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiosqlite
@@ -75,7 +75,7 @@ class SkillCandidateRepository:
     ) -> str:
         """Create a new candidate report row with status='new'; return the new id."""
         candidate_id = str(uuid6.uuid7())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         await self._conn.execute(
             f"""
@@ -140,7 +140,7 @@ class SkillCandidateRepository:
         existing row's reasoning/resolved_at rather than creating a duplicate.
         Returns the row id (either the newly-created one or the existing one).
         """
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = await self._conn.execute(
             "SELECT id FROM skill_candidate_report "
             "WHERE pattern_fingerprint = ? AND status = 'claude_native_registered'",
@@ -208,7 +208,7 @@ class SkillCandidateRepository:
         await self._update_status(candidate_id, "stale")
 
     async def _update_status(self, candidate_id: str, status: str) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         await self._conn.execute(
             """
             UPDATE skill_candidate_report

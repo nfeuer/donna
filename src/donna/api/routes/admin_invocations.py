@@ -66,7 +66,7 @@ async def list_invocations(
             WHERE {where}
             ORDER BY timestamp DESC
             LIMIT ? OFFSET ?""",
-        params + [limit, offset],
+        [*params, limit, offset],
     )
     rows = await cursor.fetchall()
 

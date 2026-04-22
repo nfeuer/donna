@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
 import pytest
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 
 @pytest.mark.asyncio
@@ -22,7 +23,7 @@ async def test_poller_picks_up_and_clears_manual_draft_at(tmp_path):
     command.upgrade(cfg, "head")
 
     async with aiosqlite.connect(db) as conn:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cand_id = str(uuid.uuid4())
         await conn.execute(
             "INSERT INTO skill_candidate_report (id, capability_name, "
@@ -67,7 +68,7 @@ async def test_poller_skips_non_new_status(tmp_path):
     command.upgrade(cfg, "head")
 
     async with aiosqlite.connect(db) as conn:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cand_id = str(uuid.uuid4())
         await conn.execute(
             "INSERT INTO skill_candidate_report (id, capability_name, "
@@ -96,7 +97,7 @@ async def test_poller_clears_column_even_on_draft_failure(tmp_path):
     command.upgrade(cfg, "head")
 
     async with aiosqlite.connect(db) as conn:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cand_id = str(uuid.uuid4())
         await conn.execute(
             "INSERT INTO skill_candidate_report (id, capability_name, "

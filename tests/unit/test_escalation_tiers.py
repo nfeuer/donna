@@ -6,16 +6,18 @@ fast-path — all using an in-memory SQLite database (no real Twilio).
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
 import pytest
 
 from donna.config import SmsConfig, SmsEscalationConfig
-from donna.notifications.escalation import EscalationManager, STATUS_ACKNOWLEDGED, STATUS_BACKED_OFF, STATUS_PENDING
-
+from donna.notifications.escalation import (
+    STATUS_ACKNOWLEDGED,
+    STATUS_BACKED_OFF,
+    EscalationManager,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -54,7 +56,9 @@ def _make_config(tier1_wait: int = 30, tier2_wait: int = 60, backoff_hours: int 
     )
 
 
-def _make_manager(db_conn, config: SmsConfig | None = None) -> tuple[EscalationManager, MagicMock, MagicMock]:
+def _make_manager(
+    db_conn, config: SmsConfig | None = None,
+) -> tuple[EscalationManager, MagicMock, MagicMock]:
     config = config or _make_config()
 
     mock_db = MagicMock()
@@ -113,7 +117,7 @@ class TestEscalateStartsTier1:
 
 class TestAdvanceTier:
     async def test_advance_to_tier2_after_timeout(self, db_conn) -> None:
-        manager, mock_service, mock_sms = _make_manager(db_conn)
+        manager, _mock_service, mock_sms = _make_manager(db_conn)
 
         # Start escalation at Tier 1.
         await manager.escalate("task-1", "Buy milk", "nudge", priority=2)
@@ -138,14 +142,15 @@ class TestAdvanceTier:
         assert row[0] == 2
 
     async def test_advance_stops_at_max_tier(self, db_conn) -> None:
-        manager, _, mock_sms = _make_manager(db_conn)
+        manager, _, _mock_sms = _make_manager(db_conn)
 
         # Start at tier 2 (already SMS-sent), backdate next_escalation_at.
         await manager.escalate("task-1", "Task", "nudge", priority=2, start_at_tier=2)
 
         past = (datetime.now(tz=UTC) - timedelta(hours=2)).isoformat()
         await db_conn.execute(
-            "UPDATE escalation_state SET next_escalation_at = ?, current_tier = 2 WHERE task_id = ?",
+            "UPDATE escalation_state SET next_escalation_at = ?, "
+            "current_tier = 2 WHERE task_id = ?",
             (past, "task-1"),
         )
         await db_conn.commit()

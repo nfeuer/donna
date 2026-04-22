@@ -9,7 +9,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
-import pytest
 
 from donna.integrations.discord_bot import LOW_CONFIDENCE_THRESHOLD, DonnaBot
 from donna.orchestrator.input_parser import TaskParseResult

@@ -12,8 +12,7 @@ Tests verify:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -23,21 +22,19 @@ from donna.config import (
     CalendarConfig,
     CalendarEntryConfig,
     CredentialsConfig,
+    InvalidTransitionEntry,
     SchedulingConfig,
+    StateMachineConfig,
     SyncConfig,
     TimeWindowConfig,
     TimeWindowsConfig,
+    TransitionEntry,
 )
 from donna.integrations.calendar import CalendarEvent, GoogleCalendarClient
 from donna.scheduling.calendar_sync import CalendarSync
 from donna.tasks.database import Database
-from donna.tasks.db_models import Base, DeadlineType, InputChannel, TaskDomain, TaskStatus
+from donna.tasks.db_models import Base, TaskDomain, TaskStatus
 from donna.tasks.state_machine import StateMachine
-from donna.config import (
-    StateMachineConfig,
-    TransitionEntry,
-    InvalidTransitionEntry,
-)
 
 pytestmark = pytest.mark.asyncio
 
@@ -49,27 +46,37 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def sm() -> StateMachine:
+    def _t(frm: str, to: str) -> TransitionEntry:
+        return TransitionEntry(
+            **{"from": frm, "to": to, "trigger": "t", "side_effects": []},
+        )
+
     config = StateMachineConfig(
-        states=["backlog", "scheduled", "in_progress", "blocked", "waiting_input", "done", "cancelled"],
+        states=[
+            "backlog", "scheduled", "in_progress", "blocked",
+            "waiting_input", "done", "cancelled",
+        ],
         initial_state="backlog",
         transitions=[
-            TransitionEntry(**{"from": "backlog", "to": "scheduled", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "scheduled", "to": "backlog", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "scheduled", "to": "in_progress", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "in_progress", "to": "done", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "blocked", "to": "scheduled", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "blocked", "to": "cancelled", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "waiting_input", "to": "scheduled", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "waiting_input", "to": "cancelled", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "in_progress", "to": "blocked", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "in_progress", "to": "scheduled", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "*", "to": "cancelled", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "done", "to": "in_progress", "trigger": "t", "side_effects": []}),
-            TransitionEntry(**{"from": "cancelled", "to": "backlog", "trigger": "t", "side_effects": []}),
+            _t("backlog", "scheduled"),
+            _t("scheduled", "backlog"),
+            _t("scheduled", "in_progress"),
+            _t("in_progress", "done"),
+            _t("blocked", "scheduled"),
+            _t("blocked", "cancelled"),
+            _t("waiting_input", "scheduled"),
+            _t("waiting_input", "cancelled"),
+            _t("in_progress", "blocked"),
+            _t("in_progress", "scheduled"),
+            _t("*", "cancelled"),
+            _t("done", "in_progress"),
+            _t("cancelled", "backlog"),
         ],
         invalid_transitions=[
             InvalidTransitionEntry(**{"from": "backlog", "to": "done", "reason": "no"}),
-            InvalidTransitionEntry(**{"from": "cancelled", "to": "*", "except": ["backlog"], "reason": "no"}),
+            InvalidTransitionEntry(
+                **{"from": "cancelled", "to": "*", "except": ["backlog"], "reason": "no"},
+            ),
             InvalidTransitionEntry(**{"from": "done", "to": "scheduled", "reason": "no"}),
         ],
     )
@@ -91,9 +98,13 @@ async def db(tmp_path, sm):
 @pytest.fixture
 def cal_config() -> CalendarConfig:
     return CalendarConfig(
-        calendars={"personal": CalendarEntryConfig(calendar_id="primary", access="read_write")},
+        calendars={
+            "personal": CalendarEntryConfig(calendar_id="primary", access="read_write"),
+        },
         sync=SyncConfig(poll_interval_seconds=300, lookahead_days=7, lookbehind_days=1),
-        scheduling=SchedulingConfig(slot_step_minutes=15, default_duration_minutes=60, search_horizon_days=14),
+        scheduling=SchedulingConfig(
+            slot_step_minutes=15, default_duration_minutes=60, search_horizon_days=14,
+        ),
         time_windows=TimeWindowsConfig(
             blackout=TimeWindowConfig(start_hour=0, end_hour=6, days=[0, 1, 2, 3, 4, 5, 6]),
             quiet_hours=TimeWindowConfig(start_hour=20, end_hour=24, days=[0, 1, 2, 3, 4, 5, 6]),
@@ -110,7 +121,7 @@ def cal_config() -> CalendarConfig:
 
 
 def _utc(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
-    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+    return datetime(year, month, day, hour, minute, tzinfo=UTC)
 
 
 def _make_cal_event(
@@ -137,12 +148,20 @@ def _make_mock_client(events: list[CalendarEvent]) -> GoogleCalendarClient:
     """Build a mock client that returns the given events from list_events()."""
     client = MagicMock(spec=GoogleCalendarClient)
     client.list_events = AsyncMock(return_value=events)
-    client.create_event = AsyncMock(return_value=_make_cal_event("ev-new", _utc(2026, 3, 24, 17), _utc(2026, 3, 24, 18), donna_managed=True, donna_task_id="task-id"))
+    client.create_event = AsyncMock(return_value=_make_cal_event(
+        "ev-new",
+        _utc(2026, 3, 24, 17),
+        _utc(2026, 3, 24, 18),
+        donna_managed=True,
+        donna_task_id="task-id",
+    ))
     client.delete_event = AsyncMock(return_value=None)
     return client
 
 
-async def _seed_mirror(db: Database, event_id: str, task_id: str, start: datetime, end: datetime) -> None:
+async def _seed_mirror(
+    db: Database, event_id: str, task_id: str, start: datetime, end: datetime,
+) -> None:
     """Insert a row into calendar_mirror directly."""
     conn = db.connection
     await conn.execute(
@@ -209,7 +228,10 @@ class TestDeletedDonnaEvent:
         """on_task_unscheduled callback is called when an event is deleted."""
         task = await db.create_task(user_id="nick", title="My Task", domain=TaskDomain.PERSONAL)
         await db.transition_task_state(task.id, TaskStatus.SCHEDULED)
-        await db.update_task(task.id, calendar_event_id="ev-001", donna_managed=True, scheduled_start=_utc(2026, 3, 23, 17))
+        await db.update_task(
+            task.id, calendar_event_id="ev-001", donna_managed=True,
+            scheduled_start=_utc(2026, 3, 23, 17),
+        )
         await _seed_mirror(db, "ev-001", task.id, _utc(2026, 3, 23, 17), _utc(2026, 3, 23, 18))
 
         fired: list[tuple[str, str]] = []
@@ -233,7 +255,9 @@ class TestTimeChangedDonnaEvent:
         old_start = _utc(2026, 3, 23, 17, 0)
         new_start = _utc(2026, 3, 23, 18, 0)
 
-        task = await db.create_task(user_id="nick", title="Write report", domain=TaskDomain.PERSONAL)
+        task = await db.create_task(
+            user_id="nick", title="Write report", domain=TaskDomain.PERSONAL,
+        )
         await db.transition_task_state(task.id, TaskStatus.SCHEDULED)
         await db.update_task(
             task.id, calendar_event_id="ev-donna-002", donna_managed=True, scheduled_start=old_start
@@ -292,7 +316,10 @@ class TestTimeChangedDonnaEvent:
 
         task = await db.create_task(user_id="nick", title="Task", domain=TaskDomain.PERSONAL)
         await db.transition_task_state(task.id, TaskStatus.SCHEDULED)
-        await db.update_task(task.id, calendar_event_id="ev-004", donna_managed=True, scheduled_start=old_start)
+        await db.update_task(
+            task.id, calendar_event_id="ev-004", donna_managed=True,
+            scheduled_start=old_start,
+        )
         await _seed_mirror(db, "ev-004", task.id, old_start, old_start + timedelta(hours=1))
 
         moved_event = _make_cal_event("ev-004", new_start, new_start + timedelta(hours=1),

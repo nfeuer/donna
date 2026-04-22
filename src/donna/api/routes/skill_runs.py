@@ -7,8 +7,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from donna.skills.runs import (
-    SELECT_SKILL_RUN, SELECT_SKILL_STEP_RESULT,
-    row_to_skill_run, row_to_step_result,
+    SELECT_SKILL_RUN,
+    SELECT_SKILL_STEP_RESULT,
+    row_to_skill_run,
+    row_to_step_result,
 )
 
 router = APIRouter()
@@ -109,7 +111,8 @@ async def list_recent_runs(
     conn = request.app.state.db.connection
     if status:
         cursor = await conn.execute(
-            f"SELECT {SELECT_SKILL_RUN} FROM skill_run WHERE status = ? ORDER BY started_at DESC LIMIT ?",
+            f"SELECT {SELECT_SKILL_RUN} FROM skill_run WHERE status = ? "
+            "ORDER BY started_at DESC LIMIT ?",
             (status, limit),
         )
     else:
@@ -160,9 +163,10 @@ async def capture_fixture(run_id: str, request: Request) -> dict:
     row pointing at the run.
     """
     import json
-    from donna.skills.schema_inference import json_to_schema
-    from donna.skills.mock_synthesis import cache_to_mocks
+
     from donna.skills.auto_drafter import _persist_fixture
+    from donna.skills.mock_synthesis import cache_to_mocks
+    from donna.skills.schema_inference import json_to_schema
 
     conn = request.app.state.db.connection
     cursor = await conn.execute(

@@ -21,7 +21,7 @@ HIGH_CONFIDENCE_THRESHOLD = 0.75
 MEDIUM_CONFIDENCE_THRESHOLD = 0.40
 
 
-class MatchConfidence(str, enum.Enum):
+class MatchConfidence(enum.StrEnum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"

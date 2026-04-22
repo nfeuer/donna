@@ -1,10 +1,7 @@
 """Tests for gateway alerter with debouncing."""
 from __future__ import annotations
 
-import time
 from unittest.mock import AsyncMock
-
-import pytest
 
 from donna.llm.alerter import GatewayAlerter
 

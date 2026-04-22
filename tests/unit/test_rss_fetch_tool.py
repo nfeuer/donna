@@ -5,8 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from donna.skills.tools.rss_fetch import rss_fetch, RssFetchError
-
+from donna.skills.tools.rss_fetch import RssFetchError, rss_fetch
 
 RSS_SAMPLE = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel>
@@ -73,9 +72,8 @@ async def test_rss_fetch_malformed_raises():
     with patch(
         "donna.skills.tools.rss_fetch._http_get",
         return_value="not xml at all",
-    ):
-        with pytest.raises(RssFetchError, match="unparseable feed"):
-            await rss_fetch(url="https://example.com/feed")
+    ), pytest.raises(RssFetchError, match="unparseable feed"):
+        await rss_fetch(url="https://example.com/feed")
 
 
 @pytest.mark.asyncio
@@ -83,9 +81,8 @@ async def test_rss_fetch_http_error_wraps_in_rss_fetch_error():
     with patch(
         "donna.skills.tools.rss_fetch._http_get",
         side_effect=Exception("connection refused"),
-    ):
-        with pytest.raises(RssFetchError, match="http:"):
-            await rss_fetch(url="https://unreachable.example.com/feed")
+    ), pytest.raises(RssFetchError, match="http:"):
+        await rss_fetch(url="https://unreachable.example.com/feed")
 
 
 @pytest.mark.asyncio

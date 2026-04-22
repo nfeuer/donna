@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import dataclasses
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from donna.orchestrator.input_parser import TaskParseResult
-from donna.preferences.rule_applier import PreferenceApplier, _CACHE
+from donna.preferences.rule_applier import _CACHE, PreferenceApplier
 
 
 def _result(**kwargs) -> TaskParseResult:

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -28,11 +28,12 @@ def _seed_capability(db_path: Path) -> None:
     concurrent readers/writers across connections.
     """
     import sqlite3
+
     import uuid6
 
     conn = sqlite3.connect(str(db_path))
     try:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cur = conn.execute(
             "SELECT 1 FROM capability WHERE name = ?", ("parse_task",)
         )
@@ -65,8 +66,9 @@ def _seed_capability(db_path: Path) -> None:
 
 def _run_migrations(db_path: Path) -> None:
     """Run alembic upgrade head against ``db_path`` to create the schema."""
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     project_root = Path(__file__).resolve().parents[2]
     cfg = Config(str(project_root / "alembic.ini"))

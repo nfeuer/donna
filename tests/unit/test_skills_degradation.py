@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
 import pytest
 
 from donna.config import SkillSystemConfig
-from donna.skills.degradation import DegradationDetector, DegradationReport
+from donna.skills.degradation import DegradationDetector
 from donna.skills.divergence import SkillDivergenceRepository
 from donna.skills.lifecycle import SkillLifecycleManager
 from donna.tasks.db_models import SkillState
-
 
 # ---------------------------------------------------------------------------
 # Schema helpers
@@ -75,9 +73,11 @@ async def _insert_skill(
     baseline_agreement: float | None = None,
     requires_human_gate: bool = False,
 ) -> None:
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await conn.execute(
-        "INSERT INTO skill (id, capability_name, state, requires_human_gate, baseline_agreement, created_at, updated_at) "
+        "INSERT INTO skill "
+        "(id, capability_name, state, requires_human_gate, baseline_agreement, "
+        "created_at, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             skill_id,
@@ -103,7 +103,7 @@ async def _insert_divergences(
         "INSERT OR IGNORE INTO skill_run (id, skill_id) VALUES (?, ?)",
         (run_id, skill_id),
     )
-    now_base = datetime.now(timezone.utc)
+    now_base = datetime.now(UTC)
     for i, agreement in enumerate(agreements):
         div_id = f"div-{skill_id}-{i}"
         ts = now_base.replace(microsecond=i).isoformat()
@@ -363,7 +363,9 @@ async def test_flagging_uses_lifecycle_manager(db: aiosqlite.Connection) -> None
                 "notes": notes,
             }
         )
-        return await original_transition(skill_id, to_state, reason, actor, actor_id=actor_id, notes=notes)
+        return await original_transition(
+            skill_id, to_state, reason, actor, actor_id=actor_id, notes=notes,
+        )
 
     real_lifecycle.transition = spy_transition  # type: ignore[method-assign]
 

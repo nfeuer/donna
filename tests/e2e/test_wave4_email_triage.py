@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -139,7 +139,7 @@ async def test_email_triage_nl_creation_action_required_digest(runtime) -> None:
     assert row is not None, "email_triage skill should be seeded by migration"
     assert row[0] == "sandbox", f"expected sandbox, got {row[0]}"
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     past = (now - timedelta(minutes=5)).isoformat()
 
     # Canned claude_native response — 2 action-required messages digested.
@@ -218,7 +218,7 @@ async def test_email_triage_body_fetch_skipped_when_no_candidates(runtime) -> No
     )
     skill_row = await cursor.fetchone()
     assert skill_row is not None, "email_triage skill should be seeded by migration"
-    skill_id, version_id, initial_state = skill_row
+    skill_id, _version_id, initial_state = skill_row
     assert initial_state == "sandbox", f"expected sandbox, got {initial_state}"
 
     lifecycle = runtime.skill_bundle.lifecycle_manager
@@ -308,7 +308,7 @@ async def test_email_triage_body_fetch_skipped_when_no_candidates(runtime) -> No
     runtime.automation_dispatcher._skill_executor_factory = _WrapExecutor
 
     # --- 4. Create a due email_triage automation. --------------------------------
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     past = (now - timedelta(minutes=5)).isoformat()
     automation_id = str(uuid.uuid4())
     await _insert_email_triage_automation(
@@ -377,8 +377,8 @@ async def test_email_triage_guard_rejects_when_gmail_missing() -> None:
     is raised before any DB write.
     """
     from donna.automations.creation_flow import AutomationCreationPath, MissingToolError
-    from donna.skills.tool_registry import ToolRegistry
     from donna.orchestrator.discord_intent_dispatcher import DraftAutomation
+    from donna.skills.tool_registry import ToolRegistry
 
     # Registry with non-gmail tools only.
     reg = ToolRegistry()

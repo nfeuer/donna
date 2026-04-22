@@ -1,8 +1,6 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 
 from donna.automations.scheduler import AutomationScheduler
 
@@ -19,7 +17,7 @@ async def test_scheduler_run_once_dispatches_due_automations():
     scheduler = AutomationScheduler(
         repository=repo, dispatcher=dispatcher,
         poll_interval_seconds=60,
-        now_fn=lambda: datetime(2026, 4, 16, 12, 0, tzinfo=timezone.utc),
+        now_fn=lambda: datetime(2026, 4, 16, 12, 0, tzinfo=UTC),
         sleep_fn=lambda s: asyncio.sleep(0),
     )
     await scheduler.run_once()
@@ -35,7 +33,7 @@ async def test_scheduler_run_once_does_nothing_when_no_due():
     scheduler = AutomationScheduler(
         repository=repo, dispatcher=dispatcher,
         poll_interval_seconds=60,
-        now_fn=lambda: datetime.now(timezone.utc),
+        now_fn=lambda: datetime.now(UTC),
         sleep_fn=lambda s: asyncio.sleep(0),
     )
     await scheduler.run_once()
@@ -53,7 +51,7 @@ async def test_scheduler_dispatch_errors_do_not_stop_loop():
     scheduler = AutomationScheduler(
         repository=repo, dispatcher=dispatcher,
         poll_interval_seconds=60,
-        now_fn=lambda: datetime.now(timezone.utc),
+        now_fn=lambda: datetime.now(UTC),
         sleep_fn=lambda s: asyncio.sleep(0),
     )
     await scheduler.run_once()
@@ -68,7 +66,7 @@ async def test_scheduler_stop_signal_exits_loop():
     scheduler = AutomationScheduler(
         repository=repo, dispatcher=dispatcher,
         poll_interval_seconds=60,
-        now_fn=lambda: datetime.now(timezone.utc),
+        now_fn=lambda: datetime.now(UTC),
         sleep_fn=lambda s: asyncio.sleep(0),
     )
     scheduler.stop()
@@ -93,7 +91,7 @@ async def test_scheduler_run_forever_polls_until_stopped():
     scheduler = AutomationScheduler(
         repository=repo, dispatcher=dispatcher,
         poll_interval_seconds=60,
-        now_fn=lambda: datetime.now(timezone.utc),
+        now_fn=lambda: datetime.now(UTC),
         sleep_fn=_sleep,
     )
     await asyncio.wait_for(scheduler.run_forever(), timeout=1.0)

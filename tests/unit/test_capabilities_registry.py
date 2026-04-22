@@ -1,8 +1,9 @@
-import pytest
-import aiosqlite
 from pathlib import Path
 
-from donna.capabilities.registry import CapabilityRegistry, CapabilityInput
+import aiosqlite
+import pytest
+
+from donna.capabilities.registry import CapabilityInput, CapabilityRegistry
 
 
 @pytest.fixture
@@ -97,7 +98,7 @@ async def test_list_all_with_status_filter(registry):
     await registry.register(CapabilityInput(
         name="active_cap", description="a", input_schema={}, trigger_type="on_message",
     ), created_by="seed")
-    cap2 = await registry.register(CapabilityInput(
+    await registry.register(CapabilityInput(
         name="review_cap", description="b", input_schema={}, trigger_type="on_message",
     ), created_by="seed")
     await registry.update_status("review_cap", "pending_review")

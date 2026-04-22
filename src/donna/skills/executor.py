@@ -120,7 +120,7 @@ class SkillExecutor:
         triage: TriageAgent | None = None,
         run_repository: Any | None = None,
         run_sink: Any | None = None,
-        shadow_sampler: "ShadowSampler | None" = None,
+        shadow_sampler: ShadowSampler | None = None,
         config: Any | None = None,               # Wave 2: SkillSystemConfig for validation timeouts
         task_type_prefix: str | None = None,     # Wave 2: override "skill_step" default
     ) -> None:
@@ -141,6 +141,9 @@ class SkillExecutor:
         self._config = config
         self._task_type_prefix = task_type_prefix
         self._shadow_sampler = shadow_sampler
+        # Strong references to fire-and-forget shadow sampling tasks so
+        # they are not garbage-collected before completion.
+        self._shadow_sampling_tasks: set[asyncio.Task[None]] = set()
         self._jinja = jinja2.Environment(
             autoescape=False,
             undefined=jinja2.StrictUndefined,
@@ -352,7 +355,9 @@ class SkillExecutor:
                 await self._finish_run_if_repo(skill_run_id, result)
                 return result
 
-            except (SchemaValidationError, ToolInvocationError, DSLError, jinja2.UndefinedError) as exc:
+            except (
+                SchemaValidationError, ToolInvocationError, DSLError, jinja2.UndefinedError,
+            ) as exc:
                 record.error = str(exc)
                 record.validation_status = (
                     "schema_invalid" if isinstance(exc, SchemaValidationError) else "tool_failed"
@@ -477,7 +482,7 @@ class SkillExecutor:
                 if isinstance(result.final_output, dict)
                 else {"output": result.final_output}
             )
-            asyncio.create_task(
+            shadow_task = asyncio.create_task(
                 self._shadow_sampler.sample_if_applicable(
                     skill=skill,
                     skill_run_id=skill_run_id,
@@ -487,6 +492,8 @@ class SkillExecutor:
                     claude_prompt=claude_prompt,
                 )
             )
+            self._shadow_sampling_tasks.add(shadow_task)
+            shadow_task.add_done_callback(self._shadow_sampling_tasks.discard)
 
         return result
 

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
+
 import pytest
-from unittest.mock import patch
 
 
 @pytest.mark.asyncio

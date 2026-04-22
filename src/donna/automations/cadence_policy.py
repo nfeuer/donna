@@ -11,8 +11,13 @@ from typing import Any
 import yaml
 
 
-class PausedState(Exception):
-    """Raised by ``min_interval_for`` when the lifecycle state is paused."""
+class PausedState(Exception):  # noqa: N818
+    """Raised by ``min_interval_for`` when the lifecycle state is paused.
+
+    Named without the ``Error`` suffix because it represents a lifecycle
+    *state* signal used as control flow (like ``StopIteration``), not an
+    error condition. Callers catch it to branch, not to report failure.
+    """
 
 
 def load_discord_automation_default_min_interval_seconds(
@@ -34,7 +39,7 @@ class CadencePolicy:
     paused_states: set[str] = field(default_factory=set)
 
     @classmethod
-    def load(cls, path: pathlib.Path) -> "CadencePolicy":
+    def load(cls, path: pathlib.Path) -> CadencePolicy:
         data = yaml.safe_load(path.read_text()) or {}
         table = data.get("cadence_policy", {})
         intervals: dict[str, int] = {}

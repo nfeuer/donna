@@ -20,7 +20,6 @@ from donna.api.routes.admin_config import (
     put_prompt,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -198,7 +197,7 @@ class TestPutPrompt:
         prompts_dir.mkdir()
         (prompts_dir / "test.md").write_text("old")
         request = _make_request(tmp_path, project_root=tmp_path)
-        result = await put_prompt(request, filename="test.md", body={"content": "# New content"})
+        await put_prompt(request, filename="test.md", body={"content": "# New content"})
         assert (prompts_dir / "test.md").read_text() == "# New content"
 
     async def test_rejects_non_md(self, tmp_path: Path) -> None:

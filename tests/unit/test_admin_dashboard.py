@@ -5,9 +5,7 @@ All tests mock the DB connection — no real SQLite needed.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+from unittest.mock import AsyncMock
 
 from donna.api.routes.admin_dashboard import (
     get_agent_performance,
@@ -17,7 +15,6 @@ from donna.api.routes.admin_dashboard import (
     get_skill_system,
     get_task_throughput,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,7 +36,8 @@ def _cursor(fetchall: list | None = None, fetchone: tuple | None = None) -> Asyn
 class TestParseAccuracy:
     async def test_empty_db_returns_100_accuracy(self, mock_request: tuple) -> None:
         request, conn = mock_request
-        # 4 queries: daily_parses, daily_corrections, total_parses, total_corrections, field_breakdown
+        # 4 queries: daily_parses, daily_corrections, total_parses,
+        # total_corrections, field_breakdown
         conn.execute = AsyncMock(
             side_effect=[
                 _cursor(),  # daily parses
@@ -146,7 +144,9 @@ class TestAgentPerformance:
         request, conn = mock_request
         conn.execute = AsyncMock(
             side_effect=[
-                _cursor(fetchall=[("parse_task", 20, 100.0, 500, 1000, 500, 0.01, 0.0005, 0, None)]),
+                _cursor(fetchall=[(
+                    "parse_task", 20, 100.0, 500, 1000, 500, 0.01, 0.0005, 0, None,
+                )]),
                 _cursor(),
                 # 20 sorted latencies: 10, 20, ..., 200
                 _cursor(fetchall=[(i * 10,) for i in range(1, 21)]),

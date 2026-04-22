@@ -1,7 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from donna.capabilities.input_extractor import LocalLLMInputExtractor
 
 
@@ -14,7 +12,14 @@ async def test_extractor_returns_llm_output():
     extractor = LocalLLMInputExtractor(router)
     result = await extractor.extract(
         user_message="draft the review",
-        schema={"type": "object", "properties": {"raw_text": {"type": "string"}, "user_id": {"type": "string"}}, "required": ["raw_text", "user_id"]},
+        schema={
+            "type": "object",
+            "properties": {
+                "raw_text": {"type": "string"},
+                "user_id": {"type": "string"},
+            },
+            "required": ["raw_text", "user_id"],
+        },
         user_id="nick",
     )
     assert result == {"raw_text": "draft the review", "user_id": "nick"}

@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from donna.api.routes.admin_shadow import (
-    _invocation_dict,
     _COMPARISON_COLS,
-    _SUMMARY_COLS,
+    _invocation_dict,
     list_shadow_comparisons,
     list_spot_checks,
     shadow_stats,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

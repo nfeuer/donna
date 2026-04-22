@@ -7,7 +7,6 @@ register_default_tools so Gmail skill tools are registered at boot.
 from __future__ import annotations
 
 import argparse
-import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 

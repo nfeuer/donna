@@ -9,7 +9,8 @@ See the discord interaction expansion plan.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Awaitable, TYPE_CHECKING
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 import discord
 import structlog

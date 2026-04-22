@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 
@@ -68,7 +68,7 @@ class TwilioSMS:
             to: Destination E.164 phone number (e.g. "+15555555555").
             body: SMS message body (max 1600 chars).
         """
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         self._reset_counter_if_new_day(now)
 
         log = logger.bind(to=to, body_len=len(body))

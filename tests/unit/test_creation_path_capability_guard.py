@@ -1,7 +1,7 @@
 """Tests: AutomationCreationPath rejects approval when required tool is missing."""
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -9,8 +9,8 @@ from donna.automations.creation_flow import (
     AutomationCreationPath,
     MissingToolError,
 )
-from donna.skills.tool_registry import ToolRegistry
 from donna.orchestrator.discord_intent_dispatcher import DraftAutomation
+from donna.skills.tool_registry import ToolRegistry
 
 
 def _make_draft(**overrides):

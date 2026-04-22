@@ -7,7 +7,7 @@ an in-memory SQLite DB with the required skill-system tables.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,7 +15,6 @@ import aiosqlite
 import pytest
 
 from donna.notifications.eod_digest import EodDigest
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -84,13 +83,14 @@ def _make_digest(conn) -> EodDigest:
 
 
 def _now_utc() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 async def _insert_skill(conn, skill_id: str, capability_name: str, state: str = "sandbox") -> None:
     now = _now_utc().isoformat()
     await conn.execute(
-        "INSERT INTO skill (id, capability_name, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO skill (id, capability_name, state, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?)",
         (skill_id, capability_name, state, now, now),
     )
     await conn.commit()
@@ -251,7 +251,10 @@ class TestDemotedTransitions:
         at = (now - timedelta(hours=4)).isoformat()
 
         await _insert_skill(db, "skill-C", "send_summary", state="flagged_for_review")
-        await _insert_transition(db, "skill-C", "trusted", "flagged_for_review", at, reason="high_divergence")
+        await _insert_transition(
+            db, "skill-C", "trusted", "flagged_for_review", at,
+            reason="high_divergence",
+        )
 
         data = await digest._assemble_skill_system_data(now)
         assert len(data["demoted"]) == 1
@@ -374,7 +377,7 @@ def digest(db) -> EodDigest:
 class TestEvolvedSkills:
     async def test_evolved_skills_appear_in_section(self, db, digest) -> None:
         """A successful evolution in the last 24h is listed."""
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         # Seed skill + evolution log row.
         await db.execute(
             "INSERT INTO skill (id, capability_name, current_version_id, state, "
@@ -391,7 +394,7 @@ class TestEvolvedSkills:
             (now_iso,),
         )
         await db.commit()
-        data = await digest._assemble_skill_system_data(datetime.now(timezone.utc))
+        data = await digest._assemble_skill_system_data(datetime.now(UTC))
         assert len(data["evolved"]) == 1
         assert data["evolved"][0]["capability_name"] == "parse_task"
         text = digest._render_skill_section(data)
@@ -399,7 +402,7 @@ class TestEvolvedSkills:
         assert "parse_task" in text
 
     async def test_evolution_failed_skills_appear(self, db, digest) -> None:
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         await db.execute(
             "INSERT INTO skill (id, capability_name, current_version_id, state, "
             "requires_human_gate, baseline_agreement, created_at, updated_at) "
@@ -415,14 +418,14 @@ class TestEvolvedSkills:
             (now_iso,),
         )
         await db.commit()
-        data = await digest._assemble_skill_system_data(datetime.now(timezone.utc))
+        data = await digest._assemble_skill_system_data(datetime.now(UTC))
         assert len(data["evolution_failed"]) == 1
         text = digest._render_skill_section(data)
         assert "Evolution failed:" in text
 
     async def test_skill_evolution_cost_included(self, db, digest) -> None:
         """Claude invocations with task_type='skill_evolution' count in the cost."""
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         await db.execute(
             "INSERT INTO invocation_log (id, timestamp, task_type, model_alias, "
             "model_actual, input_hash, latency_ms, tokens_in, tokens_out, "
@@ -432,5 +435,5 @@ class TestEvolvedSkills:
             (now_iso,),
         )
         await db.commit()
-        data = await digest._assemble_skill_system_data(datetime.now(timezone.utc))
+        data = await digest._assemble_skill_system_data(datetime.now(UTC))
         assert data["skill_system_cost_usd"] == pytest.approx(0.25)

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import argparse
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from donna.notifications.service import NotificationService
 
@@ -30,12 +31,14 @@ async def test_cli_constructs_notification_service(monkeypatch, tmp_path) -> Non
 
     monkeypatch.setattr(NotificationService, "__init__", _capturing_init)
 
-    with patch("donna.integrations.discord_bot.DonnaBot.start", _noop):
-        with patch("donna.server.run_server", _noop):
-            from donna.cli import _run_orchestrator
-            args = argparse.Namespace(
-                config_dir="config", log_level="INFO", dev=True, port=8100,
-            )
-            await _run_orchestrator(args)
+    with (
+        patch("donna.integrations.discord_bot.DonnaBot.start", _noop),
+        patch("donna.server.run_server", _noop),
+    ):
+        from donna.cli import _run_orchestrator
+        args = argparse.Namespace(
+            config_dir="config", log_level="INFO", dev=True, port=8100,
+        )
+        await _run_orchestrator(args)
 
     assert len(constructed) == 1

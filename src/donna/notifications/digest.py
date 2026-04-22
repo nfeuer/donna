@@ -14,9 +14,10 @@ See slices/slice_05_reminders_digest.md and docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta, timezone
+import contextlib
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import discord
 import structlog
@@ -26,7 +27,6 @@ from donna.models.router import ContextOverflowError, ModelRouter
 from donna.notifications.service import CHANNEL_DIGEST, NOTIF_DIGEST, NotificationService
 from donna.tasks.database import Database
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from donna.integrations.gmail import GmailClient
     from donna.resilience.health_check import SelfDiagnostic
@@ -81,7 +81,7 @@ class MorningDigest:
         )
 
         while True:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             next_fire = _next_fire_time(now, DIGEST_HOUR, DIGEST_MINUTE)
             wait_seconds = (next_fire - now).total_seconds()
 
@@ -93,7 +93,7 @@ class MorningDigest:
             await asyncio.sleep(max(wait_seconds, 0))
 
             try:
-                await self._fire(datetime.now(tz=timezone.utc))
+                await self._fire(datetime.now(tz=UTC))
             except Exception:
                 logger.exception("morning_digest_fire_failed")
 
@@ -214,7 +214,10 @@ class MorningDigest:
                     duration_min = task.estimated_duration or 0
                     overdue_at = start + timedelta(minutes=duration_min + OVERDUE_BUFFER_MINUTES)
                     if now > overdue_at:
-                        overdue_tasks.append(f"- {task.title} (overdue since {overdue_at.strftime('%Y-%m-%d %H:%M')})")
+                        overdue_tasks.append(
+                            f"- {task.title} (overdue since "
+                            f"{overdue_at.strftime('%Y-%m-%d %H:%M')})"
+                        )
 
         # Cost summary from invocation_log.
         yesterday_cost = 0.0
@@ -239,10 +242,8 @@ class MorningDigest:
             logger.exception("morning_digest_cost_query_failed")
 
         monthly_budget = 100.0
-        try:
+        with contextlib.suppress(Exception):
             monthly_budget = self._router._models_config.cost.monthly_budget_usd
-        except Exception:
-            pass
 
         return {
             "current_date": today_start.strftime("%Y-%m-%d"),
@@ -277,7 +278,10 @@ class MorningDigest:
             data["overdue_tasks"],
             "",
             "**Cost Summary**",
-            f"Yesterday: ${data['yesterday_cost']} | Month-to-date: ${data['mtd_cost']} / ${data['monthly_budget']}",
+            (
+                f"Yesterday: ${data['yesterday_cost']} | "
+                f"Month-to-date: ${data['mtd_cost']} / ${data['monthly_budget']}"
+            ),
         ]
         text = "\n".join(lines)
         # Discord message limit.
@@ -313,7 +317,7 @@ def _parse_dt(value: str | None) -> datetime | None:
     try:
         dt = datetime.fromisoformat(value)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt
     except ValueError:
         return None

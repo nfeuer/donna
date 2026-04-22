@@ -15,7 +15,7 @@ Time constraint rules tested:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -29,9 +29,8 @@ from donna.config import (
     TimeWindowsConfig,
 )
 from donna.integrations.calendar import CalendarEvent
-from donna.scheduling.scheduler import NoSlotFoundError, ScheduledSlot, Scheduler
+from donna.scheduling.scheduler import NoSlotFoundError, Scheduler
 from donna.tasks.database import TaskRow
-
 
 # ------------------------------------------------------------------
 # Fixtures
@@ -114,7 +113,7 @@ def _make_task(
 
 
 def _utc(year: int, month: int, day: int, hour: int, minute: int = 0) -> datetime:
-    return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+    return datetime(year, month, day, hour, minute, tzinfo=UTC)
 
 
 def _event(
@@ -319,12 +318,14 @@ class TestNoSlot:
     def test_raises_when_horizon_exhausted(self, scheduler: Scheduler) -> None:
         """NoSlotFoundError is raised when no slot exists within the horizon."""
         # Use a very short horizon config
-        from donna.config import SchedulingConfig as SC
+        from donna.config import SchedulingConfig
 
         short_config = CalendarConfig(
             calendars=scheduler._config.calendars,
             sync=scheduler._config.sync,
-            scheduling=SC(slot_step_minutes=15, default_duration_minutes=60, search_horizon_days=1),
+            scheduling=SchedulingConfig(
+                slot_step_minutes=15, default_duration_minutes=60, search_horizon_days=1
+            ),
             time_windows=scheduler._config.time_windows,
             credentials=scheduler._config.credentials,
         )

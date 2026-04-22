@@ -51,7 +51,8 @@ class DraftAutomation:
 
 @dataclass
 class DispatchResult:
-    kind: str  # task_created | automation_confirmation_needed | clarification_posted | chat | no_action
+    # task_created | automation_confirmation_needed | clarification_posted | chat | no_action
+    kind: str
     task_id: str | None = None
     draft_automation: DraftAutomation | None = None
     clarifying_question: str | None = None
@@ -131,7 +132,7 @@ class DiscordIntentDispatcher:
                 fingerprint=fingerprint,
                 reasoning=reasoning,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             # logger.exception includes the full traceback by default.
             logger.exception(
                 "claude_native_pattern_write_failed",

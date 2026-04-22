@@ -1,8 +1,6 @@
 """Intent dispatcher applies cadence policy to drafts."""
 from __future__ import annotations
 
-import pathlib
-
 import pytest
 
 from donna.agents.challenger_agent import ChallengerMatchResult
@@ -66,7 +64,9 @@ async def test_draft_uses_policy_clamp_for_sandbox_capability(tmp_path) -> None:
     from dataclasses import dataclass
     @dataclass
     class M:
-        content: str; author_id: str = "u1"; thread_id: int | None = None
+        content: str
+        author_id: str = "u1"
+        thread_id: int | None = None
 
     out = await dispatcher.dispatch(M(content="watch x every 15 min"))
     assert out.kind == "automation_confirmation_needed"
@@ -107,7 +107,9 @@ async def test_draft_no_clamp_for_trusted_capability(tmp_path) -> None:
     from dataclasses import dataclass
     @dataclass
     class M:
-        content: str; author_id: str = "u1"; thread_id: int | None = None
+        content: str
+        author_id: str = "u1"
+        thread_id: int | None = None
 
     out = await dispatcher.dispatch(M(content="watch x every 15 min"))
     assert out.draft_automation.active_cadence_cron == "*/15 * * * *"  # no clamp

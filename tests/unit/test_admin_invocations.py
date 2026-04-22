@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
 
 from donna.api.routes.admin_invocations import get_invocation, list_invocations
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,7 +47,7 @@ def _make_invocation_row(**overrides: object) -> tuple:
 
 
 def _make_detail_row(**overrides: object) -> tuple:
-    """Build a row for get_invocation detail query (includes input_hash, output, eval_session_id)."""
+    """Build a row for get_invocation detail (includes input_hash, output, eval_session_id)."""
     defaults = {
         "id": "inv-001",
         "timestamp": "2026-04-01T10:00:00Z",
@@ -115,7 +114,7 @@ class TestListInvocations:
                 _cursor(fetchall=[_make_invocation_row()]),
             ]
         )
-        result = await list_invocations(request, task_type="parse_task")
+        await list_invocations(request, task_type="parse_task")
         # Verify SQL got the task_type param
         call_args = conn.execute.call_args_list[0]
         assert "task_type = ?" in call_args[0][0]

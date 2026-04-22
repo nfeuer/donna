@@ -65,7 +65,8 @@ async def test_log_writes_estimated_tokens_and_overflow_flag(tmp_path) -> None:
         )
 
         cursor = await conn.execute(
-            "SELECT estimated_tokens_in, overflow_escalated, tokens_in, latency_ms, model_alias FROM invocation_log WHERE id = ?",
+            "SELECT estimated_tokens_in, overflow_escalated, tokens_in, "
+            "latency_ms, model_alias FROM invocation_log WHERE id = ?",
             (inv_id,),
         )
         row = await cursor.fetchone()
@@ -99,7 +100,8 @@ async def test_log_defaults_for_missing_context_fields(tmp_path) -> None:
         )
 
         cursor = await conn.execute(
-            "SELECT estimated_tokens_in, overflow_escalated, tokens_in, latency_ms, model_alias FROM invocation_log WHERE id = ?",
+            "SELECT estimated_tokens_in, overflow_escalated, tokens_in, "
+            "latency_ms, model_alias FROM invocation_log WHERE id = ?",
             (inv_id,),
         )
         row = await cursor.fetchone()

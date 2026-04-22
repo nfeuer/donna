@@ -1,6 +1,8 @@
 """Tests for the extended register_default_tools signature in Wave 4."""
 from __future__ import annotations
 
+from datetime import UTC
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import pytest
@@ -30,14 +32,16 @@ def test_registers_gmail_tools_when_client_provided():
 
 @pytest.mark.asyncio
 async def test_registered_gmail_search_binds_the_client():
+    from datetime import datetime
     from unittest.mock import AsyncMock
 
-    from datetime import datetime, timezone
-
     class _FakeMsg:
-        id = "m1"; sender = "x@y"; subject = "s"; snippet = "sn"
-        date = datetime(2026, 4, 20, tzinfo=timezone.utc)
-        recipients = []
+        id = "m1"
+        sender = "x@y"
+        subject = "s"
+        snippet = "sn"
+        date = datetime(2026, 4, 20, tzinfo=UTC)
+        recipients: ClassVar[list] = []
 
     fake = MagicMock()
     fake.search_emails = AsyncMock(return_value=[_FakeMsg()])

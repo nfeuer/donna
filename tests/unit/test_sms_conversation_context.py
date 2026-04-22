@@ -16,7 +16,6 @@ import pytest
 from donna.config import SmsConfig, SmsConversationContextConfig
 from donna.integrations.sms_router import SmsRouter
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

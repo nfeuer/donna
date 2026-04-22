@@ -28,7 +28,9 @@ def models_config() -> ModelsConfig:
             "reasoner": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
         },
         routing={
-            "parse_task": RoutingEntry(model="parser", fallback="reasoner", confidence_threshold=0.7),
+            "parse_task": RoutingEntry(
+                model="parser", fallback="reasoner", confidence_threshold=0.7,
+            ),
             "classify_priority": RoutingEntry(model="parser"),
         },
     )
@@ -55,7 +57,7 @@ def router(models_config: ModelsConfig, task_types_config: TaskTypesConfig) -> M
 
 class TestRouteResolution:
     def test_parse_task_resolves_to_parser(self, router: ModelRouter) -> None:
-        provider, model_id, alias = router._resolve_route("parse_task")
+        _provider, model_id, alias = router._resolve_route("parse_task")
         assert alias == "parser"
         assert model_id == "claude-sonnet-4-20250514"
 
@@ -64,7 +66,7 @@ class TestRouteResolution:
             router._resolve_route("nonexistent_task")
 
     def test_classify_priority_resolves(self, router: ModelRouter) -> None:
-        provider, model_id, alias = router._resolve_route("classify_priority")
+        _provider, _model_id, alias = router._resolve_route("classify_priority")
         assert alias == "parser"
 
 

@@ -9,16 +9,13 @@ See docs/agents.md — Agent Execution Flow.
 
 from __future__ import annotations
 
-import json
 import time
-from pathlib import Path
 from typing import Any
 
 import structlog
 
-from donna.agents.base import AgentContext, AgentResult, ToolCallRecord
+from donna.agents.base import AgentContext, AgentResult
 from donna.models.router import ContextOverflowError
-from donna.models.validation import validate_output
 from donna.tasks.database import TaskRow
 
 logger = structlog.get_logger()
@@ -53,7 +50,7 @@ class PMAgent:
         prompt = self._build_assessment_prompt(task)
 
         try:
-            result, metadata = await context.router.complete(
+            result, _metadata = await context.router.complete(
                 prompt, task_type=_TASK_TYPE, user_id=context.user_id
             )
         except ContextOverflowError:

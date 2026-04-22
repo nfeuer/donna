@@ -1,7 +1,6 @@
 """Tests for EvolutionInputBuilder — TDD (tests written before implementation)."""
 
-import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -78,7 +77,7 @@ async def db(tmp_path: Path):
 
 
 async def _seed_minimal_skill(db):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO capability (id, name, description, input_schema, "
         "trigger_type, status, created_at, created_by) VALUES "
@@ -105,7 +104,7 @@ async def _seed_minimal_skill(db):
 
 async def test_builder_assembles_all_sections(db):
     await _seed_minimal_skill(db)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO skill_run (id, skill_id, skill_version_id, status, "
         "state_object, user_id, started_at) VALUES "
@@ -137,7 +136,7 @@ async def test_builder_assembles_all_sections(db):
 
 async def test_builder_caps_divergence_cases_at_max(db):
     await _seed_minimal_skill(db)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO skill_run (id, skill_id, skill_version_id, status, "
         "state_object, user_id, started_at) VALUES "
@@ -176,7 +175,7 @@ async def test_builder_skill_not_found(db):
 
 async def test_builder_includes_correction_log_rows(db):
     await _seed_minimal_skill(db)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         "INSERT INTO skill_run (id, skill_id, skill_version_id, status, "
         "state_object, user_id, started_at) VALUES "

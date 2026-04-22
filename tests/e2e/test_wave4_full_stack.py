@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Shared seed helpers
@@ -29,7 +28,7 @@ async def _seed_automation(
 ) -> str:
     """Insert a due automation row and return its id."""
     conn = runtime.db.connection
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     past = (now - timedelta(minutes=5)).isoformat()
     automation_id = str(uuid.uuid4())
     row_name = name or f"Test {capability}"

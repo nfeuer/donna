@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -27,7 +27,7 @@ from donna.integrations.calendar import GoogleCalendarClient
 from donna.notifications.service import NotificationService
 from donna.scheduling.dependency_resolver import topological_sort
 from donna.scheduling.priority_recalculator import PriorityRecalculator
-from donna.scheduling.scheduler import Scheduler, ScheduledSlot
+from donna.scheduling.scheduler import ScheduledSlot, Scheduler
 from donna.tasks.database import Database, TaskRow
 
 logger = structlog.get_logger()
@@ -90,7 +90,7 @@ class WeeklyPlanner:
         )
 
         while True:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             next_fire = _next_monday_fire(now, self._fire_hour, self._fire_minute)
             wait_seconds = (next_fire - now).total_seconds()
 
@@ -102,7 +102,7 @@ class WeeklyPlanner:
             await asyncio.sleep(max(wait_seconds, 0))
 
             try:
-                await self._fire(datetime.now(tz=timezone.utc))
+                await self._fire(datetime.now(tz=UTC))
             except Exception:
                 logger.exception("weekly_planner_fire_failed", user_id=self._user_id)
 
@@ -211,7 +211,7 @@ class WeeklyPlanner:
                 try:
                     dl = datetime.fromisoformat(task.deadline)
                     if dl.tzinfo is None:
-                        dl = dl.replace(tzinfo=timezone.utc)
+                        dl = dl.replace(tzinfo=UTC)
                     if dl <= week_end:
                         candidates.append(task)
                         continue
@@ -225,7 +225,7 @@ class WeeklyPlanner:
             try:
                 created = datetime.fromisoformat(task.created_at)
                 if created.tzinfo is None:
-                    created = created.replace(tzinfo=timezone.utc)
+                    created = created.replace(tzinfo=UTC)
                 if created <= stale_cutoff:
                     candidates.append(task)
             except (ValueError, TypeError):
@@ -266,7 +266,7 @@ class WeeklyPlanner:
         Returns True if the reply was handled (matched a pending proposal),
         False if no pending proposal exists.
         """
-        now = now or datetime.now(tz=timezone.utc)
+        now = now or datetime.now(tz=UTC)
 
         # Expire old proposals.
         expired = [pid for pid, p in self._pending.items() if p["expires_at"] < now]
@@ -291,7 +291,7 @@ class WeeklyPlanner:
             tasks = proposal["tasks"]
             slots = proposal["slots"]
             new_pairs = [
-                (t, s) for t, s in zip(tasks, slots)
+                (t, s) for t, s in zip(tasks, slots, strict=False)
                 if skip_title.lower() not in t.title.lower()
             ]
             proposal["tasks"] = [t for t, _ in new_pairs]
@@ -320,7 +320,7 @@ class WeeklyPlanner:
         tasks: list[TaskRow] = proposal["tasks"]
         slots: list[ScheduledSlot] = proposal["slots"]
 
-        for task, slot in zip(tasks, slots):
+        for task, slot in zip(tasks, slots, strict=False):
             try:
                 event = await self._calendar_client.create_event(
                     calendar_id=self._calendar_id,

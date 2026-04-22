@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import hashlib
 from collections import deque
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import discord
 import structlog
@@ -60,8 +61,8 @@ class NotificationService:
         bot: BotProtocol,
         calendar_config: CalendarConfig,
         user_id: str,
-        sms: "TwilioSMS | None" = None,
-        gmail: "GmailClient | None" = None,
+        sms: TwilioSMS | None = None,
+        gmail: GmailClient | None = None,
         digest_max_chars: int = DIGEST_MAX_CHARS_DEFAULT,
     ) -> None:
         self._bot = bot
@@ -119,7 +120,7 @@ class NotificationService:
         Returns:
             True if the message was sent immediately, False if queued/blocked.
         """
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         if notification_type in (NOTIF_DIGEST, NOTIF_AUTOMATION_ALERT):
             content = self._truncate_for_channel(content, self._digest_max_chars)
         content_hash = hashlib.md5(content.encode(), usedforsecurity=False).hexdigest()[:8]
@@ -205,7 +206,7 @@ class NotificationService:
             logger.warning("sms_dispatch_skipped_no_client", user_id=self._user_id)
             return False
 
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
 
         if self._is_blackout(now):
             logger.info("sms_blocked_blackout", user_id=self._user_id)
@@ -242,7 +243,7 @@ class NotificationService:
             logger.warning("email_dispatch_skipped_no_client", user_id=self._user_id)
             return False
 
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
 
         if self._is_blackout(now):
             logger.info("email_blocked_blackout", user_id=self._user_id)

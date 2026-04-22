@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import aiosqlite
@@ -29,12 +28,14 @@ async def db_with_seed_caps(tmp_path: Path):
             created_by TEXT, changelog TEXT, created_at TEXT
         );
     """)
-    await conn.execute("""
-        INSERT INTO capability (id, name, description, input_schema, trigger_type, status, created_at, created_by)
-        VALUES ('seed-parse_task', 'parse_task', 'Extract structured task fields',
-                '{"type": "object", "properties": {"raw_text": {"type": "string"}}}',
-                'on_message', 'active', '2026-04-15T00:00:00+00:00', 'seed')
-    """)
+    await conn.execute(
+        "INSERT INTO capability "
+        "(id, name, description, input_schema, trigger_type, status, "
+        "created_at, created_by) "
+        "VALUES ('seed-parse_task', 'parse_task', 'Extract structured task fields', "
+        "'{\"type\": \"object\", \"properties\": {\"raw_text\": {\"type\": \"string\"}}}', "
+        "'on_message', 'active', '2026-04-15T00:00:00+00:00', 'seed')"
+    )
     await conn.commit()
     yield conn
     await conn.close()
@@ -67,7 +68,9 @@ async def test_initialize_is_idempotent(db_with_seed_caps, tmp_path):
     await initialize_skill_system(db_with_seed_caps, skills_dir)
     await initialize_skill_system(db_with_seed_caps, skills_dir)
 
-    cursor = await db_with_seed_caps.execute("SELECT COUNT(*) FROM skill WHERE capability_name = 'parse_task'")
+    cursor = await db_with_seed_caps.execute(
+        "SELECT COUNT(*) FROM skill WHERE capability_name = 'parse_task'",
+    )
     count = (await cursor.fetchone())[0]
     assert count == 1
 

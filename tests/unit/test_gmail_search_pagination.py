@@ -1,7 +1,7 @@
 """Unit test: gmail_search accepts page_token + returns next_page_token."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -21,7 +21,7 @@ class _FakeClient:
         return [
             SimpleNamespace(
                 id="m1", sender="s", subject="t", snippet="sn",
-                date=datetime(2026, 4, 19, tzinfo=timezone.utc),
+                date=datetime(2026, 4, 19, tzinfo=UTC),
             )
         ]
 

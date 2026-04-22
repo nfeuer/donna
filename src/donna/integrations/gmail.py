@@ -23,7 +23,7 @@ import asyncio
 import base64
 import dataclasses
 import email as email_lib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.mime.text import MIMEText
 from typing import Any
 
@@ -330,11 +330,11 @@ def _extract_body_text(payload: dict[str, Any]) -> str:
 def _parse_date(value: str) -> datetime:
     """Parse an RFC 2822 date string to UTC-aware datetime, or return epoch."""
     if not value:
-        return datetime.min.replace(tzinfo=timezone.utc)
+        return datetime.min.replace(tzinfo=UTC)
     try:
         parsed = email_lib.utils.parsedate_to_datetime(value)
         if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
+            return parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
     except Exception:
-        return datetime.min.replace(tzinfo=timezone.utc)
+        return datetime.min.replace(tzinfo=UTC)

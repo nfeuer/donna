@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import pytest
 
-
 ARTICLE_HTML = """
 <html><head><title>My Article</title></head>
 <body>

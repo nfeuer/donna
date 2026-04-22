@@ -6,13 +6,10 @@ Discord connections, or database access.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 from donna.notifications.reminders import REMINDER_LEAD_MINUTES, ReminderScheduler
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -20,7 +17,7 @@ from donna.notifications.reminders import REMINDER_LEAD_MINUTES, ReminderSchedul
 
 
 def _utc(hour: int, minute: int = 0, day: int = 20) -> datetime:
-    return datetime(2026, 3, day, hour, minute, tzinfo=timezone.utc)
+    return datetime(2026, 3, day, hour, minute, tzinfo=UTC)
 
 
 def _task(
@@ -150,7 +147,10 @@ class TestReminderFormat:
         now = _utc(9, 0)
         start = now + timedelta(minutes=14)
         db.list_tasks = AsyncMock(
-            return_value=[_task(title="Write report", estimated_duration=45, scheduled_start=start.isoformat())]
+            return_value=[_task(
+                title="Write report", estimated_duration=45,
+                scheduled_start=start.isoformat(),
+            )]
         )
 
         await sched._check_and_send(now)

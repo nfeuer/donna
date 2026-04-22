@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import time
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +48,9 @@ class SupabaseSync:
         # Pending queue for reconcile on recovery.
         self._pending: list[dict[str, Any]] = []
         self._lock = asyncio.Lock()
+        # Keep strong references to fire-and-forget push tasks so they
+        # are not garbage-collected before completing.
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     @property
     def configured(self) -> bool:
@@ -63,7 +65,9 @@ class SupabaseSync:
         """
         if not self.configured:
             return
-        asyncio.create_task(self._push_with_retry(task))
+        bg_task = asyncio.create_task(self._push_with_retry(task))
+        self._background_tasks.add(bg_task)
+        bg_task.add_done_callback(self._background_tasks.discard)
 
     async def reconcile(self) -> None:
         """Push all pending (failed) tasks to Supabase.
@@ -100,13 +104,15 @@ class SupabaseSync:
                     "Authorization": f"Bearer {self._key}",
                 }
                 url = f"{self._url}/rest/v1/"
-                async with aiohttp.ClientSession() as session:
-                    async with session.head(url, headers=headers) as resp:
-                        logger.info(
-                            "supabase_keepalive",
-                            event_type="sync.supabase.keepalive",
-                            status=resp.status,
-                        )
+                async with (
+                    aiohttp.ClientSession() as session,
+                    session.head(url, headers=headers) as resp,
+                ):
+                    logger.info(
+                        "supabase_keepalive",
+                        event_type="sync.supabase.keepalive",
+                        status=resp.status,
+                    )
             except Exception as exc:
                 logger.warning(
                     "supabase_keepalive_failed",
@@ -153,13 +159,15 @@ class SupabaseSync:
         }
         url = f"{self._url}/rest/v1/tasks"
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=task, headers=headers) as resp:
-                if resp.status not in (200, 201, 409):
-                    body = await resp.text()
-                    raise RuntimeError(
-                        f"Supabase push failed: HTTP {resp.status} — {body[:200]}"
-                    )
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(url, json=task, headers=headers) as resp,
+        ):
+            if resp.status not in (200, 201, 409):
+                body = await resp.text()
+                raise RuntimeError(
+                    f"Supabase push failed: HTTP {resp.status} — {body[:200]}"
+                )
 
         logger.info(
             "supabase_push_ok",

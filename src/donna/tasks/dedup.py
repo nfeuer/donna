@@ -11,7 +11,6 @@ Thresholds (from slice_06_dedup_cost.md):
 
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 from pathlib import Path
 

@@ -142,7 +142,9 @@ class SmsRouter:
         """Append user reply to context and slide the TTL."""
         conn = self._db.connection  # type: ignore[attr-defined]
         now = datetime.now(tz=UTC)
-        new_expires = (now + timedelta(hours=self._config.conversation_context.sliding_ttl_hours)).isoformat()
+        new_expires = (
+            now + timedelta(hours=self._config.conversation_context.sliding_ttl_hours)
+        ).isoformat()
 
         # Fetch current responses_received and append.
         cursor = await conn.execute(

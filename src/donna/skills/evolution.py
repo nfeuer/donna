@@ -6,10 +6,12 @@ runs four validation gates, persists or rejects.
 
 from __future__ import annotations
 
+import contextlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime
+from typing import Any
 
 import aiosqlite
 import structlog
@@ -38,7 +40,8 @@ TASK_TYPE = "skill_evolution"
 @dataclass(slots=True)
 class EvolutionReport:
     skill_id: str
-    outcome: str        # success | rejected_validation | malformed_output | budget_exhausted | skipped | error
+    # success | rejected_validation | malformed_output | budget_exhausted | skipped | error
+    outcome: str
     new_version_id: str | None = None
     rationale: str | None = None
     # Populated when an LLM evolution call completed; zero/None for early-exit outcomes
@@ -235,16 +238,14 @@ class Evolver:
         )
         if to_state == SkillState.SANDBOX:
             # For non-gated skills, also flip draft → sandbox.
-            try:
+            # draft → sandbox requires human_approval in the table.
+            # For automated evolution path, we accept the skill staying in draft.
+            with contextlib.suppress(IllegalTransitionError):
                 await self._lifecycle.transition(
                     skill_id=skill_id, to_state=SkillState.SANDBOX,
                     reason="gate_passed", actor="system",
                     notes=f"evolution {new_version_id}",
                 )
-            except IllegalTransitionError:
-                # draft → sandbox requires human_approval in the table.
-                # For automated evolution path, we accept the skill staying in draft.
-                pass
 
         await self._log_repo.record(
             skill_id=skill_id,
@@ -346,7 +347,7 @@ class Evolver:
         changelog: str,
     ) -> str:
         new_version_id = str(uuid6.uuid7())
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         cursor = await self._conn.execute(
             "SELECT COALESCE(MAX(version_number), 0) "
             "FROM skill_version WHERE skill_id = ?",

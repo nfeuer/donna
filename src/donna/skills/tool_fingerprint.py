@@ -13,8 +13,7 @@ args (tokens, nonces, timestamps) that should be ignored.
 from __future__ import annotations
 
 import json
-from typing import Callable
-
+from collections.abc import Callable
 
 _RULES: dict[str, Callable[[dict], dict]] = {
     "web_fetch": lambda args: {"url": args["url"]},

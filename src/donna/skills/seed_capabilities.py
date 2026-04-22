@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -28,7 +28,7 @@ class SeedCapabilityLoader:
             data = yaml.safe_load(f) or {}
         entries = data.get("capabilities", []) or []
         upserted = 0
-        now = datetime.now(tz=timezone.utc).isoformat()
+        now = datetime.now(tz=UTC).isoformat()
         for entry in entries:
             name = entry.get("name")
             if not name:

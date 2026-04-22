@@ -2,15 +2,14 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from donna.llm.alerter import GatewayAlerter
 from donna.llm.queue import LLMQueueWorker
 from donna.llm.rate_limiter import RateLimiter
-from donna.llm.types import GatewayConfig, Priority, QueueItem
+from donna.llm.types import GatewayConfig, Priority
 from donna.models.types import CompletionMetadata
 
 
@@ -242,7 +241,7 @@ class TestQueueGetItem:
             rate_limiter=RateLimiter(10, 100, {}),
         )
 
-        future = await worker.enqueue_external(
+        await worker.enqueue_external(
             prompt="full prompt text here", model="m", max_tokens=100,
             json_mode=True, caller="test", allow_cloud=False,
         )

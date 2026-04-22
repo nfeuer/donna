@@ -4,9 +4,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-import pytest
-
-from donna.llm.types import GatewayConfig, Priority, load_gateway_config
+from donna.llm.types import Priority, load_gateway_config
 
 
 class TestPriority:

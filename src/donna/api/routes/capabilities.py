@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from donna.capabilities.models import CapabilityRow, SELECT_CAPABILITY, row_to_capability
+from donna.capabilities.models import SELECT_CAPABILITY, CapabilityRow, row_to_capability
 
 router = APIRouter()
 
@@ -35,7 +35,8 @@ async def list_capabilities(
 
     if status is not None:
         cursor = await conn.execute(
-            f"SELECT {SELECT_CAPABILITY} FROM capability WHERE status = ? ORDER BY created_at DESC LIMIT ?",
+            f"SELECT {SELECT_CAPABILITY} FROM capability WHERE status = ? "
+            "ORDER BY created_at DESC LIMIT ?",
             (status, limit),
         )
     else:

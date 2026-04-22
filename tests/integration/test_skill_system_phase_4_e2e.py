@@ -8,7 +8,7 @@ Verifies spec Phase 4 handoff contract (AS-4.1 through AS-4.5):
   AS-4.5: CorrectionClusterDetector flags trusted skill immediately.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -21,7 +21,6 @@ from donna.skills.correction_cluster import CorrectionClusterDetector
 from donna.skills.degradation import DegradationDetector
 from donna.skills.divergence import SkillDivergenceRepository
 from donna.skills.evolution import Evolver
-from donna.skills.evolution_log import SkillEvolutionLogRepository
 from donna.skills.lifecycle import SkillLifecycleManager
 
 
@@ -131,7 +130,7 @@ def _valid_llm_output() -> dict:
 
 
 async def _seed_skill(conn, *, skill_id, state, baseline_agreement=0.9):
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await conn.execute(
         "INSERT OR REPLACE INTO capability (id, name, description, input_schema, "
         "trigger_type, status, created_at, created_by) VALUES "
@@ -164,7 +163,7 @@ async def test_as_4_1_degradation_flags_skill(phase4_db):
     await _seed_skill(phase4_db, skill_id="s1", state="trusted",
                       baseline_agreement=0.9)
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await phase4_db.execute(
         "INSERT INTO skill_run (id, skill_id, skill_version_id, status, "
         "state_object, user_id, started_at) VALUES "
@@ -211,7 +210,7 @@ async def test_as_4_2_save_resets_baseline(phase4_db):
     await _seed_skill(phase4_db, skill_id="s1", state="flagged_for_review",
                       baseline_agreement=0.95)
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await phase4_db.execute(
         "INSERT INTO skill_run (id, skill_id, skill_version_id, status, "
         "state_object, user_id, started_at) VALUES "
@@ -270,7 +269,7 @@ async def test_as_4_3_approve_evolution_generates_new_version(phase4_db):
     await _seed_skill(phase4_db, skill_id="s1", state="flagged_for_review",
                       baseline_agreement=0.9)
     # Seed 20 divergences for the input builder.
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await phase4_db.execute(
         "INSERT INTO skill_run (id, skill_id, skill_version_id, status, "
         "state_object, user_id, started_at) VALUES "
@@ -330,7 +329,7 @@ async def test_as_4_3_approve_evolution_generates_new_version(phase4_db):
 async def test_as_4_4_two_failures_demote_to_claude_native(phase4_db):
     await _seed_skill(phase4_db, skill_id="s1", state="degraded")
     # Seed prior rejection in the log.
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await phase4_db.execute(
         "INSERT INTO skill_evolution_log (id, skill_id, from_version_id, "
         "to_version_id, triggered_by, claude_invocation_id, diagnosis, "
@@ -396,7 +395,7 @@ async def test_as_4_4_two_failures_demote_to_claude_native(phase4_db):
 async def test_as_4_5_correction_cluster_flags_immediately(phase4_db):
     await _seed_skill(phase4_db, skill_id="s1", state="trusted")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     for i in range(10):
         await phase4_db.execute(
             "INSERT INTO skill_run (id, skill_id, skill_version_id, status, "

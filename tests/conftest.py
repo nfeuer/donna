@@ -241,8 +241,8 @@ async def auth_test_app(tmp_path):
         BootstrapSettings,
         DeviceTokenSettings,
         EmailSettings,
-        IPGateConfig,
         ImmichSettings,
+        IPGateConfig,
         RateLimit,
     )
 

@@ -6,14 +6,11 @@ No real Discord, DB, calendar, or LLM connections.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, MagicMock
 
 from donna.notifications.digest import MorningDigest, _next_fire_time, _render_template
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -21,7 +18,7 @@ from donna.notifications.digest import MorningDigest, _next_fire_time, _render_t
 
 
 def _utc(hour: int, minute: int = 0, day: int = 20) -> datetime:
-    return datetime(2026, 3, day, hour, minute, tzinfo=timezone.utc)
+    return datetime(2026, 3, day, hour, minute, tzinfo=UTC)
 
 
 def _make_task(
@@ -44,12 +41,17 @@ def _make_task(
     return t
 
 
-def _make_digest(project_root: Path | None = None) -> tuple[MorningDigest, AsyncMock, AsyncMock, AsyncMock, MagicMock]:
+def _make_digest(
+    project_root: Path | None = None,
+) -> tuple[MorningDigest, AsyncMock, AsyncMock, AsyncMock, MagicMock]:
     db = AsyncMock()
     service = AsyncMock()
     service.dispatch = AsyncMock(return_value=True)
     router = AsyncMock()
-    router.complete = AsyncMock(return_value=({"digest_text": "Good morning! Here is your day."}, MagicMock()))
+    router.complete = AsyncMock(return_value=(
+        {"digest_text": "Good morning! Here is your day."},
+        MagicMock(),
+    ))
     router._models_config = MagicMock()
     router._models_config.cost.monthly_budget_usd = 100.0
 
@@ -124,7 +126,7 @@ class TestRenderTemplate:
 
 class TestAssembleData:
     async def test_tasks_due_today_included(self) -> None:
-        digest, db, service, router, cal = _make_digest()
+        digest, db, _service, _router, _cal = _make_digest()
         now = _utc(7, 0)  # 7 AM on 2026-03-20
         today_iso = "2026-03-20"
 
@@ -135,10 +137,10 @@ class TestAssembleData:
         assert "Submit report" in data["tasks_due_today"]
 
     async def test_done_tasks_excluded_from_overdue(self) -> None:
-        digest, db, service, router, cal = _make_digest()
+        digest, db, _service, _router, _cal = _make_digest()
         now = _utc(12, 0)
         # Task started yesterday 9 AM, duration 30 min → well overdue, but done
-        start = datetime(2026, 3, 19, 9, 0, tzinfo=timezone.utc)
+        start = datetime(2026, 3, 19, 9, 0, tzinfo=UTC)
         task_done = _make_task(
             title="Done task",
             status="done",
@@ -151,9 +153,9 @@ class TestAssembleData:
         assert "Done task" not in data["overdue_tasks"]
 
     async def test_carryover_tasks_from_yesterday(self) -> None:
-        digest, db, service, router, cal = _make_digest()
+        digest, db, _service, _router, _cal = _make_digest()
         now = _utc(7, 0)  # 2026-03-20 7 AM
-        yesterday_start = datetime(2026, 3, 19, 10, 0, tzinfo=timezone.utc)
+        yesterday_start = datetime(2026, 3, 19, 10, 0, tzinfo=UTC)
         task = _make_task(
             title="Pending carryover",
             status="scheduled",
@@ -165,7 +167,7 @@ class TestAssembleData:
         assert "Pending carryover" in data["carryover_tasks"]
 
     async def test_cost_summary_present(self) -> None:
-        digest, db, service, router, cal = _make_digest()
+        digest, _db, _service, _router, _cal = _make_digest()
         now = _utc(7, 0)
 
         data = await digest._assemble_data(now)
@@ -188,7 +190,7 @@ class TestFireLLMPath:
             "Today: {{ current_date }}\n{{ calendar_events }}"
         )
 
-        digest, db, service, router, cal = _make_digest(project_root=tmp_path)
+        digest, _db, service, _router, _cal = _make_digest(project_root=tmp_path)
 
         now = _utc(6, 30)
         await digest._fire(now)
@@ -203,7 +205,7 @@ class TestFireLLMPath:
         prompts_dir.mkdir()
         (prompts_dir / "morning_digest.md").write_text("Today: {{ current_date }}")
 
-        digest, db, service, router, cal = _make_digest(project_root=tmp_path)
+        digest, _db, service, router, _cal = _make_digest(project_root=tmp_path)
         router.complete = AsyncMock(side_effect=RuntimeError("API down"))
 
         now = _utc(6, 30)

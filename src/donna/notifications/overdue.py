@@ -17,7 +17,8 @@ See slices/slice_05_reminders_digest.md and docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import structlog
 
@@ -27,8 +28,6 @@ from donna.notifications.service import CHANNEL_TASKS, NOTIF_OVERDUE, Notificati
 from donna.scheduling.scheduler import Scheduler
 from donna.tasks.database import Database
 from donna.tasks.db_models import TaskStatus
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from donna.models.router import ModelRouter
@@ -82,7 +81,7 @@ class OverdueDetector:
         )
 
         while True:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=UTC)
             today_str = now.date().isoformat()
 
             # Reset nudge set daily.
@@ -246,41 +245,42 @@ class OverdueDetector:
         else:
             logger.info("overdue_reply_unrecognised", task_id=task_id, reply=reply[:50])
 
-    async def _mark_done(self, task_id: str, task: object) -> None:  # noqa: ANN001
+    async def _mark_done(self, task_id: str, task: object) -> None:
         """Transition task → in_progress → done and set completed_at."""
-        from donna.tasks.db_models import TaskStatus as TS
-
         current_status = getattr(task, "status", "")
-        if current_status != TS.IN_PROGRESS.value:
+        if current_status != TaskStatus.IN_PROGRESS.value:
             try:
-                await self._db.transition_task_state(task_id, TS.IN_PROGRESS)
+                await self._db.transition_task_state(task_id, TaskStatus.IN_PROGRESS)
             except Exception:
-                logger.exception("overdue_mark_done_transition_to_in_progress_failed", task_id=task_id)
+                logger.exception(
+                    "overdue_mark_done_transition_to_in_progress_failed", task_id=task_id,
+                )
                 return
 
         try:
-            await self._db.transition_task_state(task_id, TS.DONE)
+            await self._db.transition_task_state(task_id, TaskStatus.DONE)
             await self._db.update_task(task_id, completed_at=datetime.now(UTC))
             logger.info("overdue_task_marked_done", task_id=task_id)
         except Exception:
             logger.exception("overdue_mark_done_failed", task_id=task_id)
 
-    async def _reschedule(self, task_id: str, task: object) -> None:  # noqa: ANN001
+    async def _reschedule(self, task_id: str, task: object) -> None:
         """Transition task → in_progress → scheduled and find next slot."""
         from donna.integrations.calendar import GoogleCalendarClient
-        from donna.tasks.db_models import TaskStatus as TS
 
         current_status = getattr(task, "status", "")
-        if current_status != TS.IN_PROGRESS.value:
+        if current_status != TaskStatus.IN_PROGRESS.value:
             try:
-                await self._db.transition_task_state(task_id, TS.IN_PROGRESS)
+                await self._db.transition_task_state(task_id, TaskStatus.IN_PROGRESS)
             except Exception:
-                logger.exception("overdue_reschedule_transition_in_progress_failed", task_id=task_id)
+                logger.exception(
+                    "overdue_reschedule_transition_in_progress_failed", task_id=task_id,
+                )
                 return
 
         try:
             # Transition to scheduled before scheduler assigns a new slot.
-            await self._db.transition_task_state(task_id, TS.SCHEDULED)
+            await self._db.transition_task_state(task_id, TaskStatus.SCHEDULED)
         except Exception:
             logger.exception("overdue_reschedule_transition_scheduled_failed", task_id=task_id)
             return
@@ -314,7 +314,7 @@ def _parse_dt(value: str | None) -> datetime | None:
     try:
         dt = datetime.fromisoformat(value)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt
     except ValueError:
         return None

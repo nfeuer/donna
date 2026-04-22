@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from donna.skills.runs import (
-    SkillRunRow, SkillStepResultRow,
-    row_to_skill_run, row_to_step_result,
+    SkillRunRow,
+    row_to_skill_run,
+    row_to_step_result,
 )
 
 
@@ -14,8 +15,8 @@ def test_skill_run_row_basic():
         state_object={"extract": {"title": "x"}}, tool_result_cache=None,
         final_output={"title": "x"}, escalation_reason=None, error=None,
         user_id="nick",
-        started_at=datetime.now(timezone.utc),
-        finished_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
     )
     assert row.status == "succeeded"
 

@@ -88,7 +88,10 @@ def render_value(
                     return result
         return _JINJA.from_string(value).render(**wrapped)
     if isinstance(value, dict):
-        return {k: render_value(v, context, preserve_types=preserve_types) for k, v in value.items()}
+        return {
+            k: render_value(v, context, preserve_types=preserve_types)
+            for k, v in value.items()
+        }
     if isinstance(value, list):
         return [render_value(v, context, preserve_types=preserve_types) for v in value]
     return value

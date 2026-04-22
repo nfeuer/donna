@@ -1,7 +1,7 @@
 """Wave 3 extensions to ChallengerMatchResult shape."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -39,7 +39,7 @@ def test_result_with_automation_fields() -> None:
 
 
 def test_result_with_task_fields() -> None:
-    deadline = datetime(2026, 4, 24, tzinfo=timezone.utc)
+    deadline = datetime(2026, 4, 24, tzinfo=UTC)
     r = ChallengerMatchResult(status="ready", intent_kind="task", deadline=deadline)
     assert r.deadline == deadline
 
@@ -66,7 +66,7 @@ def _product_watch_cap() -> CapabilityRow:
         default_output_shape=None,
         status="active",
         embedding=None,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         created_by="seed",
         notes=None,
     )
@@ -79,7 +79,9 @@ class _FakeRouter:
         self.calls: list[tuple[str, str]] = []
         self.prompts: list[str] = []
 
-    async def complete(self, prompt, *, task_type, user_id, schema=None, model_alias=None, **kwargs):
+    async def complete(
+        self, prompt, *, task_type, user_id, schema=None, model_alias=None, **kwargs,
+    ):
         self.calls.append((task_type, user_id))
         self.prompts.append(prompt)
         return self._response, {"cost_usd": 0.0, "latency_ms": 50}

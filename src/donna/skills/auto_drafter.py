@@ -28,9 +28,10 @@ validation through the sandbox.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Any
 
 import aiosqlite
 import structlog
@@ -434,7 +435,7 @@ class AutoDrafter:
         ]
 
         # Build in-memory SkillRow + SkillVersionRow — NOT persisted.
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         temp_skill_id = str(uuid6.uuid7())
         temp_version_id = str(uuid6.uuid7())
         temp_skill = SkillRow(
@@ -491,7 +492,7 @@ class AutoDrafter:
         if existing is not None:
             return existing[0]
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         skill_id = str(uuid6.uuid7())
         version_id = str(uuid6.uuid7())
 
@@ -584,7 +585,7 @@ async def _persist_fixture(
             json.dumps(expected_output_shape) if expected_output_shape else None,
             source,
             captured_run_id,
-            datetime.now(tz=timezone.utc).isoformat(),
+            datetime.now(tz=UTC).isoformat(),
             json.dumps(tool_mocks) if tool_mocks else None,
         ),
     )

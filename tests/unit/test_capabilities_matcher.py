@@ -1,13 +1,13 @@
-from unittest.mock import AsyncMock
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import aiosqlite
 import pytest
 
-from donna.capabilities.matcher import CapabilityMatcher, MatchConfidence, MatchResult
+from donna.capabilities.matcher import CapabilityMatcher, MatchConfidence
 from donna.capabilities.models import CapabilityRow
-from donna.capabilities.registry import CapabilityRegistry, CapabilityInput
+from donna.capabilities.registry import CapabilityInput, CapabilityRegistry
 
 
 def _cap(name: str) -> CapabilityRow:
@@ -15,7 +15,7 @@ def _cap(name: str) -> CapabilityRow:
         id="id-" + name, name=name, description="desc " + name,
         input_schema={}, trigger_type="on_message", default_output_shape=None,
         status="active", embedding=None,
-        created_at=datetime.now(timezone.utc), created_by="seed", notes=None,
+        created_at=datetime.now(UTC), created_by="seed", notes=None,
     )
 
 
@@ -30,7 +30,10 @@ async def test_high_confidence_match():
 
 async def test_medium_confidence_match():
     registry = AsyncMock()
-    registry.semantic_search.return_value = [(_cap("news_check"), 0.55), (_cap("product_watch"), 0.40)]
+    registry.semantic_search.return_value = [
+        (_cap("news_check"), 0.55),
+        (_cap("product_watch"), 0.40),
+    ]
     matcher = CapabilityMatcher(registry)
     result = await matcher.match("keep tabs on current events")
     assert result.confidence == MatchConfidence.MEDIUM

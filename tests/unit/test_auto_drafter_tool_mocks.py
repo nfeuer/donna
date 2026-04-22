@@ -37,7 +37,7 @@ def test_extract_draft_payload_reads_tool_mocks() -> None:
         ],
     }
 
-    skill_yaml, step_prompts, output_schemas, fixtures = (
+    skill_yaml, _step_prompts, _output_schemas, fixtures = (
         AutoDrafter._extract_draft_payload(parsed)
     )
     assert skill_yaml is not None

@@ -5,7 +5,6 @@ Tests backup creation (valid SQLite copy) and retention rotation.
 
 from __future__ import annotations
 
-import asyncio
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,8 +12,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from donna.resilience.backup import BackupManager, _parse_backup_datetime, _prune
-
+from donna.resilience.backup import BackupManager
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -60,7 +58,9 @@ class TestBackupDatabase:
         assert rows == [(1,)], "Backup should contain the same data as source"
 
     @pytest.mark.asyncio
-    async def test_backup_logs_completed_event(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_backup_logs_completed_event(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+    ) -> None:
         """backup_database() logs a system.backup.completed event."""
         src = tmp_path / "source.db"
         backup_dir = tmp_path / "backups"

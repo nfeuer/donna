@@ -11,12 +11,13 @@ import asyncio
 import json
 import pathlib
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
-from alembic import command
 from alembic.config import Config
 
+from alembic import command
 
 # ---------------------------------------------------------------------------
 # Schema loader — used by FakeRouter.get_output_schema so Wave 3 agents that
@@ -65,7 +66,9 @@ class FakeOllama:
         self.canned = canned or {}
         self.invocations: list[_Invocation] = []
 
-    async def complete(self, *, task_type: str, prompt: str | None = None, **_kw) -> tuple[dict, Any]:
+    async def complete(
+        self, *, task_type: str, prompt: str | None = None, **_kw,
+    ) -> tuple[dict, Any]:
         output = dict(self.canned.get(task_type, {"_default": True}))
         self.invocations.append(_Invocation(task_type=task_type, prompt=prompt, output=output))
 
@@ -82,7 +85,9 @@ class FakeClaude:
         self.canned = canned or {}
         self.invocations: list[_Invocation] = []
 
-    async def complete(self, *, task_type: str, prompt: str | None = None, **_kw) -> tuple[dict, Any]:
+    async def complete(
+        self, *, task_type: str, prompt: str | None = None, **_kw,
+    ) -> tuple[dict, Any]:
         output = dict(self.canned.get(task_type, {"_default": True}))
         self.invocations.append(_Invocation(task_type=task_type, prompt=prompt, output=output))
 
@@ -187,19 +192,21 @@ class Wave1Runtime:
 
 async def build_wave1_test_runtime(tmp_path: Path, **overrides) -> Wave1Runtime:
     """Build a fully-wired Wave 1 runtime backed by a throwaway SQLite DB."""
-    from donna.tasks.database import Database
-    from donna.tasks.state_machine import StateMachine
-    from donna.config import (
-        load_calendar_config, load_state_machine_config, SkillSystemConfig,
-    )
-    from donna.notifications.service import NotificationService
-    from donna.cost.tracker import CostTracker
-    from donna.skills.startup_wiring import assemble_skill_system
     from donna.automations.alert import AlertEvaluator
     from donna.automations.cron import CronScheduleCalculator
     from donna.automations.dispatcher import AutomationDispatcher
     from donna.automations.repository import AutomationRepository
     from donna.automations.scheduler import AutomationScheduler
+    from donna.config import (
+        SkillSystemConfig,
+        load_calendar_config,
+        load_state_machine_config,
+    )
+    from donna.cost.tracker import CostTracker
+    from donna.notifications.service import NotificationService
+    from donna.skills.startup_wiring import assemble_skill_system
+    from donna.tasks.database import Database
+    from donna.tasks.state_machine import StateMachine
 
     db_path = tmp_path / "e2e.db"
     cfg = Config("alembic.ini")
@@ -315,7 +322,7 @@ class _SkillLifecycleStateAdapter:
                 (capability_name,),
             )
             row = await cursor.fetchone()
-        except Exception:  # noqa: BLE001 — defensive; fall back to claude_native
+        except Exception:
             return "claude_native"
         if row is None:
             return "claude_native"
@@ -359,10 +366,10 @@ class _SchedulerComputeNextRun:
         self._cron = CronScheduleCalculator()
 
     async def compute_next_run(self, cron: str):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         return self._cron.next_run(
-            expression=cron, after=datetime.now(timezone.utc)
+            expression=cron, after=datetime.now(UTC)
         )
 
 

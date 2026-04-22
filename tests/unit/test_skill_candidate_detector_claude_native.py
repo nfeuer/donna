@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -84,7 +84,7 @@ async def _seed_invocation(
     cost: float,
     days_ago: float = 1,
 ) -> None:
-    ts = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    ts = (datetime.now(UTC) - timedelta(days=days_ago)).isoformat()
     await conn.execute(
         """
         INSERT INTO invocation_log
@@ -119,7 +119,7 @@ async def test_detector_skips_claude_native_registered_capability(db):
         await _seed_invocation(db, "novel_pattern", cost=0.10)
 
     # But a prior row has already been flagged claude_native_registered for it.
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         """
         INSERT INTO skill_candidate_report
@@ -153,7 +153,7 @@ async def test_detector_still_runs_for_unrelated_capabilities(db):
     for _ in range(200):
         await _seed_invocation(db, "allowed", cost=0.10)
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.execute(
         """
         INSERT INTO skill_candidate_report

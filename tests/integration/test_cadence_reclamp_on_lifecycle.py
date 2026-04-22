@@ -8,7 +8,7 @@ active_cadence_cron being rewritten.
 from __future__ import annotations
 
 import pathlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -24,7 +24,7 @@ from donna.tasks.db_models import SkillState
 
 class _SchedulerStub:
     async def compute_next_run(self, cron):
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ async def db(tmp_path: Path):
         );
         """
     )
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await conn.execute(
         "INSERT INTO capability (id, name, description, input_schema, "
         "trigger_type, status, created_at, created_by) VALUES "

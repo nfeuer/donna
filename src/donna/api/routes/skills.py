@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -157,8 +157,8 @@ async def transition_skill_state(
 
     try:
         to_state = SkillState(body.to_state)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"invalid state: {body.to_state}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid state: {body.to_state}") from exc
 
     try:
         await lifecycle.transition(
@@ -168,12 +168,12 @@ async def transition_skill_state(
             actor="user",
             notes=body.notes,
         )
-    except SkillNotFoundError:
-        raise HTTPException(status_code=404, detail="skill not found")
+    except SkillNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="skill not found") from exc
     except IllegalTransitionError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except HumanGateRequiredError as exc:
-        raise HTTPException(status_code=403, detail=str(exc))
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     # AS-4.2: Save (reset baseline) — on flagged_for_review → trusted with
     # reason=human_approval, recompute baseline_agreement from recent divergences.
@@ -219,7 +219,7 @@ async def set_requires_human_gate(
 
     await conn.execute(
         "UPDATE skill SET requires_human_gate = ?, updated_at = ? WHERE id = ?",
-        (1 if body.value else 0, datetime.now(timezone.utc).isoformat(), skill_id),
+        (1 if body.value else 0, datetime.now(UTC).isoformat(), skill_id),
     )
     await conn.commit()
     return {"skill_id": skill_id, "requires_human_gate": body.value}

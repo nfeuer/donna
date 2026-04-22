@@ -7,8 +7,8 @@ Every successful state change writes a ``skill_state_transition`` audit row.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 
 import aiosqlite
 import structlog
@@ -39,7 +39,7 @@ class _AfterStateChangeHook:
         for fn in self._subscribers:
             try:
                 await fn(capability_name, new_state)
-            except Exception as exc:  # noqa: BLE001 — deliberate: don't break transition
+            except Exception as exc:
                 logger.exception(
                     "after_state_change_subscriber_failed",
                     error=str(exc),
@@ -84,7 +84,7 @@ _ALL_STATES: tuple[SkillState, ...] = (
 
 def _build_transitions() -> dict[tuple[SkillState, SkillState], set[str]]:
     """Build the authoritative transition table from spec §6.2."""
-    S = SkillState
+    S = SkillState  # noqa: N806 — single-letter alias keeps table below readable
 
     table: dict[tuple[SkillState, SkillState], set[str]] = {
         (S.CLAUDE_NATIVE, S.SKILL_CANDIDATE): {"gate_passed", "manual_override"},
@@ -212,7 +212,7 @@ class SkillLifecycleManager:
             )
 
         # 6. Atomic DB update + audit insert.
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         transition_id = str(uuid6.uuid7())
 
         await self._conn.execute(

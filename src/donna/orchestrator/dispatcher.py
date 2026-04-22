@@ -8,7 +8,6 @@ activity via structured logging.
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Any, Protocol, runtime_checkable
 
 import structlog
@@ -286,7 +285,7 @@ class AgentDispatcher:
                 agent.execute(task, context),
                 timeout=agent.timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "agent_timeout",
                 agent=agent.name,
