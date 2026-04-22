@@ -8,6 +8,65 @@ This is a backlog, not a roadmap. Priority suggestions are opinions — use them
 
 ---
 
+## Completed — Post-Wave waves archived 2026-04-21
+
+Three follow-up waves from `open-backlog.md` shipped between 2026-04-16 and 2026-04-21 but were never trimmed from the tracker. Verified against code and archived here today.
+
+### Wave 1 — Tool registration + F-13 (P1) — ✅ CLOSED
+
+Wired the 4 Claude-native task-type capabilities seeded in `config/capabilities.yaml:100-135` so they stop running as `ad_hoc`. Evidence:
+
+- Tools registered at `src/donna/skills/tools/__init__.py:35-85`: `calendar_read`, `task_db_read`, `cost_summary`, `email_read`.
+- Tool modules: `src/donna/skills/tools/{calendar_read,task_db_read,cost_summary,email_read}.py`.
+- `tools:` wired on 4 capabilities in `config/capabilities.yaml`:
+  - `generate_digest` → `[calendar_read, task_db_read]` (line 103)
+  - `prep_research` → `[task_db_read]` (line 114; `web_search` deferred per in-file comment)
+  - `task_decompose` → `[]` (line 126)
+  - `extract_preferences` → `[task_db_read]` (line 137; `notes_read` deferred per in-file comment)
+- Unit tests: `tests/unit/test_skills_tools_{calendar_read,task_db_read,cost_summary,email_read}.py`.
+- Integration test extended at `tests/integration/test_cli_wires_tools_and_capabilities.py:100-234` — asserts Wave-1 tools register and `SkillToolRequirementsLookup` passes for the seeded capabilities.
+
+Deferred sub-items preserved as triggered entries in `open-backlog.md`: `web_search`, `notes_read`, `fs_read`.
+
+**Closes:** F-13 (partial — `prep_research` / `extract_preferences` fully migrate once deferred tools land).
+
+### Wave 3 — F-12 Grafana skill-system panels (P2) — ✅ CLOSED
+
+Skill-specific observability dashboard shipped. Evidence:
+
+- Dashboard JSON: `docker/grafana/dashboards/skill_system.json` (4 panels — State Distribution, Evolution Success Rate, Nightly Cron Outcomes, Cost Breakdown by Skill).
+- `skill_state_transition` structlog event continues to be emitted from `src/donna/skills/lifecycle.py:242-250` (no code change needed; dashboard queries existing event).
+- `skill_evolution_outcome` structlog event added to `src/donna/skills/evolution_scheduler.py:62-70` per-attempt (complements pre-existing aggregate `nightly_evolution_done`).
+
+**Closes:** F-12.
+
+### Wave 4 — F-4 Dashboard UI for skill system + automations (P1) — ✅ CLOSED
+
+Full UI shipped per `docs/superpowers/plans/2026-04-21-wave-4-skill-system-ui.md`. Evidence:
+
+- **Dashboard card:** `donna-ui/src/pages/Dashboard/SkillSystemCard.tsx`.
+- **Page shell:** `donna-ui/src/pages/SkillSystem/index.tsx` registered at `donna-ui/src/App.tsx:13,52` under `/skill-system`.
+- **Tabs + drawers:** `SkillsTab.tsx` + `SkillDrawer.tsx`, `CandidatesTab.tsx` + `CandidateDrawer.tsx`, `DraftsTab.tsx` (reuses SkillDrawer), `RunsTab.tsx` + `RunDrawer.tsx`, `AutomationsTab.tsx` + `AutomationDrawer.tsx`, shared `StateTransitionForm.tsx`.
+- **API client:** `donna-ui/src/api/skillSystem.ts`.
+- **Backend aggregator:** `GET /admin/dashboard/skill-system` at `src/donna/api/routes/admin_dashboard.py:759-841`, with thresholds loader and tests in `tests/unit/test_admin_dashboard.py:348-442`.
+- **Transitions endpoint:** `GET /skills/_transitions` at `src/donna/api/routes/skills.py:58`, tested in `tests/unit/test_api_skills.py:106`.
+- **Thresholds config:** `config/dashboard.yaml:13-17` (`skill_system.*` block).
+
+**Closes:** F-4 and F-W4-E.
+
+### Wave 5 — Polish sweep (P3) — ✅ CLOSED
+
+Acceptance was: *"Each item either resolved or explicitly deferred with its trigger restated."* All four items now satisfy that bar.
+
+- **Item 1 — dashboard `quality_score` thresholds.** Deferred. Trigger restated inline at `config/dashboard.yaml:6-8`: tune after ≥30 days of live data in `invocation_log` post-production enablement. Consumed by `src/donna/api/routes/admin_dashboard.py:_load_dashboard_config()` and `get_quality_warnings()` (lines 614–689); no code change needed.
+- **Item 2 — `/admin/*` auth note.** Resolved. `docs/domain/management-gui.md:36` now carries the concrete future-auth note (bearer-token dependency, rate-limiting on write routes, reuse of `admin_access.py` infrastructure) alongside the pre-existing decision at line 122.
+- **Item 3 — token counting heuristic.** Deferred. Module docstring in `src/donna/models/tokens.py:1-11` now quantifies the trigger (OOS-11, `context_overflow_escalation` rate > 10%) and cross-references the emission site at `src/donna/models/router.py:215`.
+- **Item 4 — Slice 11 Flutter UI pointer.** Already in place. `slices/slice_11_flutter_ui.md:5` has been carrying the "separate Flutter repository (`donna-app`)" note since the slice was authored; the pointer is referenced in `docs/architecture/overview.md:166`.
+
+Wave 5 is archived out of `docs/superpowers/followups/open-backlog.md`. Items 1/2 graduated into the *Triggered* section (as "Dashboard threshold tune" and "Admin auth") so the trigger conditions remain discoverable. Item 3 is covered by the existing OOS-11 entry; item 4 is called out as separate-repo work at the end of the OOS section.
+
+---
+
 ## Status update — 2026-04-21 (verified against code)
 
 A code-against-doc reconciliation found the prioritized "Open Follow-ups" sections below are stale — most P0/P1/P2 items have shipped in Waves 1–5 but were never trimmed from the detailed write-ups, the Recommended Sequencing, or the Priority Summary Table. The Wave-N "Completed" sections in this same file are authoritative; the detailed F-* entries below are kept for historical context but are tagged `✅ CLOSED` where verified.
@@ -24,15 +83,14 @@ A code-against-doc reconciliation found the prioritized "Open Follow-ups" sectio
 - **F-14** end-to-end smoke test → `tests/e2e/test_wave4_full_stack.py`; `tests/integration/test_cli_startup_wire_helpers.py:82-139`
 
 **Partial (tracker-listed open, code work exists but gap remains):**
-- **F-12** observability dashboards — generic Grafana panels exist (`docker/grafana/dashboards/{error_exploration,task_pipeline,llm_cost,system_health}.json`) but skill-system-specific panels (state distribution, evolution success, cost-by-skill) are still missing.
-- **F-13** migrate Claude-native task types — capabilities for `generate_digest`, `prep_research`, `task_decompose`, `extract_preferences` are seeded in `config/capabilities.yaml:100-135`, but the tools they reference (`calendar_read`, `task_db_read`, `cost_summary`, `web_search`, `email_read`, `notes_read`, `fs_read`) are not in `src/donna/skills/tools/__init__.py:31-56`. Capabilities are dead until the tool-registration wave lands.
+- **F-12** ✅ CLOSED 2026-04-21 — `docker/grafana/dashboards/skill_system.json` shipped with state distribution, evolution success, nightly-cron outcomes, and cost-breakdown panels.
+- **F-13** ✅ CLOSED 2026-04-21 — `calendar_read`, `task_db_read`, `cost_summary`, `email_read` tools registered in `src/donna/skills/tools/__init__.py:35-85`; capability YAML wired at `config/capabilities.yaml:103,114,126,137`. `web_search` / `notes_read` / `fs_read` remain triggered items in `open-backlog.md`.
 - **F-W1-A** DegradationDetector exists and reads the threshold (`src/donna/skills/degradation.py:37,99,116`), but the original concern is the *binary-classification semantics* on continuous agreement scores. Needs deeper code review to confirm whether the semantics issue was actually fixed or merely papered over.
 
 **Genuinely still open:**
-- **F-4** Dashboard UI for skill system + automations — no skill/automation/skill-run/draft/evolution pages in `donna-ui/src/pages/`.
 - **F-W4-A** `email_triage` unbounded-sender mode — by-design defer; awaits user trigger.
-- **F-W4-E** Dashboard `meta.*` diagnostics — gated on F-4.
-- **Tool-registration wave** — same blocker as F-13 above.
+
+_(F-4, F-W4-E, and the tool-registration wave previously listed here have since shipped — see the "Post-Wave waves archived 2026-04-21" section above.)_
 
 The detailed F-* entries below pre-date this update; trust the status tags here over the older priority labels.
 
