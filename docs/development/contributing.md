@@ -52,7 +52,7 @@ async def complete(
 - `ruff check`
 - `mypy --strict`
 - `pytest -m "not slow and not llm"`
-- `mkdocs build --strict` (docs workflow)
+- `properdocs build --strict` (docs workflow)
 
 ## Branching
 

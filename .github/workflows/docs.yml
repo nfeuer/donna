@@ -6,7 +6,7 @@ on:
   pull_request:
     paths:
       - "docs/**"
-      - "mkdocs.yml"
+      - "properdocs.yml"
       - "scripts/gen_ref_pages.py"
       - "src/**"
       - "config/**"
@@ -44,7 +44,7 @@ jobs:
           pip install -e ".[docs]"
 
       - name: Build site (strict)
-        run: mkdocs build --strict
+        run: properdocs build --strict
 
       - name: Disable Jekyll on Pages
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'

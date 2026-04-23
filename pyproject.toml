@@ -72,7 +72,7 @@ dev = [
     "types-croniter>=2.0",
 ]
 docs = [
-    "mkdocs>=1.6.0",
+    "properdocs>=1.6.0,<2",
     "mkdocs-material>=9.5.0",
     "mkdocstrings[python]>=0.26.0",
     "mkdocs-gen-files>=0.5.0",
