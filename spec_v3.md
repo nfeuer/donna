@@ -4,9 +4,60 @@ AI Personal Assistant
 
 Project Specification Document
 
-Version 3.0 --- March 2026
+Version 3.1 --- April 2026 (sync with implementation)
 
 *Classification: Personal / Confidential*
+
+**Revision Notes (v3.1, April 2026)**
+
+v3.0 was the original design document (March 2026). v3.1 reconciles the
+spec with the production codebase after Phases 1--5 were built. The
+design intent is unchanged; substantive updates in v3.1 are:
+
+-   **§3.2--3.3** The hybrid MCP strategy is deferred. Tier 1 (direct
+    Python integration) is the sole pattern in production; FastMCP
+    server and GitHub / Notes / Filesystem / Web Search (SearXNG)
+    integrations are not implemented.
+-   **§5.1** Task schema adds `nudge_count`, `quality_score`,
+    `capability_name`, `inputs_json`.
+-   **§5.4** Task Type Registry expanded with eight production task
+    types (`dedup_check`, `task_decompose`, `extract_preferences`,
+    `generate_nudge`, `generate_reminder`, `challenge_task`,
+    `generate_weekly_digest`, `classify_chat_intent`).
+-   **§5.5.2** Priority escalation partially implemented (deadline +
+    workload pressure only; dependency-chain escalation and user-lock
+    flag not yet built).
+-   **§6.1.2 / §6.2** Conflict-resolution matrix simplified to basic
+    overlap detection; "Extended Work" and "Emergency Work" time
+    windows are not configured.
+-   **§7.1.1** Agent hierarchy adds **Challenger Agent** and
+    **Claude Novelty Judge** (both enabled). **Coding Agent** and
+    **Communication Agent** are defined in config but disabled
+    pending Phase 4 Stage 3 tool progression.
+-   **§11.1** Morning and end-of-day digests deliver over Discord
+    (not email). The spec'd "Conflict Alert" notification type is
+    not implemented.
+-   **§12.1** Integration matrix reflects current reality: only
+    Gmail, Google Calendar, Discord, Twilio, Supabase, and the
+    internal SQLite DB are integrated. GitHub, Filesystem, Notes,
+    and SearXNG are deferred.
+-   **§14.3.1** The "logging database schema" is now split in
+    practice: structured per-invocation data lives in
+    `invocation_log` (SQLite); general service logs flow through
+    Docker → Promtail → Loki. No separate `donna_logs.db` exists.
+-   **§16.3.2** Off-server backup push (GCS / Backblaze) is not
+    implemented; backups remain on local NVMe with rotation.
+-   **§20** Implementation-phase rewrite: Phases 1--5 are complete;
+    Phase 6 work (GitHub/MCP rollout, Coding/Communication agents,
+    Flutter production app) is next.
+-   **§§23--29 (new)** The following production subsystems were
+    built beyond v3.0 and are now documented: Skills &
+    Capabilities System (§23), Chat / Conversation Engine (§24),
+    Automations Subsystem (§25), LLM Gateway & Queue (§26), Admin
+    API & Dashboard (§27), Authentication & Access Control (§28),
+    Setup Wizard (§29).
+
+Everything else in v3.0 remains canonical design intent.
 
 **1. Executive Summary**
 
@@ -175,6 +226,15 @@ have revealed significant trade-offs with an MCP-only approach. Donna
 adopts a hybrid architecture that uses the right integration pattern for
 each use case.
 
+> **v3.1 Implementation Status:** Only Tier 1 (direct Python API) is
+> in production. Tier 2 (FastMCP server) and all MCP-wrapped
+> integrations (GitHub, Filesystem, Notes, Web Search) are deferred
+> to Phase 6. Production LLM tool access is instead provided by a
+> small, internal tool-registry layer inside the Skills subsystem
+> (see §23.3). The MCP design in §3.2.1--3.2.5 is retained as the
+> target architecture for when Coding/Communication agents come
+> online.
+
 **3.2.1 The MCP Context Cost Problem**
 
 MCP servers dump their entire tool schema into the LLM's context window
@@ -269,26 +329,37 @@ entry, orchestrator discovers tools at startup).
 
 > integrations/
 >
-> ├── calendar.py ← Google Calendar (read-write personal, read all)
+> ├── calendar.py ← Google Calendar (read-write personal, read all) [IMPLEMENTED]
 >
-> ├── gmail.py ← Gmail (read + draft; send behind feature flag)
+> ├── gmail.py ← Gmail (read + draft; send behind feature flag) [IMPLEMENTED]
 >
-> ├── github.py ← GitHub (MCP-wrapped, read-write feature branches only)
+> ├── discord_bot.py ← Send/read in Donna channels [IMPLEMENTED]
 >
-> ├── filesystem.py ← Sandboxed to /donna/workspace/
+> ├── discord_commands.py ← Slash commands, pending-draft feed [IMPLEMENTED]
 >
-> ├── discord.py ← Send/read in Donna channels
+> ├── discord_views.py ← Interactive components (buttons/selects) [IMPLEMENTED]
 >
-> ├── twilio_sms.py ← SMS and voice (outbound only)
+> ├── twilio_sms.py ← SMS (outbound + inbound webhook) [IMPLEMENTED]
 >
-> ├── notes.py ← Local markdown notes
+> ├── twilio_voice.py ← Voice (TTS escalation, Tier 4, disabled) [IMPLEMENTED but off by default]
 >
-> ├── search.py ← Web search (SearXNG or API)
+> ├── supabase_sync.py ← Async write-through sync + keep-alive [IMPLEMENTED]
 >
-> └── mcp_wrapper.py ← FastMCP Streamable HTTP for external clients
+> ├── email_parser.py ← Parse forwarded email → task / correction [IMPLEMENTED]
+>
+> ├── github.py ← GitHub (MCP-wrapped) [DEFERRED Phase 6]
+>
+> ├── filesystem.py ← Sandboxed /donna/workspace/ [DEFERRED Phase 6]
+>
+> ├── notes.py ← Local markdown notes [DEFERRED Phase 6]
+>
+> ├── search.py ← Web search (SearXNG/API) [DEFERRED Phase 6]
+>
+> └── mcp_wrapper.py ← FastMCP Streamable HTTP [DEFERRED Phase 6]
 
-Each module: centralized auth, audit logging to logging DB, rate
-limiting, access control per agent via task type config.
+Each implemented module: centralized auth (env vars + `config/auth.yaml`),
+structured audit logging, rate limiting where applicable, per-agent
+access control via task-type tool allowlists.
 
 **3.2.5 Adopt Before Building**
 
@@ -314,27 +385,39 @@ alongside custom tools.
                                    decisions. Sole provider until local
                                    LLM hardware is available.
 
-  Local LLM        Linux Server    DEFERRED until 3090 acquired. Will
-  (Ollama)         (Docker) ---    handle task classification, priority
-                   RTX 3090        inference, routing, simple NLU.
-                                   Dedicated GPU, no sharing with other
-                                   services.
+  Local LLM        Linux Server    DEPLOYED. Ollama container running
+  (Ollama)         (Docker) ---    (qwen2.5:32b-instruct-q6_K). Handles
+                   RTX 3090        nudge/reminder generation, chat-intent
+                                   classification, and Stage 1 read-only
+                                   tool calls. Claude remains the
+                                   primary parser/planner.
 
-  Integration      Linux Server    Internal Python API wrapping all
-  Layer            (Docker)        external services. Centralized auth,
-                                   rate limiting, audit logging.
+  Integration      Linux Server    Internal Python API wrapping external
+  Layer            (Docker)        services actually in use (Gmail,
+                                   Calendar, Discord, Twilio, Supabase).
+                                   Centralized auth, audit logging.
 
-  FastMCP Server   Linux Server    Exposes dynamic tools to agents via MCP
-                   (Docker)        Streamable HTTP. Python (FastMCP 3.x).
-                                   CodeMode enabled for token efficiency.
+  FastMCP Server   Linux Server    DEFERRED (Phase 6). The design is
+                   (Docker)        retained; in production, LLM-facing
+                                   tool access is provided by the
+                                   internal Skills tool registry
+                                   (§23.3).
 
-  Task Database    SQLite on NVMe  Primary task storage with full
-                                   metadata. Sub-millisecond reads. WAL
-                                   mode for concurrent access.
+  Task Database    SQLite on NVMe  Primary task storage
+                   (donna_tasks.db) (donna_tasks.db) with full metadata.
+                                   WAL mode. Also hosts invocation_log,
+                                   correction_log, learned_preference,
+                                   skill/capability tables, automation
+                                   tables, chat_session tables, and
+                                   auth/device-token tables (see §16.1
+                                   and Alembic migration list).
 
-  Logging Database SQLite on NVMe  Structured application logs and audit
-                   (dedicated)     trails. Separate from task DB to avoid
-                                   contention.
+  Log Storage      Loki (Docker) + The standalone "donna_logs.db" in
+                   invocation_log  v3.0 was not built. Structured
+                                   service logs ship via stdout → Docker
+                                   json-file → Promtail → Loki.
+                                   Per-LLM-call records live in the
+                                   `invocation_log` SQLite table.
 
   Sync Replica     Supabase        Cloud replica for cross-device access.
                    (Postgres)      Free tier with keep-alive; upgrade to
@@ -348,14 +431,32 @@ alongside custom tools.
   Service          (Docker)        API/SMTP), SMS (Twilio), phone (Twilio
                                    TTS), push (FCM), Discord bot.
 
-  Agent Worker     Linux Server    Executes sub-agent tasks in sandboxed
-  Pool             (Docker)        environments. Each agent type runs as
-                                   an isolated process with defined tool
-                                   access.
+  Agent Worker     Linux Server    Sub-agents run inside the orchestrator
+  Pool             (orchestrator   process (asyncio tasks), not isolated
+                   process)        containers. Per-agent tool allowlists
+                                   defined in `config/agents.yaml` are
+                                   enforced by the Skills tool registry.
+                                   Container isolation is Phase 6.
 
-  Web/Mobile App   Firebase        Dashboard UI (calendar view, task
-                   Hosting +       board, agent monitor) and
-                   Flutter         conversational chat interface. Phase 4.
+  Skills & Cap.    Linux Server    Execution engine for user-defined
+  System           (orchestrator)  capabilities and their concrete skill
+                                   implementations (DSL-based). Shadow
+                                   sampling, evolution, divergence
+                                   tracking. See §23.
+
+  LLM Gateway      Linux Server    Cost-aware priority queue for all
+                   (orchestrator)  outbound LLM calls (Claude + Ollama).
+                                   Preemption, rate limiting, budget
+                                   alerts. See §26.
+
+  Admin API        Linux Server    FastAPI service (port 8200) exposing
+                   (Docker)        dashboards, logs, skill pipeline,
+                                   agent state, task/preference CRUD.
+                                   See §27.
+
+  Web/Mobile App   Firebase        Backend API is live; Flutter client
+                   Hosting +       lives in separate `donna-app/` repo.
+                   Flutter         Full production UI is Phase 6.
   ---------------- --------------- ---------------------------------------
 
 **3.4 Data Flow**
@@ -424,11 +525,15 @@ volume:
 >
 > ├── db/
 >
-> │ ├── donna_tasks.db ← Primary task SQLite database
+> │ ├── donna_tasks.db ← Primary SQLite database (tasks,
+> │ │                    invocation_log, skills, automations,
+> │ │                    chat sessions, auth)
 >
-> │ ├── donna_logs.db ← Dedicated logging SQLite database
+> │ ├── donna_logs.db ← (design-only; not created in v3.1 —
+> │ │                    see §14.3)
 >
-> │ └── donna_eval.db ← Evaluation harness results
+> │ └── donna_eval.db ← (design-only; not created in v3.1 —
+> │                     see §16.1)
 >
 > ├── workspace/ ← Agent sandboxed working directory
 >
@@ -1252,6 +1357,25 @@ one to support future multi-user deployment.
 
   donna_managed            Boolean       Auto            Whether Donna created and manages
                                                          this calendar event
+
+  nudge_count              Int           Auto            Nudges/reminders sent for this
+                                                         task. Drives escalation backoff
+                                                         (added v3.1).
+
+  quality_score            Float?        Auto            Spot-check quality rating from
+                                                         Claude-as-judge, when the
+                                                         spot-check monitor flags this
+                                                         task's output (added v3.1).
+
+  capability_name          String?       Orchestrator    Capability matched by the
+                                                         intent dispatcher (§23.2).
+                                                         Drives skill routing. Null for
+                                                         free-form tasks (added v3.1).
+
+  inputs_json              JSON?         Orchestrator    Extracted inputs dict matching
+                                                         the capability's input schema.
+                                                         Fed to the skill executor
+                                                         (added v3.1).
   ------------------------ ------------- --------------- ---------------------------------
 
 **5.2 Task Lifecycle State Machine**
@@ -1434,6 +1558,46 @@ over time from the correction log.
 task_parse_output_v2.json). When a schema changes, the orchestrator
 handles both old and new formats during the transition period.
 
+**Production task types (v3.1):** The examples above are the
+original v3.0 entries. `config/task_types.yaml` also contains the
+following production task types:
+
+  ----------------------- ------------ ---------------------------------
+  **Task type**           **Model**    **Purpose**
+
+  dedup_check             parser       Pass 2 semantic duplicate check
+                                       (§5.3.2). Shadow: reasoner.
+
+  task_decompose          reasoner     Break a complex task into
+                                       subtasks (PM Agent, §7.1.1).
+
+  extract_preferences     reasoner     Weekly batch extraction of
+                                       correction patterns (§9.2).
+
+  generate_nudge          local_parser Local LLM generates overdue
+                                       nudge messages in persona.
+
+  generate_reminder       local_parser Local LLM generates 15-minute
+                                       pre-task reminders.
+
+  generate_weekly_digest  parser       Weekly efficiency + velocity
+                                       digest (§11.1).
+
+  challenge_task          local_parser Challenger Agent probes task
+                                       quality and context (§7.1.1).
+                                       Escalates unclassifiable tasks
+                                       to Claude via the Novelty Judge.
+
+  classify_chat_intent    local_parser Classifies Discord messages into
+                                       {task, automation, question,
+                                       chat} for the Conversation
+                                       Engine (§24).
+  ----------------------- ------------ ---------------------------------
+
+All of the above also declare their tool allowlist; the orchestrator's
+`ToolRegistry.dispatch()` enforces it at invocation time and raises
+`ToolNotAllowedError` on violations.
+
 **5.5 Task Intelligence**
 
 **5.5.1 Natural Language Task Parsing**
@@ -1458,20 +1622,32 @@ on:
 
 -   **Deadline proximity:** As a soft deadline approaches, priority
     increments. A task due "end of month" starts at priority 2 but
-    escalates to 4 by the last week.
+    escalates to 4 by the last week. Implemented in
+    `scheduling/priority_engine.py` via the `_deadline_escalation()`
+    rule, using `deadline_warning_days` / `deadline_critical_days`
+    from `config/calendar.yaml`.
 
--   **Reschedule count:** Each reschedule adds +0.5 to priority score.
-    After 3 reschedules, the task is flagged for the user's attention.
+-   **Reschedule count:** Each reschedule feeds the
+    `_workload_pressure()` rule together with the day's scheduled
+    density. The v3.0 "+0.5 per reschedule" formula was not kept
+    verbatim; the rule now floors priority higher on crowded days
+    where the task has been moved repeatedly. A flag at 3+
+    reschedules is still emitted.
 
--   **Dependency chains:** If downstream tasks are waiting, the blocking
-    task's priority increases.
+-   **Dependency chains:** *Not yet implemented.* The priority engine
+    does not currently walk downstream waiters. Deferred to Phase 6.
+    The dependency-resolver module (`scheduling/dependency_resolver.py`)
+    handles ordering for weekly planning but does not feed back into
+    priority scoring.
 
--   **User override:** The user can always manually set priority, which
-    locks it from auto-adjustment.
+-   **User override:** *Not yet implemented as a lock flag.* The user
+    can set priority manually, but there is no `priority_locked`
+    column preventing subsequent auto-adjustment. Deferred to Phase 6.
 
 -   **Learned preferences:** The preference engine may apply priority
     adjustments based on patterns extracted from correction history (see
-    Section 9).
+    Section 9). This hook is live and runs in `InputParser.parse()`
+    after initial classification.
 
 **5.5.3 Task Complexity Assessment**
 
@@ -1575,6 +1751,15 @@ Calendar:
   a task                auto-find next slot       same channel
   --------------------- ------------------------- -----------------------
 
+> **v3.1 Implementation Status:** Only the first and last rows are
+> fully implemented. `scheduling/scheduler.find_next_slot()` detects
+> overlap and returns the next available slot; the state machine
+> handles user-triggered rescheduling. The three middle rows
+> (dual-invite disambiguation, priority displacement inside a slot,
+> cascade-shifting on overrun) are **not implemented** and deferred
+> to Phase 6. Conflicts that the simple algorithm cannot resolve are
+> surfaced to the user via the standard notification channel.
+
 **6.2 Time Constraints**
 
   ---------------- ------------------------ ------------------------------
@@ -1584,7 +1769,9 @@ Calendar:
                    (weekdays)               
 
   Extended Work    5:00 PM -- 7:00 PM       Work overflow, side projects
-                   (weekdays, optional)     
+                   (weekdays, optional,     
+                   **not configured in      
+                   v3.1**)                  
 
   Personal Time    5:00 PM -- 8:00 PM       Personal tasks, R&R, projects,
                                             study
@@ -1595,7 +1782,9 @@ Calendar:
   Food             Per calendar blocks      Protected; no tasks scheduled
 
   Emergency Work   10:00 PM -- 12:00 AM     Only high-priority tasks user
-                   (user-activated)         explicitly opens
+                   (user-activated,         explicitly opens
+                   **not configured in      
+                   v3.1**)                  
 
   Weekends         6:00 AM -- 8:00 PM       Personal and family tasks.
                                             User reschedules freely.
@@ -1607,14 +1796,24 @@ Calendar:
                    (default)                (priority 5) only.
   ---------------- ------------------------ ------------------------------
 
+> **v3.1 Implementation Status:** Six of the eight windows are live
+> in `config/calendar.yaml` (Work, Personal, Weekend, Blackout, Quiet
+> Hours; Baby Time and Food come from the user's Google Calendar as
+> non-Donna blocks). *Extended Work* and *Emergency Work* are
+> defined in spec only; the YAML `time_windows` schema already
+> supports them and they can be enabled without code changes.
+
 **6.3 Scheduling Algorithm**
 
 -   Weekly Planning (Monday mornings): Generate a proposed week plan.
     Present to user for review. Lock hard-deadline items first, then
     fill with flexible tasks.
 
--   Daily Recalculation (6:00 AM): Recalculate today's schedule based on
-    previous day's completion, new tasks, and calendar changes.
+-   Daily Recalculation (6:00 AM): Recalculate *task priorities* based
+    on previous day's completion, new tasks, and calendar changes.
+    (v3.1 note: this runs as `scheduling/priority_recalculator.py` and
+    recalculates priorities only; full schedule rewrites happen on
+    the weekly cadence via `weekly_planner.py`.)
 
 -   Real-time Adjustment: When a new task arrives or is rescheduled,
     re-evaluate only affected slots, not the entire week.
@@ -1682,14 +1881,44 @@ Claude API fallback.
                                          Discord/Slack    
                                          (specific        
                                          channels only)   
+
+  Challenger      Pre-PM quality gate:   Task DB (read),  Medium --- surfaces
+  Agent           probes new tasks for   local LLM        clarification
+  (v3.1, Phase    hidden context,        (classify_       questions and routes
+  3)              missing success        chat_intent,     ambiguous tasks to
+                  criteria, ambiguous    challenge_task)  the Novelty Judge.
+                  scope. Emits                            
+                  {accept, needs_input,                   
+                  escalate_to_claude}.                    
+
+  Claude Novelty  Judges tasks that     Claude API       Medium --- decides
+  Judge           Challenger cannot     (reasoner        whether the task
+  (v3.1, Phase    classify. Extracts    alias), Task DB  should become a new
+  3)              structured intent and (read)           capability / skill
+                  decides if the task                    candidate or be
+                  is reusable as a new                   handled ad-hoc.
+                  skill candidate.                       
   --------------- ---------------------- ---------------- -----------------------
+
+> **v3.1 Implementation Status:** Scheduler, Research/Prep, PM,
+> Challenger, and Novelty Judge are enabled (see `config/agents.yaml`).
+> **Coding Agent** and **Communication / Drafting Agent** are defined
+> in config but `enabled: false` --- they are deferred to Phase 6 and
+> gated on Stage 3 tool-use progression (§8.3) and the MCP
+> rollout (§3.2.3). The safety constraints in §7.3 remain their
+> intended contract.
 
 **7.2 Agent Execution Flow**
 
--   Orchestrator receives task and routes to PM Agent for assessment.
+-   Orchestrator receives task. In v3.1 the first stop is the
+    **Challenger Agent**, which probes for hidden context and returns
+    one of {accept, needs_input, escalate_to_claude}. `needs_input`
+    prompts the user directly; `escalate_to_claude` hands off to the
+    Novelty Judge for capability matching.
 
--   PM Agent evaluates completeness. If requirements are missing, sends
-    targeted questions (not open-ended). Example: "For the Module A
+-   Accepted tasks flow to the **PM Agent** for completeness
+    assessment. If requirements are missing, it sends targeted
+    questions (not open-ended). Example: "For the Module A
     refactor, I need to know: (1) which API endpoints are affected,
     and (2) should backward compatibility be maintained?"
 
@@ -1698,12 +1927,15 @@ Claude API fallback.
 -   PM Agent packages the task with full context, requirements,
     acceptance criteria, and file references.
 
--   PM Agent dispatches to the appropriate execution agent.
+-   PM Agent dispatches to the appropriate execution agent. If the
+    task matched a capability (§23.2), execution is handled by the
+    Skills system; otherwise it goes to a sub-agent (Prep, Scheduler)
+    or back to the user for manual action.
 
 -   Execution agent works. Progress logged to activity log.
 
--   On completion, user receives summary via email + notification.
-    Output available for review.
+-   On completion, user receives summary via the same channel
+    (typically Discord) and output is available for review.
 
 **7.3 Agent Safety Constraints**
 
@@ -2108,38 +2340,54 @@ originating task.
   **Notification   **Channel**   **Timing**      **Content**
   Type**                                         
 
-  Morning Digest   Email         6:30 AM daily   Full day schedule, task list,
-                                                 prep results, agent activity,
-                                                 carry-overs, system health
-                                                 summary
+  Morning Digest   Discord       6:30 AM daily   Full day schedule, task list,
+                   (#donna-                      prep results, agent activity,
+                   digest)                       carry-overs, system health
+                                                 summary. (v3.0 targeted email;
+                                                 production delivery is
+                                                 Discord.)
 
-  Task Reminders   App push /    15 min before   Task name, duration, prep
-                   Discord       start           materials available
+  Task Reminders   Discord       15 min before   Task name, duration, prep
+                                 start           materials available
 
-  Overdue Nudge    SMS           30 min after    Direct question: finish or
-                                 scheduled end   reschedule?
+  Overdue Nudge    Discord →     30 min after    Direct question: finish or
+                   SMS → Email   scheduled end   reschedule? Escalates via the
+                   (ladder)                      tiers in §11.2.
 
-  Agent            Email + App   When PM agent   Specific targeted questions
-  Interrogation                  needs info      with context
+  Agent            Discord       When PM/        Specific targeted questions
+  Interrogation                  Challenger      with context
+                                 needs info      
 
-  Agent Completion Email         When agent      Summary, thought process,
-                                 finishes        output location, cost
+  Agent Completion Discord       When agent      Summary, output location,
+                                 finishes        cost
 
-  End-of-Day       Email         5:30 PM         Completed, rescheduled, agent
-  Digest                         weekdays        activity, daily cost
+  End-of-Day       Discord       5:30 PM         Completed, rescheduled, agent
+  Digest           (#donna-      weekdays        activity, daily cost
+                   digest)                       
 
-  Budget Alert     SMS + Email   Daily \$20      Spend breakdown, recommendation
+  Weekly Digest    Discord       Monday 8 AM     Velocity, completion ratio,
+  (v3.1)           (#donna-                      priority drift, cost summary
+                   digest)                       
+
+  Budget Alert     SMS + Discord Daily \$20      Spend breakdown, recommendation
                                  threshold or    to continue/pause
                                  90% monthly     
 
-  Conflict Alert   SMS + App     Immediately on  Description, proposed
-                                 detection       resolution options
+  Conflict Alert   (**not        Immediately on  Description, proposed
+                   implemented   detection       resolution options
+                   in v3.1**)                    
 
   Urgent           Phone Call    Critical        Brief TTS message via Twilio
-  Escalation       (TTS)         deadline miss   with callback option
-                                 or system       
-                                 failure         
+  Escalation       (TTS,         deadline miss   with callback option. Tier 4;
+  (Tier 4)         **disabled    or system       `tier4_enabled: false` by
+                   by default**) failure         default.
   ---------------- ------------- --------------- -------------------------------
+
+> **v3.1 Delivery Channels:** v3.0 assumed most digests/interrogations
+> would go over email. In production, Discord is the primary channel
+> for everything except SMS escalation (Tier 2), outbound budget
+> alerts (SMS), and the email escalation (Tier 3, which uses Gmail
+> draft mode when the send flag is off).
 
 **11.2 Escalation Tiers**
 
@@ -2163,37 +2411,39 @@ If the user responds "busy, will handle later," the system backs off for
   --------------- -------------------- ---------------------------- -----------------------
   **Service**     **Access Level**     **Integration Pattern**      **Tools / Methods**
 
-  Gmail           Read-only (send      Direct API                   email_read,
+  Gmail           Read-only (send      Direct API [IMPLEMENTED]    email_read,
                   behind feature flag) (google-api-python-client)   email_search,
                                                                     draft_create
 
-  Google Calendar Read-Write           Direct API                   calendar_read,
+  Google Calendar Read-Write           Direct API [IMPLEMENTED]    calendar_read,
                   (personal); Read     (google-api-python-client)   calendar_write,
                   (work, family)                                    calendar_delete
 
-  GitHub          Read-Write (feature  MCP (FastMCP)                github_read,
-                  branches only)                                    github_write,
+  GitHub          Read-Write (feature  MCP (FastMCP)               github_read,
+                  branches only)       [DEFERRED Phase 6]           github_write,
                                                                     github_issues
 
-  Notes (Local    Read-Write           MCP (FastMCP)                notes_read, notes_write
-  Markdown)                                                         
+  Notes (Local    Read-Write           MCP (FastMCP)               notes_read, notes_write
+  Markdown)                            [DEFERRED Phase 6]           
 
-  Local           Read-Write           MCP (FastMCP)                fs_read, fs_write,
-  Filesystem      (sandboxed to                                     fs_list
+  Local           Read-Write           MCP (FastMCP)               fs_read, fs_write,
+  Filesystem      (sandboxed to        [DEFERRED Phase 6]           fs_list
                   /donna/workspace/)                                
 
-  Discord         Read-Write (Donna    Direct API (discord.py)      discord_send,
-                  channels only)                                    discord_read, thread
+  Discord         Read-Write (Donna    Direct API (discord.py)     discord_send,
+                  channels only)       [IMPLEMENTED]                discord_read, thread
                                                                     management
 
-  Twilio          Write (outbound      Direct API (twilio-python)   sms_send, phone_call
-  (SMS/Voice)     only)                                             
+  Twilio          Write (outbound      Direct API (twilio-python)  sms_send, phone_call
+  (SMS/Voice)     only)                [IMPLEMENTED; voice         (Tier 4 disabled by
+                                       disabled by default]         default)
 
-  Web Search      Read                 MCP (FastMCP)                search_web (SearXNG
-                                                                    self-hosted or API)
+  Web Search      Read                 `web_fetch` local tool      Simple HTTP fetch.
+                                       [PARTIAL]                    SearXNG / MCP search
+                                                                    still deferred.
 
-  SQLite Task DB  Read-Write           Direct API (aiosqlite)       Internal orchestrator
-                                                                    access, no MCP overhead
+  SQLite Task DB  Read-Write           Direct API (aiosqlite)      Internal orchestrator
+                                       [IMPLEMENTED]                access, no MCP overhead
 
   Supabase        Write (sync replica) Direct API (supabase-py)     Background
   Postgres                                                          write-through sync
@@ -2314,11 +2564,19 @@ across services.
 
 **14.3 Logging Database**
 
-Dedicated SQLite database (donna_logs.db) on NVMe. Separate from the
-task database to avoid contention between high-volume log writes and
-task query performance.
+> **v3.1 Implementation Status:** The standalone `donna_logs.db`
+> described in v3.0 was not built. Per-invocation structured data
+> lives in the `invocation_log` table inside `donna_tasks.db`
+> (WAL-mode SQLite); all other service logs stream over stdout →
+> Docker json-file → Promtail → Loki, and are queried via Grafana.
+> The table schema in §14.3.1 below is kept for reference; production
+> `invocation_log` columns are listed after the spec table.
 
-**14.3.1 Log Table Schema**
+Dedicated SQLite database (donna_logs.db) on NVMe, target design:
+separate from the task database to avoid contention between
+high-volume log writes and task query performance.
+
+**14.3.1 Log Table Schema (design target)**
 
   ---------------- ------------ -------------------------------------------
   **Field**        **Type**     **Purpose**
@@ -2369,6 +2627,20 @@ task query performance.
 Indexes on: timestamp, level, service, event_type, correlation_id,
 task_id, error_type. WAL mode enabled for concurrent read/write.
 
+**Production `invocation_log` columns (v3.1):** `id`, `timestamp`,
+`task_type`, `task_id`, `user_id`, `model_alias`, `model_actual`,
+`input_hash`, `latency_ms`, `tokens_in`, `tokens_out`, `cost_usd`,
+`output` (JSON), `quality_score`, `is_shadow`, `eval_session_id`,
+`spot_check_queued`, plus the v3.1 additions `queue_wait_ms`
+(time in the LLM Gateway queue, §26), `interrupted` (whether a
+higher-priority request preempted this call), `chain_id` (groups
+multi-step skill chains), `caller` (free-form tag: `skill`,
+`agent`, `orchestrator`), `estimated_tokens_in`, `overflow_escalated`
+(whether a local-LLM call escalated to Claude), and `skill_id` (FK
+to `skill` when emitted from a skill step). Free-form service logs
+(info/warning/error messages, event_type breadcrumbs) never reach
+SQLite and are queried in Loki via Grafana.
+
 **14.3.2 Retention Policy**
 
 -   DEBUG logs: 7 days retention (high volume, diagnostic only).
@@ -2385,6 +2657,12 @@ task_id, error_type. WAL mode enabled for concurrent read/write.
 
 A nightly cron job prunes expired logs based on level. VACUUM runs
 weekly to reclaim disk space.
+
+> **v3.1 Status:** Because free-form logs live in Loki, retention is
+> governed by the Loki compactor (config under `docker/loki/`) rather
+> than the SQLite cron job described above. `invocation_log` rows are
+> retained permanently, per v3.0 intent. A dedicated SQLite retention
+> cron has not been implemented.
 
 **14.4 Event Types**
 
@@ -2636,17 +2914,24 @@ directly from SQLite.
 
 **16.1 Database Strategy**
 
--   **Primary:** SQLite on NVMe. Two databases: donna_tasks.db (task
-    data, corrections, preferences) and donna_logs.db (structured logs,
-    invocation logs). WAL mode for both. Sub-millisecond reads.
+-   **Primary:** SQLite on NVMe: `donna_tasks.db` (WAL mode, single
+    database). It hosts task data, corrections, preferences,
+    invocation logs, skill/capability tables, automation tables,
+    chat sessions, and auth tables (see the Alembic migration chain
+    under `alembic/versions/`). v3.0 planned a separate
+    `donna_logs.db`; in practice free-form service logs went to
+    Loki and the invocation log stayed co-located in
+    `donna_tasks.db`.
 
 -   **Replica:** Supabase Postgres. Async write-through sync from
-    SQLite. Free tier with keep-alive cron (ping every 3 days to prevent
-    7-day inactivity pause). Upgrade to Pro (\$25/month) at Phase 4 or
-    multi-user onboarding.
+    SQLite (`integrations/supabase_sync.py`, fire-and-forget task).
+    Free tier with keep-alive HEAD request every 6 hours (changed
+    from the "every 3 days" target in v3.0 to align with the
+    implemented `keep_alive()` method).
 
--   **Evaluation:** donna_eval.db. Model session results. Separate to
-    avoid cluttering task/log databases.
+-   **Evaluation:** `donna_eval.db` is not implemented; evaluation
+    runs emit their outputs to JSON under `fixtures/` and to the
+    `invocation_log` table with an `eval_session_id` tag.
 
 **16.2 Supabase Sync Strategy**
 
@@ -2684,7 +2969,9 @@ writes can produce corrupted backups.
 
 -   Off-server: weekly and monthly backups pushed to cloud storage
     (Google Cloud Storage free tier 5GB, or Backblaze B2 at \$0.005/GB
-    --- \~\$0.04/month for expected volume).
+    --- \~\$0.04/month for expected volume). **v3.1 status: not
+    implemented.** Backups remain on local NVMe with rotation;
+    off-server push is a Phase 6 item.
 
 **16.3.3 Recovery**
 
@@ -2899,12 +3186,14 @@ code. Same fixtures used by unit tests and evaluation harness.
 
 **20. Implementation Phases**
 
-The project is divided into four phases. Each phase builds on the
-previous and delivers independently useful functionality. Do not proceed
-to the next phase until the current one is stable and actively used
-daily.
+The project was originally divided into four phases. As of April 2026,
+Phases 1--5 are complete (Phase 5 overlapped with Phase 4 and
+expanded automations and the skill lifecycle). The list below is
+preserved as the historical plan; current status is summarized in the
+table at the end of the section, and the Phase 6 roadmap replaces the
+v3.0 Phase 4+ description.
 
-**Phase 1: Foundation (Weeks 1--4)**
+**Phase 1: Foundation (Weeks 1--4) --- COMPLETE**
 
 *Goal: Task capture, basic scheduling, reminders, observability. Claude
 API only. Solve the day-one problem.*
@@ -2991,7 +3280,7 @@ items. Tasks auto-schedule around calendar events. All model calls
 logged with cost tracking. Full observability via Grafana dashboard.
 Backup running. Health monitoring active. Calendar sync operational.
 
-**Phase 2: Intelligence & Communication (Weeks 5--7)**
+**Phase 2: Intelligence & Communication (Weeks 5--7) --- COMPLETE**
 
 *Goal: Smarter scheduling, multi-channel communication, prep work,
 correction logging.*
@@ -3029,7 +3318,7 @@ correction logging.*
 before tasks. Costs tracked. Scheduling has priority escalation and
 dependencies. Correction data accumulating for preference learning.
 
-**Phase 3: Sub-Agents, Local LLM & Preferences (Weeks 8--11)**
+**Phase 3: Sub-Agents, Local LLM & Preferences (Weeks 8--11) --- COMPLETE**
 
 *Goal: Autonomous task execution. Local LLM deployment (requires RTX
 3090). Preference learning. Multi-user data model active.*
@@ -3094,10 +3383,17 @@ types with shadow monitoring and spot-check quality audits. Evaluation
 harness enables model comparison. Preferences learned from corrections.
 Multi-user infrastructure ready.
 
-**Phase 4: UI, Multi-User & Polish (Weeks 12+)**
+**Phase 4: UI, Multi-User & Polish (Weeks 12+) --- PARTIALLY COMPLETE**
 
 *Goal: Full dashboard, mobile app, second user onboarding,
 optimization.*
+
+*v3.1 status: Backend multi-user (FastAPI + Supabase), Grafana
+dashboards, admin REST API, push-notification plumbing, and proactive
+capture prompts are all live. Flutter Web + Android client is scaffolded
+under `donna-app/` but is not the daily-driver UI yet. Local LLM
+Stage 2--3 tool use, second-user onboarding, and completion heatmap
+remain open.*
 
 -   Build Flutter Web + Android app with chat interface and production
     dashboard.
@@ -3136,6 +3432,99 @@ optimization.*
 **Phase 4 Deliverable:** Full-featured application with visual
 dashboard, mobile access, refined autonomous workflows, multi-user
 support, and optimized cost routing between local and cloud models.
+
+**Phase 5: Skills, Capabilities & Automations --- COMPLETE**
+
+*Goal (added post-v3.0): make Donna's behavior extensible at runtime
+through user-defined skills and scheduled automations, with a
+shadow/evolution loop that improves skill quality without human
+intervention.*
+
+-   Capability registry with embedding-based duplicate detection
+    (§23.2).
+
+-   Skill DSL, loader, and executor with per-step tool allowlists
+    (§23.3).
+
+-   Skill lifecycle (sandbox → shadow → trusted, with divergence,
+    equivalence, and degradation gates).
+
+-   Claude-driven auto-drafter for new skills and evolution loop for
+    improving failing skills (§23.4).
+
+-   Automations subsystem: cron-triggered skill invocations with
+    per-run budget, alert conditions, and cadence policies (§25).
+
+-   LLM Gateway: cost-aware priority queue with preemption, rate
+    limiting, and budget alerts across all outbound LLM calls (§26).
+
+-   Admin REST API: dashboards, log search, skill pipeline inspection,
+    task/preference/agent CRUD, Supabase sync visibility (§27).
+
+-   Authentication & access control: IP gate, device tokens, Immich
+    SSO, email allowlist + verification (§28).
+
+-   Conversation Engine: stateful multi-turn Discord chat with
+    intent classification, token budgeting, and session TTL (§24).
+
+**Phase 5 Deliverable:** Donna can learn new capabilities during
+normal use, promote verified skills from shadow to production, and
+run recurring automations end-to-end. Operators have a complete
+admin surface for inspection and control.
+
+**Phase 6: MCP, Remaining Agents, & Production UI --- NEXT**
+
+*Goal: close the remaining gaps between the v3.0 design and the
+running system.*
+
+-   Build the FastMCP server and wire GitHub, Filesystem (sandboxed
+    `/donna/workspace/`), Notes, and Web Search (SearXNG or API)
+    (§3.2.3--3.2.4).
+
+-   Enable **Coding Agent** and **Communication / Drafting Agent**
+    with Stage 3 write tools under guardrails (§7.1.1, §8.3).
+
+-   Dependency-chain priority escalation and `priority_locked` flag
+    (§5.5.2).
+
+-   Full conflict-resolution matrix (§6.1.2), including dual-invite
+    disambiguation and cascade-shifting.
+
+-   Extended Work and Emergency Work time windows (§6.2).
+
+-   Off-server backup push to GCS/Backblaze (§16.3.2).
+
+-   Flutter production UI as daily driver.
+
+-   Onboard second user (dad): per-user preferences, persona config,
+    calendar, notifications.
+
+**Phase Status Summary (April 2026)**
+
+  ------- --------------------------------------- -----------------
+  Phase   Scope                                   Status
+
+  1       Foundation (task capture, scheduling,   Complete
+          reminders, observability, budget)       
+
+  2       Multi-channel (SMS, email), prep work,  Complete
+          escalation, dedup, corrections          
+
+  3       Sub-agents (Challenger, Novelty Judge,  Complete
+          PM, Prep, Scheduler), local LLM,        
+          preferences learning, shadow mode       
+
+  4       FastAPI backend, Grafana dashboards,    Partial: Flutter
+          admin API, proactive capture, push      client and
+                                                  multi-user
+                                                  onboarding open
+
+  5       Skills, Capabilities, Automations, LLM  Complete
+          Gateway, Admin UI, Auth, Chat engine    
+
+  6       MCP server, Coding/Communication        Next
+          agents, Phase-6 backlog (above)         
+  ------- --------------------------------------- -----------------
 
 **21. Success Metrics**
 
@@ -3212,13 +3601,20 @@ support, and optimized cost routing between local and cloud models.
 
   MCP Server      Python (FastMCP 3.x,         LLM-facing tools only. CodeMode
                   Streamable HTTP)             for token efficiency. External
-                                               client endpoint.
+                                               client endpoint. **Deferred to
+                                               Phase 6.** Production LLM tools
+                                               go through the internal Skills
+                                               tool registry (§23.3).
 
-  Task Database   SQLite on NVMe (primary)     WAL mode. Sub-ms reads. user_id on
-                                               all tables.
+  Task Database   SQLite on NVMe (primary,     WAL mode. Sub-ms reads. user_id
+                  `donna_tasks.db`)            on all tables. Also hosts
+                                               invocation_log, skill/capability,
+                                               automation, chat, and auth
+                                               tables (see §16.1).
 
-  Log Database    SQLite on NVMe (dedicated)   Structured JSON logs. Separate
-                                               from task DB.
+  Log Storage     Loki (+ invocation_log in    Service logs over Loki; per-LLM
+                  SQLite)                      records in SQLite. No dedicated
+                                               `donna_logs.db` (see §14.3).
 
   Cloud Replica   Supabase (Postgres)          Free tier + keep-alive → Pro at
                                                Phase 4. Write-through sync.
@@ -3263,5 +3659,264 @@ support, and optimized cost routing between local and cloud models.
                   task types, states,          extensible behavior
                   preferences)                 
   --------------- ---------------------------- ----------------------------------
+
+**23. Skills & Capabilities System** *(added v3.1)*
+
+The skills + capabilities system is the extensibility layer that
+lets Donna learn new behaviors at runtime without requiring a code
+deploy. It was built during Phases 3--5 and expands well beyond the
+"sub-agent" hierarchy in §7.
+
+**23.1 Definitions**
+
+-   A **Capability** is a user-facing pattern Donna can handle
+    ("product_watch", "news_check", "email_triage",
+    "fetch_and_summarize"). It declares a name, description, input
+    schema, trigger type (`on_message`, `on_schedule`, `on_manual`),
+    and optional `default_output_shape`. Capabilities carry a
+    semantic embedding to detect duplicates against user intent.
+
+-   A **Skill** is a concrete implementation of one capability,
+    authored in a small YAML DSL (multi-step, `for_each`, `retry`,
+    `on_failure`, per-step tool allowlists). Each capability may have
+    multiple skill versions; exactly one is "primary" at a time.
+
+Tables: `capability`, `skill`, `skill_version`,
+`skill_state_transition`, `skill_run`, `skill_step_result`,
+`skill_fixture`, `skill_divergence`, `skill_candidate_report`,
+`skill_evolution_log`, `correction_cluster`.
+
+Configuration: `config/capabilities.yaml` seeds initial capabilities;
+`config/skills.yaml` controls lifecycle tunables (shadow sample
+rate, promotion thresholds, degradation windows, auto-draft caps,
+evolution gates, correction-clustering parameters).
+
+**23.2 Capability Registry & Matching**
+
+The `CapabilityRegistry` stores capabilities with embeddings
+(`capability.embedding` BLOB). `CapabilityMatcher` performs cosine
+similarity against the incoming task's vector and returns the
+best match above a configurable threshold. When a match is found,
+the orchestrator writes `task.capability_name` and
+`task.inputs_json` (§5.1) and routes execution to the Skills
+system instead of a generic agent. A `ToolRequirements` check
+confirms the capability's declared tools are available before
+dispatch.
+
+**23.3 Skill Executor and Tool Registry**
+
+The `SkillExecutor` resolves the primary version of a capability's
+skill, renders the step graph, dispatches tool calls through the
+internal **Skills Tool Registry**, and persists each step's input,
+output, latency, and cost into `skill_run` / `skill_step_result`.
+The tool registry enforces per-step allowlists (raises
+`ToolNotAllowedError` on violation) and is the production
+equivalent of the Phase 6 FastMCP server (§3.2.3). Current
+registered tools include `calendar_read`, `task_db_read`, and a
+small `web_fetch`; write tools (`task_db_write`, `calendar_write`)
+are declared in configs but not yet implemented in the registry and
+are gated on the Stage 3 tool-use work (§8.3).
+
+**23.4 Lifecycle: sandbox → shadow → trusted → degraded**
+
+Skills move through a gated lifecycle:
+
+-   **Sandbox** -- fixture-only; no production traffic.
+-   **Shadow** -- Claude-equivalence sampling against live inputs;
+    outputs compared via the equivalence judge. Divergences are
+    logged to `skill_divergence`. Promotion gates in
+    `config/skills.yaml` require a minimum shadow sample count,
+    equivalence rate, and fixture-regression pass.
+-   **Trusted (primary)** -- skill is the default executor for its
+    capability; Claude calls are reserved for shadow sampling and
+    when the skill emits `needs_claude`.
+-   **Flagged / Degraded** -- triggered by sustained divergence,
+    cluster of corrections, or sharp failure-rate change. Donna
+    falls back to a Claude-native implementation until the skill
+    is fixed or a new draft supersedes it.
+
+Supporting modules: `skills/shadow.py`, `skills/divergence.py`,
+`skills/equivalence.py`, `skills/lifecycle.py`,
+`skills/evolution_gates.py`, `skills/degradation.py`.
+
+**23.5 Auto-Drafting and Evolution**
+
+-   **Auto-drafter** (`skills/auto_drafter.py`) -- when the Novelty
+    Judge (§7.1.1) flags a task as a reusable capability,
+    Claude drafts a YAML skill + fixtures + output schema, which
+    lands as a candidate via the Admin API (`skill_candidates`,
+    `skill_drafts`). A human still promotes the candidate into the
+    shadow stage.
+-   **Evolution** (`skills/evolution.py`,
+    `skills/evolution_scheduler.py`) -- a nightly job clusters
+    recent corrections by skill (`correction_cluster`), asks
+    Claude to propose a patched skill version, runs it through the
+    evolution gates, and --- if it passes --- submits it as a new
+    `skill_version` ready for shadow evaluation.
+
+**23.6 Seed Content**
+
+The top-level `skills/` and `capabilities/` directories carry the
+initial bundle: skill definitions (`classify_priority`,
+`dedup_check`, `email_triage`, `fetch_and_summarize`, `news_check`,
+`parse_task`, `product_watch`) and capability manifests
+(`email_triage`, `news_check`). These are loaded on startup by
+`skills/seed_capabilities.py` if the DB is empty.
+
+**24. Chat / Conversation Engine** *(added v3.1)*
+
+v3.0's input-parsing pipeline (§10.4) handles single-turn task
+capture. Multi-turn conversational use is provided by the
+**Conversation Engine** (`src/donna/chat/`) which underpins Discord
+chat, intent classification, and clarification flows.
+
+Key properties:
+
+-   **Stateful sessions** (`chat_session`, `chat_message` tables):
+    each session has a user, channel, TTL, and a running summary
+    produced when the session closes.
+-   **Intent classification** via `classify_chat_intent` task type
+    (local LLM), routing the message into one of
+    `{task, automation, question, chat}`. Tasks feed the normal
+    pipeline; automations create/modify entries in the automation
+    repository (§25); questions use a read-only Q&A prompt;
+    `chat` stays in the engine for conversational turns.
+-   **Context budget** per session (default 24,000 tokens), with
+    summarization when the limit is approached. Configured in
+    `config/chat.yaml`.
+-   **Escalation budget** (dollar cap per day in `chat.yaml`)
+    ensures a long-running Discord thread cannot blow the daily
+    Claude budget.
+
+**25. Automations Subsystem** *(added v3.1)*
+
+Automations are user-defined recurring invocations of a capability
+(most commonly `product_watch`, `news_check`, or a user-authored
+skill). They live in `src/donna/automations/` and the
+`automation` / `automation_run` tables.
+
+-   **Trigger model.** Cron-style schedules via `croniter`, plus
+    manual "run now" triggers.
+-   **Dispatcher** (`automations/dispatcher.py`) picks between
+    skill-based execution and `claude_native` fallback based on the
+    capability's current skill state. A per-run budget is applied
+    from `config/automations.yaml`, and failures beyond a streak
+    threshold pause the automation (`automation.paused_until`).
+-   **Cadence policy** (`automations/cadence_policy.py`) maps
+    skill-state to a minimum interval so sandbox/shadow skills do
+    not run as often as trusted ones.
+-   **Alert evaluator** (`automations/alert.py`) checks
+    automation-specific conditions (e.g. "product price dropped
+    below threshold") and emits a notification via the standard
+    escalation ladder (§11).
+-   **State blob**: `automation.state_blob` persists per-automation
+    memory between runs (last seen item, last alert timestamp, etc.).
+
+**26. LLM Gateway & Queue** *(added v3.1)*
+
+All outbound calls to Claude and Ollama flow through the **LLM
+Gateway** (`src/donna/llm/`). Purpose: keep a single, cost-aware,
+preemptible choke point so budget enforcement and observability
+never get bypassed.
+
+-   **Priority queue** (`llm/queue.py`) with two lanes:
+    -   *Internal* -- system-initiated calls (digests, reminders,
+        evolution jobs, shadow sampling).
+    -   *External* -- user-initiated calls (chat, task capture,
+        interrogation).
+    External calls can preempt internal ones; `invocation_log`
+    records `queue_wait_ms`, `interrupted`, and the preempting
+    caller in `chain_id`/`caller`.
+
+-   **Rate limiter** (`llm/rate_limiter.py`) caps per-minute and
+    per-hour outbound rates per provider; respects
+    `donna_models.yaml` burst settings.
+
+-   **Alerter** (`llm/alerter.py`) fires notifications on budget
+    thresholds (daily $20 pause, 80%/90% monthly), circuit-breaker
+    opens, and sustained queue backlogs.
+
+-   **Cost enforcement.** Pre-call, the gateway consults
+    `CostTracker` / `BudgetGuard` (§13, `src/donna/cost/`) and
+    may raise `BudgetPausedError`. Post-call, it writes the full
+    metadata row into `invocation_log`.
+
+The gateway is what makes the spec's "budget rules" (§13.1)
+enforceable in practice.
+
+**27. Admin API & Dashboard** *(added v3.1)*
+
+The **Admin API** (FastAPI under `src/donna/api/`) is the
+operator's surface for inspection and control. It runs on port 8200
+and is protected by the authentication layer (§28).
+
+Routes (`src/donna/api/routes/`):
+
+-   `admin_dashboard.py` -- task pipeline, completion velocity,
+    budget, skill-system status cards, quality warnings. Thresholds
+    come from `config/dashboard.yaml`.
+-   `admin_logs.py` -- structured log search across Loki +
+    `invocation_log` with hierarchical `event_type` filtering
+    (adds `llm_gateway`, `ui`, `admin` branches to the v3.0
+    taxonomy in §14.4).
+-   `admin_invocations.py` -- per-call analytics; drill-down into
+    queue wait, chain, caller, skill_id.
+-   `admin_agents.py` -- enable/disable/inspect each agent.
+-   `admin_tasks.py`, `admin_preferences.py`, `admin_access.py`,
+    `admin_health.py`, `admin_config.py`, `admin_shadow.py` --
+    CRUD and live inspection for their respective domains.
+-   `skill_candidates.py`, `skill_drafts.py` -- the promotion
+    pipeline for candidate skills produced by the auto-drafter
+    (§23.5).
+-   `auth_flow.py`, `llm.py` -- device registration and direct
+    LLM-gateway controls.
+
+Grafana dashboards (`docker/grafana/dashboards/`) consume the same
+underlying data via Loki and the admin SQLite datasource; the admin
+API exposes the same information to the Flutter client and CLI. The
+Notification Dashboard panel (§15.1.5) and Preference Learning
+panel (§15.1.7) listed in v3.0 are **not yet built** and are Phase
+6 items.
+
+**28. Authentication & Access Control** *(added v3.1)*
+
+v3.0's §17 described security principles at a high level. v3.1
+documents the production auth stack (`src/donna/api/auth/`).
+
+-   **IP gate** (`ip_gate.py`) -- per-IP action log and rate limit.
+    Actions: `allow`, `challenge`, `deny`. Trust durations (24h,
+    7d, 30d, 90d) are tiers in `config/auth.yaml`.
+-   **Device tokens** (`device_tokens.py`) -- sliding + absolute
+    window tokens used by the Flutter client and CLI. Registration
+    lives in `auth_flow.py`.
+-   **Immich SSO** (`immich.py`) -- federates identity with the
+    homelab's Immich service; 60-second user cache, allowlist sync
+    every 15 minutes.
+-   **Email allowlist + verification tokens**
+    (`email_allowlist.py`, `verification_tokens.py`,
+    `email_sender.py`) -- self-service onboarding for new email
+    addresses, with verification URL + expiry.
+-   **Service keys** (`service_keys.py`) -- shared secret for
+    inter-service calls (e.g. the Ollama container → orchestrator).
+-   **Trusted proxies** (`trusted_proxies.py`) -- safe
+    `X-Forwarded-For` handling for the Caddy edge in
+    `docker/caddy/`.
+-   **Dependencies & router factory** (`dependencies.py`,
+    `router_factory.py`) -- FastAPI composition so individual
+    admin routes declare their auth requirements (Immich login,
+    service-key-only, device-token + role, etc.).
+
+Table `users` maps `donna_user_id ↔ immich_user_id ↔ role`; the
+`ip_access_log` table stores access-attempt history.
+
+**29. Setup Wizard** *(added v3.1)*
+
+`src/donna/setup/` provides an interactive wizard
+(`wizard.py`, `validators.py`, `phases.py`) that bootstraps a fresh
+deployment: checks environment (GPU, storage, Docker), validates
+required env vars, walks the operator through Discord/Twilio/Gmail
+OAuth, and runs the initial Alembic migration. It's orthogonal to
+runtime behavior and exists mainly to make re-provisioning
+reproducible.
 
 *--- End of Specification ---*

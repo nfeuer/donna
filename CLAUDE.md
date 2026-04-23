@@ -10,7 +10,7 @@ The user forgets to capture tasks, rarely checks task lists, and doesn't schedul
 - **Language:** Python 3.12+ / asyncio
 - **Cloud LLM:** Claude API (claude-sonnet-4-20250514) — sole provider until local LLM hardware available
 - **Local LLM:** Ollama on RTX 3090 (`qwen2.5:32b-instruct-q6_K`)
-- **Database:** SQLite on NVMe (WAL mode) — `donna_tasks.db` + `donna_logs.db`
+- **Database:** SQLite on NVMe (WAL mode) — `donna_tasks.db` (task + log data); service logs stream to Loki
 - **Cloud Replica:** Supabase Postgres (free tier, async write-through sync)
 - **Schema Migration:** Alembic (SQLAlchemy models)
 - **Interaction:** Discord bot (discord.py) as primary channel; Twilio SMS/voice; Gmail API
@@ -68,3 +68,4 @@ The user forgets to capture tasks, rarely checks task lists, and doesn't schedul
 - Local preview: `pip install -e ".[docs]" && properdocs serve`.
 - Deploy: handled by `.github/workflows/docs.yml` on push to `main`.
 - **Any design work** — in PR descriptions, commit messages, or doc pages — must reference `spec_v3.md` with the relevant `§` section.
+- **Keep `spec_v3.md` in sync.** When a PR changes behavior, schema, routing, config contract, or external integration that `spec_v3.md` describes, update the affected `§` in the same PR. If the drift is intentional but the spec update is out of scope, call it out explicitly in the PR description so it can be reconciled later rather than silently drifting.
