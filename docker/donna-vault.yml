@@ -1,0 +1,43 @@
+# Donna Vault — WebDAV frontend for the Obsidian markdown vault (slice 12).
+#
+# A single Caddy container exposes the vault root (bind-mounted read-write)
+# over WebDAV with HTTP basic auth. Clients (Obsidian desktop, Obsidian
+# mobile with WebDAV plugin, any WebDAV-aware editor) mount it as a
+# network drive. All writes made over WebDAV are captured by the same
+# git repo the orchestrator uses, so agent writes and human edits share
+# an audit trail.
+#
+# The hash for CADDY_VAULT_PASSWORD_HASH is generated with:
+#   docker run --rm caddy:2 caddy hash-password -p <plaintext>
+# The raw plaintext is never stored on disk.
+
+services:
+  donna-vault:
+    image: caddy:2.8
+    container_name: donna-vault
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ${DONNA_VAULT_PATH}:/vault
+      - ./caddy/vault.Caddyfile.example:/etc/caddy/Caddyfile:ro
+      - donna-vault-caddy-data:/data
+      - donna-vault-caddy-config:/config
+    ports:
+      # WebDAV listens on 8500 locally; the existing Cloudflare tunnel
+      # (out-of-repo) proxies the public hostname to this port.
+      - "8500:8500"
+    networks:
+      - homelab
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+volumes:
+  donna-vault-caddy-data:
+  donna-vault-caddy-config:
+
+networks:
+  homelab:
+    external: true

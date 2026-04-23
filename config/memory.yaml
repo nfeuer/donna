@@ -1,0 +1,44 @@
+# Memory / Vault configuration (slice 12)
+#
+# The `vault` and `safety` blocks are consumed in slice 12.
+# The `embedding`, `retrieval`, and `sources` blocks are declared here
+# so `MemoryConfig` round-trips the full shape, but they are unused
+# until slice 13+.
+
+vault:
+  root: /donna/vault
+  git_author_name: Donna
+  git_author_email: donna@homelab.local
+  sync_method: webdav         # webdav | syncthing | manual
+  templates_dir: prompts/vault
+  ignore_globs:
+    - ".obsidian/**"
+    - ".trash/**"
+    - ".git/**"
+
+safety:
+  max_note_bytes: 200000
+  path_allowlist:
+    - Inbox
+    - Meetings
+    - People
+    - Projects
+    - Daily
+    - Reviews
+  sensitive_frontmatter_key: donna_sensitive
+
+# --- unused until slice 13 ---
+embedding:
+  model: sentence-transformers/all-MiniLM-L6-v2
+  chunk_tokens: 512
+  chunk_overlap: 64
+
+retrieval:
+  top_k: 8
+  min_score: 0.25
+
+# --- unused until slice 14 ---
+sources:
+  chat: false
+  tasks: false
+  corrections: false

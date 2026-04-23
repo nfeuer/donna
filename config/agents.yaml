@@ -9,6 +9,12 @@ agents:
     allowed_tools:
       - task_db_read
       - task_db_write
+      # Vault (slice 12)
+      - vault_read
+      - vault_write
+      - vault_list
+      - vault_link
+      - vault_undo_last
 
   scheduler:
     enabled: true
@@ -19,6 +25,12 @@ agents:
       - calendar_write
       - task_db_read
       - task_db_write
+      # Vault (slice 12)
+      - vault_read
+      - vault_write
+      - vault_list
+      - vault_link
+      - vault_undo_last
 
   research:
     enabled: true
@@ -29,6 +41,12 @@ agents:
       - email_read
       - notes_read
       - fs_read
+      # Vault (slice 12)
+      - vault_read
+      - vault_write
+      - vault_list
+      - vault_link
+      - vault_undo_last
 
   coding:
     enabled: false             # Phase 4 — needs Stage 3 tool progression
@@ -46,6 +64,12 @@ agents:
     autonomy: medium           # probes task quality, returns questions to user
     allowed_tools:
       - task_db_read
+      # Vault (slice 12)
+      - vault_read
+      - vault_write
+      - vault_list
+      - vault_link
+      - vault_undo_last
 
   communication:
     enabled: false             # Phase 4 — always drafts, never sends
