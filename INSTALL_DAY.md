@@ -40,13 +40,17 @@ day" section — it prevents most of the ways this can get painful.
 ## Filesystem layout
 
 ```bash
-sudo mkdir -p /donna/{db,workspace,config,prompts,fixtures,logs/archive}
+sudo mkdir -p /donna/{db,workspace,vault,config,prompts,fixtures,logs/archive}
 sudo mkdir -p /donna/backups/{daily,weekly,monthly,offsite}
 sudo chown -R $USER:$USER /donna
 ```
 
 - [ ] Directories created
 - [ ] `ls -la /donna` shows `$USER:$USER` ownership on every subdir
+
+> `/donna/vault` is the Obsidian vault root (slice 12). Only needed if
+> you're bringing up the vault integration — skip if not. See
+> [SETUP.md §5.9](SETUP.md) for the WebDAV bring-up.
 
 ## Repo migration
 

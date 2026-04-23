@@ -299,6 +299,39 @@ SUPABASE = SetupStep(
     validator="validate_supabase",
 )
 
+VAULT = SetupStep(
+    id="vault",
+    name="Obsidian Vault (slice 12)",
+    phase=2,
+    required=False,
+    help_text=(
+        "Donna-owned markdown vault (see docs/domain/memory-vault.md).\n"
+        "The vault root is bind-mounted into the orchestrator and exposed\n"
+        "over WebDAV by the donna-vault Caddy service for Obsidian sync.\n"
+        "Generate the password hash with:\n"
+        "  docker run --rm caddy:2 caddy hash-password -p '<password>'"
+    ),
+    prompts=[
+        StepPrompt(
+            env_var="DONNA_VAULT_PATH",
+            label="Vault root (host path)",
+            default="/donna/vault",
+        ),
+        StepPrompt(
+            env_var="CADDY_VAULT_USER",
+            label="WebDAV basic-auth username",
+            default="donna",
+        ),
+        StepPrompt(
+            env_var="CADDY_VAULT_PASSWORD_HASH",
+            label="WebDAV basic-auth password (bcrypt hash)",
+            secret=True,
+            help_hint="(output of 'caddy hash-password')",
+        ),
+    ],
+    validator="validate_vault",
+)
+
 # ---------------------------------------------------------------------------
 # Phase 3 — Local LLM
 # ---------------------------------------------------------------------------
@@ -339,6 +372,7 @@ ALL_STEPS: list[SetupStep] = [
     GOOGLE_OAUTH,
     GOOGLE_CALENDARS,
     SUPABASE,
+    VAULT,
     OLLAMA_GPU,
 ]
 

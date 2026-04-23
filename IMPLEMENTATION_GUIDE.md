@@ -307,12 +307,55 @@ crontab -e
 # 0 12 * * 1 /path/to/donna/scripts/supabase_keepalive.sh
 ```
 
+### 2.5 Obsidian Vault (slice 12)
+
+Donna-owned markdown vault. Optional — the orchestrator runs fine without it; if `config/memory.yaml` is absent or the vault root is unreachable, the vault skill tools simply aren't registered. See [`docs/domain/memory-vault.md`](docs/domain/memory-vault.md) for the narrative and [`docs/reference-specs/memory-vault-spec.md`](docs/reference-specs/memory-vault-spec.md) for the design spec.
+
+**Create the vault root on the host:**
+
+```bash
+sudo mkdir -p /donna/vault
+sudo chown -R $USER:$USER /donna/vault
+```
+
+**Generate the WebDAV basic-auth hash** (don't leave plaintext in the shell history):
+
+```bash
+docker run --rm caddy:2 caddy hash-password -p '<choose a strong password>'
+# → $2a$14$…
+```
+
+**`docker/.env`:**
+
+```
+DONNA_VAULT_PATH=/donna/vault
+CADDY_VAULT_USER=donna
+CADDY_VAULT_PASSWORD_HASH=$2a$14$…   # paste the hash from above
+```
+
+**`config/memory.yaml`** ships with sensible defaults — review `vault.root`, `vault.git_author_email`, and `safety.path_allowlist` if you want a different layout. The `embedding`, `retrieval`, and `sources` blocks are parseable but unused until slice 13+; leave them as-is.
+
+**Bring up the WebDAV service:**
+
+```bash
+cp docker/caddy/vault.Caddyfile.example docker/caddy/vault.Caddyfile
+docker compose -f docker/donna-vault.yml up -d
+curl -u "$CADDY_VAULT_USER:<plaintext>" -X PROPFIND http://localhost:8500/
+# Expect: 207 Multi-Status
+```
+
+**Restart the orchestrator** so it picks up the vault mount and the five `vault_*` tools register for the `pm`, `scheduler`, `research`, and `challenger` agents.
+
+**Obsidian clients:** operator guide at [`docs/operations/vault-sync.md`](docs/operations/vault-sync.md).
+
 ### Gate Check: Phase 2
 
 - [ ] Calendar events appear in the calendar mirror after the first sync
 - [ ] A Gmail draft can be created via the `email_triage` task type
 - [ ] Twilio inbound message reaches the orchestrator (if configured)
 - [ ] Supabase dashboard shows active connections
+- [ ] (slice 12) `scripts/dev_tool_call.py --config-dir config vault_write --path "Inbox/smoke.md" --content '# hi'` returns a commit SHA
+- [ ] (slice 12) Obsidian desktop connects to the WebDAV endpoint and sees the vault contents
 
 ---
 
@@ -645,7 +688,7 @@ All flags verified against [`src/donna/cli.py`](src/donna/cli.py).
 
 ### B. Config Files
 
-All 16 live under [`config/`](config/).
+All 17 live under [`config/`](config/).
 
 | File | Purpose |
 |------|---------|
@@ -660,6 +703,7 @@ All 16 live under [`config/`](config/).
 | `donna_models.yaml` | Model routing, cost tracking, Ollama settings, task-type → model map |
 | `email.yaml` | Gmail OAuth, forwarding alias, digest schedules (morning/EOD) |
 | `llm_gateway.yaml` | Queue scheduling, rate limits, priority map, per-caller budget, Ollama health checks |
+| `memory.yaml` | (slice 12) Vault root, git author, safety envelope (path allowlist, max bytes, sensitive-key refusal), ignore globs; embedding/retrieval/sources blocks parseable but unused until slice 13+ |
 | `preferences.yaml` | Learned-preference rules: weekly extraction, confidence threshold |
 | `skills.yaml` | Skill-system tuning: enabled, matching confidence, promotion thresholds, auto-draft caps, `nightly_run_hour_utc: 3`, cost budgets |
 | `sms.yaml` | Twilio: rate limit 10/day, escalation ladder (30m/60m/120m), blackout hours |
@@ -668,7 +712,7 @@ All 16 live under [`config/`](config/).
 
 ### C. Docker Services
 
-Seven services across five compose files. All attach to the external `homelab` network.
+Eight services across six compose files. All attach to the external `homelab` network.
 
 | Service | Compose file | Port | Phase | Image / Build |
 |---------|--------------|------|-------|---------------|
@@ -676,6 +720,7 @@ Seven services across five compose files. All attach to the external `homelab` n
 | `donna-loki` | `docker/donna-monitoring.yml` | 3100 | 1 | `grafana/loki:2.9.0` |
 | `donna-promtail` | `docker/donna-monitoring.yml` | (internal) | 1 | `grafana/promtail:2.9.0` |
 | `donna-grafana` | `docker/donna-monitoring.yml` | 3000 | 1 | `grafana/grafana:10.2.0` |
+| `donna-vault` | `docker/donna-vault.yml` | 8500 | 2 (slice 12) | `caddy:2.8` — WebDAV frontend for the markdown vault |
 | `donna-ollama` | `docker/donna-ollama.yml` | 11434 | 3 | official `ollama/ollama` |
 | `donna-api` | `docker/donna-app.yml` | 8200 | 4 | `Dockerfile.api` (read-only SQLite) |
 | `donna-ui` | `docker/donna-ui.yml` | 8400 | 4 | built from sibling repo `../donna-ui` |
@@ -731,6 +776,9 @@ Caddy is run outside this repo; see [`docker/caddy/donna.Caddyfile.example`](doc
 | 2 | `SUPABASE_URL` | Cloud replica |
 | 2 | `SUPABASE_ANON_KEY` | Cloud replica |
 | 2 | `SUPABASE_SERVICE_ROLE_KEY` | Cloud replica |
+| 2 | `DONNA_VAULT_PATH` | (slice 12) Host path for the Obsidian vault, bind-mounted into the orchestrator |
+| 2 | `CADDY_VAULT_USER` | (slice 12) Basic-auth username for the WebDAV endpoint |
+| 2 | `CADDY_VAULT_PASSWORD_HASH` | (slice 12) Bcrypt hash for the WebDAV password (never store plaintext) |
 | 3 | `DONNA_OLLAMA_GPU_ID` | GPU index for Ollama (RTX 3090) |
 | 3 | `IMMICH_ML_GPU_ID` | Optional secondary GPU for Immich ML |
 | 4 | `IMMICH_ADMIN_API_KEY` | Required — allowlist sync auth |
