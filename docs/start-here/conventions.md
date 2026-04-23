@@ -48,6 +48,6 @@ These rules are non-negotiable. They come from
   — do not edit the generated pages.
 - Keep docstrings in Google style; mkdocstrings renders them.
 - When you add a new module under `src/donna/`, it appears in the
-  reference automatically on the next `mkdocs build`.
+  reference automatically on the next `properdocs build`.
 - For any **design decision**, cross-reference the relevant section of
   [`spec_v3.md`](../reference-specs/spec-v3.md).

@@ -38,7 +38,7 @@ The user forgets to capture tasks, rarely checks task lists, and doesn't schedul
 - `slices/` — Phase 1 build slice briefs with acceptance criteria
 - `docker/` — Compose files and env template
 - `tests/` — pytest unit + integration tests
-- `mkdocs.yml`, `scripts/gen_ref_pages.py` — Docs site config and auto-generator
+- `properdocs.yml`, `scripts/gen_ref_pages.py` — Docs site config and auto-generator
 
 ## Budget
 - $100/month hard cap on Claude API
@@ -63,8 +63,8 @@ The user forgets to capture tasks, rarely checks task lists, and doesn't schedul
 
 ## Documentation
 - Narrative docs are hand-written markdown under `docs/`.
-- API reference, config pages, and schema pages are **auto-generated** on every `mkdocs build` by `scripts/gen_ref_pages.py` — never commit files under `docs/reference/`, `docs/config/`, or `docs/schemas/`.
+- API reference, config pages, and schema pages are **auto-generated** on every `properdocs build` by `scripts/gen_ref_pages.py` — never commit files under `docs/reference/`, `docs/config/`, or `docs/schemas/`.
 - Docstring style: **Google** (rendered by `mkdocstrings`). New modules must have a docstring; new public functions/classes need at least `Args` / `Returns` / `Raises`.
-- Local preview: `pip install -e ".[docs]" && mkdocs serve`.
+- Local preview: `pip install -e ".[docs]" && properdocs serve`.
 - Deploy: handled by `.github/workflows/docs.yml` on push to `main`.
 - **Any design work** — in PR descriptions, commit messages, or doc pages — must reference `spec_v3.md` with the relevant `§` section.

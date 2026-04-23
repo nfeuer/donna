@@ -1,7 +1,7 @@
-"""Generate MkDocs pages for API reference, config files, and JSON schemas.
+"""Generate ProperDocs pages for API reference, config files, and JSON schemas.
 
-Hooked via the mkdocs-gen-files plugin (see mkdocs.yml). Runs on every
-`mkdocs build` / `mkdocs serve` and emits virtual pages into the docs tree:
+Hooked via the mkdocs-gen-files plugin (see properdocs.yml). Runs on every
+`properdocs build` / `properdocs serve` and emits virtual pages into the docs tree:
 
 - ``reference/`` — one page per Python module under ``src/donna/`` that
   invokes mkdocstrings to render classes, functions, and attributes with
@@ -36,7 +36,7 @@ def _generate_api_reference() -> None:
         fd.write(
             "Every module under `src/donna/` is rendered below with types, "
             "signatures, and source links. Pages are generated on every "
-            "`mkdocs build` by `scripts/gen_ref_pages.py` — do not edit them "
+            "`properdocs build` by `scripts/gen_ref_pages.py` — do not edit them "
             "directly.\n\n"
             "Start with [`donna.orchestrator`](donna/orchestrator/index.md) "
             "or [`donna.skills.executor`](donna/skills/executor.md) — those "

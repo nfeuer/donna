@@ -6,7 +6,7 @@ on:
   pull_request:
     paths:
       - "docs/**"
-      - "mkdocs.yml"
+      - "properdocs.yml"
       - "scripts/gen_ref_pages.py"
       - "src/**"
       - "config/**"
@@ -17,7 +17,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: docs-${{ github.ref }}
@@ -42,8 +44,26 @@ jobs:
           pip install -e ".[docs]"
 
       - name: Build site (strict)
-        run: mkdocs build --strict
+        run: properdocs build --strict
 
-      - name: Deploy to GitHub Pages
+      - name: Disable Jekyll on Pages
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: mkdocs gh-deploy --force
+        run: touch ./site/.nojekyll
+
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
