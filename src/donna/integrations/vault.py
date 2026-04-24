@@ -253,7 +253,7 @@ class VaultClient:
     # other method signatures (which use ``list[str]`` in annotations)
     # are resolved. Keeping the spec-required name ``list`` without
     # forcing string annotations elsewhere.
-    async def list(self, folder: str = "", recursive: bool = True) -> list[str]:  # noqa: A003
+    async def list(self, folder: str = "", recursive: bool = True) -> list[str]:
         """List relative paths under ``folder`` (vault-root when empty)."""
         return await asyncio.to_thread(self._list_sync, folder, recursive)
 
