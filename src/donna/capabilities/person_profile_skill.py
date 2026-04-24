@@ -149,9 +149,7 @@ class PersonProfileSkill:
             return True  # missing → safe to create
         if not note.content.strip():
             return True
-        if note.frontmatter.get("autowritten_by") == "donna":
-            return True
-        return False
+        return note.frontmatter.get("autowritten_by") == "donna"
 
     async def _gather_context(
         self,

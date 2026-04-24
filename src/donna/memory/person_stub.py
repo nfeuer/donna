@@ -23,8 +23,8 @@ See ``spec_v3.md §30.7`` and ``slices/slice_16_*.md``.
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
 from collections.abc import Iterable
+from datetime import UTC, datetime
 
 import structlog
 
