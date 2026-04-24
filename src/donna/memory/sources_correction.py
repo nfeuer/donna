@@ -9,10 +9,18 @@ correction event; body rendered by
 ``source_id`` is the correction row ``id`` so a second log of the
 same row upserts the same document. Backfill walks
 ``correction_log`` and feeds each row through the same template.
+
+**Why this source upserts directly instead of going through
+:class:`MemoryIngestQueue`.** Corrections are rare (one per user
+override). Direct upsert avoids queue overhead for the common case
+and lets the cluster-detector fast path (see
+``correction_logger.log_correction``) finish synchronously with
+the memory write.
 """
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import structlog
@@ -44,13 +52,16 @@ class CorrectionSource:
         """Handle a ``correction_logged`` event (post-commit)."""
         if not self._cfg.enabled:
             return
+        t0 = time.monotonic()
         try:
             await self._upsert_event(event)
             logger.info(
                 "memory_ingest_correction",
+                source_type=SOURCE_TYPE,
                 correction_id=event.get("id"),
                 user_id=event.get("user_id"),
                 field=event.get("field_corrected") or event.get("field"),
+                latency_ms=int((time.monotonic() - t0) * 1000),
             )
         except Exception as exc:
             logger.warning(

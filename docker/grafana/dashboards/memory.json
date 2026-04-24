@@ -114,6 +114,24 @@
       ]
     },
     {
+      "id": 9,
+      "title": "Per-source ingest latency p50",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 38 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "quantile_over_time(0.5, {container_name=\"donna-orchestrator\"} | json | event=~\"memory_ingest_(chat_turn|task|correction)\" | unwrap latency_ms [5m]) by (source_type)",
+          "legendFormat": "p50 {{source_type}}"
+        },
+        {
+          "datasource": "Loki",
+          "expr": "quantile_over_time(0.95, {container_name=\"donna-orchestrator\"} | json | event=~\"memory_ingest_(chat_turn|task|correction)\" | unwrap latency_ms [5m]) by (source_type)",
+          "legendFormat": "p95 {{source_type}}"
+        }
+      ]
+    },
+    {
       "id": 8,
       "title": "Memory ingest failures",
       "type": "stat",

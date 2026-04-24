@@ -11,11 +11,21 @@ Observes :meth:`donna.tasks.database.Database.create_task` and
 
 ``source_id`` is the task UUID. Failures are swallowed + logged
 (``memory_ingest_failed``) so the DB write never unwinds.
+
+**Why this source upserts directly instead of going through
+:class:`MemoryIngestQueue`.** Task mutations are sparse and the
+"force re-embed on terminal status" path needs to bust the stored
+``content_hash`` *just before* the upsert — a contract that doesn't
+fit the queue's batched ``upsert_many`` path. Backfill of the full
+``tasks`` table is also low volume (Donna is a single-user
+assistant). Direct upsert keeps the contract local and tests
+deterministic.
 """
 
 from __future__ import annotations
 
 import hashlib
+import time
 from typing import Any
 
 import structlog
@@ -74,6 +84,13 @@ class TaskSource:
         if not task_id:
             return
         if action == "delete":
+            # NOTE: as of slice 14 the `tasks` table has no soft-delete
+            # column and `Database` exposes no `delete_task`/`soft_delete_task`
+            # method, so this branch is dormant in production. It's kept
+            # ready so that the day a soft-delete path lands in the DB
+            # layer, it just needs to fire the observer with
+            # ``action="delete"`` and the memory document tombstone is
+            # automatic. Tested directly via unit tests.
             try:
                 await self._store.delete(
                     source_type=SOURCE_TYPE,
@@ -88,13 +105,16 @@ class TaskSource:
                     task_id=task_id,
                 )
             return
+        t0 = time.monotonic()
         try:
             await self._upsert_task(task, previous_status=event.get("previous_status"))
             logger.info(
                 "memory_ingest_task",
+                source_type=SOURCE_TYPE,
                 task_id=task_id,
                 status=task.get("status"),
                 action=action,
+                latency_ms=int((time.monotonic() - t0) * 1000),
             )
         except Exception as exc:
             logger.warning(

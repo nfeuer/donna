@@ -16,10 +16,21 @@ updated buffer upserts the same document (idempotent by
 walks existing ``conversation_messages`` + ``conversation_sessions``
 rows and regroups them through the same chunker; running backfill
 twice is a no-op.
+
+**Why this source upserts directly instead of going through
+:class:`MemoryIngestQueue`.** The queue exists to amortise embedding
+cost when many events arrive in a burst (the vault backfill replays
+the entire corpus on boot). Chat turns arrive one-at-a-time at
+human-typing rate, so the batching window almost never fires with
+more than one event in it; we'd pay queue overhead for no batching
+win and lose the synchronous ordering tests + the in-process
+session buffer rely on. If a future workload bursts chat ingest
+(bulk import, transcript replay), revisit by passing a queue here.
 """
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -193,15 +204,18 @@ class ChatSource:
     async def _emit_turn(
         self, session_id: str, user_id: str, turn: ChatTurn
     ) -> None:
+        t0 = time.monotonic()
         try:
             await self._upsert_turn(session_id, user_id, turn)
             logger.info(
                 "memory_ingest_chat_turn",
+                source_type=SOURCE_TYPE,
                 session_id=session_id,
                 role=turn.role,
                 first_msg_id=turn.first_msg_id,
                 last_msg_id=turn.last_msg_id,
                 tokens=turn.token_count,
+                latency_ms=int((time.monotonic() - t0) * 1000),
             )
         except Exception as exc:
             logger.warning(

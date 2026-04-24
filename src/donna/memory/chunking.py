@@ -474,12 +474,27 @@ class ChatTurnChunker:
         lowered = content.lower()
         if _CHAT_TURN_QUESTION_RE.search(content):
             return True
+        # Tokenize once and match each verb against tokens. We accept
+        # the bare verb plus the three common English inflections
+        # (-s / -ed / -ing) so "call" rescues "called" / "calling"
+        # but `callous` / `callable` slip through and don't rescue
+        # an otherwise-short noisy message.
+        tokens = re.findall(r"\w+", lowered)
+        verb_forms: set[str] = set()
         for verb in self.task_verbs:
             if not verb:
                 continue
-            # Treat each verb as a prefix / whole-word hit so "email"
-            # matches "email nick" but not "emails-are-fast".
-            if re.search(rf"\b{re.escape(verb)}\b", lowered):
+            verb_forms.add(verb)
+            verb_forms.add(verb + "s")
+            verb_forms.add(verb + "ed")
+            verb_forms.add(verb + "ing")
+            # `call` → `calling` (no e-drop), but `schedule` →
+            # `scheduling` (e-drop). Cover the e-drop variants too.
+            if verb.endswith("e"):
+                verb_forms.add(verb[:-1] + "ing")
+                verb_forms.add(verb[:-1] + "ed")
+        for tok in tokens:
+            if tok in verb_forms:
                 return True
         return False
 

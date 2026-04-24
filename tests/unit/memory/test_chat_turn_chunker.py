@@ -95,6 +95,31 @@ def test_system_role_forces_boundary() -> None:
     assert turns[1].first_msg_id == "m3"
 
 
+def test_task_verb_matches_inflected_form() -> None:
+    """`call` rescues `called` / `calling`, `schedule` rescues `scheduling`,
+    but `callous` / `callable` are correctly NOT rescued."""
+    chunker = ChatTurnChunker(
+        max_tokens=256,
+        min_chars=50,
+        task_verbs=["call", "email", "schedule"],
+    )
+    msgs = [
+        _msg(1, "user", "called sarah"),
+        _msg(2, "user", "emailing nick"),
+        _msg(3, "user", "scheduling 1:1"),  # e-drop variant
+        _msg(4, "user", "callous remark"),  # not rescued
+        _msg(5, "user", "callable api"),    # not rescued
+    ]
+    turns = chunker.chunk_messages(msgs)
+    assert len(turns) == 1
+    body = turns[0].content
+    assert "called sarah" in body
+    assert "emailing nick" in body
+    assert "scheduling 1:1" in body
+    assert "callous" not in body
+    assert "callable" not in body
+
+
 def test_turn_span_metadata_covers_all_messages() -> None:
     chunker = ChatTurnChunker(max_tokens=256, min_chars=1)
     msgs = [_msg(i, "user", f"line {i} with content") for i in range(1, 4)]
