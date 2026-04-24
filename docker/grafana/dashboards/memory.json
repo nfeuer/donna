@@ -1,0 +1,91 @@
+{
+  "title": "Memory Vault",
+  "uid": "donna-memory",
+  "version": 1,
+  "schemaVersion": 36,
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "tags": ["donna", "memory", "vault"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Retrieval Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "quantile_over_time(0.5, {container_name=\"donna-orchestrator\"} | json | event=\"memory_retrieval\" | unwrap latency_ms [5m])",
+          "legendFormat": "p50"
+        },
+        {
+          "datasource": "Loki",
+          "expr": "quantile_over_time(0.95, {container_name=\"donna-orchestrator\"} | json | event=\"memory_retrieval\" | unwrap latency_ms [5m])",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Chunks Ingested (batches)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"memory_ingest_batch\" [$__range]))",
+          "legendFormat": "batches"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["sum"] }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Re-embeds (chunk)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"llm_invocation_logged\" | task_type=\"embed_vault_chunk\" [$__range]))",
+          "legendFormat": "chunks embedded"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["sum"] }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Vault Watch Events",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (change) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"vault_watch_event\" [5m]))",
+          "legendFormat": "{{change}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Retrieval Hits per Query",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "avg_over_time({container_name=\"donna-orchestrator\"} | json | event=\"memory_retrieval\" | unwrap hits [5m])",
+          "legendFormat": "avg hits"
+        }
+      ]
+    }
+  ]
+}

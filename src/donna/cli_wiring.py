@@ -121,6 +121,88 @@ def _try_build_vault_client(config_dir: Path) -> Any | None:
         return None
 
 
+async def _try_build_memory_store(
+    config_dir: Path,
+    db: Any,
+    user_id: str,
+    invocation_logger: InvocationLogger,
+    vault_client: Any | None,
+) -> tuple[Any | None, tuple[Any, Any | None] | None]:
+    """Construct the slice-13 memory pipeline (non-fatal).
+
+    Returns ``(memory_store, (ingest_queue, vault_source))`` on success.
+    Returns ``(None, None)`` when:
+
+    - ``config/memory.yaml`` is missing, or
+    - sqlite-vec failed to load on the shared DB connection
+      (``db.vec_available == False``), or
+    - any provider / store / source constructor raises.
+
+    The orchestrator always keeps booting; the `memory_search` tool
+    and vault watcher simply don't register.
+    """
+    memory_yaml = config_dir / "memory.yaml"
+    if not memory_yaml.exists():
+        return None, None
+    if not getattr(db, "vec_available", False):
+        logger.warning(
+            "memory_store_unavailable",
+            reason="sqlite_vec_not_loaded",
+        )
+        return None, None
+    try:
+        from donna.config import load_memory_config
+        from donna.memory.chunking import MarkdownHeadingChunker
+        from donna.memory.embeddings import build_embedding_provider
+        from donna.memory.queue import MemoryIngestQueue
+        from donna.memory.sources_vault import VaultSource
+        from donna.memory.store import MemoryStore
+
+        cfg = load_memory_config(config_dir)
+        provider = build_embedding_provider(
+            cfg.embedding,
+            invocation_logger=invocation_logger,
+            user_id=user_id,
+        )
+        chunker = MarkdownHeadingChunker(
+            max_tokens=cfg.embedding.max_tokens,
+            overlap_tokens=cfg.embedding.chunk_overlap,
+        )
+        store = MemoryStore(db.connection, provider, chunker, cfg.retrieval)
+        queue = MemoryIngestQueue(store)
+        source: Any | None = None
+        if cfg.sources.vault.enabled and vault_client is not None:
+            source = VaultSource(
+                client=vault_client,
+                store=store,
+                queue=queue,
+                cfg=cfg.sources.vault,
+                vault_cfg=cfg.vault,
+                user_id=user_id,
+            )
+        return store, (queue, source)
+    except Exception as exc:
+        logger.warning("memory_store_unavailable", reason=str(exc))
+        return None, None
+
+
+def _start_memory_tasks(
+    ctx: Any, handles: tuple[Any, Any | None] | None,
+) -> None:
+    """Spawn the ingest worker + vault watcher + backfill as bg tasks.
+
+    Appends to ``ctx.tasks`` so the orchestrator's main ``asyncio.wait``
+    supervises them alongside every other long-running subsystem.
+    """
+    if handles is None:
+        return
+    queue, source = handles
+    ctx.tasks.append(asyncio.create_task(queue.run_forever()))
+    if source is not None:
+        ctx.tasks.append(asyncio.create_task(source.watch()))
+        ctx.tasks.append(asyncio.create_task(source.backfill(ctx.user_id)))
+
+
 async def _try_build_vault_writer(
     config_dir: Path, vault_client: Any | None
 ) -> Any | None:
@@ -398,6 +480,7 @@ async def wire_skill_system(
     calendar_client: Any | None = None,
     vault_client: Any | None = None,
     vault_writer: Any | None = None,
+    memory_store: Any | None = None,
 ) -> SkillSystemHandle:
     """Register default tools, seed capabilities, assemble skill bundle.
 
@@ -450,6 +533,7 @@ async def wire_skill_system(
         cost_tracker=cost_tracker_early,
         vault_client=vault_client,
         vault_writer=vault_writer,
+        memory_store=memory_store,
     )
     log.info(
         "default_tools_registered",

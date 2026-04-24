@@ -624,3 +624,56 @@ class AutomationRun(Base):
     alert_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+# === Slice 13: semantic memory ===
+
+
+class MemoryDocument(Base):
+    """A single ingested document (a vault note, chat turn, etc.).
+
+    ``(user_id, source_type, source_id)`` is unique. Soft-deleted via
+    ``deleted_at``; search joins filter on ``deleted_at IS NULL`` so
+    stale embeddings in ``vec_memory_chunks`` never surface.
+    """
+
+    __tablename__ = "memory_documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(512), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    sensitive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class MemoryChunk(Base):
+    """One embedding-bearing slice of a :class:`MemoryDocument`.
+
+    The embedding vector lives in the ``vec_memory_chunks`` sqlite-vec
+    virtual table (no ORM model — raw SQL only). Chunks here are the
+    payload surfaced by ``MemoryStore.search``.
+    """
+
+    __tablename__ = "memory_chunks"
+
+    chunk_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    document_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("memory_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    heading_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

@@ -385,23 +385,55 @@ class VaultSafetyConfig(BaseModel):
 
 
 class VaultEmbeddingConfig(BaseModel):
-    """Embedding model + chunking. Parseable but unused until slice 13."""
+    """Embedding provider + chunking parameters (slice 13).
 
-    model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    chunk_tokens: int = 512
-    chunk_overlap: int = 64
+    `provider` selects the EmbeddingProvider factory branch. `version_tag`
+    stamps every chunk; bumping it triggers reindexing on the next
+    backfill. `dim` must match the provider output and the sqlite-vec
+    virtual table column. `max_tokens` / `chunk_overlap` drive the
+    chunker.
+    """
+
+    provider: str = "minilm-l6-v2"
+    version_tag: str = "minilm-l6-v2@2024-05"
+    dim: int = 384
+    max_tokens: int = 256
+    chunk_overlap: int = 32
+    # Legacy slice-12 aliases — still parseable so old configs boot.
+    # Prefer `max_tokens` over `chunk_tokens`; `model` is ignored (the
+    # provider branch is selected by `provider`).
+    model: str | None = None
+    chunk_tokens: int | None = None
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
 
 
 class VaultRetrievalConfig(BaseModel):
-    """Retrieval knobs. Parseable but unused until slice 13."""
+    """Retrieval knobs (slice 13)."""
 
-    top_k: int = 8
+    default_k: int = 8
     min_score: float = 0.25
+    max_k: int = 32
+    # Legacy slice-12 alias.
+    top_k: int | None = None
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+
+class VaultSourceConfig(BaseModel):
+    """Per-source ingestion knobs. Vault is the only source in slice 13."""
+
+    enabled: bool = True
+    chunker: str = "markdown_heading"
+    ignore_globs: list[str] = Field(default_factory=list)
 
 
 class VaultSourcesConfig(BaseModel):
-    """Episodic source toggles. Parseable but unused until slice 14."""
+    """Episodic source toggles. Slice 13 wires `vault`; chat/tasks/
+    corrections are reserved for slice 14.
+    """
 
+    vault: VaultSourceConfig = Field(default_factory=VaultSourceConfig)
     chat: bool = False
     tasks: bool = False
     corrections: bool = False

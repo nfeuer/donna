@@ -56,6 +56,13 @@ design intent is unchanged; substantive updates in v3.1 are:
     Automations Subsystem (§25), LLM Gateway & Queue (§26), Admin
     API & Dashboard (§27), Authentication & Access Control (§28),
     Setup Wizard (§29).
+-   **§30 (new)** Memory & Vault Subsystem documents the
+    Obsidian-compatible vault plumbing (slice 12) and the
+    sqlite-vec-backed semantic memory layer (slice 13):
+    `MemoryStore`, `EmbeddingProvider`, `MarkdownHeadingChunker`,
+    `VaultSource`, and the `memory_search` agent tool. The
+    authoritative design lives at
+    `docs/reference-specs/memory-vault-spec.md`.
 
 Everything else in v3.0 remains canonical design intent.
 
@@ -3918,5 +3925,131 @@ required env vars, walks the operator through Discord/Twilio/Gmail
 OAuth, and runs the initial Alembic migration. It's orthogonal to
 runtime behavior and exists mainly to make re-provisioning
 reproducible.
+
+**30. Memory & Vault Subsystem** *(added v3.1 — slices 12 + 13)*
+
+Donna owns a durable, human-editable markdown workspace (slice 12) and
+a semantic index over that workspace (slice 13). Together they give
+agents a read/write surface for meeting notes, people profiles, daily
+logs, and research artefacts — plus retrieval by meaning, not path —
+without adding a second database daemon. The authoritative design
+lives at `docs/reference-specs/memory-vault-spec.md`; this section is
+the spec_v3 anchor.
+
+**30.1 Vault Plumbing (slice 12)**
+
+An Obsidian-compatible vault rooted at `vault.root` (config/memory.yaml).
+`VaultClient` (`src/donna/integrations/vault.py`) provides read-only
+`read` / `list` / `stat` / `extract_links`; `VaultWriter` is the sole
+mutation path, enforcing the safety envelope from §7.3 (path
+containment, `.md` extension, `safety.path_allowlist`,
+`safety.max_note_bytes`, optimistic concurrency via `expected_mtime`,
+frontmatter preservation). Every mutation produces exactly one git
+commit via `GitRepo` (subprocess, no GitPython). WebDAV sync is
+provided by a Caddy container so Obsidian desktop and mobile clients
+can round-trip writes. Agents reach the vault via the
+`vault_{read,write,list,link,undo_last}` tool family. Full design:
+`docs/reference-specs/memory-vault-spec.md §§1-6`.
+
+**30.2 Semantic Memory (slice 13)**
+
+The memory layer adds three tables inside `donna_tasks.db` (§16.1):
+
+-   `memory_documents` — one row per ingested source, keyed by
+    `(user_id, source_type, source_id)`. Soft-deleted via
+    `deleted_at` so the ANN index does not need tombstone sweeps.
+-   `memory_chunks` — one row per chunk, carrying `content`,
+    `token_count`, JSON-encoded `heading_path` provenance, and the
+    `embedding_version` tag used at ingest time.
+-   `vec_memory_chunks` — a sqlite-vec `vec0` virtual table with
+    `chunk_id TEXT PRIMARY KEY, embedding FLOAT[384]`. Loaded on the
+    shared aiosqlite connection in `Database.connect()`; missing
+    extension degrades to `vec_available=False` without blocking
+    boot (memory tools simply don't register).
+
+`MemoryStore` exposes `put` / `upsert` / `upsert_many` / `delete` /
+`reindex` / `search` (design target in
+`docs/reference-specs/memory-vault-spec.md §8`). Upsert hashes the
+document body; unchanged hashes short-circuit without invoking the
+embedding provider, so the `invocation_log` row count is a dedup
+signal. `search` runs a single three-table join, ordered by vec0
+distance, with score `1 - distance² / 2` on MiniLM's unit-normalized
+vectors; results below `retrieval.min_score` are dropped and `k` is
+clamped to `retrieval.max_k`.
+
+**30.3 Embedding Layer**
+
+`EmbeddingProvider` is a Protocol (`src/donna/memory/embeddings.py`)
+honoured by `MiniLMProvider` (default, wraps
+`capabilities/embeddings.py`), the deterministic test fake, and any
+future provider (bge-small, Voyage-3-lite). Selection is config-only
+via `embedding.provider`. Every embed emits one `invocation_log` row
+per input text (`task_type in {embed_vault_chunk,
+embed_memory_query}`, `model_alias="minilm-l6-v2"`, `tokens_in=0`,
+`cost_usd=0.0`) so §4.3's invocation-log contract holds for local
+work the same way it does for cloud calls.
+
+The chunker (`MarkdownHeadingChunker`, 256-token cap / 32-token
+overlap) walks markdown headings H1–H3, preserves `heading_path`
+stacks, and keeps fenced code blocks intact when they fit. Token
+counting uses `tiktoken cl100k_base` when available and a
+deterministic word+punct heuristic when the encoding file cannot be
+fetched — the fallback over-counts English prose, so the effective
+cap stays below MiniLM's true 256-WordPiece limit.
+
+**30.4 Ingestion**
+
+Slice 13 wires one source: the vault.
+`VaultSource.watch()` tails `watchfiles.awatch` with a 500 ms
+coalesce window and routes adds / modifies / deletes into
+`MemoryIngestQueue` (batched upserts) or `MemoryStore.delete`
+(soft-delete). `VaultSource.backfill(user_id)` walks the vault root
+on boot, mtime-compares against `memory_documents.updated_at`, and
+catches up anything newer-on-disk. Notes whose frontmatter contains
+`donna: local-only` (or `donna_sensitive: true`) are flagged
+sensitive; the flag propagates to every `RetrievedChunk.metadata`.
+
+Slice 14 adds chat / task / correction sources using the same
+`MemoryStore` — no schema changes are expected.
+
+**30.5 `memory_search` Tool**
+
+Agents retrieve via the `memory_search` skill tool
+(`src/donna/skills/tools/memory_search.py`). Signature:
+
+```python
+memory_search(query, user_id, k=None, sources=None, filters=None)
+```
+
+Returns provenance-tagged chunks (`source_type`, `source_path`,
+`heading_path`, `score`, `sensitive`, `metadata`). Registered by
+`donna.skills.tools.register_default_tools(memory_store=...)` and
+included in `allowed_tools` for `pm`, `scheduler`, `research`, and
+`challenger` in `config/agents.yaml` (§7.1).
+
+**30.6 Observability**
+
+A Grafana dashboard at `docker/grafana/dashboards/memory.json`
+shows retrieval latency p50/p95, ingest-batch count, re-embed
+counter, watcher-event breakdown, and average hits per query.
+Structlog events fire on every ingest (`memory_ingest_batch`), every
+retrieval (`memory_retrieval`), every vault-watcher change
+(`vault_watch_event`), and every backfill (`vault_backfill_done`).
+
+**30.7 Scope Guardrails**
+
+Explicitly deferred from slice 13:
+
+-   Chat / task / correction ingestion → slice 14.
+-   Jinja templates under `prompts/vault/` and memory-informed
+    writers (meeting notes, weekly reviews) → slice 15.
+-   Supabase sync for `memory_documents` / `memory_chunks` →
+    slice 16.
+-   Rename / move reconciliation beyond `delete + upsert` →
+    slice 16.
+-   BM25 / hybrid retrieval and eval harness → slice 17.
+-   Cloud embedding providers — Protocol supports them, no wiring
+    shipped.
+-   Attachment indexing (images, PDFs). V1 is `.md` only.
 
 *--- End of Specification ---*
