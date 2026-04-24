@@ -75,3 +75,4 @@ graph LR
 | [`donna.capabilities`](../reference/donna/capabilities/index.md) | Capability metadata, embeddings |
 | [`donna.notifications`](../reference/donna/notifications/index.md) | Channel abstractions, escalation |
 | [`donna.llm`](../reference/donna/llm/index.md) | Rate limiter, alerter |
+| [`donna.memory`](../reference/donna/memory/index.md) | `MemoryStore` (sqlite-vec), embedding provider, chunkers, and the `Vault` / `Chat` / `Task` / `Correction` sources that feed the semantic index (slices 13–14) |
