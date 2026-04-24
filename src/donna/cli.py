@@ -192,14 +192,20 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     from donna.cli_wiring import (
         _try_build_calendar_client,
         _try_build_gmail_client,
+        _try_build_vault_client,
+        _try_build_vault_writer,
     )
 
     gmail_client = _try_build_gmail_client(ctx.config_dir)
     calendar_client = _try_build_calendar_client(ctx.config_dir)
+    vault_client = _try_build_vault_client(ctx.config_dir)
+    vault_writer = await _try_build_vault_writer(ctx.config_dir, vault_client)
     skill_h = await wire_skill_system(
         ctx,
         gmail_client=gmail_client,
         calendar_client=calendar_client,
+        vault_client=vault_client,
+        vault_writer=vault_writer,
     )
     automation_h = await wire_automation_subsystem(ctx, skill_h)
     _discord_h = await wire_discord(ctx, skill_h, automation_h)

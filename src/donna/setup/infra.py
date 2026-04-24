@@ -19,6 +19,9 @@ async def create_directories(env: dict[str, str]) -> list[str]:
         "DONNA_WORKSPACE_PATH",
         "DONNA_BACKUP_PATH",
         "DONNA_LOG_PATH",
+        # Slice 12: vault root (optional — only created if the operator
+        # populated DONNA_VAULT_PATH via the vault setup step).
+        "DONNA_VAULT_PATH",
     ]
     for var in path_vars:
         path_str = env.get(var, "")

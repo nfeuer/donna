@@ -1,0 +1,32 @@
+# WebDAV endpoint for the Donna vault (slice 12).
+# Paired with docker/donna-vault.yml. Copy to `vault.Caddyfile`, adjust
+# credentials, and mount read-only into the donna-vault container.
+#
+# This file listens on :8500 inside the container and is not directly
+# exposed to the internet. The existing Cloudflare tunnel (configured
+# out-of-repo on the homelab) proxies `vault.houseoffeuer.com` → this
+# port, so only TLS-terminated traffic reaches Caddy.
+#
+# WebDAV requires Caddy's `webdav` handler, which ships as a module in
+# caddy:2 since 2.7. No extra plugin install needed.
+#
+# Env vars consumed (from docker/.env):
+#   CADDY_VAULT_USER           — basic-auth username
+#   CADDY_VAULT_PASSWORD_HASH  — bcrypt hash from `caddy hash-password`
+
+:8500 {
+    encode gzip zstd
+
+    basic_auth * {
+        {$CADDY_VAULT_USER} {$CADDY_VAULT_PASSWORD_HASH}
+    }
+
+    handle {
+        root * /vault
+        webdav
+    }
+
+    log {
+        output file /var/log/caddy/donna-vault-access.log
+    }
+}

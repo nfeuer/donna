@@ -299,6 +299,40 @@ async def validate_calendar_ids(env: dict[str, str]) -> ValidatorResult:
     return ValidatorResult(True, "Calendar IDs set (full validation requires OAuth flow)")
 
 
+async def validate_vault(env: dict[str, str]) -> ValidatorResult:
+    """Validate vault path is absolute and the Caddy auth pair is populated.
+
+    The bcrypt hash format (``$2a$...`` / ``$2b$...``) is checked loosely —
+    we don't verify the hash, just that it looks plausible so a bare
+    plaintext password doesn't end up in .env.
+    """
+    path = env.get("DONNA_VAULT_PATH", "")
+    if not path:
+        return ValidatorResult(False, "DONNA_VAULT_PATH cannot be empty")
+    if not path.startswith("/"):
+        return ValidatorResult(
+            False, f"DONNA_VAULT_PATH must be an absolute path, got: {path!r}"
+        )
+
+    user = env.get("CADDY_VAULT_USER", "")
+    pwhash = env.get("CADDY_VAULT_PASSWORD_HASH", "")
+    if not user:
+        return ValidatorResult(False, "CADDY_VAULT_USER cannot be empty")
+    if not pwhash:
+        return ValidatorResult(
+            False,
+            "CADDY_VAULT_PASSWORD_HASH cannot be empty. Generate a hash with: "
+            "docker run --rm caddy:2 caddy hash-password -p '<password>'",
+        )
+    if not (pwhash.startswith("$2a$") or pwhash.startswith("$2b$")):
+        return ValidatorResult(
+            False,
+            "CADDY_VAULT_PASSWORD_HASH does not look like a bcrypt hash "
+            "(should start with $2a$ or $2b$). Did you paste the plaintext?",
+        )
+    return ValidatorResult(True, "Vault config looks valid")
+
+
 async def validate_supabase(env: dict[str, str]) -> ValidatorResult:
     """Test Supabase connectivity with the anon key."""
     url = env.get("SUPABASE_URL", "")
@@ -396,6 +430,7 @@ VALIDATORS: dict[str, type[object] | object] = {
     "validate_google_creds_file": validate_google_creds_file,
     "validate_calendar_ids": validate_calendar_ids,
     "validate_supabase": validate_supabase,
+    "validate_vault": validate_vault,
     "validate_nvidia_gpu": validate_nvidia_gpu,
     "validate_docker": validate_docker,
 }

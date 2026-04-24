@@ -120,7 +120,7 @@ cd donna
 Donna uses a dedicated storage tree at `/donna/`. Create it before running anything:
 
 ```bash
-sudo mkdir -p /donna/{db,workspace,backups/{daily,weekly,monthly,offsite},logs/archive,config,prompts,fixtures,models}
+sudo mkdir -p /donna/{db,workspace,vault,backups/{daily,weekly,monthly,offsite},logs/archive,config,prompts,fixtures,models}
 sudo chown -R $USER:$USER /donna
 ```
 
@@ -130,6 +130,7 @@ sudo chown -R $USER:$USER /donna
 /donna/
 ├── db/              ← SQLite databases (donna_tasks.db, donna_logs.db)
 ├── workspace/       ← Agent sandboxed working directory
+├── vault/           ← Obsidian-compatible markdown vault (slice 12, optional)
 ├── backups/
 │   ├── daily/       ← 7-day retention
 │   ├── weekly/      ← 4-week retention
@@ -142,6 +143,8 @@ sudo chown -R $USER:$USER /donna
 ├── fixtures/        ← Evaluation test fixtures
 └── models/          ← Ollama model cache (Phase 3+)
 ```
+
+`/donna/vault/` only needs to exist if you're using the Obsidian vault integration (slice 12). The orchestrator starts fine without it — skill tools for the vault just won't register. See [Section 5.9](#59-obsidian-vault-slice-12-optional) for the env vars and [`docs/operations/vault-sync.md`](docs/operations/vault-sync.md) for the full bring-up.
 
 > If you prefer a different root path (e.g. `/mnt/nvme/donna`), that's fine — just update `DONNA_DATA_PATH` and related vars in your `.env` file accordingly.
 
@@ -429,6 +432,59 @@ After completing these steps, continue to [Section 11 — Local LLM Stack](#11-l
 
 ---
 
+### 5.9 Obsidian Vault (slice 12, optional)
+
+Donna-owned markdown vault with a safe write path (git auto-commit, path validation, mtime-based conflict detection, one-click undo) and a WebDAV sync channel for Obsidian desktop / mobile clients. Skip this subsection if you don't want the vault — the orchestrator runs fine without it.
+
+**Step 1 — Create the vault root on the host** (already done if you followed [Section 3](#3-create-storage-directories)):
+
+```bash
+sudo mkdir -p /donna/vault
+sudo chown -R $USER:$USER /donna/vault
+```
+
+**Step 2 — Generate a WebDAV password hash.** Don't paste plaintext into `.env`.
+
+```bash
+docker run --rm caddy:2 caddy hash-password -p '<a strong password>'
+# output: $2a$14$…
+```
+
+**Step 3 — Fill in the env vars** in `docker/.env`:
+
+```env
+DONNA_VAULT_PATH=/donna/vault
+CADDY_VAULT_USER=donna
+CADDY_VAULT_PASSWORD_HASH=$2a$14$…   # the hash from step 2
+```
+
+**Step 4 — Review `config/memory.yaml`.** Ships with sensible defaults. Change `vault.git_author_email`, `safety.max_note_bytes`, or `safety.path_allowlist` if you want a different layout. The `embedding`, `retrieval`, and `sources` blocks are parseable but unused — they come online in slice 13+; leave them alone.
+
+**Step 5 — Start the WebDAV service:**
+
+```bash
+cp docker/caddy/vault.Caddyfile.example docker/caddy/vault.Caddyfile
+docker compose -f docker/donna-vault.yml up -d
+
+# Smoke test (expect 207 Multi-Status):
+curl -u "$CADDY_VAULT_USER:<plaintext>" -X PROPFIND http://localhost:8500/
+```
+
+**Step 6 — Restart the orchestrator** so it picks up the vault mount and registers the `vault_read` / `vault_write` / `vault_list` / `vault_link` / `vault_undo_last` tools for the `pm`, `scheduler`, `research`, and `challenger` agents.
+
+**Step 7 — Connect Obsidian.** Full client-setup guide in [`docs/operations/vault-sync.md`](docs/operations/vault-sync.md).
+
+**Verification:**
+
+```bash
+uv run python scripts/dev_tool_call.py --config-dir config vault_write \
+    --path "Inbox/$(date +%F)-smoke.md" --content '# hello'
+# → JSON with a commit_sha; file should exist under /donna/vault/Inbox/.
+git -C /donna/vault log --oneline -1
+```
+
+---
+
 ## 6. Database Setup
 
 Run Alembic migrations to initialize the SQLite database schema:
@@ -507,6 +563,10 @@ Empty for Phase 1. Populated automatically in Phase 3 as Donna learns user corre
 ### `config/calendar.yaml`, `config/email.yaml`, `config/sms.yaml`
 
 Integration-specific settings. Edit only if you need to override defaults for your calendar IDs, email filters, or SMS routing rules.
+
+### `config/memory.yaml` (slice 12)
+
+Vault plumbing. Consumed only if you're running the Obsidian vault integration — see [Section 5.9](#59-obsidian-vault-slice-12-optional). The `vault` and `safety` blocks are the only ones read in slice 12; `embedding`, `retrieval`, and `sources` are placeholders for slice 13+.
 
 ---
 

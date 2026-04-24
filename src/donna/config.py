@@ -340,6 +340,89 @@ def load_email_config(config_dir: Path) -> EmailConfig:
     return EmailConfig(**data)
 
 
+# === Memory / Vault Config (slice 12) ===
+#
+# The vault + safety blocks are consumed in slice 12. The embedding, retrieval,
+# and sources blocks are parseable but unused — they land in slice 13+ and
+# must round-trip through MemoryConfig without raising.
+
+
+class VaultConfig(BaseModel):
+    """Obsidian vault root + sync + git author."""
+
+    root: str = "/donna/vault"
+    git_author_name: str = "Donna"
+    git_author_email: str = "donna@homelab.local"
+    sync_method: str = "webdav"  # webdav | syncthing | manual
+    templates_dir: str = "prompts/vault"
+    ignore_globs: list[str] = Field(
+        default_factory=lambda: [".obsidian/**", ".trash/**", ".git/**"]
+    )
+
+
+class VaultSafetyConfig(BaseModel):
+    """Write-side guardrails enforced by VaultWriter.
+
+    - max_note_bytes caps a single write payload.
+    - path_allowlist is the set of top-level folders created on startup and
+      accepted as write targets. Writes outside these prefixes are rejected.
+    - sensitive_frontmatter_key: if present (truthy) on a note, writers must
+      refuse to overwrite via agent tools. Reserved for slice 14+.
+    """
+
+    max_note_bytes: int = 200_000
+    path_allowlist: list[str] = Field(
+        default_factory=lambda: [
+            "Inbox",
+            "Meetings",
+            "People",
+            "Projects",
+            "Daily",
+            "Reviews",
+        ]
+    )
+    sensitive_frontmatter_key: str = "donna_sensitive"
+
+
+class VaultEmbeddingConfig(BaseModel):
+    """Embedding model + chunking. Parseable but unused until slice 13."""
+
+    model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    chunk_tokens: int = 512
+    chunk_overlap: int = 64
+
+
+class VaultRetrievalConfig(BaseModel):
+    """Retrieval knobs. Parseable but unused until slice 13."""
+
+    top_k: int = 8
+    min_score: float = 0.25
+
+
+class VaultSourcesConfig(BaseModel):
+    """Episodic source toggles. Parseable but unused until slice 14."""
+
+    chat: bool = False
+    tasks: bool = False
+    corrections: bool = False
+
+
+class MemoryConfig(BaseModel):
+    """Top-level memory/vault configuration."""
+
+    vault: VaultConfig = Field(default_factory=VaultConfig)
+    safety: VaultSafetyConfig = Field(default_factory=VaultSafetyConfig)
+    embedding: VaultEmbeddingConfig = Field(default_factory=VaultEmbeddingConfig)
+    retrieval: VaultRetrievalConfig = Field(default_factory=VaultRetrievalConfig)
+    sources: VaultSourcesConfig = Field(default_factory=VaultSourcesConfig)
+
+
+def load_memory_config(config_dir: Path) -> MemoryConfig:
+    """Load the memory/vault integration config from ``memory.yaml``."""
+    data = load_yaml(config_dir / "memory.yaml")
+    return MemoryConfig(**data)
+
+
 # === Discord Config ===
 
 

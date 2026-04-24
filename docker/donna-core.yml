@@ -14,6 +14,7 @@ services:
       - ${DONNA_WORKSPACE_PATH}:/donna/workspace
       - ${DONNA_BACKUP_PATH}:/donna/backups
       - ${DONNA_LOG_PATH}:/donna/logs
+      - ${DONNA_VAULT_PATH}:/donna/vault
       - ../config:/donna/config:ro
       - ../prompts:/donna/prompts:ro
       - ../schemas:/donna/schemas:ro

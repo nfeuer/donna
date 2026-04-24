@@ -91,6 +91,69 @@ def _try_build_gmail_client(config_dir: Path) -> Any | None:
         return None
 
 
+def _try_build_vault_client(config_dir: Path) -> Any | None:
+    """Attempt to construct a :class:`VaultClient` from ``config/memory.yaml``.
+
+    Non-fatal: returns None if the config file is missing or the vault
+    root's parent directory cannot be accessed. Missing vault config
+    degrades the skill system to the pre-slice-12 baseline (no vault
+    tools registered); it does not prevent boot.
+    """
+    memory_yaml = config_dir / "memory.yaml"
+    if not memory_yaml.exists():
+        return None
+    try:
+        from donna.config import load_memory_config
+        from donna.integrations.vault import VaultClient
+
+        memory_cfg = load_memory_config(config_dir)
+        vault_root = Path(memory_cfg.vault.root)
+        if not vault_root.parent.exists():
+            logger.warning(
+                "vault_client_unavailable",
+                reason="vault_root_parent_missing",
+                vault_root=str(vault_root),
+            )
+            return None
+        return VaultClient(config=memory_cfg)
+    except Exception as exc:
+        logger.warning("vault_client_unavailable", reason=str(exc))
+        return None
+
+
+async def _try_build_vault_writer(
+    config_dir: Path, vault_client: Any | None
+) -> Any | None:
+    """Construct a :class:`VaultWriter`, then ``ensure_ready()``.
+
+    Non-fatal: returns None when the client is absent, memory config
+    cannot be loaded, or ``ensure_ready`` raises (e.g. vault root on a
+    read-only mount).
+    """
+    if vault_client is None:
+        return None
+    memory_yaml = config_dir / "memory.yaml"
+    if not memory_yaml.exists():
+        return None
+    try:
+        from donna.config import load_memory_config
+        from donna.integrations.git_repo import GitRepo
+        from donna.integrations.vault import VaultWriter
+
+        memory_cfg = load_memory_config(config_dir)
+        git = GitRepo(
+            root=Path(memory_cfg.vault.root),
+            author_name=memory_cfg.vault.git_author_name,
+            author_email=memory_cfg.vault.git_author_email,
+        )
+        writer = VaultWriter(config=memory_cfg, git=git, client=vault_client)
+        await writer.ensure_ready()
+        return writer
+    except Exception as exc:
+        logger.warning("vault_writer_unavailable", reason=str(exc))
+        return None
+
+
 def _try_build_calendar_client(config_dir: Path) -> Any | None:
     """Attempt to construct a GoogleCalendarClient from config/calendar.yaml.
 
@@ -333,6 +396,8 @@ async def wire_skill_system(
     *,
     gmail_client: Any | None = None,
     calendar_client: Any | None = None,
+    vault_client: Any | None = None,
+    vault_writer: Any | None = None,
 ) -> SkillSystemHandle:
     """Register default tools, seed capabilities, assemble skill bundle.
 
@@ -383,6 +448,8 @@ async def wire_skill_system(
         calendar_client=calendar_client,
         task_db=ctx.db,
         cost_tracker=cost_tracker_early,
+        vault_client=vault_client,
+        vault_writer=vault_writer,
     )
     log.info(
         "default_tools_registered",
