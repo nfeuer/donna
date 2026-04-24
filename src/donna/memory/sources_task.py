@@ -135,7 +135,7 @@ class TaskSource:
         """
         if not self._cfg.enabled:
             return 0
-        conn = self._store._conn  # type: ignore[attr-defined]
+        conn = self._store._conn  # intentional access — same package
         async with conn.execute(
             "SELECT id, user_id, title, description, status, domain, "
             "       priority, deadline, notes "
@@ -204,7 +204,7 @@ class TaskSource:
         if force_reindex:
             # Bust the content-hash short-circuit so the upsert fully
             # re-embeds even if the notes/title text is identical.
-            conn = self._store._conn  # type: ignore[attr-defined]
+            conn = self._store._conn  # intentional access — same package
             await conn.execute(
                 "UPDATE memory_documents SET content_hash='' "
                 "WHERE user_id=? AND source_type=? AND source_id=?",

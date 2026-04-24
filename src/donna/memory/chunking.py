@@ -493,10 +493,7 @@ class ChatTurnChunker:
             if verb.endswith("e"):
                 verb_forms.add(verb[:-1] + "ing")
                 verb_forms.add(verb[:-1] + "ed")
-        for tok in tokens:
-            if tok in verb_forms:
-                return True
-        return False
+        return any(tok in verb_forms for tok in tokens)
 
 
 class TaskChunker:

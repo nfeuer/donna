@@ -76,7 +76,7 @@ class CorrectionSource:
     async def backfill(self, user_id: str) -> int:
         if not self._cfg.enabled:
             return 0
-        conn = self._store._conn  # type: ignore[attr-defined]
+        conn = self._store._conn  # intentional access — same package
         async with conn.execute(
             "SELECT id, user_id, task_type, task_id, input_text, "
             "       field_corrected, original_value, corrected_value "

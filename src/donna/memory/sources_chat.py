@@ -31,7 +31,7 @@ session buffer rely on. If a future workload bursts chat ingest
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
@@ -49,7 +49,7 @@ SOURCE_TYPE = "chat"
 class _SessionBuffer:
     user_id: str
     role: str | None = None
-    messages: list[dict[str, Any]] | None = None
+    messages: list[dict[str, Any]] = field(default_factory=list)
 
     def reset(self) -> None:
         self.role = None
@@ -107,17 +107,13 @@ class ChatSource:
         session_id = str(event["session_id"])
         user_id = str(event.get("user_id") or self._default_user_id)
         buf = self._buffers.setdefault(
-            session_id, _SessionBuffer(user_id=user_id, messages=[])
+            session_id, _SessionBuffer(user_id=user_id),
         )
-        if buf.messages is None:
-            buf.messages = []
         if buf.role is not None and role != buf.role:
             await self._flush_session(session_id, user_id=user_id)
             buf = self._buffers.setdefault(
-                session_id, _SessionBuffer(user_id=user_id, messages=[])
+                session_id, _SessionBuffer(user_id=user_id),
             )
-            if buf.messages is None:
-                buf.messages = []
         buf.role = role
         buf.messages.append(
             {"id": str(msg["id"]), "role": role, "content": msg.get("content") or ""}
@@ -157,7 +153,7 @@ class ChatSource:
         """
         if not self._cfg.enabled:
             return 0
-        conn = self._store._conn  # type: ignore[attr-defined]  # intentional — same pkg
+        conn = self._store._conn  # intentional access — same package
         async with conn.execute(
             "SELECT id FROM conversation_sessions WHERE user_id=? ORDER BY created_at",
             (user_id,),

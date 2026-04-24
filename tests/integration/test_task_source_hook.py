@@ -5,7 +5,6 @@ import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-import aiosqlite
 import numpy as np
 import pytest
 import pytest_asyncio

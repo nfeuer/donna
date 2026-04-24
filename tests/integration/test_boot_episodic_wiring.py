@@ -10,16 +10,11 @@ each invoke the corresponding ``observe_*`` method.
 """
 from __future__ import annotations
 
-import asyncio
-from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
-import pytest_asyncio
 
 from donna.cli_wiring import _build_episodic_sources
-from donna.tasks.database import Database
-from donna.tasks.state_machine import StateMachine
 
 
 class _SpyStore:

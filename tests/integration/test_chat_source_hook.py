@@ -11,7 +11,6 @@ import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-import aiosqlite
 import numpy as np
 import pytest
 import pytest_asyncio
@@ -101,7 +100,7 @@ def _alembic_upgrade(db_path: Path) -> None:
 async def test_add_chat_message_flushes_on_role_flip(
     wired_db: tuple[Database, MemoryStore, ChatSource],
 ) -> None:
-    db, store, source = wired_db
+    db, store, _source = wired_db
     session = await db.create_chat_session(user_id="nick", channel="discord")
 
     await db.add_chat_message(
@@ -128,7 +127,7 @@ async def test_add_chat_message_flushes_on_role_flip(
 async def test_session_close_flushes_pending_turn(
     wired_db: tuple[Database, MemoryStore, ChatSource],
 ) -> None:
-    db, store, source = wired_db
+    db, store, _source = wired_db
     session = await db.create_chat_session(user_id="nick", channel="discord")
     await db.add_chat_message(
         session.id, role="user", content="Remind me to call mom tomorrow.",
