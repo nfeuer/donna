@@ -273,6 +273,9 @@ class CalendarMirror(Base):
     last_synced: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
+    # Slice 15: JSON-encoded list[{name, email}] captured from the
+    # Google Calendar API so the meeting-note skill can render wikilinks.
+    attendees: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ConversationContext(Base):

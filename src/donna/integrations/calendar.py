@@ -41,6 +41,30 @@ class CalendarEvent:
     donna_managed: bool
     donna_task_id: str | None
     etag: str
+    # Slice 15: normalized ``[{name, email}]``. Empty tuple when the
+    # event has no attendees or the raw payload omits the field.
+    attendees: tuple[dict[str, str], ...] = ()
+
+
+def _parse_attendees(raw: dict[str, Any]) -> tuple[dict[str, str], ...]:
+    """Extract ``[{name, email}]`` from the raw Google Calendar payload.
+
+    ``displayName`` preferred for ``name``; falls back to the email
+    local-part when the attendee has no display name set. ``responseStatus``
+    is dropped — the meeting-note skill does not use it today.
+    """
+    items = raw.get("attendees") or []
+    out: list[dict[str, str]] = []
+    for a in items:
+        if not isinstance(a, dict):
+            continue
+        email = str(a.get("email") or "").strip()
+        display = str(a.get("displayName") or "").strip()
+        name = display or (email.split("@", 1)[0] if email else "")
+        if not name:
+            continue
+        out.append({"name": name, "email": email})
+    return tuple(out)
 
 
 def _parse_event(raw: dict[str, Any], calendar_id: str) -> CalendarEvent:
@@ -68,6 +92,7 @@ def _parse_event(raw: dict[str, Any], calendar_id: str) -> CalendarEvent:
         donna_managed=donna_managed,
         donna_task_id=donna_task_id,
         etag=raw.get("etag", ""),
+        attendees=_parse_attendees(raw),
     )
 
 

@@ -62,9 +62,16 @@ def test_upgrade_creates_memory_schema(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 def test_downgrade_reverses_cleanly(tmp_path: Path) -> None:
+    """Downgrading past the slice-13 memory migration wipes its schema.
+
+    Targets the revision immediately *before* the memory migration
+    (``d1e2f3a4b5c6``). Using a fixed revision rather than a relative
+    ``-N`` keeps the test stable as future slices stack migrations on
+    top of the memory head.
+    """
     db_path = tmp_path / "mem.db"
     _upgrade(db_path, "head")
-    _downgrade(db_path, "-1")
+    _downgrade(db_path, "d1e2f3a4b5c6")
     names = _tables_and_indexes(db_path)
     # All slice-13 objects should be gone.
     assert not any(n.startswith(("memory_", "vec_memory_")) for n in names)
@@ -74,7 +81,7 @@ def test_downgrade_reverses_cleanly(tmp_path: Path) -> None:
 def test_upgrade_after_downgrade_is_idempotent(tmp_path: Path) -> None:
     db_path = tmp_path / "mem.db"
     _upgrade(db_path, "head")
-    _downgrade(db_path, "-1")
+    _downgrade(db_path, "d1e2f3a4b5c6")
     _upgrade(db_path, "head")
     names = _tables_and_indexes(db_path)
     assert "memory_documents" in names

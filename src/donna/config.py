@@ -8,7 +8,7 @@ not hardcoded in application logic.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import yaml
 from pydantic import BaseModel, Field
@@ -525,6 +525,40 @@ class VaultSourcesConfig(BaseModel):
         return super().model_validate(obj, *args, **kwargs)
 
 
+class MeetingNoteContextLimits(BaseModel):
+    """Per-category caps on memory hits folded into the LLM prompt."""
+
+    prior_meetings: int = 5
+    recent_chats: int = 5
+    open_tasks: int = 5
+
+
+class MeetingNoteSkillConfig(BaseModel):
+    """Slice 15: meeting-note autowrite skill.
+
+    ``autonomy_level`` here is per-template and overrides the agent-level
+    autonomy in ``agents.yaml`` for purposes of path redirection. ``low``
+    forces writes into ``Inbox/``; ``medium`` / ``high`` honour the
+    caller-computed target path.
+    """
+
+    enabled: bool = True
+    poll_interval_seconds: int = 60
+    lookback_minutes: int = 5
+    autonomy_level: Literal["low", "medium", "high"] = "medium"
+    context_limits: MeetingNoteContextLimits = Field(
+        default_factory=MeetingNoteContextLimits
+    )
+
+
+class MemorySkillsConfig(BaseModel):
+    """Autonomous template-write skills keyed by template name."""
+
+    meeting_note: MeetingNoteSkillConfig = Field(
+        default_factory=MeetingNoteSkillConfig
+    )
+
+
 class MemoryConfig(BaseModel):
     """Top-level memory/vault configuration."""
 
@@ -533,6 +567,7 @@ class MemoryConfig(BaseModel):
     embedding: VaultEmbeddingConfig = Field(default_factory=VaultEmbeddingConfig)
     retrieval: VaultRetrievalConfig = Field(default_factory=VaultRetrievalConfig)
     sources: VaultSourcesConfig = Field(default_factory=VaultSourcesConfig)
+    skills: MemorySkillsConfig = Field(default_factory=MemorySkillsConfig)
 
 
 def load_memory_config(config_dir: Path) -> MemoryConfig:

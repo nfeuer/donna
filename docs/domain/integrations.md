@@ -81,3 +81,17 @@ Design principles:
 ## Adopt Before Building
 
 Before implementing custom MCP tools, evaluate existing open-source servers (e.g., `google-calendar-mcp`, GitHub MCP server). If a community server covers 80%+ of needs, adopt and extend. FastMCP's composability supports mounting external servers alongside custom tools.
+
+## Slice 15 — CalendarMirror gains `attendees`
+
+Migration `c9d1e3f5a7b2_add_calendar_mirror_attendees.py` adds a nullable
+`attendees TEXT` column to `calendar_mirror`. `calendar.py::_parse_event`
+reads `items[i].attendees` from the Google Calendar API payload and
+normalises each entry to `{name, email}` (name = `displayName` with
+email local-part as a fallback). `calendar_sync.py::_update_mirror`
+JSON-encodes the list on upsert. The meeting-note skill in Slice 15
+consumes this column to resolve attendee wikilinks into
+`[[People/{name}]]` or `[[{name}]]`.
+
+See `docs/domain/memory-vault.md` → "Slice 15 — template writes" for
+the full skill flow.

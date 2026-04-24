@@ -220,10 +220,13 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     # Wave 1 followup: also attempt a GoogleCalendarClient for calendar_read.
     from donna.cli_wiring import (
         _build_episodic_sources,
+        _start_meeting_end_poller,
         _start_memory_tasks,
         _try_build_calendar_client,
         _try_build_gmail_client,
+        _try_build_meeting_note_skill,
         _try_build_memory_store,
+        _try_build_template_renderer,
         _try_build_vault_client,
         _try_build_vault_writer,
     )
@@ -241,6 +244,20 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     )
     _start_memory_tasks(ctx, memory_handles)
     _build_episodic_sources(ctx.config_dir, memory_store, ctx.db, ctx.user_id)
+
+    # Slice 15 — template-driven vault writes.
+    template_renderer = _try_build_template_renderer(ctx.project_root)
+    meeting_skill, meeting_cfg = _try_build_meeting_note_skill(
+        ctx.config_dir,
+        renderer=template_renderer,
+        memory_store=memory_store,
+        vault_client=vault_client,
+        vault_writer=vault_writer,
+        router=ctx.router,
+        invocation_logger=ctx.invocation_logger,
+        user_id=ctx.user_id,
+    )
+    _start_meeting_end_poller(ctx, skill=meeting_skill, config=meeting_cfg)
     skill_h = await wire_skill_system(
         ctx,
         gmail_client=gmail_client,

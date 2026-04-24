@@ -87,6 +87,10 @@ routing:
   skill_evolution:
     model: reasoner
 
+  # Slice 15 — template-driven vault writes
+  draft_meeting_note:
+    model: reasoner
+
   # Wave 2: prefix-routing for dynamic skill + validation task_types.
   skill_step:
     model: parser

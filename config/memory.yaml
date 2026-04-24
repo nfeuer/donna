@@ -73,3 +73,15 @@ sources:
     chunker: task
   correction:
     enabled: true
+
+# --- slice 15: template-driven vault writes ---
+skills:
+  meeting_note:
+    enabled: true
+    poll_interval_seconds: 60
+    lookback_minutes: 5
+    autonomy_level: medium
+    context_limits:
+      prior_meetings: 5
+      recent_chats: 5
+      open_tasks: 5

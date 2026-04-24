@@ -147,3 +147,80 @@ The asymmetry is deliberate — the `Database` already takes a handful of collab
 ### Task-verb morphology
 
 `ChatTurnChunker._keep` rescues short messages that would otherwise be dropped when they contain a configured `task_verbs` token. The match is tokenized and covers the bare verb plus `-s` / `-ed` / `-ing` inflections and the `e`-drop variants (`schedule` → `scheduling` / `scheduled`). The check is token-level, so superset words like `callous` or `callable` intentionally slip through without rescuing an otherwise-short noisy message.
+
+## Slice 15 — template writes
+
+Slice 15 introduces the first **outbound** path: Donna writes vault notes
+autonomously in response to triggers (today: post-meeting; Slice 16 adds
+four more templates under the same pattern).
+
+### Components
+
+- **`VaultTemplateRenderer`** (`src/donna/memory/templates.py`) — a
+  thin `FileSystemLoader` + `StrictUndefined` Jinja environment.
+  Templates are self-contained: each template emits its own
+  frontmatter as a first-line `---` YAML block; the renderer parses
+  and returns it separately via `python-frontmatter`.
+  Missing context keys raise `jinja2.UndefinedError`.
+- **`MemoryInformedWriter`** (`src/donna/memory/writer.py`) — the
+  shared orchestrator every template-write skill delegates to. Owns
+  autonomy-based path redirection, frontmatter-keyed idempotency,
+  prompt-template rendering, routed LLM completion, vault-template
+  rendering, and commit. Any failure logs `vault_autowrite_failed`
+  and returns a skipped `WriteResult` — never a partial write.
+- **`resolve_person_link`** (`src/donna/memory/linking.py`) — looks up
+  `People/{name}.md` in the vault; returns `[[People/{name}]]` when
+  present, `[[{name}]]` otherwise. Never auto-creates stubs.
+- **`MeetingNoteSkill`** + **`MeetingEndPoller`**
+  (`src/donna/capabilities/`) — the reference trigger. The poller
+  scans `calendar_mirror` once per
+  `config.memory.skills.meeting_note.poll_interval_seconds` for
+  events that ended within the lookback window and don't already
+  have a meeting note indexed. The skill composes memory-search
+  context (prior meetings, recent chats, open tasks), resolves
+  attendee wikilinks, and delegates to `MemoryInformedWriter`.
+
+### Idempotency contract
+
+Every autowritten note carries an `idempotency_key` frontmatter field
+(the calendar event id for meeting notes). Before any LLM spend, the
+writer reads the target path; if the existing note's
+`idempotency_key` matches, it emits
+`meeting_note_skipped_idempotent` and returns without work. This
+makes re-polling safe and cheap.
+
+### Autonomy-level → path redirection
+
+`config/memory.yaml:skills.meeting_note.autonomy_level` is the
+skill-local control. At `low`, every write is redirected to
+`Inbox/{basename}` regardless of the caller-computed `target_path`.
+At `medium` / `high`, the caller's path is honoured. This is
+distinct from `config/agents.yaml:research.autonomy`, which governs
+the research agent's overall tool budget and timeout. Per-template
+beats per-agent so Slice 16 templates can differ.
+
+### CalendarMirror.attendees
+
+`CalendarMirror` gained a nullable `attendees TEXT` column (migration
+`c9d1e3f5a7b2`). `calendar.py::_parse_event` reads
+`items[i].attendees` from the Google API, normalising each entry to
+`{name, email}` (name = `displayName` or email local-part);
+`calendar_sync.py::_update_mirror` JSON-encodes the list on write.
+The meeting-note skill parses the JSON and passes it through to the
+template + wikilink resolver.
+
+### Observability
+
+- Invocation log: new `task_type=draft_meeting_note`,
+  `model_alias=reasoner`, standard token/cost fields (this is a
+  paid cloud call, unlike the local embedding calls).
+- Structlog events:
+  `meeting_end_detected` (poller found an eligible event),
+  `meeting_note_skipped_idempotent` (writer found a matching key),
+  `meeting_note_written` (happy path),
+  `vault_autowrite_failed` (any step raised).
+- Grafana `memory` dashboard gains a "Template writes" row (writes
+  by template, skip rate, LLM cost, failures).
+
+See `slices/slice_15_template_writes_meeting_notes.md` and
+`spec_v3.md §1.3 / §4 / §4.3 / §7.3 / §14`.

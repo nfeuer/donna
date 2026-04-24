@@ -155,6 +155,14 @@ task_types:
     output_schema: schemas/claude_novelty.json
     tools: []
 
+  # Slice 15 — template-driven vault writes
+  draft_meeting_note:
+    description: "Draft a meeting-note scaffold from calendar + memory context"
+    model: reasoner
+    prompt_template: prompts/skills/draft_meeting_note.md.j2
+    output_schema: schemas/draft_meeting_note.json
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions

@@ -148,6 +148,72 @@
         "graphMode": "area",
         "reduceOptions": { "calcs": ["sum"] }
       }
+    },
+    {
+      "id": 10,
+      "title": "Template writes (slice 15)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 46 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (template) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"meeting_note_written\" [5m]))",
+          "legendFormat": "written {{template}}"
+        },
+        {
+          "datasource": "Loki",
+          "expr": "sum by (template) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"meeting_note_skipped_idempotent\" [5m]))",
+          "legendFormat": "skipped {{template}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Template-write skip rate",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 46 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"meeting_note_skipped_idempotent\" [$__range])) / clamp_min(sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=~\"meeting_note_(written|skipped_idempotent)\" [$__range])), 1)",
+          "legendFormat": "idempotent skip rate"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": { "calcs": ["last"] }
+      }
+    },
+    {
+      "id": 12,
+      "title": "draft_meeting_note LLM cost",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 54 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum(sum_over_time({container_name=\"donna-orchestrator\"} | json | event=\"llm_invocation_logged\" | task_type=\"draft_meeting_note\" | unwrap cost_usd [5m]))",
+          "legendFormat": "cost USD (5m)"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Template autowrite failures",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 38 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (template) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"vault_autowrite_failed\" [$__range]))",
+          "legendFormat": "{{template}}"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["sum"] }
+      }
     }
   ]
 }
