@@ -98,6 +98,14 @@ def _distance_to_score(distance: float) -> float:
     return float(cos)
 
 
+_DEFAULT_TASK_TYPE_MAP: dict[str, str] = {
+    "vault": "embed_vault_chunk",
+    "chat": "embed_chat_turn",
+    "task": "embed_task",
+    "correction": "embed_correction",
+}
+
+
 class MemoryStore:
     """Persistent semantic memory. Async-safe around a single aiosqlite conn."""
 
@@ -109,12 +117,19 @@ class MemoryStore:
         retrieval_cfg: VaultRetrievalConfig,
         *,
         query_task_type: str = "embed_memory_query",
+        task_type_map: dict[str, str] | None = None,
     ) -> None:
         self._conn = conn
         self._provider = provider
         self._chunker = chunker
         self._retrieval_cfg = retrieval_cfg
         self._query_task_type = query_task_type
+        self._task_type_map = dict(_DEFAULT_TASK_TYPE_MAP)
+        if task_type_map:
+            self._task_type_map.update(task_type_map)
+
+    def _task_type_for(self, source_type: str) -> str | None:
+        return self._task_type_map.get(source_type)
 
     # -- writes -------------------------------------------------------
 
@@ -153,7 +168,22 @@ class MemoryStore:
             plan.append((doc, content_hash, prev_id, "reindex", doc_chunks))
         vectors: list[np.ndarray] = []
         if to_embed_chunks:
-            vectors = await self._provider.embed_batch(to_embed_chunks)
+            # Per-batch task_type: pick whatever source_type has the
+            # most to_embed chunks; batches rarely mix sources (the
+            # ingest queue keeps one source per flush) and the store
+            # already amortises a miss.
+            reembed_doc = next(
+                (d for d, _h, _p, mode, _c in plan if mode == "reindex"),
+                None,
+            )
+            task_type = (
+                self._task_type_for(reembed_doc.source_type)
+                if reembed_doc is not None
+                else None
+            )
+            vectors = await self._provider.embed_batch(
+                to_embed_chunks, task_type=task_type,
+            )
 
         out_ids: list[str] = []
         vec_cursor = 0
@@ -199,7 +229,10 @@ class MemoryStore:
         chunks = self._chunker.chunk(doc.content)
         vectors: list[np.ndarray] = []
         if chunks:
-            vectors = await self._provider.embed_batch([c.content for c in chunks])
+            vectors = await self._provider.embed_batch(
+                [c.content for c in chunks],
+                task_type=self._task_type_for(doc.source_type),
+            )
 
         doc_id = row[0] if row is not None else str(uuid.uuid4())
         await self._conn.execute("BEGIN")

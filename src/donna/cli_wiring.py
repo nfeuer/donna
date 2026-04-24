@@ -186,6 +186,112 @@ async def _try_build_memory_store(
         return None, None
 
 
+def _build_episodic_sources(
+    config_dir: Path,
+    memory_store: Any | None,
+    db: Any,
+    user_id: str,
+) -> dict[str, Any]:
+    """Construct slice-14 episodic sources and wire observers.
+
+    Returns a dict ``{"chat", "task", "correction"}`` keyed on source
+    name (values are the source instances, or absent when disabled).
+    Non-fatal: a failure on any one source logs + skips, the others
+    still wire.
+    """
+    built: dict[str, Any] = {}
+    if memory_store is None:
+        return built
+    memory_yaml = config_dir / "memory.yaml"
+    if not memory_yaml.exists():
+        return built
+    try:
+        from donna.config import load_memory_config
+
+        cfg = load_memory_config(config_dir)
+    except Exception as exc:
+        logger.warning("episodic_sources_unavailable", reason=str(exc))
+        return built
+
+    # chat + task run through the Database constructor observer
+    # (Option A). correction uses the module-level registry (Option B).
+    if cfg.sources.chat.enabled:
+        try:
+            from donna.memory.sources_chat import ChatSource
+
+            built["chat"] = ChatSource(
+                store=memory_store,
+                cfg=cfg.sources.chat,
+                user_id_default=user_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                "episodic_source_unavailable",
+                source="chat",
+                reason=str(exc),
+            )
+    if cfg.sources.task.enabled:
+        try:
+            from donna.memory.sources_task import TaskSource
+
+            built["task"] = TaskSource(store=memory_store, cfg=cfg.sources.task)
+        except Exception as exc:
+            logger.warning(
+                "episodic_source_unavailable",
+                source="task",
+                reason=str(exc),
+            )
+    if cfg.sources.correction.enabled:
+        try:
+            from donna.memory.observers import register_observer
+            from donna.memory.sources_correction import CorrectionSource
+
+            corr = CorrectionSource(store=memory_store, cfg=cfg.sources.correction)
+            register_observer("correction", corr.observe)
+            built["correction"] = corr
+        except Exception as exc:
+            logger.warning(
+                "episodic_source_unavailable",
+                source="correction",
+                reason=str(exc),
+            )
+
+    if built.get("chat") is not None or built.get("task") is not None:
+        combined = _CombinedDbObserver(
+            chat=built.get("chat"), task=built.get("task"),
+        )
+        setter = getattr(db, "set_memory_observer", None)
+        if callable(setter):
+            setter(combined)
+    return built
+
+
+class _CombinedDbObserver:
+    """Dispatches DB-side events to the right source.
+
+    The DB accepts a single observer handle (see
+    :meth:`donna.tasks.database.Database.set_memory_observer`). This
+    wrapper forwards ``observe_message`` to :class:`ChatSource` and
+    ``observe_task`` to :class:`TaskSource` when each is present.
+    """
+
+    def __init__(self, *, chat: Any | None, task: Any | None) -> None:
+        self._chat = chat
+        self._task = task
+
+    async def observe_message(self, event: dict[str, Any]) -> None:
+        if self._chat is not None:
+            await self._chat.observe_message(event)
+
+    async def observe_session_closed(self, event: dict[str, Any]) -> None:
+        if self._chat is not None:
+            await self._chat.observe_session_closed(event)
+
+    async def observe_task(self, event: dict[str, Any]) -> None:
+        if self._task is not None:
+            await self._task.observe_task(event)
+
+
 def _start_memory_tasks(
     ctx: Any, handles: tuple[Any, Any | None] | None,
 ) -> None:

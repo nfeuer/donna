@@ -77,6 +77,8 @@ async def log_correction(
                           — the correction is persisted regardless.
     """
     conn = db.connection
+    correction_id = str(uuid.uuid4())
+    timestamp = datetime.now(tz=UTC).isoformat()
     await conn.execute(
         """
         INSERT INTO correction_log
@@ -85,8 +87,8 @@ async def log_correction(
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            str(uuid.uuid4()),
-            datetime.now(tz=UTC).isoformat(),
+            correction_id,
+            timestamp,
             user_id,
             task_type,
             task_id,
@@ -106,6 +108,25 @@ async def log_correction(
         field=field,
         original=original,
         corrected=corrected,
+    )
+
+    # Slice 14: dispatch to any registered memory observer (Option B —
+    # module-level registry). Failures never propagate.
+    from donna.memory.observers import dispatch
+
+    await dispatch(
+        "correction",
+        {
+            "id": correction_id,
+            "timestamp": timestamp,
+            "user_id": user_id,
+            "task_type": task_type,
+            "task_id": task_id,
+            "input_text": input_text,
+            "field_corrected": field,
+            "original_value": original,
+            "corrected_value": corrected,
+        },
     )
 
     if cluster_detector is not None:

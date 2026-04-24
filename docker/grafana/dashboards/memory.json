@@ -86,6 +86,50 @@
           "legendFormat": "avg hits"
         }
       ]
+    },
+    {
+      "id": 6,
+      "title": "Episodic ingest events (slice 14)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (event) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=~\"memory_ingest_(chat_turn|task|correction)\" [5m]))",
+          "legendFormat": "{{event}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Embed calls by task_type",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (task_type) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"llm_invocation_logged\" | task_type=~\"embed_(vault_chunk|chat_turn|task|correction|memory_query)\" [5m]))",
+          "legendFormat": "{{task_type}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Memory ingest failures",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 38 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum by (source_type) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"memory_ingest_failed\" [$__range]))",
+          "legendFormat": "{{source_type}}"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["sum"] }
+      }
     }
   ]
 }
