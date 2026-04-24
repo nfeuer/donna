@@ -139,8 +139,11 @@ module = [
     "frontmatter",
     "google_auth_oauthlib.*",
     "googleapiclient.*",
+    "sqlite_vec",
+    "tiktoken",
     "twilio",
     "twilio.*",
+    "watchfiles",
 ]
 ignore_missing_imports = true
 

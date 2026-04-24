@@ -148,9 +148,9 @@ class MemoryStore:
             if prev_id is not None and prev_hash == content_hash:
                 plan.append((doc, content_hash, prev_id, "touch", None))
                 continue
-            chunks = self._chunker.chunk(doc.content)
-            to_embed_chunks.extend(c.content for c in chunks)
-            plan.append((doc, content_hash, prev_id, "reindex", chunks))
+            doc_chunks = self._chunker.chunk(doc.content)
+            to_embed_chunks.extend(c.content for c in doc_chunks)
+            plan.append((doc, content_hash, prev_id, "reindex", doc_chunks))
         vectors: list[np.ndarray] = []
         if to_embed_chunks:
             vectors = await self._provider.embed_batch(to_embed_chunks)
@@ -160,20 +160,22 @@ class MemoryStore:
         now = datetime.utcnow()
         await self._conn.execute("BEGIN")
         try:
-            for doc, content_hash, prev_id, mode, chunks in plan:
+            for doc, content_hash, prev_id, mode, planned_chunks in plan:
                 if mode == "touch":
                     assert prev_id is not None
                     await self._touch_document(prev_id, doc, now)
                     out_ids.append(prev_id)
                     continue
-                assert chunks is not None
-                chunk_vectors = vectors[vec_cursor : vec_cursor + len(chunks)]
-                vec_cursor += len(chunks)
+                assert planned_chunks is not None
+                chunk_vectors = vectors[vec_cursor : vec_cursor + len(planned_chunks)]
+                vec_cursor += len(planned_chunks)
                 doc_id = prev_id or str(uuid.uuid4())
                 await self._write_document(
                     doc_id, doc, content_hash, now, is_insert=prev_id is None
                 )
-                await self._replace_chunks(doc_id, doc, chunks, chunk_vectors, now)
+                await self._replace_chunks(
+                    doc_id, doc, planned_chunks, chunk_vectors, now,
+                )
                 out_ids.append(doc_id)
             await self._conn.commit()
         except Exception:
@@ -218,7 +220,10 @@ class MemoryStore:
             "WHERE user_id=? AND source_type=? AND source_id=?",
             (doc.user_id, doc.source_type, doc.source_id),
         ) as cur:
-            return await cur.fetchone()
+            row = await cur.fetchone()
+        if row is None:
+            return None
+        return (str(row[0]), str(row[1]))
 
     async def _fetch_existing_many(
         self, docs: list[Document]

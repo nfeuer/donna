@@ -230,10 +230,17 @@ class Database:
         try:
             import sqlite_vec
 
-            raw = self._conn._conn  # underlying sqlite3.Connection
-            await self._conn._execute(raw.enable_load_extension, True)
-            await self._conn._execute(raw.load_extension, sqlite_vec.loadable_path())
-            await self._conn._execute(raw.enable_load_extension, False)
+            # aiosqlite keeps the sqlite3 handle on `_conn`; `_execute`
+            # dispatches a sync callable on the worker thread. Both are
+            # private API but the documented alternative (SQL
+            # `SELECT load_extension(?)`) is disabled by SQLite's
+            # default build.
+            raw = self._conn._conn
+            await self._conn._execute(raw.enable_load_extension, True)  # type: ignore[no-untyped-call]
+            await self._conn._execute(  # type: ignore[no-untyped-call]
+                raw.load_extension, sqlite_vec.loadable_path()
+            )
+            await self._conn._execute(raw.enable_load_extension, False)  # type: ignore[no-untyped-call]
             self._vec_available = True
         except Exception as exc:
             self._vec_available = False

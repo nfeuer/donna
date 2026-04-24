@@ -74,7 +74,8 @@ def count_tokens(text: str) -> int:
 
 def _encode(text: str) -> list[int]:
     if _ENCODING is not None:
-        return _ENCODING.encode(text, disallowed_special=())
+        tokens: list[int] = list(_ENCODING.encode(text, disallowed_special=()))
+        return tokens
     return list(range(count_tokens(text)))
 
 
@@ -88,7 +89,8 @@ def _decode_tail(text: str, n_tokens: int) -> str:
         tokens = _ENCODING.encode(text, disallowed_special=())
         if len(tokens) <= n_tokens:
             return text
-        return _ENCODING.decode(tokens[-n_tokens:])
+        decoded: str = _ENCODING.decode(tokens[-n_tokens:])
+        return decoded
     approx_chars = n_tokens * 4
     return text[-approx_chars:] if len(text) > approx_chars else text
 
@@ -102,7 +104,8 @@ def _token_window_split(text: str, max_tokens: int, overlap: int) -> list[str]:
             window = tokens[start : start + max_tokens]
             if not window:
                 break
-            out.append(_ENCODING.decode(window))
+            chunk_str: str = _ENCODING.decode(window)
+            out.append(chunk_str)
             if start + max_tokens >= len(tokens):
                 break
         return out
