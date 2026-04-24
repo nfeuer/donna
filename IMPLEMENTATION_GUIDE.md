@@ -307,9 +307,14 @@ crontab -e
 # 0 12 * * 1 /path/to/donna/scripts/supabase_keepalive.sh
 ```
 
-### 2.5 Obsidian Vault (slice 12)
+### 2.5 Obsidian Vault + Memory Store (slices 12 + 13)
 
-Donna-owned markdown vault. Optional — the orchestrator runs fine without it; if `config/memory.yaml` is absent or the vault root is unreachable, the vault skill tools simply aren't registered. See [`docs/domain/memory-vault.md`](docs/domain/memory-vault.md) for the narrative and [`docs/reference-specs/memory-vault-spec.md`](docs/reference-specs/memory-vault-spec.md) for the design spec.
+Donna-owned markdown vault (slice 12) plus a sqlite-vec-backed semantic index over it (slice 13). Both are optional — the orchestrator runs fine without them:
+
+- If `config/memory.yaml` is absent or the vault root is unreachable, the vault skill tools simply aren't registered.
+- If `sqlite-vec` fails to load (wheel missing on the host platform), `Database.vec_available` stays `False`, the memory store isn't built, and `memory_search` stays off the tool registry — every other subsystem keeps booting.
+
+See [`docs/domain/memory-vault.md`](docs/domain/memory-vault.md) for the narrative and [`docs/reference-specs/memory-vault-spec.md`](docs/reference-specs/memory-vault-spec.md) for the design spec.
 
 **Create the vault root on the host:**
 
@@ -333,7 +338,7 @@ CADDY_VAULT_USER=donna
 CADDY_VAULT_PASSWORD_HASH=$2a$14$…   # paste the hash from above
 ```
 
-**`config/memory.yaml`** ships with sensible defaults — review `vault.root`, `vault.git_author_email`, and `safety.path_allowlist` if you want a different layout. The `embedding`, `retrieval`, and `sources` blocks are parseable but unused until slice 13+; leave them as-is.
+**`config/memory.yaml`** ships with sensible defaults — review `vault.root`, `vault.git_author_email`, `safety.path_allowlist`, and (new in slice 13) `embedding.provider` / `retrieval.default_k` / `sources.vault.ignore_globs` if you want a different layout. MiniLM-L6-v2 is the default provider; swapping is a config-only change plus a factory branch in `donna.memory.embeddings.build_embedding_provider`.
 
 **Bring up the WebDAV service:**
 
@@ -344,7 +349,9 @@ curl -u "$CADDY_VAULT_USER:<plaintext>" -X PROPFIND http://localhost:8500/
 # Expect: 207 Multi-Status
 ```
 
-**Restart the orchestrator** so it picks up the vault mount and the five `vault_*` tools register for the `pm`, `scheduler`, `research`, and `challenger` agents.
+**Restart the orchestrator** so it picks up the vault mount and the five `vault_*` tools plus `memory_search` register for the `pm`, `scheduler`, `research`, and `challenger` agents.
+
+On first boot with slice 13 installed, the `VaultSource.backfill` task walks the vault root and ingests every `.md` — expect `~N seconds` for N notes the first time (chunking + embedding). Subsequent boots only re-embed files whose mtime advanced past the stored `memory_documents.updated_at`, so the steady-state cost is near-zero.
 
 **Obsidian clients:** operator guide at [`docs/operations/vault-sync.md`](docs/operations/vault-sync.md).
 
