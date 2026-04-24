@@ -1,0 +1,43 @@
+---
+type: meeting
+calendar_event_id: {{ event.event_id }}
+event_start: {{ event.start_time }}
+event_end: {{ event.end_time }}
+attendees:
+{% for a in event.attendees %}  - name: {{ a.name }}
+    email: {{ a.email }}
+{% endfor %}
+idempotency_key: {{ event.event_id }}
+autowritten_by: donna
+autowritten_at: {{ now_iso }}
+---
+
+# {{ event.summary }}
+
+## Attendees
+{% for link in attendee_links %}- {{ link }}
+{% endfor %}
+
+## Agenda
+{% if event.description %}{{ event.description }}{% else %}_(no description captured from the calendar event)_{% endif %}
+
+## Summary
+{{ llm.summary }}
+
+## Action Items
+{% for item in llm.action_item_candidates %}- [ ] {{ item }}
+{% else %}- [ ] TBD
+{% endfor %}
+
+## Decisions
+_(fill in)_
+
+## Open Questions
+{% for q in llm.open_questions %}- {{ q }}
+{% endfor %}
+
+## Related
+{% for m in prior_meetings %}- [[{{ m.source_path[:-3] }}]] — {{ m.title }}
+{% endfor %}{% for t in open_tasks %}- {{ t.title }}
+{% endfor %}{% for link in llm.links_suggested %}- {{ link }}
+{% endfor %}

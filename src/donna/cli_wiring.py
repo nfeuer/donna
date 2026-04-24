@@ -342,6 +342,111 @@ async def _try_build_vault_writer(
         return None
 
 
+def _try_build_template_renderer(project_root: Path) -> Any | None:
+    """Slice 15: build the file-based vault :class:`VaultTemplateRenderer`.
+
+    Non-fatal: returns ``None`` when ``prompts/vault/`` is missing or the
+    constructor raises. The meeting-note skill is short-circuited when
+    this returns ``None``.
+    """
+    templates_dir = project_root / "prompts" / "vault"
+    if not templates_dir.is_dir():
+        logger.info(
+            "template_renderer_unavailable",
+            reason="prompts_vault_missing",
+            path=str(templates_dir),
+        )
+        return None
+    try:
+        from donna.memory.templates import VaultTemplateRenderer
+
+        return VaultTemplateRenderer(templates_dir=templates_dir)
+    except Exception as exc:
+        logger.warning("template_renderer_unavailable", reason=str(exc))
+        return None
+
+
+def _try_build_meeting_note_skill(
+    config_dir: Path,
+    *,
+    renderer: Any | None,
+    memory_store: Any | None,
+    vault_client: Any | None,
+    vault_writer: Any | None,
+    router: ModelRouter,
+    invocation_logger: InvocationLogger,
+    user_id: str,
+) -> tuple[Any | None, Any | None]:
+    """Slice 15: build the :class:`MeetingNoteSkill` + its config.
+
+    Returns ``(skill, config)`` or ``(None, None)`` when any prerequisite
+    is absent or the skill block is disabled. Non-fatal; the poller is
+    simply not started when this returns ``None``.
+    """
+    if (
+        renderer is None
+        or memory_store is None
+        or vault_client is None
+        or vault_writer is None
+    ):
+        return None, None
+    memory_yaml = config_dir / "memory.yaml"
+    if not memory_yaml.exists():
+        return None, None
+    try:
+        from donna.capabilities.meeting_note_skill import MeetingNoteSkill
+        from donna.config import load_memory_config
+        from donna.memory.writer import MemoryInformedWriter
+
+        cfg = load_memory_config(config_dir)
+        skill_cfg = cfg.skills.meeting_note
+        if not skill_cfg.enabled:
+            logger.info("meeting_note_skill_disabled_by_config")
+            return None, None
+        writer = MemoryInformedWriter(
+            renderer=renderer,
+            vault_client=vault_client,
+            vault_writer=vault_writer,
+            router=router,
+            logger=invocation_logger,
+        )
+        skill = MeetingNoteSkill(
+            writer=writer,
+            memory_store=memory_store,
+            vault_client=vault_client,
+            config=skill_cfg,
+            user_id=user_id,
+        )
+        return skill, skill_cfg
+    except Exception as exc:
+        logger.warning("meeting_note_skill_unavailable", reason=str(exc))
+        return None, None
+
+
+def _start_meeting_end_poller(
+    ctx: Any, *, skill: Any | None, config: Any | None
+) -> None:
+    """Spawn the meeting-end poller as a supervised bg task.
+
+    No-op when ``skill`` or ``config`` is ``None``. Appends the task to
+    ``ctx.tasks`` so the orchestrator's ``asyncio.wait`` supervises it.
+    """
+    if skill is None or config is None:
+        return
+    try:
+        from donna.capabilities.meeting_end_poller import MeetingEndPoller
+
+        poller = MeetingEndPoller(
+            connection=ctx.db.connection,
+            skill=skill,
+            config=config,
+            user_id=ctx.user_id,
+        )
+        ctx.tasks.append(asyncio.create_task(poller.run_forever()))
+    except Exception as exc:
+        logger.warning("meeting_end_poller_unavailable", reason=str(exc))
+
+
 def _try_build_calendar_client(config_dir: Path) -> Any | None:
     """Attempt to construct a GoogleCalendarClient from config/calendar.yaml.
 

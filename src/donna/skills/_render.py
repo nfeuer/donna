@@ -95,3 +95,10 @@ def render_value(
     if isinstance(value, list):
         return [render_value(v, context, preserve_types=preserve_types) for v in value]
     return value
+
+
+# Public re-exports. Slice 15 consumers (``donna.memory.templates``) need
+# dotted-access context wrapping; keeping the helpers private forced
+# reaching into underscore names from another package.
+AttrDict = _AttrDict
+wrap_context = _wrap_context

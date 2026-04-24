@@ -16,6 +16,7 @@ See docs/scheduling.md and slices/slice_04_calendar.md.
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -240,7 +241,8 @@ class CalendarSync:
         conn = self._db.connection
         cursor = await conn.execute(
             "SELECT event_id, calendar_id, summary, start_time, end_time, "
-            "donna_managed, donna_task_id, etag, last_synced FROM calendar_mirror"
+            "donna_managed, donna_task_id, etag, last_synced, attendees "
+            "FROM calendar_mirror"
         )
         rows = await cursor.fetchall()
         return {
@@ -254,6 +256,7 @@ class CalendarSync:
                 "donna_task_id": row[6],
                 "etag": row[7],
                 "last_synced": row[8],
+                "attendees": row[9],
             }
             for row in rows
         }
@@ -267,12 +270,15 @@ class CalendarSync:
 
         # Upsert live events.
         for ev in live_events.values():
+            attendees_json = (
+                json.dumps(list(ev.attendees)) if ev.attendees else None
+            )
             await conn.execute(
                 """
                 INSERT INTO calendar_mirror
                     (event_id, calendar_id, summary, start_time, end_time,
-                     donna_managed, donna_task_id, etag, last_synced)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     donna_managed, donna_task_id, etag, last_synced, attendees)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(event_id) DO UPDATE SET
                     calendar_id  = excluded.calendar_id,
                     summary      = excluded.summary,
@@ -281,7 +287,8 @@ class CalendarSync:
                     donna_managed = excluded.donna_managed,
                     donna_task_id = excluded.donna_task_id,
                     etag         = excluded.etag,
-                    last_synced  = excluded.last_synced
+                    last_synced  = excluded.last_synced,
+                    attendees    = excluded.attendees
                 """,
                 (
                     ev.event_id,
@@ -293,6 +300,7 @@ class CalendarSync:
                     ev.donna_task_id,
                     ev.etag,
                     now_str,
+                    attendees_json,
                 ),
             )
 
