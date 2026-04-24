@@ -42,8 +42,17 @@ class EmbeddingProvider(Protocol):
         """Embed a single text. Returns a float32 ``(dim,)`` vector."""
         ...
 
-    async def embed_batch(self, texts: list[str]) -> list[np.ndarray]:
-        """Embed a list of texts. Returns one vector per input."""
+    async def embed_batch(
+        self, texts: list[str], *, task_type: str | None = None
+    ) -> list[np.ndarray]:
+        """Embed a list of texts. Returns one vector per input.
+
+        ``task_type`` optionally overrides the provider's default
+        invocation-log ``task_type`` for this batch (used by slice
+        14 so chat / task / correction embeds are logged distinctly
+        from vault embeds). Providers that don't support per-call
+        overrides may ignore the kwarg.
+        """
         ...
 
 
@@ -82,7 +91,9 @@ class MiniLMProvider:
         await self._log_one(text, latency_ms)
         return vec
 
-    async def embed_batch(self, texts: list[str]) -> list[np.ndarray]:
+    async def embed_batch(
+        self, texts: list[str], *, task_type: str | None = None
+    ) -> list[np.ndarray]:
         if not texts:
             return []
         t0 = time.monotonic()
@@ -92,7 +103,7 @@ class MiniLMProvider:
         # comparable on the dashboard.
         per_row_ms = max(total_ms // max(len(texts), 1), 1)
         for text in texts:
-            await self._log_one(text, per_row_ms)
+            await self._log_one(text, per_row_ms, task_type=task_type)
         return vecs
 
     def _encode_batch_sync(self, texts: list[str]) -> list[np.ndarray]:
@@ -100,14 +111,16 @@ class MiniLMProvider:
         arr = model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
         return [v.astype(np.float32) for v in arr]
 
-    async def _log_one(self, text: str, latency_ms: int) -> None:
+    async def _log_one(
+        self, text: str, latency_ms: int, *, task_type: str | None = None
+    ) -> None:
         if self._logger is None:
             return
         h = hashlib.sha256(text.encode("utf-8")).hexdigest()
         try:
             await self._logger.log(
                 InvocationMetadata(
-                    task_type=self._task_type,
+                    task_type=task_type or self._task_type,
                     model_alias=self.name,
                     model_actual=self.model_actual,
                     input_hash=h,

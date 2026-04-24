@@ -3985,9 +3985,15 @@ honoured by `MiniLMProvider` (default, wraps
 future provider (bge-small, Voyage-3-lite). Selection is config-only
 via `embedding.provider`. Every embed emits one `invocation_log` row
 per input text (`task_type in {embed_vault_chunk,
-embed_memory_query}`, `model_alias="minilm-l6-v2"`, `tokens_in=0`,
-`cost_usd=0.0`) so §4.3's invocation-log contract holds for local
-work the same way it does for cloud calls.
+embed_memory_query, embed_chat_turn, embed_task, embed_correction}`,
+`model_alias="minilm-l6-v2"`, `tokens_in=0`, `cost_usd=0.0`) so
+§4.3's invocation-log contract holds for local work the same way
+it does for cloud calls. The episodic `task_type` values are added
+in slice 14 when `ChatSource`, `TaskSource`, and `CorrectionSource`
+start routing upserts through the store; `MemoryStore` looks up the
+correct `task_type` from `source_type` so the provider logs each
+batch distinctly without every source needing its own provider
+instance.
 
 The chunker (`MarkdownHeadingChunker`, 256-token cap / 32-token
 overlap) walks markdown headings H1–H3, preserves `heading_path`

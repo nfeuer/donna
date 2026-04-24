@@ -135,6 +135,29 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Notification priority (1-5)",
     )
 
+    # donna memory backfill (slice 14)
+    memory_parser = subparsers.add_parser(
+        "memory",
+        help="Memory index maintenance commands",
+    )
+    memory_sub = memory_parser.add_subparsers(dest="memory_command")
+    backfill_parser = memory_sub.add_parser(
+        "backfill",
+        help="Re-ingest every enabled source into the memory index",
+    )
+    backfill_parser.add_argument("--config-dir", default="config")
+    backfill_parser.add_argument(
+        "--source",
+        default="all",
+        choices=["vault", "chat", "task", "correction", "all"],
+        help="Which source to backfill (default: all)",
+    )
+    backfill_parser.add_argument(
+        "--user-id",
+        default=None,
+        help="User ID to backfill (default: $DONNA_USER_ID or 'nick')",
+    )
+
     return parser
 
 
@@ -159,6 +182,12 @@ def main() -> None:
         asyncio.run(_setup(args))
     elif args.command == "test-notification":
         asyncio.run(_test_notification(args))
+    elif args.command == "memory":
+        if args.memory_command == "backfill":
+            sys.exit(asyncio.run(_run_memory_backfill(args)))
+        else:
+            parser.parse_args([args.command, "--help"])
+            sys.exit(1)
 
 
 async def _run_orchestrator(args: argparse.Namespace) -> None:
@@ -190,6 +219,7 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     # tools register for capabilities like email_triage. Non-fatal on failure.
     # Wave 1 followup: also attempt a GoogleCalendarClient for calendar_read.
     from donna.cli_wiring import (
+        _build_episodic_sources,
         _start_memory_tasks,
         _try_build_calendar_client,
         _try_build_gmail_client,
@@ -210,6 +240,7 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         vault_client,
     )
     _start_memory_tasks(ctx, memory_handles)
+    _build_episodic_sources(ctx.config_dir, memory_store, ctx.db, ctx.user_id)
     skill_h = await wire_skill_system(
         ctx,
         gmail_client=gmail_client,
@@ -513,6 +544,94 @@ async def _test_notification(args: argparse.Namespace) -> None:
     print(f"dispatched={sent}")
     await bot.close()
     await bot_task
+
+
+async def _run_memory_backfill(args: argparse.Namespace) -> int:
+    """Run the slice-14 ``donna memory backfill`` subcommand.
+
+    Builds a minimal Database + MemoryStore + sources, then invokes
+    each selected source's ``backfill(user_id)``. Idempotent: the
+    second run leaves row counts unchanged (enforced by
+    ``UNIQUE(user_id, source_type, source_id)`` at the store level).
+
+    Returns exit code 0 when every requested source succeeded, 1 if
+    any raised. Remaining sources still run so partial progress
+    lands.
+    """
+    from pathlib import Path
+
+    import structlog
+
+    from donna.cli_wiring import (
+        _build_episodic_sources,
+        _try_build_memory_store,
+        _try_build_vault_client,
+    )
+    from donna.config import load_state_machine_config
+    from donna.logging.invocation_logger import InvocationLogger
+    from donna.logging.setup import setup_logging
+    from donna.tasks.database import Database
+    from donna.tasks.state_machine import StateMachine
+
+    setup_logging(log_level="INFO", json_output=False)
+    log = structlog.get_logger()
+
+    config_dir = Path(args.config_dir)
+    user_id = args.user_id or os.environ.get("DONNA_USER_ID", "nick")
+    db_path = os.environ.get("DONNA_DB_PATH", "donna_tasks.db")
+
+    state_machine = StateMachine(load_state_machine_config(config_dir))
+    db = Database(db_path, state_machine)
+    await db.connect()
+    try:
+        await db.run_migrations()
+        invocation_logger = InvocationLogger(db.connection)
+        vault_client = _try_build_vault_client(config_dir)
+        memory_store, memory_handles = await _try_build_memory_store(
+            config_dir, db, user_id, invocation_logger, vault_client,
+        )
+        if memory_store is None:
+            log.error("memory_backfill_unavailable", reason="memory_store_missing")
+            return 1
+        episodic = _build_episodic_sources(config_dir, memory_store, db, user_id)
+
+        requested = args.source
+        wanted = (
+            ["vault", "chat", "task", "correction"]
+            if requested == "all"
+            else [requested]
+        )
+        summary: dict[str, int | str] = {}
+        had_error = False
+        for name in wanted:
+            try:
+                if name == "vault":
+                    _q, vault_source = memory_handles or (None, None)
+                    if vault_source is None:
+                        log.info("memory_backfill_skipped", source=name)
+                        summary[name] = "skipped"
+                        continue
+                    count = await vault_source.backfill(user_id)
+                else:
+                    src = episodic.get(name)
+                    if src is None:
+                        log.info("memory_backfill_skipped", source=name)
+                        summary[name] = "skipped"
+                        continue
+                    count = await src.backfill(user_id)
+                summary[name] = count
+                log.info("memory_backfill_source_done", source=name, count=count)
+            except Exception as exc:
+                had_error = True
+                summary[name] = f"error: {exc}"
+                log.exception("memory_backfill_source_failed", source=name)
+        log.info("memory_backfill_done", summary=summary)
+        print("backfill summary:")
+        for name, result in summary.items():
+            print(f"  {name}: {result}")
+        return 1 if had_error else 0
+    finally:
+        await db.close()
 
 
 if __name__ == "__main__":

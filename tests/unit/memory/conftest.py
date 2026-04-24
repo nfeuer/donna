@@ -39,8 +39,11 @@ class FakeEmbeddingProvider:
         self.embed_calls.append(text)
         return self._vec(text)
 
-    async def embed_batch(self, texts: list[str]) -> list[np.ndarray]:
+    async def embed_batch(
+        self, texts: list[str], *, task_type: str | None = None,
+    ) -> list[np.ndarray]:
         self.batch_calls.append(list(texts))
+        self.last_task_type = task_type
         return [self._vec(t) for t in texts]
 
     def _vec(self, text: str) -> np.ndarray:

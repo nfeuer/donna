@@ -312,9 +312,380 @@ class MarkdownHeadingChunker:
         return _token_window_split(atom, self.max_tokens, self.overlap_tokens)
 
 
+@dataclass(frozen=True)
+class ChatTurn:
+    """A single turn emitted by :class:`ChatTurnChunker`.
+
+    A turn merges one or more consecutive same-role messages (subject
+    to :attr:`max_tokens`). ``first_msg_id`` / ``last_msg_id`` let the
+    source compose a stable ``source_id`` even across follow-up edits
+    that extend the buffer.
+    """
+
+    role: str
+    content: str
+    first_msg_id: str
+    last_msg_id: str
+    message_ids: list[str]
+    token_count: int
+
+
+# Minimum characters a message must have to contribute to a turn
+# unless rescued by a task-verb / question heuristic. Matches the
+# slice brief default; configurable via ``ChatSourceConfig.min_chars``.
+_CHAT_TURN_QUESTION_RE = re.compile(r"\?")
+
+
+class ChatTurnChunker:
+    """Merge consecutive same-role messages into turn documents.
+
+    Rules (from slice 14):
+
+    1. Messages are walked in arrival order.
+    2. Messages whose role is not in :attr:`include_roles` are
+       skipped entirely (the default is ``{user, assistant}``).
+    3. Messages shorter than :attr:`min_chars` are dropped unless
+       they contain a ``?`` or a configured :attr:`task_verb`. Short
+       imperative asks are high-signal even when terse.
+    4. Consecutive same-role messages merge into one turn up to
+       :attr:`max_tokens`; a full buffer flushes and the next
+       message seeds a fresh turn with the same role.
+    5. A role flip always flushes the current buffer.
+    """
+
+    def __init__(
+        self,
+        max_tokens: int = 256,
+        *,
+        merge_consecutive_roles: bool = True,
+        min_chars: int = 20,
+        task_verbs: list[str] | None = None,
+        include_roles: list[str] | None = None,
+    ) -> None:
+        if max_tokens <= 0:
+            raise ValueError("max_tokens must be positive")
+        if min_chars < 0:
+            raise ValueError("min_chars must be non-negative")
+        self.max_tokens = max_tokens
+        self.merge_consecutive_roles = merge_consecutive_roles
+        self.min_chars = min_chars
+        self.task_verbs = [v.lower() for v in (task_verbs or [])]
+        self.include_roles = (
+            list(include_roles) if include_roles is not None else ["user", "assistant"]
+        )
+
+    def chunk_messages(
+        self, messages: list[dict[str, Any]]
+    ) -> list[ChatTurn]:
+        """Group ``messages`` into turns.
+
+        ``messages`` is a list of mappings with ``id``, ``role``, and
+        ``content`` keys (the ``ChatMessage`` projection serialises
+        cleanly via :func:`dataclasses.asdict`; raw rows with the same
+        shape work too).
+        """
+        turns: list[ChatTurn] = []
+        buf_role: str | None = None
+        buf_ids: list[str] = []
+        buf_parts: list[str] = []
+        buf_tokens = 0
+
+        def flush() -> None:
+            nonlocal buf_role, buf_ids, buf_parts, buf_tokens
+            if buf_role is None or not buf_parts:
+                buf_role = None
+                buf_ids = []
+                buf_parts = []
+                buf_tokens = 0
+                return
+            content = "\n\n".join(buf_parts).strip()
+            if content:
+                turns.append(
+                    ChatTurn(
+                        role=buf_role,
+                        content=content,
+                        first_msg_id=buf_ids[0],
+                        last_msg_id=buf_ids[-1],
+                        message_ids=list(buf_ids),
+                        token_count=count_tokens(content),
+                    )
+                )
+            buf_role = None
+            buf_ids = []
+            buf_parts = []
+            buf_tokens = 0
+
+        for msg in messages:
+            role = str(msg["role"])
+            content = str(msg.get("content", "")).strip()
+            msg_id = str(msg["id"])
+            if role not in self.include_roles:
+                # Non-indexed roles force a boundary so a system
+                # message between two user messages never silently
+                # merges them into one turn.
+                flush()
+                continue
+            if not self._keep(content):
+                continue
+            if buf_role is not None and (
+                role != buf_role or not self.merge_consecutive_roles
+            ):
+                flush()
+            candidate_tokens = count_tokens(content)
+            if (
+                buf_role is not None
+                and buf_tokens + candidate_tokens > self.max_tokens
+            ):
+                flush()
+            buf_role = role
+            buf_parts.append(content)
+            buf_ids.append(msg_id)
+            buf_tokens += candidate_tokens
+            if buf_tokens >= self.max_tokens:
+                flush()
+        flush()
+        return turns
+
+    def chunk(self, body: str) -> list[Chunk]:
+        """Implement :class:`Chunker`. Falls back to a single chunk.
+
+        Documents fed to the chunk pipeline (via ``MemoryStore.upsert``)
+        are already turn-level strings emitted by
+        :meth:`ChatSource._flush`, so the chunk step is effectively a
+        noop — one chunk per turn keeps provenance intact.
+        """
+        body = body.strip()
+        if not body:
+            return []
+        return [
+            Chunk(
+                index=0,
+                content=body,
+                heading_path=[],
+                token_count=count_tokens(body),
+            )
+        ]
+
+    def _keep(self, content: str) -> bool:
+        if not content:
+            return False
+        if len(content) >= self.min_chars:
+            return True
+        lowered = content.lower()
+        if _CHAT_TURN_QUESTION_RE.search(content):
+            return True
+        # Tokenize once and match each verb against tokens. We accept
+        # the bare verb plus the three common English inflections
+        # (-s / -ed / -ing) so "call" rescues "called" / "calling"
+        # but `callous` / `callable` slip through and don't rescue
+        # an otherwise-short noisy message.
+        tokens = re.findall(r"\w+", lowered)
+        verb_forms: set[str] = set()
+        for verb in self.task_verbs:
+            if not verb:
+                continue
+            verb_forms.add(verb)
+            verb_forms.add(verb + "s")
+            verb_forms.add(verb + "ed")
+            verb_forms.add(verb + "ing")
+            # `call` → `calling` (no e-drop), but `schedule` →
+            # `scheduling` (e-drop). Cover the e-drop variants too.
+            if verb.endswith("e"):
+                verb_forms.add(verb[:-1] + "ing")
+                verb_forms.add(verb[:-1] + "ed")
+        return any(tok in verb_forms for tok in tokens)
+
+
+class TaskChunker:
+    """Render a task row into one chunk — or split at notes boundaries.
+
+    The chunk body is a template-rendered string. When a task's notes
+    list blows past :attr:`max_tokens`, we emit a head chunk plus one
+    chunk per oversized note group so retrieval can still hit specific
+    notes without losing the task header.
+    """
+
+    _HEADER_FIELDS: tuple[str, ...] = (
+        "title",
+        "description",
+        "status",
+        "domain",
+        "deadline",
+    )
+
+    def __init__(self, max_tokens: int = 256) -> None:
+        if max_tokens <= 0:
+            raise ValueError("max_tokens must be positive")
+        self.max_tokens = max_tokens
+
+    def render(self, task: dict[str, Any]) -> str:
+        """Render the full task body as a single string (for upsert)."""
+        chunks = self.chunk_task(task)
+        return "\n\n---\n\n".join(c.content for c in chunks)
+
+    def chunk_task(self, task: dict[str, Any]) -> list[Chunk]:
+        """Render a task row into one or more chunks."""
+        header = self._render_header(task)
+        notes = self._split_notes(task.get("notes") or [])
+        head_tokens = count_tokens(header)
+        if not notes:
+            return [
+                Chunk(
+                    index=0,
+                    content=header,
+                    heading_path=[],
+                    token_count=head_tokens,
+                )
+            ]
+        combined = header + "\n\nNotes:\n" + "\n".join(f"- {n}" for n in notes)
+        combined_tokens = count_tokens(combined)
+        if combined_tokens <= self.max_tokens:
+            return [
+                Chunk(
+                    index=0,
+                    content=combined,
+                    heading_path=[],
+                    token_count=combined_tokens,
+                )
+            ]
+        chunks: list[Chunk] = [
+            Chunk(
+                index=0,
+                content=header,
+                heading_path=[],
+                token_count=head_tokens,
+            )
+        ]
+        buf: list[str] = []
+        buf_tokens = 0
+        for note in notes:
+            line = f"- {note}"
+            line_tokens = count_tokens(line)
+            if buf and buf_tokens + line_tokens > self.max_tokens:
+                body = "Notes:\n" + "\n".join(buf)
+                chunks.append(
+                    Chunk(
+                        index=len(chunks),
+                        content=body,
+                        heading_path=[],
+                        token_count=count_tokens(body),
+                    )
+                )
+                buf = []
+                buf_tokens = 0
+            buf.append(line)
+            buf_tokens += line_tokens
+        if buf:
+            body = "Notes:\n" + "\n".join(buf)
+            chunks.append(
+                Chunk(
+                    index=len(chunks),
+                    content=body,
+                    heading_path=[],
+                    token_count=count_tokens(body),
+                )
+            )
+        return chunks
+
+    def chunk(self, body: str) -> list[Chunk]:
+        """Chunker protocol adapter for pre-rendered task bodies."""
+        body = body.strip()
+        if not body:
+            return []
+        token_count = count_tokens(body)
+        if token_count <= self.max_tokens:
+            return [
+                Chunk(index=0, content=body, heading_path=[], token_count=token_count)
+            ]
+        # Fall back to splitting on the separator we render between
+        # head + notes. If it's missing, token-window split as a
+        # last resort so the upsert never silently truncates.
+        parts = body.split("\n\n---\n\n")
+        if len(parts) == 1:
+            return [
+                Chunk(
+                    index=i,
+                    content=piece,
+                    heading_path=[],
+                    token_count=count_tokens(piece),
+                )
+                for i, piece in enumerate(
+                    _token_window_split(body, self.max_tokens, 0)
+                )
+                if piece.strip()
+            ]
+        return [
+            Chunk(
+                index=i,
+                content=piece,
+                heading_path=[],
+                token_count=count_tokens(piece),
+            )
+            for i, piece in enumerate(parts)
+            if piece.strip()
+        ]
+
+    def _render_header(self, task: dict[str, Any]) -> str:
+        title = str(task.get("title") or "").strip() or "(untitled)"
+        parts = [f"# {title}"]
+        description = str(task.get("description") or "").strip()
+        if description:
+            parts.append(description)
+        meta: list[str] = []
+        for field in ("status", "domain", "deadline"):
+            value = task.get(field)
+            if value is None or value == "":
+                continue
+            meta.append(f"{field}={value}")
+        if meta:
+            parts.append(" | ".join(meta))
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _split_notes(raw: Any) -> list[str]:
+        if raw is None:
+            return []
+        if isinstance(raw, str):
+            # Accept JSON-encoded notes_json as well as raw strings so
+            # callers don't have to pre-parse.
+            raw_stripped = raw.strip()
+            if not raw_stripped:
+                return []
+            if raw_stripped.startswith("["):
+                try:
+                    import json
+
+                    data = json.loads(raw_stripped)
+                    if isinstance(data, list):
+                        return [str(x) for x in data if str(x).strip()]
+                except (ValueError, TypeError):
+                    pass
+            return [raw_stripped]
+        if isinstance(raw, list):
+            return [str(x) for x in raw if str(x).strip()]
+        return [str(raw)]
+
+
+def render_correction_event(event: dict[str, Any]) -> str:
+    """Render one :class:`CorrectionSource` entry per the fixed template."""
+    field = event.get("field_corrected") or event.get("field") or ""
+    original = event.get("original_value") or event.get("original") or ""
+    corrected = event.get("corrected_value") or event.get("corrected") or ""
+    input_text = event.get("input_text") or ""
+    task_type = event.get("task_type") or ""
+    return (
+        f"Field {field} changed from {original!r} to {corrected!r} "
+        f"on input: {input_text!r} (task_type={task_type})"
+    )
+
+
 __all__ = [
+    "ChatTurn",
+    "ChatTurnChunker",
     "Chunk",
     "Chunker",
     "MarkdownHeadingChunker",
+    "TaskChunker",
     "count_tokens",
+    "render_correction_event",
 ]

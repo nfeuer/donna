@@ -49,7 +49,27 @@ sources:
       - ".trash/**"
       - ".git/**"
       - "Templates/**"
-  # --- unused until slice 14 ---
-  chat: false
-  tasks: false
-  corrections: false
+  # --- slice 14: episodic sources ---
+  chat:
+    enabled: true
+    index_roles: [user, assistant]
+    min_chars: 20
+    merge_consecutive_same_role: true
+    task_verbs:
+      - do
+      - call
+      - email
+      - schedule
+      - remind
+      - send
+      - book
+      - buy
+      - check
+      - review
+    chunker: chat_turn
+  task:
+    enabled: true
+    reindex_on_status: [done, cancelled]
+    chunker: task
+  correction:
+    enabled: true

@@ -428,15 +428,101 @@ class VaultSourceConfig(BaseModel):
     ignore_globs: list[str] = Field(default_factory=list)
 
 
+class ChatSourceConfig(BaseModel):
+    """Chat-turn ingestion knobs (slice 14).
+
+    ``index_roles`` filters which message roles contribute to turns.
+    ``min_chars`` drops short messages unless they contain a question
+    mark or a configured task verb. ``task_verbs`` is the allowlist
+    that rescues short imperative messages from the filter.
+    """
+
+    enabled: bool = False
+    index_roles: list[str] = Field(default_factory=lambda: ["user", "assistant"])
+    min_chars: int = 20
+    merge_consecutive_same_role: bool = True
+    task_verbs: list[str] = Field(
+        default_factory=lambda: [
+            "do", "call", "email", "schedule", "remind",
+            "send", "book", "buy", "check", "review",
+        ]
+    )
+    chunker: str = "chat_turn"
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+
+class TaskSourceConfig(BaseModel):
+    """Task mutation ingestion knobs (slice 14).
+
+    ``reindex_on_status`` enumerates the terminal statuses that force a
+    re-embed even when the semantic content hash is unchanged (the
+    final-state context is high-signal for retrieval).
+    """
+
+    enabled: bool = False
+    reindex_on_status: list[str] = Field(
+        default_factory=lambda: ["done", "cancelled"]
+    )
+    chunker: str = "task"
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+
+class CorrectionSourceConfig(BaseModel):
+    """Correction log ingestion knobs (slice 14)."""
+
+    enabled: bool = False
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+
+def _coerce_source_toggle(value: Any, model: type[BaseModel]) -> BaseModel:
+    """Allow legacy ``chat: false`` style configs to still parse."""
+    if isinstance(value, bool):
+        return model(enabled=value)
+    if isinstance(value, dict):
+        return model(**value)
+    if isinstance(value, model):
+        return value
+    raise TypeError(f"Unsupported source config value: {value!r}")
+
+
 class VaultSourcesConfig(BaseModel):
-    """Episodic source toggles. Slice 13 wires `vault`; chat/tasks/
-    corrections are reserved for slice 14.
+    """Episodic source toggles.
+
+    Slice 13 wired ``vault``. Slice 14 adds ``chat`` / ``task`` /
+    ``correction`` as full config blocks. Legacy configs that set
+    ``chat: false`` (slice-13 stubs) still parse via the
+    ``field_validator`` below.
     """
 
     vault: VaultSourceConfig = Field(default_factory=VaultSourceConfig)
-    chat: bool = False
-    tasks: bool = False
-    corrections: bool = False
+    chat: ChatSourceConfig = Field(default_factory=ChatSourceConfig)
+    task: TaskSourceConfig = Field(default_factory=TaskSourceConfig)
+    correction: CorrectionSourceConfig = Field(default_factory=CorrectionSourceConfig)
+
+    model_config = {"populate_by_name": True, "extra": "ignore"}
+
+    @classmethod
+    def model_validate(cls, obj: Any, *args: Any, **kwargs: Any) -> VaultSourcesConfig:
+        # Accept legacy keys: `tasks` → `task`, `corrections` → `correction`,
+        # plain bools for any of chat/task/correction.
+        if isinstance(obj, dict):
+            data: dict[str, Any] = dict(obj)
+            if "tasks" in data and "task" not in data:
+                data["task"] = data.pop("tasks")
+            if "corrections" in data and "correction" not in data:
+                data["correction"] = data.pop("corrections")
+            for key, model in (
+                ("chat", ChatSourceConfig),
+                ("task", TaskSourceConfig),
+                ("correction", CorrectionSourceConfig),
+            ):
+                if key in data:
+                    data[key] = _coerce_source_toggle(data[key], model)
+            obj = data
+        return super().model_validate(obj, *args, **kwargs)
 
 
 class MemoryConfig(BaseModel):

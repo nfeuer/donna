@@ -192,6 +192,7 @@ class Database:
         state_machine: StateMachine,
         alembic_config_path: str | Path | None = None,
         supabase_sync: SupabaseSync | None = None,
+        memory_observer: Any | None = None,
     ) -> None:
         self._db_path = Path(db_path)
         self._state_machine = state_machine
@@ -199,6 +200,42 @@ class Database:
         self._conn: aiosqlite.Connection | None = None
         self._supabase_sync = supabase_sync
         self._vec_available: bool = False
+        # Slice 14: memory-layer observer (Option A — constructor
+        # injection). Expected to expose ``async observe_task(event)``
+        # and ``async observe_message(event)``. Failures never
+        # propagate; see ``_fire_memory_observer`` below.
+        self._memory_observer = memory_observer
+
+    def set_memory_observer(self, observer: Any | None) -> None:
+        """Attach the slice-14 memory observer post-construction.
+
+        ``cli_wiring`` builds the episodic sources after the DB opens,
+        so the observer is wired here rather than at construction.
+        """
+        self._memory_observer = observer
+
+    async def _fire_memory_observer(self, method: str, event: dict[str, Any]) -> None:
+        """Dispatch ``event`` to the slice-14 memory observer.
+
+        Awaited by the caller but exceptions are swallowed — the
+        source-of-truth write is already committed and a memory-layer
+        failure must never unwind it. Matches the ``structlog.warn``
+        contract spelled out in the slice brief §6.
+        """
+        observer = self._memory_observer
+        if observer is None:
+            return
+        callback = getattr(observer, method, None)
+        if callback is None:
+            return
+        try:
+            await callback(event)
+        except Exception as exc:
+            logger.warning(
+                "memory_ingest_failed",
+                source_type=method,
+                reason=str(exc),
+            )
 
     async def connect(self) -> None:
         """Open the aiosqlite connection, enable WAL, load sqlite-vec.
@@ -366,8 +403,16 @@ class Database:
         logger.info("task_created", task_id=task_id, title=title, user_id=user_id)
         task_row = await self.get_task(task_id)
         if self._supabase_sync is not None and task_row is not None:
-            import dataclasses
             await self._supabase_sync.push_task(dataclasses.asdict(task_row))
+        if task_row is not None:
+            await self._fire_memory_observer(
+                "observe_task",
+                {
+                    "action": "create",
+                    "task": dataclasses.asdict(task_row),
+                    "previous_status": None,
+                },
+            )
         return task_row  # type: ignore[return-value]
 
     async def get_task(self, task_id: str) -> TaskRow | None:
@@ -390,6 +435,9 @@ class Database:
         invalid = set(fields.keys()) - _UPDATABLE_COLUMNS
         if invalid:
             raise ValueError(f"Invalid columns for update: {invalid}")
+
+        previous_row = await self.get_task(task_id)
+        previous_status = previous_row.status if previous_row is not None else None
 
         conn = self.connection
 
@@ -423,8 +471,16 @@ class Database:
 
         task_row = await self.get_task(task_id)
         if self._supabase_sync is not None and task_row is not None:
-            import dataclasses
             await self._supabase_sync.push_task(dataclasses.asdict(task_row))
+        if task_row is not None:
+            await self._fire_memory_observer(
+                "observe_task",
+                {
+                    "action": "update",
+                    "task": dataclasses.asdict(task_row),
+                    "previous_status": previous_status,
+                },
+            )
         return task_row
 
     async def list_tasks(
@@ -806,6 +862,18 @@ class Database:
         )
         await conn.commit()
 
+        new_status = kwargs.get("status")
+        if new_status in ("expired", "closed"):
+            session = await self.get_chat_session(session_id)
+            await self._fire_memory_observer(
+                "observe_session_closed",
+                {
+                    "session_id": session_id,
+                    "user_id": session.user_id if session is not None else None,
+                    "status": new_status,
+                },
+            )
+
     async def get_expired_chat_sessions(self) -> list[ChatSession]:
         """Return active sessions whose expires_at is in the past."""
         conn = self.connection
@@ -860,7 +928,17 @@ class Database:
         )
         row = await cursor.fetchone()
         assert row is not None
-        return self._row_to_chat_message(row, cursor.description)
+        message = self._row_to_chat_message(row, cursor.description)
+        session = await self.get_chat_session(session_id)
+        await self._fire_memory_observer(
+            "observe_message",
+            {
+                "session_id": session_id,
+                "user_id": session.user_id if session is not None else None,
+                "message": dataclasses.asdict(message),
+            },
+        )
+        return message
 
     async def list_chat_messages(
         self,
