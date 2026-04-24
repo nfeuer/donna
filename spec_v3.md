@@ -57,12 +57,16 @@ design intent is unchanged; substantive updates in v3.1 are:
     API & Dashboard (§27), Authentication & Access Control (§28),
     Setup Wizard (§29).
 -   **§30 (new)** Memory & Vault Subsystem documents the
-    Obsidian-compatible vault plumbing (slice 12) and the
-    sqlite-vec-backed semantic memory layer (slice 13):
-    `MemoryStore`, `EmbeddingProvider`, `MarkdownHeadingChunker`,
-    `VaultSource`, and the `memory_search` agent tool. The
-    authoritative design lives at
-    `docs/reference-specs/memory-vault-spec.md`.
+    Obsidian-compatible vault plumbing (slice 12), the
+    sqlite-vec-backed semantic memory layer (slice 13), the episodic
+    chat / task / correction sources (slice 14), and the
+    template-driven vault writes (slice 15): `MemoryStore`,
+    `EmbeddingProvider`, `MarkdownHeadingChunker`, `VaultSource`,
+    `ChatSource` / `TaskSource` / `CorrectionSource`,
+    `VaultTemplateRenderer`, `MemoryInformedWriter`, the
+    `MeetingNoteSkill` + `MeetingEndPoller` reference trigger, and
+    the `memory_search` agent tool. The authoritative design lives
+    at `docs/reference-specs/memory-vault-spec.md`.
 
 Everything else in v3.0 remains canonical design intent.
 
@@ -1984,6 +1988,19 @@ not reliant on agent prompting:
 Constraints are relaxed only after reviewing logged agent performance
 and explicitly updating the agent's configuration. The system errs on
 the side of requiring user confirmation rather than acting autonomously.
+
+**Template-write autonomy (slice 15):** The safety envelope for
+autonomous vault writes is layered on top of the per-agent
+`autonomy` field in `config/agents.yaml`. Each template-write skill
+carries its own `autonomy_level` under `memory.skills.<skill>` in
+`config/memory.yaml` — a skill-local value that can differ from the
+owning agent's setting (per-template beats per-agent so different
+templates under the same agent can demand different human review).
+When `autonomy_level == "low"`, `MemoryInformedWriter` rewrites the
+caller-computed `target_path` to `Inbox/{basename}` before calling
+`VaultWriter.write`, forcing the output into the user's review
+queue. `medium` and `high` honour the caller's path. See §30.8 for
+the full flow.
 
 **8. Local LLM Tool Use Progression**
 
@@ -3926,7 +3943,7 @@ OAuth, and runs the initial Alembic migration. It's orthogonal to
 runtime behavior and exists mainly to make re-provisioning
 reproducible.
 
-**30. Memory & Vault Subsystem** *(added v3.1 — slices 12 + 13)*
+**30. Memory & Vault Subsystem** *(added v3.1 — slices 12 + 13 + 14 + 15)*
 
 Donna owns a durable, human-editable markdown workspace (slice 12) and
 a semantic index over that workspace (slice 13). Together they give
@@ -4044,18 +4061,126 @@ retrieval (`memory_retrieval`), every vault-watcher change
 
 **30.7 Scope Guardrails**
 
-Explicitly deferred from slice 13:
+Shipped in later slices (historical notes):
 
--   Chat / task / correction ingestion → slice 14.
--   Jinja templates under `prompts/vault/` and memory-informed
-    writers (meeting notes, weekly reviews) → slice 15.
--   Supabase sync for `memory_documents` / `memory_chunks` →
-    slice 16.
+-   **Slice 14** added chat / task / correction ingestion —
+    `ChatSource`, `TaskSource`, `CorrectionSource` using the same
+    `MemoryStore`, no schema changes. Full design in
+    `docs/reference-specs/memory-vault-spec.md §9`.
+-   **Slice 15** added template-driven vault writes (see §30.8).
+    Jinja templates live under `prompts/vault/`; the shared
+    orchestrator is `MemoryInformedWriter`; one reference trigger
+    (`MeetingNoteSkill`) is wired end-to-end. The four remaining
+    templates (weekly review, person profile, commitment log,
+    daily reflection) defer to slice 16.
+
+Still deferred:
+
+-   Additional template triggers (weekly review, person profile,
+    commitment log, daily reflection) → slice 16.
+-   Auto-creation of `People/{name}.md` stubs → slice 16
+    (person-profile skill).
+-   Re-rendering meeting notes when the calendar event changes
+    post-write → slice 16+.
+-   Supabase sync for `memory_documents` / `memory_chunks` and
+    the `calendar_mirror.attendees` column → slice 17.
 -   Rename / move reconciliation beyond `delete + upsert` →
     slice 16.
 -   BM25 / hybrid retrieval and eval harness → slice 17.
 -   Cloud embedding providers — Protocol supports them, no wiring
     shipped.
+
+**30.8 Template Writes (slice 15)**
+
+Slice 15 is the first slice where Donna writes *out* to the vault
+autonomously in response to triggers. Slices 12–14 were all inbound
+(ingestion + retrieval); slice 15 completes the read/write loop by
+producing scaffold notes the user then edits.
+
+*Shared infrastructure* (reusable by slice 16's four remaining
+templates):
+
+-   `VaultTemplateRenderer` (`src/donna/memory/templates.py`) —
+    `FileSystemLoader` + `StrictUndefined` Jinja environment.
+    Templates are **self-contained**: each emits its own
+    frontmatter as a first-line `---...---` YAML block, and the
+    renderer parses it back out via `python-frontmatter` before
+    returning `(body, frontmatter_dict)`. Missing context keys
+    raise `jinja2.UndefinedError` at render time, so templates
+    must declare every variable they consume.
+-   `MemoryInformedWriter` (`src/donna/memory/writer.py`) — the
+    single orchestrator every template-write skill delegates to.
+    Owns autonomy-level path redirection (see §7.3 below), a
+    frontmatter-keyed idempotency short-circuit that runs
+    **before** any LLM spend, the prompt-template load +
+    render via `ModelRouter.get_prompt_template` + routed
+    `router.complete`, the vault-template render, and the
+    `VaultWriter.write` with `expected_mtime` pass-through. Any
+    exception after the idempotency check emits
+    `vault_autowrite_failed` and returns a skipped `WriteResult`;
+    never a partial write.
+-   `resolve_person_link` (`src/donna/memory/linking.py`) — returns
+    `[[People/{name}]]` if the file exists, else `[[{name}]]`.
+    Never auto-creates stubs; unresolved links surface in
+    Obsidian's "Unresolved links" panel as a nudge for the user.
+
+*Reference trigger* (meeting note):
+
+-   `MeetingEndPoller`
+    (`src/donna/capabilities/meeting_end_poller.py`) runs at
+    `memory.skills.meeting_note.poll_interval_seconds`. Its SELECT
+    excludes events that already have an indexed meeting note:
+    `event_id NOT IN (SELECT json_extract(metadata_json,
+    '$.calendar_event_id') FROM memory_documents WHERE
+    source_type='vault' AND json_extract(metadata_json,
+    '$.type')='meeting')`. `json_extract` is used over `->>` for
+    broad SQLite version tolerance.
+-   `MeetingNoteSkill`
+    (`src/donna/capabilities/meeting_note_skill.py`) composes
+    context from three concurrent `memory_search` calls — prior
+    meetings (`sources=["vault"]`, post-filtered on
+    `metadata.type=='meeting'`), recent chats mentioning any
+    attendee, and open tasks tagged to any attendee — capped per
+    `context_limits.{prior_meetings,recent_chats,open_tasks}`.
+    Target path: `Meetings/{event.start:%Y-%m-%d}-{slug}.md`.
+    Idempotency key: the calendar event id.
+-   New task type `draft_meeting_note` (`config/task_types.yaml`,
+    `config/donna_models.yaml`) routes to the reasoner model with
+    structured output per `schemas/draft_meeting_note.json`
+    (`summary`, `action_item_candidates`, `open_questions`,
+    `links_suggested`).
+
+*Schema extension:*
+
+-   Alembic migration `c9d1e3f5a7b2` adds a nullable
+    `attendees TEXT` column to `calendar_mirror` (JSON-encoded
+    `list[{name, email}]`). `calendar.py::_parse_event` reads
+    `items[i].attendees` from the Google Calendar API payload
+    (displayName preferred, email local-part fallback);
+    `calendar_sync.py::_update_mirror` JSON-encodes on upsert.
+
+*Observability:*
+
+-   Structlog events: `meeting_end_detected` (poller found an
+    eligible event), `meeting_note_skipped_idempotent` (writer
+    found a matching key), `meeting_note_written` (happy path),
+    `vault_autowrite_failed` (any step raised).
+-   Every `draft_meeting_note` call logs to `invocation_log` per
+    §4.3, with `task_type=draft_meeting_note`,
+    `model_alias=reasoner`, and real `tokens_in` / `tokens_out` /
+    `cost_usd` (unlike the local embedding calls in §30.3).
+-   The `memory` Grafana dashboard gains a "Template writes" row:
+    writes-by-template timeseries, idempotent-skip rate, LLM-cost
+    timeseries for `task_type=draft_meeting_note`, and autowrite
+    failure count.
+
+*Design intent:* the meeting note is a **scaffold**, not a pretend
+transcript. Future audio-transcription work will replace the
+LLM-drafted summary stub with real content; the scaffold nudges the
+user to fill in decisions and action items, and the attendee
+wikilinks + prior-meeting backlinks mean Donna's own writes flow
+back into `memory_search` (closed loop: Donna's writes become
+memory).
 -   Attachment indexing (images, PDFs). V1 is `.md` only.
 
 *--- End of Specification ---*
