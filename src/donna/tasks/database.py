@@ -198,13 +198,46 @@ class Database:
         self._alembic_config_path = alembic_config_path
         self._conn: aiosqlite.Connection | None = None
         self._supabase_sync = supabase_sync
+        self._vec_available: bool = False
 
     async def connect(self) -> None:
-        """Open the aiosqlite connection and enable WAL mode."""
+        """Open the aiosqlite connection, enable WAL, load sqlite-vec.
+
+        sqlite-vec is loaded best-effort: if the extension or wheel is
+        unavailable we degrade gracefully, set ``vec_available=False``,
+        and proceed. Slice 13's memory features inspect the flag and
+        stay offline in that case; every other subsystem keeps working.
+        """
         self._conn = await aiosqlite.connect(str(self._db_path))
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.execute("PRAGMA foreign_keys=ON")
-        logger.info("database_connected", db_path=str(self._db_path))
+        await self._try_load_sqlite_vec()
+        logger.info(
+            "database_connected",
+            db_path=str(self._db_path),
+            vec_available=self._vec_available,
+        )
+
+    async def _try_load_sqlite_vec(self) -> None:
+        """Load the vec0 extension onto the aiosqlite connection.
+
+        aiosqlite runs sqlite3 calls on a dedicated worker thread, so
+        ``load_extension`` must be dispatched via ``conn._execute`` to
+        avoid SQLite's single-thread access check.
+        """
+        if self._conn is None:
+            return
+        try:
+            import sqlite_vec
+
+            raw = self._conn._conn  # underlying sqlite3.Connection
+            await self._conn._execute(raw.enable_load_extension, True)
+            await self._conn._execute(raw.load_extension, sqlite_vec.loadable_path())
+            await self._conn._execute(raw.enable_load_extension, False)
+            self._vec_available = True
+        except Exception as exc:
+            self._vec_available = False
+            logger.warning("sqlite_vec_unavailable", reason=str(exc))
 
     async def close(self) -> None:
         """Close the aiosqlite connection."""
@@ -219,6 +252,15 @@ class Database:
         if self._conn is None:
             raise RuntimeError("Database not connected. Call connect() first.")
         return self._conn
+
+    @property
+    def vec_available(self) -> bool:
+        """True when sqlite-vec's vec0 extension loaded successfully.
+
+        Slice 13's :class:`MemoryStore` refuses to wire when this is False
+        and the orchestrator logs ``memory_store_unavailable``.
+        """
+        return self._vec_available
 
     async def run_migrations(self) -> None:
         """Run alembic upgrade head programmatically."""

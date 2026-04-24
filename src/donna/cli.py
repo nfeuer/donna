@@ -190,8 +190,10 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     # tools register for capabilities like email_triage. Non-fatal on failure.
     # Wave 1 followup: also attempt a GoogleCalendarClient for calendar_read.
     from donna.cli_wiring import (
+        _start_memory_tasks,
         _try_build_calendar_client,
         _try_build_gmail_client,
+        _try_build_memory_store,
         _try_build_vault_client,
         _try_build_vault_writer,
     )
@@ -200,12 +202,21 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     calendar_client = _try_build_calendar_client(ctx.config_dir)
     vault_client = _try_build_vault_client(ctx.config_dir)
     vault_writer = await _try_build_vault_writer(ctx.config_dir, vault_client)
+    memory_store, memory_handles = await _try_build_memory_store(
+        ctx.config_dir,
+        ctx.db,
+        ctx.user_id,
+        ctx.invocation_logger,
+        vault_client,
+    )
+    _start_memory_tasks(ctx, memory_handles)
     skill_h = await wire_skill_system(
         ctx,
         gmail_client=gmail_client,
         calendar_client=calendar_client,
         vault_client=vault_client,
         vault_writer=vault_writer,
+        memory_store=memory_store,
     )
     automation_h = await wire_automation_subsystem(ctx, skill_h)
     _discord_h = await wire_discord(ctx, skill_h, automation_h)

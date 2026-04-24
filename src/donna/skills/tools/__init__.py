@@ -16,6 +16,7 @@ from donna.skills.tools.email_read import email_read
 from donna.skills.tools.gmail_get_message import gmail_get_message
 from donna.skills.tools.gmail_search import gmail_search
 from donna.skills.tools.html_extract import html_extract
+from donna.skills.tools.memory_search import memory_search
 from donna.skills.tools.rss_fetch import rss_fetch
 from donna.skills.tools.task_db_read import task_db_read
 from donna.skills.tools.vault_link import vault_link
@@ -45,6 +46,7 @@ def register_default_tools(
     cost_tracker: Any | None = None,
     vault_client: Any | None = None,
     vault_writer: Any | None = None,
+    memory_store: Any | None = None,
 ) -> None:
     """Register built-in skill tools.
 
@@ -113,6 +115,12 @@ def register_default_tools(
             partial(vault_undo_last, client=vault_writer),
         )
 
+    if memory_store is not None:
+        registry.register(
+            "memory_search",
+            partial(memory_search, store=memory_store),
+        )
+
 
 __all__ = [
     "DEFAULT_TOOL_REGISTRY",
@@ -122,6 +130,7 @@ __all__ = [
     "gmail_get_message",
     "gmail_search",
     "html_extract",
+    "memory_search",
     "register_default_tools",
     "rss_fetch",
     "task_db_read",

@@ -27,18 +27,29 @@ safety:
     - Reviews
   sensitive_frontmatter_key: donna_sensitive
 
-# --- unused until slice 13 ---
+# --- slice 13: semantic memory ---
 embedding:
-  model: sentence-transformers/all-MiniLM-L6-v2
-  chunk_tokens: 512
-  chunk_overlap: 64
+  provider: minilm-l6-v2
+  version_tag: minilm-l6-v2@2024-05
+  dim: 384
+  max_tokens: 256
+  chunk_overlap: 32
 
 retrieval:
-  top_k: 8
+  default_k: 8
   min_score: 0.25
+  max_k: 32
 
-# --- unused until slice 14 ---
 sources:
+  vault:
+    enabled: true
+    chunker: markdown_heading
+    ignore_globs:
+      - ".obsidian/**"
+      - ".trash/**"
+      - ".git/**"
+      - "Templates/**"
+  # --- unused until slice 14 ---
   chat: false
   tasks: false
   corrections: false
