@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "draft_person_profile",
+  "description": "Slice 16 structured output for the draft_person_profile task_type. Produces a short, evidence-backed scaffold for a People/{name}.md note.",
+  "type": "object",
+  "properties": {
+    "one_liner": {"type": "string"},
+    "relationship_context": {"type": "string"},
+    "topics": {"type": "array", "items": {"type": "string"}},
+    "recent_interactions": {"type": "array", "items": {"type": "string"}},
+    "open_threads": {"type": "array", "items": {"type": "string"}},
+    "links_suggested": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": [
+    "one_liner",
+    "relationship_context",
+    "topics",
+    "recent_interactions",
+    "open_threads",
+    "links_suggested"
+  ],
+  "additionalProperties": false
+}

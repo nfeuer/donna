@@ -409,6 +409,7 @@ def _try_build_meeting_note_skill(
             vault_writer=vault_writer,
             router=router,
             logger=invocation_logger,
+            safety_allowlist=cfg.safety.path_allowlist,
         )
         skill = MeetingNoteSkill(
             writer=writer,
@@ -445,6 +446,302 @@ def _start_meeting_end_poller(
         ctx.tasks.append(asyncio.create_task(poller.run_forever()))
     except Exception as exc:
         logger.warning("meeting_end_poller_unavailable", reason=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Slice 16 — cadence-driven template-write skills.
+# ---------------------------------------------------------------------------
+
+
+def _try_build_memory_informed_writer(
+    config_dir: Path,
+    *,
+    renderer: Any | None,
+    vault_client: Any | None,
+    vault_writer: Any | None,
+    router: ModelRouter,
+    invocation_logger: InvocationLogger,
+) -> Any | None:
+    """Build a single shared :class:`MemoryInformedWriter` used by every
+    slice-16 skill. Returns ``None`` when any prerequisite is missing."""
+    if renderer is None or vault_client is None or vault_writer is None:
+        return None
+    memory_yaml = config_dir / "memory.yaml"
+    if not memory_yaml.exists():
+        return None
+    try:
+        from donna.config import load_memory_config
+        from donna.memory.writer import MemoryInformedWriter
+
+        cfg = load_memory_config(config_dir)
+        return MemoryInformedWriter(
+            renderer=renderer,
+            vault_client=vault_client,
+            vault_writer=vault_writer,
+            router=router,
+            logger=invocation_logger,
+            safety_allowlist=cfg.safety.path_allowlist,
+        )
+    except Exception as exc:
+        logger.warning("memory_informed_writer_unavailable", reason=str(exc))
+        return None
+
+
+def _try_build_daily_reflection_skill(
+    config_dir: Path,
+    *,
+    writer: Any | None,
+    memory_store: Any | None,
+    db_connection: Any | None,
+    user_id: str,
+) -> tuple[Any | None, Any | None]:
+    if writer is None or memory_store is None or db_connection is None:
+        return None, None
+    try:
+        from donna.capabilities.daily_reflection_skill import (
+            DailyReflectionSkill,
+        )
+        from donna.config import load_memory_config
+
+        cfg = load_memory_config(config_dir)
+        skill_cfg = cfg.skills.daily_reflection
+        if not skill_cfg.enabled:
+            logger.info("daily_reflection_skill_disabled_by_config")
+            return None, None
+        return (
+            DailyReflectionSkill(
+                writer=writer,
+                memory_store=memory_store,
+                connection=db_connection,
+                config=skill_cfg,
+                user_id=user_id,
+            ),
+            skill_cfg,
+        )
+    except Exception as exc:
+        logger.warning("daily_reflection_skill_unavailable", reason=str(exc))
+        return None, None
+
+
+def _try_build_commitment_log_skill(
+    config_dir: Path,
+    *,
+    writer: Any | None,
+    memory_store: Any | None,
+    db_connection: Any | None,
+    user_id: str,
+) -> tuple[Any | None, Any | None]:
+    if writer is None or memory_store is None or db_connection is None:
+        return None, None
+    try:
+        from donna.capabilities.commitment_log_skill import CommitmentLogSkill
+        from donna.config import load_memory_config
+
+        cfg = load_memory_config(config_dir)
+        skill_cfg = cfg.skills.commitment_log
+        if not skill_cfg.enabled:
+            logger.info("commitment_log_skill_disabled_by_config")
+            return None, None
+        return (
+            CommitmentLogSkill(
+                writer=writer,
+                memory_store=memory_store,
+                connection=db_connection,
+                config=skill_cfg,
+                user_id=user_id,
+            ),
+            skill_cfg,
+        )
+    except Exception as exc:
+        logger.warning("commitment_log_skill_unavailable", reason=str(exc))
+        return None, None
+
+
+def _try_build_weekly_review_skill(
+    config_dir: Path,
+    *,
+    writer: Any | None,
+    memory_store: Any | None,
+    vault_client: Any | None,
+    db_connection: Any | None,
+    user_id: str,
+) -> tuple[Any | None, Any | None]:
+    if (
+        writer is None
+        or memory_store is None
+        or vault_client is None
+        or db_connection is None
+    ):
+        return None, None
+    try:
+        from donna.capabilities.weekly_review_skill import WeeklyReviewSkill
+        from donna.config import load_memory_config
+
+        cfg = load_memory_config(config_dir)
+        skill_cfg = cfg.skills.weekly_review
+        if not skill_cfg.enabled:
+            logger.info("weekly_review_skill_disabled_by_config")
+            return None, None
+        return (
+            WeeklyReviewSkill(
+                writer=writer,
+                memory_store=memory_store,
+                vault_client=vault_client,
+                connection=db_connection,
+                config=skill_cfg,
+                user_id=user_id,
+            ),
+            skill_cfg,
+        )
+    except Exception as exc:
+        logger.warning("weekly_review_skill_unavailable", reason=str(exc))
+        return None, None
+
+
+def _try_build_person_profile_skill(
+    config_dir: Path,
+    *,
+    writer: Any | None,
+    memory_store: Any | None,
+    vault_client: Any | None,
+    db_connection: Any | None,
+    user_id: str,
+) -> tuple[Any | None, Any | None]:
+    if (
+        writer is None
+        or memory_store is None
+        or vault_client is None
+        or db_connection is None
+    ):
+        return None, None
+    try:
+        from donna.capabilities.person_mention_counter import (
+            PersonMentionCounter,
+        )
+        from donna.capabilities.person_profile_skill import PersonProfileSkill
+        from donna.config import load_memory_config
+
+        cfg = load_memory_config(config_dir)
+        skill_cfg = cfg.skills.person_profile
+        if not skill_cfg.enabled:
+            logger.info("person_profile_skill_disabled_by_config")
+            return None, None
+        return (
+            PersonProfileSkill(
+                writer=writer,
+                memory_store=memory_store,
+                vault_client=vault_client,
+                mention_counter=PersonMentionCounter(db_connection),
+                config=skill_cfg,
+                user_id=user_id,
+            ),
+            skill_cfg,
+        )
+    except Exception as exc:
+        logger.warning("person_profile_skill_unavailable", reason=str(exc))
+        return None, None
+
+
+def _start_daily_reflection_cron(
+    ctx: Any, *, skill: Any | None, config: Any | None
+) -> None:
+    if skill is None or config is None:
+        return
+    try:
+        from datetime import date as _date
+
+        from donna.skills.crons.scheduler import AsyncCronScheduler
+
+        async def _fire() -> None:
+            await skill.run_for_day(_date.today())
+
+        scheduler = AsyncCronScheduler(
+            hour_utc=config.hour_utc,
+            minute_utc=config.minute_utc,
+            task=_fire,
+        )
+        ctx.tasks.append(asyncio.create_task(scheduler.run_forever()))
+    except Exception as exc:
+        logger.warning("daily_reflection_cron_unavailable", reason=str(exc))
+
+
+def _start_commitment_log_cron(
+    ctx: Any, *, skill: Any | None, config: Any | None
+) -> None:
+    if skill is None or config is None:
+        return
+    try:
+        from datetime import date as _date
+
+        from donna.skills.crons.scheduler import AsyncCronScheduler
+
+        async def _fire() -> None:
+            await skill.run_for_day(_date.today())
+
+        scheduler = AsyncCronScheduler(
+            hour_utc=config.hour_utc,
+            minute_utc=config.minute_utc,
+            task=_fire,
+        )
+        ctx.tasks.append(asyncio.create_task(scheduler.run_forever()))
+    except Exception as exc:
+        logger.warning("commitment_log_cron_unavailable", reason=str(exc))
+
+
+def _start_weekly_review_cron(
+    ctx: Any, *, skill: Any | None, config: Any | None
+) -> None:
+    if skill is None or config is None:
+        return
+    try:
+        from datetime import date as _date
+
+        from donna.skills.crons.scheduler import AsyncCronScheduler
+
+        async def _fire() -> None:
+            await skill.run_for_week(_date.today())
+
+        scheduler = AsyncCronScheduler(
+            hour_utc=config.hour_utc,
+            minute_utc=config.minute_utc,
+            day_of_week=config.day_of_week,
+            task=_fire,
+        )
+        ctx.tasks.append(asyncio.create_task(scheduler.run_forever()))
+    except Exception as exc:
+        logger.warning("weekly_review_cron_unavailable", reason=str(exc))
+
+
+def _start_person_profile_cron(
+    ctx: Any, *, skill: Any | None, config: Any | None
+) -> None:
+    if skill is None or config is None:
+        return
+    try:
+        from donna.skills.crons.scheduler import AsyncCronScheduler
+
+        async def _fire() -> None:
+            names = await skill.list_names_to_refresh()
+            for name, reason in names:
+                try:
+                    await skill.run_for_person(name, reason)
+                except Exception as exc:
+                    logger.warning(
+                        "person_profile_run_failed",
+                        name=name,
+                        reason=reason,
+                        error=str(exc),
+                    )
+
+        scheduler = AsyncCronScheduler(
+            hour_utc=config.hour_utc,
+            minute_utc=config.minute_utc,
+            day_of_week=config.day_of_week,
+            task=_fire,
+        )
+        ctx.tasks.append(asyncio.create_task(scheduler.run_forever()))
+    except Exception as exc:
+        logger.warning("person_profile_cron_unavailable", reason=str(exc))
 
 
 def _try_build_calendar_client(config_dir: Path) -> Any | None:

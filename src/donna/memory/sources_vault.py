@@ -4,9 +4,11 @@ Two code paths:
 
 - :meth:`VaultSource.watch` — long-running ``watchfiles.awatch`` loop
   with a 500 ms coalesce window. Adds / modifies enqueue an upsert;
-  deletes soft-delete the corresponding ``memory_documents`` row. A
-  rename arrives as a delete + add pair; Slice 16 will reconcile those
-  into a true rename.
+  deletes soft-delete the corresponding ``memory_documents`` row.
+  Slice 16 adds content-hash rename reconciliation: a ``deleted`` +
+  ``added`` pair whose contents hash-equal within
+  ``rename_window_seconds`` is treated as a rename (update
+  ``source_id`` in ``memory_documents`` without re-embedding).
 - :meth:`VaultSource.backfill` — boot-time walk of the vault root
   that enqueues any note whose file mtime is newer than the stored
   ``updated_at`` (or absent from the store). Respects
@@ -22,7 +24,9 @@ every chunk's ``RetrievedChunk.metadata``.
 
 from __future__ import annotations
 
+import asyncio
 import fnmatch
+import time as _time
 from pathlib import Path
 from typing import Any
 
@@ -31,11 +35,64 @@ import structlog
 from donna.config import VaultConfig, VaultSourceConfig
 from donna.integrations.vault import VaultClient, VaultReadError
 from donna.memory.queue import MemoryIngestQueue
-from donna.memory.store import Document, MemoryStore
+from donna.memory.store import Document, MemoryStore, _hash_content
 
 logger = structlog.get_logger()
 
 SOURCE_TYPE = "vault"
+
+
+class _RenameBuffer:
+    """In-memory TTL buffer pairing ``deleted`` → ``added`` as renames.
+
+    Keyed by content-hash. Holds FIFO lists per hash so two files with
+    identical content in flight simultaneously can both reconcile
+    (pop-oldest semantics). Prune is O(n) over entries — the buffer
+    is small by construction (bounded by pending renames within
+    ``ttl_seconds``).
+    """
+
+    def __init__(self, ttl_seconds: float = 2.0) -> None:
+        self._ttl = float(ttl_seconds)
+        self._by_hash: dict[str, list[tuple[str, float]]] = {}
+
+    def record_delete(self, rel: str, content_hash: str, now: float) -> None:
+        self._by_hash.setdefault(content_hash, []).append((rel, now))
+
+    def match_add(
+        self, content_hash: str, now: float
+    ) -> str | None:
+        """Pop-oldest live entry for ``content_hash``; return its old rel."""
+        self.prune(now)
+        bucket = self._by_hash.get(content_hash)
+        if not bucket:
+            return None
+        rel, _ts = bucket.pop(0)
+        if not bucket:
+            del self._by_hash[content_hash]
+        return rel
+
+    def discard(self, rel: str, content_hash: str) -> bool:
+        """Remove ``(rel, *)`` from the bucket. Used by the TTL flush."""
+        bucket = self._by_hash.get(content_hash)
+        if not bucket:
+            return False
+        for i, (r, _ts) in enumerate(bucket):
+            if r == rel:
+                bucket.pop(i)
+                if not bucket:
+                    del self._by_hash[content_hash]
+                return True
+        return False
+
+    def prune(self, now: float) -> None:
+        expired: list[str] = []
+        for h, bucket in self._by_hash.items():
+            bucket[:] = [(r, ts) for (r, ts) in bucket if now - ts < self._ttl]
+            if not bucket:
+                expired.append(h)
+        for h in expired:
+            del self._by_hash[h]
 
 
 class VaultSource:
@@ -62,6 +119,12 @@ class VaultSource:
         self._ignore_globs = list(
             dict.fromkeys([*vault_cfg.ignore_globs, *cfg.ignore_globs])
         )
+        self._rename_buffer = _RenameBuffer(
+            ttl_seconds=cfg.rename_window_seconds
+        )
+        # Deferred flush tasks keyed by rel so a re-add before TTL can
+        # cancel the pending delete.
+        self._pending_delete_tasks: dict[str, asyncio.Task[None]] = {}
 
     # -- watch --------------------------------------------------------
 
@@ -95,20 +158,94 @@ class VaultSource:
                     path=rel,
                 )
                 try:
-                    if change in (Change.added, Change.modified):
+                    if change is Change.added:
+                        await self._handle_added(rel)
+                    elif change is Change.modified:
                         await self._ingest_path(rel)
-                    elif change == Change.deleted:
-                        await self._store.delete(
-                            source_type=SOURCE_TYPE,
-                            source_id=rel,
-                            user_id=self._user_id,
-                        )
+                    elif change is Change.deleted:
+                        await self._handle_deleted(rel)
                 except Exception as exc:
                     logger.warning(
                         "vault_watch_event_failed",
                         path=rel,
                         reason=str(exc),
                     )
+
+    # -- rename reconciliation ----------------------------------------
+
+    async def _handle_deleted(self, rel: str) -> None:
+        """Buffer the delete for ``rename_window_seconds``; flush if unmatched."""
+        meta = await self._store.get_document_meta_with_hash(
+            source_type=SOURCE_TYPE, source_id=rel, user_id=self._user_id
+        )
+        if meta is None:
+            # Store never saw this path — no rename could pair with
+            # it, and there is nothing to delete.
+            return
+        _doc_id, content_hash = meta
+        now = _time.monotonic()
+        self._rename_buffer.record_delete(rel, content_hash, now)
+        logger.info(
+            "vault_rename_buffered",
+            path=rel,
+            content_hash=content_hash,
+        )
+        task = asyncio.create_task(self._flush_delete_after(rel, content_hash))
+        self._pending_delete_tasks[rel] = task
+
+    async def _flush_delete_after(self, rel: str, content_hash: str) -> None:
+        try:
+            await asyncio.sleep(self._cfg.rename_window_seconds)
+        except asyncio.CancelledError:
+            return
+        # If an add paired with this delete, the buffer entry is gone.
+        if self._rename_buffer.discard(rel, content_hash):
+            await self._store.delete(
+                source_type=SOURCE_TYPE,
+                source_id=rel,
+                user_id=self._user_id,
+            )
+            logger.info(
+                "vault_rename_flushed_as_delete",
+                path=rel,
+                content_hash=content_hash,
+            )
+        self._pending_delete_tasks.pop(rel, None)
+
+    async def _handle_added(self, rel: str) -> None:
+        """On add, check the rename buffer before re-ingesting."""
+        try:
+            note = await self._client.read(rel)
+        except VaultReadError as exc:
+            logger.warning(
+                "vault_ingest_read_failed", path=rel, reason=str(exc)
+            )
+            return
+
+        content_hash = _hash_content(note.content)
+        old_rel = self._rename_buffer.match_add(content_hash, _time.monotonic())
+        if old_rel is not None and old_rel != rel:
+            # Cancel the pending delete flush for the old path.
+            pending = self._pending_delete_tasks.pop(old_rel, None)
+            if pending is not None:
+                pending.cancel()
+            renamed = await self._store.rename(
+                source_type=SOURCE_TYPE,
+                old_source_id=old_rel,
+                new_source_id=rel,
+                user_id=self._user_id,
+            )
+            if renamed:
+                logger.info(
+                    "vault_rename_matched",
+                    old_path=old_rel,
+                    new_path=rel,
+                    content_hash=content_hash,
+                )
+                return
+            # Fall through to normal ingest when the rename couldn't
+            # be applied (e.g. collision on ``new_source_id``).
+        await self._ingest_path(rel)
 
     # -- backfill -----------------------------------------------------
 

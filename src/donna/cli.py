@@ -220,15 +220,24 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     # Wave 1 followup: also attempt a GoogleCalendarClient for calendar_read.
     from donna.cli_wiring import (
         _build_episodic_sources,
+        _start_commitment_log_cron,
+        _start_daily_reflection_cron,
         _start_meeting_end_poller,
         _start_memory_tasks,
+        _start_person_profile_cron,
+        _start_weekly_review_cron,
         _try_build_calendar_client,
+        _try_build_commitment_log_skill,
+        _try_build_daily_reflection_skill,
         _try_build_gmail_client,
         _try_build_meeting_note_skill,
+        _try_build_memory_informed_writer,
         _try_build_memory_store,
+        _try_build_person_profile_skill,
         _try_build_template_renderer,
         _try_build_vault_client,
         _try_build_vault_writer,
+        _try_build_weekly_review_skill,
     )
 
     gmail_client = _try_build_gmail_client(ctx.config_dir)
@@ -258,6 +267,54 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         user_id=ctx.user_id,
     )
     _start_meeting_end_poller(ctx, skill=meeting_skill, config=meeting_cfg)
+
+    # Slice 16 — cadence-driven template writes (shared writer).
+    autowrite_writer = _try_build_memory_informed_writer(
+        ctx.config_dir,
+        renderer=template_renderer,
+        vault_client=vault_client,
+        vault_writer=vault_writer,
+        router=ctx.router,
+        invocation_logger=ctx.invocation_logger,
+    )
+    reflection_skill, reflection_cfg = _try_build_daily_reflection_skill(
+        ctx.config_dir,
+        writer=autowrite_writer,
+        memory_store=memory_store,
+        db_connection=ctx.db.connection,
+        user_id=ctx.user_id,
+    )
+    _start_daily_reflection_cron(
+        ctx, skill=reflection_skill, config=reflection_cfg
+    )
+    commitment_skill, commitment_cfg = _try_build_commitment_log_skill(
+        ctx.config_dir,
+        writer=autowrite_writer,
+        memory_store=memory_store,
+        db_connection=ctx.db.connection,
+        user_id=ctx.user_id,
+    )
+    _start_commitment_log_cron(
+        ctx, skill=commitment_skill, config=commitment_cfg
+    )
+    weekly_skill, weekly_cfg = _try_build_weekly_review_skill(
+        ctx.config_dir,
+        writer=autowrite_writer,
+        memory_store=memory_store,
+        vault_client=vault_client,
+        db_connection=ctx.db.connection,
+        user_id=ctx.user_id,
+    )
+    _start_weekly_review_cron(ctx, skill=weekly_skill, config=weekly_cfg)
+    profile_skill, profile_cfg = _try_build_person_profile_skill(
+        ctx.config_dir,
+        writer=autowrite_writer,
+        memory_store=memory_store,
+        vault_client=vault_client,
+        db_connection=ctx.db.connection,
+        user_id=ctx.user_id,
+    )
+    _start_person_profile_cron(ctx, skill=profile_skill, config=profile_cfg)
     skill_h = await wire_skill_system(
         ctx,
         gmail_client=gmail_client,

@@ -91,6 +91,16 @@ routing:
   draft_meeting_note:
     model: reasoner
 
+  # Slice 16 — cadence-driven template writes
+  draft_daily_reflection:
+    model: reasoner
+  draft_weekly_review:
+    model: reasoner
+  draft_person_profile:
+    model: reasoner
+  extract_commitments:
+    model: reasoner
+
   # Wave 2: prefix-routing for dynamic skill + validation task_types.
   skill_step:
     model: parser

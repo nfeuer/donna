@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "draft_weekly_review",
+  "description": "Slice 16 structured output for the draft_weekly_review task_type. The weekly-review template is a scaffold to prompt reflection, not a retrospective essay.",
+  "type": "object",
+  "properties": {
+    "overview": {"type": "string"},
+    "wins": {"type": "array", "items": {"type": "string"}},
+    "misses": {"type": "array", "items": {"type": "string"}},
+    "carryover_commitments": {"type": "array", "items": {"type": "string"}},
+    "themes": {"type": "array", "items": {"type": "string"}},
+    "next_week_focus": {"type": "array", "items": {"type": "string"}},
+    "links_suggested": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": [
+    "overview",
+    "wins",
+    "misses",
+    "carryover_commitments",
+    "themes",
+    "next_week_focus",
+    "links_suggested"
+  ],
+  "additionalProperties": false
+}

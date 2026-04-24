@@ -421,11 +421,18 @@ class VaultRetrievalConfig(BaseModel):
 
 
 class VaultSourceConfig(BaseModel):
-    """Per-source ingestion knobs. Vault is the only source in slice 13."""
+    """Per-source ingestion knobs. Vault is the only source in slice 13.
+
+    Slice 16 adds ``rename_window_seconds`` controlling the in-memory
+    TTL buffer used by :class:`donna.memory.sources_vault.VaultSource`
+    to pair ``deleted`` + ``added`` events as a rename (and skip the
+    re-embed) rather than a delete + upsert.
+    """
 
     enabled: bool = True
     chunker: str = "markdown_heading"
     ignore_globs: list[str] = Field(default_factory=list)
+    rename_window_seconds: float = 2.0
 
 
 class ChatSourceConfig(BaseModel):
@@ -551,11 +558,106 @@ class MeetingNoteSkillConfig(BaseModel):
     )
 
 
+class WeeklyReviewContextLimits(BaseModel):
+    completed_tasks: int = 25
+    meetings: int = 15
+    commitments: int = 15
+    chat_highlights: int = 10
+
+
+class WeeklyReviewSkillConfig(BaseModel):
+    """Slice 16 — weekly self-review scaffold written every Sunday."""
+
+    enabled: bool = True
+    hour_utc: int = 21
+    minute_utc: int = 0
+    day_of_week: int = 6  # Sunday (Mon=0..Sun=6)
+    autonomy_level: Literal["low", "medium", "high"] = "medium"
+    context_limits: WeeklyReviewContextLimits = Field(
+        default_factory=WeeklyReviewContextLimits
+    )
+
+
+class DailyReflectionContextLimits(BaseModel):
+    meetings: int = 10
+    completed_tasks: int = 25
+    chat_highlights: int = 10
+
+
+class DailyReflectionSkillConfig(BaseModel):
+    """Slice 16 — end-of-day reflection scaffold."""
+
+    enabled: bool = True
+    hour_utc: int = 21
+    minute_utc: int = 0
+    autonomy_level: Literal["low", "medium", "high"] = "medium"
+    context_limits: DailyReflectionContextLimits = Field(
+        default_factory=DailyReflectionContextLimits
+    )
+
+
+class PersonProfileContextLimits(BaseModel):
+    vault_hits: int = 10
+    chat_hits: int = 10
+    task_hits: int = 10
+    correction_hits: int = 5
+
+
+class PersonProfileSkillConfig(BaseModel):
+    """Slice 16 — weekly person-profile fill for ``People/`` notes.
+
+    Two triggers share this skill: a mention-count threshold sweep and
+    a stub-fill pass over short ``People/`` notes. Both run from the
+    same weekly cron.
+    """
+
+    enabled: bool = True
+    hour_utc: int = 22
+    minute_utc: int = 0
+    day_of_week: int = 6  # Sunday
+    trigger_mentions_threshold: int = 3
+    min_body_chars: int = 120
+    lookback_days: int = 7
+    autonomy_level: Literal["low", "medium", "high"] = "low"
+    context_limits: PersonProfileContextLimits = Field(
+        default_factory=PersonProfileContextLimits
+    )
+
+
+class CommitmentLogContextLimits(BaseModel):
+    chat_hits: int = 50
+    task_hits: int = 25
+
+
+class CommitmentLogSkillConfig(BaseModel):
+    """Slice 16 — daily commitment roll-up over chat + task sources."""
+
+    enabled: bool = True
+    hour_utc: int = 20
+    minute_utc: int = 30
+    autonomy_level: Literal["low", "medium", "high"] = "medium"
+    context_limits: CommitmentLogContextLimits = Field(
+        default_factory=CommitmentLogContextLimits
+    )
+
+
 class MemorySkillsConfig(BaseModel):
     """Autonomous template-write skills keyed by template name."""
 
     meeting_note: MeetingNoteSkillConfig = Field(
         default_factory=MeetingNoteSkillConfig
+    )
+    weekly_review: WeeklyReviewSkillConfig = Field(
+        default_factory=WeeklyReviewSkillConfig
+    )
+    daily_reflection: DailyReflectionSkillConfig = Field(
+        default_factory=DailyReflectionSkillConfig
+    )
+    person_profile: PersonProfileSkillConfig = Field(
+        default_factory=PersonProfileSkillConfig
+    )
+    commitment_log: CommitmentLogSkillConfig = Field(
+        default_factory=CommitmentLogSkillConfig
     )
 
 

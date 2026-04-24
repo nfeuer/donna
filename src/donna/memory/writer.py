@@ -27,7 +27,7 @@ See ``slices/slice_15_template_writes_meeting_notes.md §2``,
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -43,8 +43,11 @@ from donna.integrations.vault import (
     VaultWriter,
 )
 from donna.logging.invocation_logger import InvocationLogger
+from donna.memory.person_stub import ensure_person_stubs
 from donna.memory.templates import VaultTemplateRenderer
 from donna.models.router import ModelRouter
+
+PersonStubHelper = Callable[..., Awaitable[list[str]]]
 
 logger = structlog.get_logger()
 
@@ -76,6 +79,8 @@ class MemoryInformedWriter:
         vault_writer: VaultWriter,
         router: ModelRouter,
         logger: InvocationLogger,
+        safety_allowlist: Iterable[str] | None = None,
+        person_stub_helper: PersonStubHelper | None = None,
     ) -> None:
         self._renderer = renderer
         self._vault_client = vault_client
@@ -84,6 +89,10 @@ class MemoryInformedWriter:
         # Reserved for future pre/post-write telemetry; router calls
         # already emit their own invocation_log rows on every completion.
         self._invocation_logger = logger
+        self._safety_allowlist = (
+            list(safety_allowlist) if safety_allowlist is not None else []
+        )
+        self._person_stub_helper = person_stub_helper or ensure_person_stubs
         self._prompt_env = jinja2.Environment(
             undefined=jinja2.StrictUndefined,
             autoescape=False,
@@ -114,7 +123,7 @@ class MemoryInformedWriter:
             "idempotency_key"
         ) == idempotency_key:
             logger.info(
-                "meeting_note_skipped_idempotent",
+                "vault_autowrite_skipped_idempotent",
                 path=effective_path,
                 template=template,
                 idempotency_key=idempotency_key,
@@ -175,7 +184,7 @@ class MemoryInformedWriter:
             )
 
         logger.info(
-            "meeting_note_written",
+            "vault_autowrite_written",
             path=effective_path,
             template=template,
             idempotency_key=idempotency_key,
@@ -184,6 +193,32 @@ class MemoryInformedWriter:
             user_id=user_id,
             sha=sha,
         )
+
+        # Best-effort stub creation. Never propagates; writer success
+        # is not contingent on stub success.
+        try:
+            created = await self._person_stub_helper(
+                body,
+                vault_writer=self._vault_writer,
+                vault_client=self._vault_client,
+                safety_allowlist=self._safety_allowlist,
+            )
+            if created:
+                logger.info(
+                    "person_stubs_created",
+                    count=len(created),
+                    names=created,
+                    source_template=template,
+                )
+        except Exception as exc:
+            logger.warning(
+                "person_stub_failed",
+                path=effective_path,
+                template=template,
+                reason=str(exc),
+                exc_type=type(exc).__name__,
+            )
+
         return WriteResult(
             path=effective_path, sha=sha, skipped=False, reason=None
         )

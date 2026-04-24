@@ -1,0 +1,45 @@
+---
+type: daily_reflection
+date: {{ day.iso }}
+idempotency_key: {{ day.iso }}
+autowritten_by: donna
+autowritten_at: {{ now_iso }}
+---
+
+# Reflection — {{ day.label }}
+
+## Summary
+{{ llm.summary }}
+
+## Highlights
+{% for h in llm.highlights %}- {{ h }}
+{% else %}- _(Donna had nothing strong to surface — fill in if anything stood out.)_
+{% endfor %}
+
+## Friction
+{% for f in llm.friction_points %}- {{ f }}
+{% else %}- _(no friction detected from today's signals)_
+{% endfor %}
+
+## Gratitude
+{% for g in llm.gratitude %}- {{ g }}
+{% endfor %}
+
+## Tomorrow Focus
+{% for t in llm.tomorrow_focus %}- [ ] {{ t }}
+{% endfor %}
+
+## Open Loops
+{% for o in llm.open_loops %}- {{ o }}
+{% endfor %}
+
+## Today's record
+### Meetings
+{% for m in meetings %}- [[{{ m.source_id[:-3] }}]] — {{ m.title }}
+{% else %}_(no meeting notes from today)_
+{% endfor %}
+
+### Completed tasks
+{% for t in completed_tasks %}- {{ t.title }}
+{% else %}_(no terminal task mutations today)_
+{% endfor %}

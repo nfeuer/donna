@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "draft_daily_reflection",
+  "description": "Slice 16 structured output for the draft_daily_reflection task_type. The daily-reflection template embeds these fields into a scaffold; the note is a nudge to reflect, not a diary entry.",
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "1-3 sentence scaffold pointing the user at what stood out."
+    },
+    "highlights": {
+      "type": "array",
+      "description": "Wins, milestones, satisfying closures. May be empty.",
+      "items": {"type": "string"}
+    },
+    "friction_points": {
+      "type": "array",
+      "description": "Blockers or recurring frictions the day's data hints at. May be empty.",
+      "items": {"type": "string"}
+    },
+    "gratitude": {
+      "type": "array",
+      "description": "Concrete things to be grateful for evidenced by today's data. May be empty.",
+      "items": {"type": "string"}
+    },
+    "tomorrow_focus": {
+      "type": "array",
+      "description": "1-3 small, actionable starts for tomorrow. May be empty.",
+      "items": {"type": "string"}
+    },
+    "open_loops": {
+      "type": "array",
+      "description": "Explicit unresolved threads carried into tomorrow. May be empty.",
+      "items": {"type": "string"}
+    }
+  },
+  "required": ["summary", "highlights", "friction_points", "gratitude", "tomorrow_focus", "open_loops"],
+  "additionalProperties": false
+}

@@ -1,0 +1,30 @@
+---
+type: commitment_log
+date: {{ day.iso }}
+idempotency_key: {{ day.iso }}
+autowritten_by: donna
+autowritten_at: {{ now_iso }}
+---
+
+# Commitments — {{ day.label }}
+
+## Summary
+{{ llm.summary }}
+
+## Commitments made today
+{% for c in llm.commitments %}- **{{ c.statement }}**
+  - Owner: {{ c.owner }}
+  - Due: {{ c.due_hint|default('—') }}
+  - Source: {{ c.source_ref|default('—') }}
+  - Confidence: {{ c.confidence|default('—') }}
+{% else %}_(Donna did not detect any explicit commitments in today's chat or task mutations.)_
+{% endfor %}
+
+## Raw signals scanned
+### Chat turns ({{ chat_signals|length }})
+{% for c in chat_signals %}- {{ c.title or c.source_id }} — {{ c.content_preview }}
+{% endfor %}
+
+### Task mutations ({{ task_signals|length }})
+{% for t in task_signals %}- {{ t.title }} — status: {{ t.metadata.status|default('?') }}
+{% endfor %}

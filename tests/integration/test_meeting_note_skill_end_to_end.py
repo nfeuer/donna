@@ -216,6 +216,7 @@ async def test_meeting_note_skill_end_to_end(
         vault_writer=vault_writer,
         router=router,  # type: ignore[arg-type]
         logger=object(),  # type: ignore[arg-type]
+        safety_allowlist=cfg.safety.path_allowlist,
     )
     skill = MeetingNoteSkill(
         writer=writer,
@@ -278,12 +279,26 @@ async def test_meeting_note_skill_end_to_end(
     autowrite_commits = [
         line for line in log.stdout.splitlines() if "autowrite:" in line
     ]
-    assert len(autowrite_commits) == 1
-    assert "E_new" in autowrite_commits[0]
+    # Two autowrite commits: the meeting note itself + the auto-created
+    # ``People/Bob.md`` stub (Alice already existed, Bob did not, so the
+    # central person-stub hook creates Bob on first write).
+    assert len(autowrite_commits) == 2
+    assert any("E_new" in line for line in autowrite_commits)
+    assert any("person_stub Bob" in line for line in autowrite_commits)
+    # The Bob stub is a real file on disk.
+    assert (Path(cfg.vault.root) / "People" / "Bob.md").exists()
 
     # Structlog happy-path event.
-    written_events = [e for e in first_events if e["event"] == "meeting_note_written"]
+    written_events = [
+        e for e in first_events if e["event"] == "vault_autowrite_written"
+    ]
     assert len(written_events) == 1
+    # Person-stub emission.
+    stub_events = [
+        e for e in first_events if e["event"] == "person_stubs_created"
+    ]
+    assert len(stub_events) == 1
+    assert stub_events[0]["names"] == ["Bob"]
 
     # --- Idempotent re-run: no new commit -----------------------------
     with structlog.testing.capture_logs() as second_events:
@@ -301,10 +316,12 @@ async def test_meeting_note_skill_end_to_end(
     autowrite_commits_2 = [
         line for line in log2.stdout.splitlines() if "autowrite:" in line
     ]
-    assert len(autowrite_commits_2) == 1  # unchanged
+    assert len(autowrite_commits_2) == 2  # unchanged (note + Bob stub)
 
     skip_events = [
-        e for e in second_events if e["event"] == "meeting_note_skipped_idempotent"
+        e
+        for e in second_events
+        if e["event"] == "vault_autowrite_skipped_idempotent"
     ]
     assert len(skip_events) == 1
     # Router not called the second time.
