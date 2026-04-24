@@ -152,6 +152,7 @@ nav:
       - Agents: domain/agents.md
       - Scheduling: domain/scheduling.md
       - Integrations: domain/integrations.md
+      - Memory Vault: domain/memory-vault.md
       - Notifications: domain/notifications.md
       - Preferences: domain/preferences.md
       - Observability: domain/observability.md
@@ -180,7 +181,9 @@ nav:
       - Migrations: operations/migrations.md
       - Backup & Recovery: operations/backup-recovery.md
       - Budget & Cost: operations/budget-and-cost.md
+      - Vault Sync: operations/vault-sync.md
   - Canonical Specs:
       - reference-specs/index.md
       - spec_v3.md: reference-specs/spec-v3.md
       - Implementation Guide: reference-specs/implementation-guide.md
+      - Memory Vault Spec: reference-specs/memory-vault-spec.md
