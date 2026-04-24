@@ -163,6 +163,35 @@ task_types:
     output_schema: schemas/draft_meeting_note.json
     tools: []
 
+  # Slice 16 — cadence-driven template writes
+  draft_daily_reflection:
+    description: "Draft an end-of-day reflection from today's meetings, tasks, and chats"
+    model: reasoner
+    prompt_template: prompts/skills/draft_daily_reflection.md.j2
+    output_schema: schemas/draft_daily_reflection.json
+    tools: []
+
+  draft_weekly_review:
+    description: "Draft a weekly self-review from the week's meetings, commitments, and tasks"
+    model: reasoner
+    prompt_template: prompts/skills/draft_weekly_review.md.j2
+    output_schema: schemas/draft_weekly_review.json
+    tools: []
+
+  draft_person_profile:
+    description: "Draft or refresh a People/{name}.md profile from cross-source context"
+    model: reasoner
+    prompt_template: prompts/skills/draft_person_profile.md.j2
+    output_schema: schemas/draft_person_profile.json
+    tools: []
+
+  extract_commitments:
+    description: "Extract commitments (speech-act classification) from today's chats and task mutations"
+    model: reasoner
+    prompt_template: prompts/skills/extract_commitments.md.j2
+    output_schema: schemas/extract_commitments.json
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions

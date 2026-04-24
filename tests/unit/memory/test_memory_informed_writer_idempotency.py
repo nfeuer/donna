@@ -1,7 +1,7 @@
 """Slice 15 — idempotency short-circuit in :class:`MemoryInformedWriter`.
 
 Second call with the same ``idempotency_key`` must skip cleanly: no
-write, no router call, structlog emits ``meeting_note_skipped_idempotent``.
+write, no router call, structlog emits ``vault_autowrite_skipped_idempotent``.
 """
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ async def test_second_call_with_same_key_is_noop(tmp_path: Path) -> None:
     vault_writer.write.assert_not_called()
     renderer.render.assert_not_called()
 
-    skip_events = [e for e in events if e["event"] == "meeting_note_skipped_idempotent"]
+    skip_events = [e for e in events if e["event"] == "vault_autowrite_skipped_idempotent"]
     assert len(skip_events) == 1
     assert skip_events[0]["idempotency_key"] == "E1"
     assert skip_events[0]["path"] == "Meetings/2026-04-24-sync.md"

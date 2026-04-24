@@ -1,0 +1,55 @@
+---
+type: weekly_review
+iso_week: {{ week.iso }}
+week_start: {{ week.start }}
+week_end: {{ week.end }}
+idempotency_key: {{ week.iso }}
+autowritten_by: donna
+autowritten_at: {{ now_iso }}
+---
+
+# Week {{ week.iso }}
+
+_{{ week.start }} → {{ week.end }}_
+
+## Overview
+{{ llm.overview }}
+
+## Wins
+{% for w in llm.wins %}- {{ w }}
+{% endfor %}
+
+## Misses
+{% for m in llm.misses %}- {{ m }}
+{% endfor %}
+
+## Carry-over commitments
+{% for c in llm.carryover_commitments %}- [ ] {{ c }}
+{% endfor %}
+
+## Themes
+{% for t in llm.themes %}- {{ t }}
+{% endfor %}
+
+## Next week focus
+{% for n in llm.next_week_focus %}- [ ] {{ n }}
+{% endfor %}
+
+## Related this week
+### Meetings
+{% for m in meetings %}- [[{{ m.source_id[:-3] }}]] — {{ m.title }}
+{% else %}_(no meeting notes written this week)_
+{% endfor %}
+
+### Commitments logs
+{% for c in commitments %}- [[{{ c.source_id[:-3] }}]]
+{% else %}_(no commitment-log entries this week)_
+{% endfor %}
+
+### Suggested links
+{% for s in llm.links_suggested %}- {{ s }}
+{% endfor %}
+
+{% if prior_review %}## Prior review
+- [[{{ prior_review.path[:-3] }}]] ({{ prior_review.iso }})
+{% endif %}

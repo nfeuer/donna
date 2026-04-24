@@ -87,6 +87,8 @@ $100/month hard cap on Claude API. $20/day pause threshold for autonomous agent 
 
 ## Documentation
 
+📚 **[Full documentation site →](https://nfeuer.github.io/donna/)** (built from `docs/` via MkDocs; deployed on every push to `main` by `.github/workflows/docs.yml`).
+
 | Doc | Covers |
 |-----|--------|
 | `docs/architecture.md` | Components, Docker, GPU, storage, concurrency |

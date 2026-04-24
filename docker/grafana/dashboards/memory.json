@@ -151,18 +151,18 @@
     },
     {
       "id": 10,
-      "title": "Template writes (slice 15)",
+      "title": "Template writes (slice 15+16)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 16, "x": 0, "y": 46 },
       "targets": [
         {
           "datasource": "Loki",
-          "expr": "sum by (template) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"meeting_note_written\" [5m]))",
+          "expr": "sum by (template) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"vault_autowrite_written\" [5m]))",
           "legendFormat": "written {{template}}"
         },
         {
           "datasource": "Loki",
-          "expr": "sum by (template) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"meeting_note_skipped_idempotent\" [5m]))",
+          "expr": "sum by (template) (count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"vault_autowrite_skipped_idempotent\" [5m]))",
           "legendFormat": "skipped {{template}}"
         }
       ]
@@ -175,7 +175,7 @@
       "targets": [
         {
           "datasource": "Loki",
-          "expr": "sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"meeting_note_skipped_idempotent\" [$__range])) / clamp_min(sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=~\"meeting_note_(written|skipped_idempotent)\" [$__range])), 1)",
+          "expr": "sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"vault_autowrite_skipped_idempotent\" [$__range])) / clamp_min(sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=~\"vault_autowrite_(written|skipped_idempotent)\" [$__range])), 1)",
           "legendFormat": "idempotent skip rate"
         }
       ],
@@ -186,14 +186,14 @@
     },
     {
       "id": 12,
-      "title": "draft_meeting_note LLM cost",
+      "title": "Autowrite LLM cost by task_type",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 54 },
       "targets": [
         {
           "datasource": "Loki",
-          "expr": "sum(sum_over_time({container_name=\"donna-orchestrator\"} | json | event=\"llm_invocation_logged\" | task_type=\"draft_meeting_note\" | unwrap cost_usd [5m]))",
-          "legendFormat": "cost USD (5m)"
+          "expr": "sum by (task_type) (sum_over_time({container_name=\"donna-orchestrator\"} | json | event=\"llm_invocation_logged\" | task_type=~\"draft_meeting_note|draft_daily_reflection|draft_weekly_review|draft_person_profile|extract_commitments\" | unwrap cost_usd [5m]))",
+          "legendFormat": "{{task_type}}"
         }
       ]
     },
@@ -214,6 +214,37 @@
         "graphMode": "area",
         "reduceOptions": { "calcs": ["sum"] }
       }
+    },
+    {
+      "id": 14,
+      "title": "Person stubs created per day (slice 16)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 62 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"person_stub_created\" [1h]))",
+          "legendFormat": "stubs (1h)"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Vault renames matched vs. flushed (slice 16)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 62 },
+      "targets": [
+        {
+          "datasource": "Loki",
+          "expr": "sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"vault_rename_matched\" [5m]))",
+          "legendFormat": "matched (rename)"
+        },
+        {
+          "datasource": "Loki",
+          "expr": "sum(count_over_time({container_name=\"donna-orchestrator\"} | json | event=\"vault_rename_flushed_as_delete\" [5m]))",
+          "legendFormat": "flushed (delete)"
+        }
+      ]
     }
   ]
 }

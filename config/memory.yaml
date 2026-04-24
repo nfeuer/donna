@@ -25,6 +25,10 @@ safety:
     - Projects
     - Daily
     - Reviews
+    # --- slice 16 additions ---
+    - WeeklyReview
+    - Reflections
+    - Commitments
   sensitive_frontmatter_key: donna_sensitive
 
 # --- slice 13: semantic memory ---
@@ -44,6 +48,10 @@ sources:
   vault:
     enabled: true
     chunker: markdown_heading
+    # slice 16: in-memory TTL for pairing deleted+added watch events
+    # into renames. Short — Obsidian typically fires the pair within
+    # a few hundred ms of each other.
+    rename_window_seconds: 2.0
     ignore_globs:
       - ".obsidian/**"
       - ".trash/**"
@@ -85,3 +93,50 @@ skills:
       prior_meetings: 5
       recent_chats: 5
       open_tasks: 5
+
+  # --- slice 16: cadence-driven template writes ---
+  daily_reflection:
+    enabled: true
+    hour_utc: 21
+    minute_utc: 0
+    autonomy_level: medium
+    context_limits:
+      meetings: 10
+      completed_tasks: 25
+      chat_highlights: 10
+
+  commitment_log:
+    enabled: true
+    hour_utc: 20
+    minute_utc: 30
+    autonomy_level: medium
+    context_limits:
+      chat_hits: 50
+      task_hits: 25
+
+  weekly_review:
+    enabled: true
+    hour_utc: 21
+    minute_utc: 0
+    day_of_week: 6            # Sunday (Mon=0..Sun=6)
+    autonomy_level: medium
+    context_limits:
+      completed_tasks: 25
+      meetings: 15
+      commitments: 15
+      chat_highlights: 10
+
+  person_profile:
+    enabled: true
+    hour_utc: 22
+    minute_utc: 0
+    day_of_week: 6            # Sunday
+    trigger_mentions_threshold: 3
+    min_body_chars: 120
+    lookback_days: 7
+    autonomy_level: low       # drafts land in Inbox/ for user review
+    context_limits:
+      vault_hits: 10
+      chat_hits: 10
+      task_hits: 10
+      correction_hits: 5

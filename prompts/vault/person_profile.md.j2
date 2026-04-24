@@ -1,0 +1,33 @@
+---
+type: person
+name: {{ person.name }}
+last_refreshed_week: {{ person.last_refreshed_week }}
+idempotency_key: {{ person.name }}@{{ person.last_refreshed_week }}
+autowritten_by: donna
+stub: false
+autowritten_at: {{ now_iso }}
+---
+
+# {{ person.name }}
+
+## One-liner
+{{ llm.one_liner }}
+
+## Relationship
+{{ llm.relationship_context }}
+
+## Topics
+{% for t in llm.topics %}- {{ t }}
+{% endfor %}
+
+## Recent interactions
+{% for r in llm.recent_interactions %}- {{ r }}
+{% endfor %}
+
+## Open threads
+{% for o in llm.open_threads %}- {{ o }}
+{% endfor %}
+
+## Related
+{% for s in llm.links_suggested %}- {{ s }}
+{% endfor %}

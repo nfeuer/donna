@@ -578,6 +578,79 @@ class MemoryStore:
             updated = datetime.fromisoformat(updated)
         return doc_id, updated
 
+    async def get_document_meta_with_hash(
+        self, *, source_type: str, source_id: str, user_id: str
+    ) -> tuple[str, str] | None:
+        """Return (document_id, content_hash) for rename reconciliation (slice 16)."""
+        async with self._conn.execute(
+            "SELECT id, content_hash FROM memory_documents "
+            "WHERE user_id=? AND source_type=? AND source_id=? "
+            "  AND deleted_at IS NULL",
+            (user_id, source_type, source_id),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return None
+        return str(row[0]), str(row[1])
+
+    async def rename(
+        self,
+        *,
+        source_type: str,
+        old_source_id: str,
+        new_source_id: str,
+        user_id: str,
+    ) -> bool:
+        """Reassign ``source_id`` on an existing document (no re-embed).
+
+        Slice 16 — used by :class:`VaultSource` to reconcile
+        ``deleted`` + ``added`` event pairs that share a content hash
+        into a single rename without re-embedding the chunks.
+
+        Returns ``True`` on a successful rename. Returns ``False``
+        when the source row is missing OR when the target
+        ``new_source_id`` already exists — the caller falls back to
+        the normal delete+upsert path in that case.
+        """
+        async with self._conn.execute(
+            "SELECT id FROM memory_documents "
+            "WHERE user_id=? AND source_type=? AND source_id=? "
+            "  AND deleted_at IS NULL",
+            (user_id, source_type, old_source_id),
+        ) as cur:
+            src = await cur.fetchone()
+        if not src:
+            return False
+        async with self._conn.execute(
+            "SELECT 1 FROM memory_documents "
+            "WHERE user_id=? AND source_type=? AND source_id=? "
+            "  AND deleted_at IS NULL",
+            (user_id, source_type, new_source_id),
+        ) as cur:
+            dst = await cur.fetchone()
+        if dst:
+            return False
+        now = datetime.utcnow().isoformat()
+        new_uri = (
+            f"vault:{new_source_id}" if source_type == "vault" else None
+        )
+        await self._conn.execute(
+            "UPDATE memory_documents "
+            "SET source_id=?, uri=?, updated_at=? "
+            "WHERE user_id=? AND source_type=? AND source_id=? "
+            "  AND deleted_at IS NULL",
+            (
+                new_source_id,
+                new_uri,
+                now,
+                user_id,
+                source_type,
+                old_source_id,
+            ),
+        )
+        await self._conn.commit()
+        return True
+
 
 __all__ = [
     "Document",

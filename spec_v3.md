@@ -4070,22 +4070,27 @@ Shipped in later slices (historical notes):
 -   **Slice 15** added template-driven vault writes (see §30.8).
     Jinja templates live under `prompts/vault/`; the shared
     orchestrator is `MemoryInformedWriter`; one reference trigger
-    (`MeetingNoteSkill`) is wired end-to-end. The four remaining
-    templates (weekly review, person profile, commitment log,
-    daily reflection) defer to slice 16.
+    (`MeetingNoteSkill`) is wired end-to-end.
+-   **Slice 16** shipped the four remaining template writes
+    (`weekly_review`, `daily_reflection`, `person_profile`,
+    `commitment_log`), a central `People/{name}.md` stub
+    auto-creator wired into `MemoryInformedWriter`, and
+    content-hash-based rename / move reconciliation in
+    `VaultSource.watch()` (2 s TTL buffer; rename paths skip
+    re-embedding). The writer-owned structlog events were renamed
+    from `meeting_note_*` to `vault_autowrite_*` and now carry a
+    `template` field. `AsyncCronScheduler` gained optional
+    `day_of_week` / `minute_utc` kwargs for the weekly triggers;
+    APScheduler is still not a project dependency (home-grown
+    pollers remain the idiom).
 
 Still deferred:
 
--   Additional template triggers (weekly review, person profile,
-    commitment log, daily reflection) → slice 16.
--   Auto-creation of `People/{name}.md` stubs → slice 16
-    (person-profile skill).
--   Re-rendering meeting notes when the calendar event changes
-    post-write → slice 16+.
+-   Re-rendering autowritten notes when source data changes
+    post-write (e.g., calendar event moves after the meeting note
+    is written) → slice 17+.
 -   Supabase sync for `memory_documents` / `memory_chunks` and
     the `calendar_mirror.attendees` column → slice 17.
--   Rename / move reconciliation beyond `delete + upsert` →
-    slice 16.
 -   BM25 / hybrid retrieval and eval harness → slice 17.
 -   Cloud embedding providers — Protocol supports them, no wiring
     shipped.

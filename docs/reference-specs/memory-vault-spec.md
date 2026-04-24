@@ -235,7 +235,7 @@ Target: under 30 s for the 20-note fixture vault.
 
 - `added` / `modified` → `_ingest_path` → `MemoryIngestQueue.enqueue`.
 - `deleted` → `MemoryStore.delete(source_type="vault", source_id=rel, user_id=...)`.
-- A rename is observed as a delete + add pair. True rename reconciliation is slice 16.
+- A rename is observed as a delete + add pair. Slice 16 reconciles these via the `_RenameBuffer` (content-hash keyed, `sources.vault.rename_window_seconds` TTL): if a matching add arrives within the window, `MemoryStore.rename` updates `source_id` in place (no re-embed); otherwise the delete flushes to `MemoryStore.delete` as before.
 
 Expected latency: a `write` on disk should be visible in `memory_search` within ~1.5 s (500 ms debounce + flush window + embed).
 
@@ -286,14 +286,12 @@ Shipped in later slices (historical notes):
 
 - **Slice 14** — Chat / task / correction ingestion sources (`ChatSource`, `TaskSource`, `CorrectionSource`) wired onto the same `MemoryStore` / `MemoryIngestQueue`.
 - **Slice 15** — Template-driven vault writes (`VaultTemplateRenderer`, `MemoryInformedWriter`, `MeetingNoteSkill`, `MeetingEndPoller`). See §12 below.
+- **Slice 16** — Remaining template writes (`weekly_review`, `daily_reflection`, `person_profile`, `commitment_log`), central `People/{name}.md` stub auto-creator via `donna.memory.person_stub.ensure_person_stubs` wired into `MemoryInformedWriter`, and content-hash rename reconciliation in `VaultSource.watch()` (new `MemoryStore.rename`; 2s TTL buffer). `AsyncCronScheduler` extended with optional `day_of_week` / `minute_utc` kwargs. Writer structlog events renamed from `meeting_note_*` to `vault_autowrite_*` with a `template` field.
 
 Still deferred:
 
-- Additional template triggers — weekly review, person profile, commitment log, daily reflection → slice 16.
-- Auto-creation of `People/{name}.md` stubs → slice 16 (person-profile skill).
-- Re-rendering autowritten notes when the source data changes post-write → slice 16+.
+- Re-rendering autowritten notes when the source data changes post-write → slice 17+.
 - Supabase sync for `memory_documents` / `memory_chunks` and the `calendar_mirror.attendees` column → slice 17.
-- Rename / move reconciliation beyond `delete + upsert` → slice 16.
 - BM25 / hybrid retrieval and eval harness → slice 17.
 - Cloud embedding providers (Voyage-3-lite et al). The `EmbeddingProvider` Protocol supports them but no wiring is shipped.
 - Attachment indexing (images, PDFs). V1 is `.md` only.
