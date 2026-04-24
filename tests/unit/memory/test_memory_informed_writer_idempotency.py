@@ -109,7 +109,15 @@ async def test_first_write_when_key_differs_still_proceeds() -> None:
     router = MagicMock()
     router.get_prompt_template = MagicMock(return_value="render me: {{ x }}")
     router.complete = AsyncMock(
-        return_value=({"summary": "s", "action_item_candidates": [], "open_questions": [], "links_suggested": []}, object())
+        return_value=(
+            {
+                "summary": "s",
+                "action_item_candidates": [],
+                "open_questions": [],
+                "links_suggested": [],
+            },
+            object(),
+        )
     )
 
     renderer = MagicMock()

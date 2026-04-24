@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -143,7 +143,7 @@ class MemoryInformedWriter:
             merged = {
                 **context,
                 "llm": llm_output,
-                "now_iso": datetime.now(timezone.utc).isoformat(),
+                "now_iso": datetime.now(UTC).isoformat(),
             }
             body, fm = self._renderer.render(template, merged)
 

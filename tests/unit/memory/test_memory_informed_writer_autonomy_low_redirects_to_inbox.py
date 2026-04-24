@@ -69,7 +69,6 @@ async def test_low_autonomy_redirects_to_inbox() -> None:
     )
 
     assert result.skipped is False
-    _args, kwargs = vault_writer.write.call_args
     # First positional arg is the path; slice §2 keyword-agnostic here.
     written_path = vault_writer.write.call_args.args[0]
     assert written_path == "Inbox/2026-04-24-sync.md"

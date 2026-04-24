@@ -307,9 +307,9 @@ crontab -e
 # 0 12 * * 1 /path/to/donna/scripts/supabase_keepalive.sh
 ```
 
-### 2.5 Obsidian Vault + Memory Store (slices 12 + 13)
+### 2.5 Obsidian Vault + Memory Store (slices 12 + 13 + 14)
 
-Donna-owned markdown vault (slice 12) plus a sqlite-vec-backed semantic index over it (slice 13). Both are optional — the orchestrator runs fine without them:
+Donna-owned markdown vault (slice 12) plus a sqlite-vec-backed semantic index over it (slice 13), extended in slice 14 to also index chat turns, tasks, and correction-log rows. All three layers are optional — the orchestrator runs fine without them:
 
 - If `config/memory.yaml` is absent or the vault root is unreachable, the vault skill tools simply aren't registered.
 - If `sqlite-vec` fails to load (wheel missing on the host platform), `Database.vec_available` stays `False`, the memory store isn't built, and `memory_search` stays off the tool registry — every other subsystem keeps booting.
@@ -355,6 +355,26 @@ On first boot with slice 13 installed, the `VaultSource.backfill` task walks the
 
 **Obsidian clients:** operator guide at [`docs/operations/vault-sync.md`](docs/operations/vault-sync.md).
 
+**Episodic sources (slice 14).** With slice 14 installed, three additional `MemorySource` modules observe the source-of-truth write paths and upsert into the same `memory_documents` / `memory_chunks` tables — no schema change:
+
+- **`ChatSource`** rolls up consecutive same-role chat messages per session and flushes a turn document when the role flips, the buffer passes `max_tokens`, or the session closes. `source_id` is `"{session_id}:{first_msg_id}-{last_msg_id}"`, so replaying the same transcript is idempotent.
+- **`TaskSource`** upserts on `create_task` / `update_task`; a content hash over `title + description + notes + status + domain + deadline` short-circuits no-op updates, and a transition into `done` / `cancelled` (per `sources.task.reindex_on_status`) forces a re-embed so the final-state context lands in the index. The `"delete"` branch is dormant until a soft-delete API lands on `Database`.
+- **`CorrectionSource`** writes one chunk per `correction_log` row via a module-level observer registry, keyed by the row id.
+
+Wiring is done by `cli_wiring._build_episodic_sources()`: it builds a `_CombinedDbObserver`, attaches it to `Database` via `set_memory_observer(...)`, and registers `CorrectionSource.observe` with `donna.memory.observers.dispatch("correction", ...)`. Observer exceptions are logged (`memory_ingest_failed`) and swallowed so a memory-layer failure can never unwind the source-of-truth write. Rationale for staying off the `MemoryIngestQueue` path is in [`docs/domain/memory-vault.md#why-episodic-sources-skip-the-ingest-queue`](docs/domain/memory-vault.md).
+
+**Backfill CLI.** To (re-)populate the index from existing data:
+
+```bash
+donna memory backfill --source all --user-id nick
+# or a single source:
+donna memory backfill --source chat --user-id nick
+```
+
+Idempotent (the `UNIQUE(user_id, source_type, source_id)` index is the enforcer). One source failing doesn't stop the others, but the command exits non-zero if any raised. Embeddings are logged per source under `invocation_log.task_type in {embed_vault_chunk, embed_chat_turn, embed_task, embed_correction, embed_memory_query}`, and Grafana's `memory` dashboard renders per-source counts plus a per-source ingest-latency histogram.
+
+**`config/memory.yaml`** picks up new `sources.chat` / `sources.task` / `sources.correction` blocks: `min_chars`, `max_tokens`, `index_roles`, `task_verbs`, and `reindex_on_status`. Sensible defaults ship — review only if you want to tune chat-turn rescue rules or the terminal-state re-embed list.
+
 ### Gate Check: Phase 2
 
 - [ ] Calendar events appear in the calendar mirror after the first sync
@@ -363,6 +383,8 @@ On first boot with slice 13 installed, the `VaultSource.backfill` task walks the
 - [ ] Supabase dashboard shows active connections
 - [ ] (slice 12) `scripts/dev_tool_call.py --config-dir config vault_write --path "Inbox/smoke.md" --content '# hi'` returns a commit SHA
 - [ ] (slice 12) Obsidian desktop connects to the WebDAV endpoint and sees the vault contents
+- [ ] (slice 14) `donna memory backfill --source all --user-id nick` exits 0 and Grafana's `memory` dashboard shows non-zero counts for `source_type in {vault, chat, task, correction}`
+- [ ] (slice 14) A new chat message and a task status flip to `done` produce `memory_ingest_chat_turn` / `memory_ingest_task` events in Loki within ~1s
 
 ---
 
@@ -710,7 +732,7 @@ All 17 live under [`config/`](config/).
 | `donna_models.yaml` | Model routing, cost tracking, Ollama settings, task-type → model map |
 | `email.yaml` | Gmail OAuth, forwarding alias, digest schedules (morning/EOD) |
 | `llm_gateway.yaml` | Queue scheduling, rate limits, priority map, per-caller budget, Ollama health checks |
-| `memory.yaml` | (slice 12) Vault root, git author, safety envelope (path allowlist, max bytes, sensitive-key refusal), ignore globs; embedding/retrieval/sources blocks parseable but unused until slice 13+ |
+| `memory.yaml` | (slices 12–14) Vault root, git author, safety envelope (path allowlist, max bytes, sensitive-key refusal), ignore globs; `embedding.provider`, `retrieval.default_k`, and `sources.{vault,chat,task,correction}` blocks (`min_chars`, `max_tokens`, `index_roles`, `task_verbs`, `reindex_on_status`) |
 | `preferences.yaml` | Learned-preference rules: weekly extraction, confidence threshold |
 | `skills.yaml` | Skill-system tuning: enabled, matching confidence, promotion thresholds, auto-draft caps, `nightly_run_hour_utc: 3`, cost budgets |
 | `sms.yaml` | Twilio: rate limit 10/day, escalation ladder (30m/60m/120m), blackout hours |

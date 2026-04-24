@@ -12,7 +12,7 @@ from textwrap import dedent
 
 import pytest
 
-from donna.config import MemoryConfig, MemorySkillsConfig, load_memory_config
+from donna.config import MemorySkillsConfig, load_memory_config
 
 
 def test_loads_skills_meeting_note_block(tmp_path: Path) -> None:
@@ -79,9 +79,9 @@ def test_defaults_when_skills_block_absent(tmp_path: Path) -> None:
 
 def test_rejects_unknown_autonomy_level() -> None:
     """``autonomy_level`` is a ``Literal`` — typos must surface at load time."""
-    with pytest.raises(Exception):
-        # Pydantic v2 raises ValidationError; use bare Exception to avoid
-        # pinning to a specific version.
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
         MemorySkillsConfig.model_validate(
             {"meeting_note": {"autonomy_level": "reckless"}}
         )

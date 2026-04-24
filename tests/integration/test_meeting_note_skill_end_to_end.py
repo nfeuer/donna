@@ -15,7 +15,6 @@ import asyncio
 import json
 import subprocess
 import tempfile
-import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 from pathlib import Path
