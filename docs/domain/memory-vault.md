@@ -141,5 +141,9 @@ The asymmetry is deliberate — the `Database` already takes a handful of collab
 ### Observability
 
 - Invocation log: `task_type` in `{embed_chat_turn, embed_task, embed_correction}` (in addition to slice-13's `embed_vault_chunk` / `embed_memory_query`). `model_alias="minilm-l6-v2"`, `tokens_in=0`, `tokens_out=0`, `cost_usd=0.0`.
-- Structlog events: `memory_ingest_chat_turn`, `memory_ingest_task`, `memory_ingest_correction` on success; `memory_ingest_failed` on observer failure (with `source_type` + `reason`); `memory_backfill_{chat,task,correction}_done` on backfill completion.
-- Grafana: slice-13's `memory` dashboard already renders per-source gauges because it groups by `source_type`; no JSON change is needed for chat/task/correction counts to show, but a follow-up PR should add a per-source ingest-latency histogram.
+- Structlog events: `memory_ingest_chat_turn`, `memory_ingest_task`, `memory_ingest_correction` on success (each carries `latency_ms` for the full upsert round-trip); `memory_ingest_failed` on observer failure (with `source_type` + `reason`); `memory_backfill_{chat,task,correction}_done` on backfill completion.
+- Grafana: slice-13's `memory` dashboard renders per-source gauges because it groups by `source_type`. Slice 14's follow-up commit added a per-source ingest-latency histogram panel driven by the `latency_ms` field above, so chat/task/correction counts and p50/p95 latencies are visible out of the box.
+
+### Task-verb morphology
+
+`ChatTurnChunker._keep` rescues short messages that would otherwise be dropped when they contain a configured `task_verbs` token. The match is tokenized and covers the bare verb plus `-s` / `-ed` / `-ing` inflections and the `e`-drop variants (`schedule` → `scheduling` / `scheduled`). The check is token-level, so superset words like `callous` or `callable` intentionally slip through without rescuing an otherwise-short noisy message.
