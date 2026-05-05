@@ -10,6 +10,7 @@ states:
   - in_progress
   - blocked
   - waiting_input
+  - paused
   - done
   - cancelled
 
@@ -85,6 +86,25 @@ transitions:
     side_effects:
       - notify_user
       - archive_task
+
+  # Slice 17 — over-budget escalation paths.
+  # Tasks enter `paused` when an over-budget escalation resolves to
+  # Pause (user click) or times out without resolution. The morning
+  # tick reopens them for reconsideration once the daily budget refreshes.
+  - from: scheduled
+    to: paused
+    trigger: escalation_pause
+    side_effects: []
+
+  - from: in_progress
+    to: paused
+    trigger: escalation_pause
+    side_effects: []
+
+  - from: paused
+    to: backlog
+    trigger: daily_budget_refresh
+    side_effects: []
 
   - from: "*"  # any state
     to: cancelled

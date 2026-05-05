@@ -1,0 +1,18 @@
+# Manual escalation / over-budget decision tree configuration.
+# Realizes docs/superpowers/specs/manual-escalation.md §6.1 (the slice
+# 17 subset; budget_extension and prompt_delivery blocks land in slices
+# 18 and 20). Dashboard runtime overrides resolve through the
+# `dashboard_setting` table — slice 23 will add the write path.
+
+enabled: true                          # global kill switch
+
+modes:
+  chat:
+    enabled: true
+  claude_code:
+    enabled: true
+
+triggers:
+  task_approval_threshold_usd: 5.0     # estimate above this always offers escalation
+  escalation_timeout_minutes: 60       # auto-pause after this many minutes if no click
+  manual_iteration_limit: 3            # used by slices 20/21

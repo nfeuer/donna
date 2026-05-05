@@ -298,6 +298,51 @@ def load_sms_config(config_dir: Path) -> SmsConfig:
     return SmsConfig(**data)
 
 
+# === Manual Escalation Config (slice 17 subset; see §6.1 of
+# docs/superpowers/specs/manual-escalation.md) ===
+
+
+class ManualEscalationModeConfig(BaseModel):
+    """Per-mode enabled flag (chat / claude_code)."""
+
+    enabled: bool = True
+
+
+class ManualEscalationModesConfig(BaseModel):
+    """Manual handoff modes."""
+
+    chat: ManualEscalationModeConfig = Field(default_factory=ManualEscalationModeConfig)
+    claude_code: ManualEscalationModeConfig = Field(
+        default_factory=ManualEscalationModeConfig
+    )
+
+
+class ManualEscalationTriggersConfig(BaseModel):
+    """Numerical thresholds that drive escalation behaviour."""
+
+    task_approval_threshold_usd: float = 5.0
+    escalation_timeout_minutes: int = 60
+    manual_iteration_limit: int = 3
+
+
+class ManualEscalationConfig(BaseModel):
+    """Top-level manual escalation configuration (bootstrap defaults)."""
+
+    enabled: bool = True
+    modes: ManualEscalationModesConfig = Field(
+        default_factory=ManualEscalationModesConfig
+    )
+    triggers: ManualEscalationTriggersConfig = Field(
+        default_factory=ManualEscalationTriggersConfig
+    )
+
+
+def load_manual_escalation_config(config_dir: Path) -> ManualEscalationConfig:
+    """Load manual-escalation configuration."""
+    data = load_yaml(config_dir / "manual_escalation.yaml")
+    return ManualEscalationConfig(**data)
+
+
 # === Email / Gmail Config ===
 
 

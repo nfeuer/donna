@@ -662,3 +662,166 @@ class AutomationConfirmationView(discord.ui.View):
         await interaction.response.edit_message(
             content="Cancelled — nothing created.", view=None
         )
+
+
+# ------------------------------------------------------------------
+# Slice 17 — over-budget escalation view
+# ------------------------------------------------------------------
+
+
+class BudgetEscalationView(discord.ui.View):
+    """Four-button view for the over-budget decision tree.
+
+    Buttons render conditionally based on ``offered_modes``. Slice 17
+    renders only ``Pause`` and ``Cancel``; ``api_extended`` and
+    ``manual`` ship in slices 18, 20 and 21.
+
+    See docs/superpowers/specs/manual-escalation.md §4 / §10.1.
+    """
+
+    def __init__(
+        self,
+        *,
+        correlation_id: str,
+        offered_modes: list[str],
+        owner_discord_id: int,
+        gate: Any,
+        task_id: str | None = None,
+        timeout_seconds: float = 3600,
+    ) -> None:
+        super().__init__(timeout=timeout_seconds)
+        self._correlation_id = correlation_id
+        self._offered_modes = offered_modes
+        self._owner_discord_id = owner_discord_id
+        self._gate = gate
+        self._task_id = task_id
+
+        # Render the slice-17 buttons. We always add Pause + Cancel last
+        # so the order matches the spec's `[Approve][Manual][Pause][Cancel]`
+        # layout once the other modes ship.
+        if "api_extended" in offered_modes:
+            self.add_item(
+                _ModeButton(
+                    label="Approve $X extension",
+                    style=ButtonStyle.green,
+                    mode="api_extended",
+                )
+            )
+        if "manual" in offered_modes or "chat" in offered_modes or "claude_code" in offered_modes:
+            self.add_item(
+                _ModeButton(
+                    label="Manual handoff",
+                    style=ButtonStyle.blurple,
+                    mode="manual",
+                )
+            )
+        if "pause" in offered_modes:
+            self.add_item(
+                _ModeButton(
+                    label="Pause",
+                    style=ButtonStyle.gray,
+                    mode="pause",
+                )
+            )
+        if "cancel" in offered_modes:
+            self.add_item(
+                _ModeButton(
+                    label="Cancel",
+                    style=ButtonStyle.red,
+                    mode="cancel",
+                )
+            )
+
+    @property
+    def correlation_id(self) -> str:
+        return self._correlation_id
+
+    @property
+    def owner_discord_id(self) -> int:
+        return self._owner_discord_id
+
+    @property
+    def gate(self) -> Any:
+        return self._gate
+
+    @property
+    def task_id(self) -> str | None:
+        return self._task_id
+
+
+class _ModeButton(discord.ui.Button):
+    """Single button on a :class:`BudgetEscalationView`.
+
+    Owner-ID check, stale-click guard, and audit write all happen
+    here. The view's :meth:`stop` is called on success so further
+    clicks are no-ops.
+    """
+
+    def __init__(
+        self,
+        *,
+        label: str,
+        style: ButtonStyle,
+        mode: str,
+    ) -> None:
+        super().__init__(label=label, style=style, custom_id=f"escalation_{mode}")
+        self._mode = mode
+
+    async def callback(self, interaction: Interaction) -> None:  # type: ignore[override]
+        view: BudgetEscalationView = self.view  # type: ignore[assignment]
+        if view is None:
+            return
+
+        # Owner check — only the configured owner Discord ID can resolve.
+        if interaction.user.id != view.owner_discord_id:
+            logger.warning(
+                "escalation_owner_mismatch",
+                correlation_id=view.correlation_id,
+                actual_user_id=interaction.user.id,
+                expected_user_id=view.owner_discord_id,
+                mode=self._mode,
+            )
+            await interaction.response.send_message(
+                "Only the account owner can resolve this.", ephemeral=True
+            )
+            return
+
+        # The gate's repository handles atomicity — `record_user_resolution`
+        # returns False if the row was already resolved (timeout sweep won
+        # the race, or another click already resolved it).
+        try:
+            mutated = await view.gate.record_user_resolution(
+                correlation_id=view.correlation_id,
+                mode=self._mode,
+                owner_user_id=str(interaction.user.id),
+                task_id=view.task_id,
+            )
+        except Exception:
+            logger.exception(
+                "escalation_resolve_failed",
+                correlation_id=view.correlation_id,
+                mode=self._mode,
+            )
+            await interaction.response.send_message(
+                "Couldn't resolve this — try again or check the dashboard.",
+                ephemeral=True,
+            )
+            return
+
+        if not mutated:
+            await interaction.response.send_message(
+                "This escalation was already resolved.", ephemeral=True
+            )
+            view.stop()
+            return
+
+        await interaction.response.send_message(
+            f"Resolved: {self._mode}.", ephemeral=True
+        )
+        logger.info(
+            "escalation_resolved_via_button",
+            correlation_id=view.correlation_id,
+            mode=self._mode,
+            user_id=interaction.user.id,
+        )
+        view.stop()

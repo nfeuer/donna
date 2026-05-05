@@ -94,7 +94,7 @@ class TestLoadStateMachineConfig:
         config = load_state_machine_config(CONFIG_DIR)
         expected = {
             "backlog", "scheduled", "in_progress", "blocked",
-            "waiting_input", "done", "cancelled",
+            "waiting_input", "paused", "done", "cancelled",
         }
         assert set(config.states) == expected
 

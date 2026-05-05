@@ -28,8 +28,28 @@ from donna.resilience.retry import CircuitBreaker, TaskCategory, resilient_call
 
 if TYPE_CHECKING:
     from donna.cost.budget import BudgetGuard
+    from donna.cost.escalation_gate import EscalationGate
 
 logger = structlog.get_logger()
+
+
+class EscalationDecisionError(Exception):
+    """Raised by `complete()` when the over-budget gate resolves to a
+    terminal mode (pause / cancel) so the caller can transition the
+    task without spending. Carries the resolution mode + the
+    ``escalation_request_id`` so the caller can stamp follow-up audit
+    rows. See docs/superpowers/specs/manual-escalation.md §4."""
+
+    def __init__(
+        self, *, mode: str, escalation_request_id: int, correlation_id: str
+    ) -> None:
+        self.mode = mode
+        self.escalation_request_id = escalation_request_id
+        self.correlation_id = correlation_id
+        super().__init__(
+            f"Escalation resolved as {mode!r} "
+            f"(request_id={escalation_request_id})"
+        )
 
 
 class RoutingError(Exception):
@@ -73,12 +93,14 @@ class ModelRouter:
             [str, dict[str, Any], CompletionMetadata], Awaitable[None]
         ]
         | None = None,
+        escalation_gate: EscalationGate | None = None,
     ) -> None:
         self._models_config = models_config
         self._task_types_config = task_types_config
         self._project_root = project_root
         self._budget_guard = budget_guard
         self._on_shadow_complete = on_shadow_complete
+        self._escalation_gate = escalation_gate
         self._circuit_breaker = CircuitBreaker()
 
         # Instantiate one provider instance per unique provider name in config.
@@ -112,6 +134,15 @@ class ModelRouter:
         # Strong references to fire-and-forget shadow tasks so they are
         # not garbage-collected before completion.
         self._shadow_tasks: set[asyncio.Task[None]] = set()
+
+    def set_escalation_gate(self, gate: EscalationGate | None) -> None:
+        """Late-bind the over-budget escalation gate.
+
+        Slice 17 wires the gate after the Discord bot is constructed
+        (the gate's delivery callback needs the bot), but the router
+        is built earlier in the boot sequence.
+        """
+        self._escalation_gate = gate
 
     def _resolve_route(self, task_type: str) -> tuple[ModelProvider, str, str]:
         """Resolve task_type → (provider instance, model ID, model alias).
@@ -157,6 +188,8 @@ class ModelRouter:
         task_type: str,
         task_id: str | None = None,
         user_id: str = "system",
+        estimate_usd: float | None = None,
+        priority: int = 2,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Route a completion call through the configured provider.
 
@@ -165,6 +198,13 @@ class ModelRouter:
             task_type: Key from task_types.yaml / routing config.
             task_id: Optional associated task ID for logging.
             user_id: User making the request; used by BudgetGuard checks.
+            estimate_usd: Pre-flight cost estimate. When provided alongside
+                a configured escalation gate, the gate decides whether to
+                offer the user a Discord choice instead of spending.
+                When omitted (the default for slice 17 callers), behaviour
+                is unchanged.
+            priority: Task priority (1–5). Forwarded to the gate for
+                tier-2 SMS fallback on timeout.
 
         Returns:
             Tuple of (parsed JSON dict, CompletionMetadata).
@@ -174,7 +214,31 @@ class ModelRouter:
             ContextOverflowError: If the prompt exceeds the local budget and
                 no fallback is configured.
             BudgetPausedError: If daily spend exceeds the pause threshold.
+            EscalationDecision: If the over-budget gate resolved the
+                request to ``pause`` or ``cancel`` (slice 17). Caller is
+                responsible for transitioning the task to the matching
+                terminal state.
         """
+        if (
+            self._escalation_gate is not None
+            and estimate_usd is not None
+        ):
+            outcome = await self._escalation_gate.fire_and_wait(
+                user_id=user_id,
+                task_id=task_id,
+                task_type=task_type,
+                estimate_usd=estimate_usd,
+                priority=priority,
+            )
+            if outcome.fired and outcome.mode in ("pause", "cancel"):
+                assert outcome.escalation_request_id is not None
+                assert outcome.correlation_id is not None
+                raise EscalationDecisionError(
+                    mode=outcome.mode,
+                    escalation_request_id=outcome.escalation_request_id,
+                    correlation_id=outcome.correlation_id,
+                )
+
         if self._budget_guard is not None:
             await self._budget_guard.check_pre_call(user_id)
 

@@ -284,9 +284,9 @@ Per `CLAUDE.md`: *"When a PR changes behavior, schema, routing, config contract,
 
 Drift checklist for this slice:
 
-- [ ] Did the schema change differ from §8? Update §8.
-- [ ] Did the config keys differ from §6.1? Update §6.1.
-- [ ] Did the failure mitigations differ from §10.1? Update §10.1.
-- [ ] Did acceptance criteria need adjustment? Update §11.
-- [ ] Did decisions in §15 turn out wrong? Add a §15 entry with the updated decision and date.
-- [ ] Did the upstream `spec_v3.md §13.1` / §16.1` stubs need updating to reflect what actually shipped? Update them.
+- [x] Schema differs from §8 — three columns added (`delivery_status`, `delivery_attempts`, `last_delivery_attempt_at`), `created_at` and `priority` added, multi-table revision rule clarified. **§8 updated.**
+- [x] Config keys match §6.1 (slice 17 subset). No drift.
+- [x] §10.1 priority threshold for SMS fan-out is internally inconsistent with §4. **§15 entry added** documenting that slice 17 implements §4's ≥ 4; reconciliation deferred to slice 24.
+- [ ] Acceptance criteria — no adjustment needed for slice 17 scope.
+- [x] §15 decisions — three new entries dated 2026-05-05 (correlation ID format, retry loop pattern, SMS threshold, owner-ID source).
+- [ ] `spec_v3.md §13.1 / §16.1` stubs — no update needed; they already forward-link to this spec.
