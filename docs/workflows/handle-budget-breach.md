@@ -3,13 +3,24 @@
 **Realizes:** [`spec_v3.md` §4.3 Structured Invocation Logging](../reference-specs/spec-v3.md)
 and the `$20/day` pause policy in [`CLAUDE.md`](../start-here/conventions.md).
 
+> **Roadmap:** the pause-only behavior described below is being replaced
+> by the four-button over-budget decision tree (`Approve $X / Manual /
+> Pause / Cancel`) defined in
+> [`docs/superpowers/specs/manual-escalation.md`](../superpowers/specs/manual-escalation.md).
+> Slices `slice_17_escalation_core.md` through
+> `slice_24_escalation_hardening.md` ship the decision tree, manual
+> handoff modes (chat / claude_code), and dashboard escalation
+> workspace. This page reflects current behavior until those slices
+> land; rows will be updated per-slice as the canonical spec dictates.
+
 ## Policy
 
 - **Hard monthly cap:** $100 on Claude API.
-- **Daily soft pause:** $20/day — all autonomous agent work stops.
+- **Daily soft pause:** $20/day — all autonomous agent work stops
+  (replaced by the decision tree above when slice 17 lands).
 - Every API call is logged to `invocation_log` with cost in USD.
 
-## Detection Path
+## Detection Path (current — pause-only)
 
 ```mermaid
 flowchart LR
@@ -21,7 +32,7 @@ flowchart LR
   Pause --> Notify[notify user via Discord]
 ```
 
-## What Happens When the Gate Trips
+## What Happens When the Gate Trips (current)
 
 1. [`donna.cost.budget_guard`](../reference/donna/cost/index.md) rejects
    the call before it hits a provider.

@@ -2477,6 +2477,14 @@ If the user responds "busy, will handle later," the system backs off for
 
 **13.1 Budget Rules**
 
+> **Roadmap:** the pause-only `Daily Spend Alert` terminal is being
+> replaced by the four-button over-budget decision tree (`Approve $X
+> extension / Manual handoff / Pause / Cancel`) defined in
+> [`docs/superpowers/specs/manual-escalation.md`](docs/superpowers/specs/manual-escalation.md).
+> The table below documents current behavior; the decision-tree
+> behavior lands per-slice (`slice_17_*` through `slice_24_*`), and
+> this section will be updated by each slice that changes the rules.
+
   ------------------ ---------------- ------------------------------------
   **Rule**           **Threshold**    **Action**
 
@@ -2937,6 +2945,15 @@ directly from SQLite.
 **16. Data Architecture**
 
 **16.1 Database Strategy**
+
+> **Roadmap:** the manual-escalation work
+> (`docs/superpowers/specs/manual-escalation.md` §8) adds the
+> `escalation_request`, `daily_budget_extension`, `dashboard_setting`,
+> and `tool_request` tables, plus an `escalation_request_id` FK on
+> `invocation_log`. Tables land per-slice (`slice_17` creates
+> `escalation_request` + `dashboard_setting`; `slice_18` adds
+> `daily_budget_extension`; `slice_22` adds `tool_request`). This
+> section will be updated by each migration slice as the schemas land.
 
 -   **Primary:** SQLite on NVMe: `donna_tasks.db` (WAL mode, single
     database). It hosts task data, corrections, preferences,
@@ -3740,6 +3757,17 @@ registered tools include `calendar_read`, `task_db_read`, and a
 small `web_fetch`; write tools (`task_db_write`, `calendar_write`)
 are declared in configs but not yet implemented in the registry and
 are gated on the Stage 3 tool-use work (§8.3).
+
+**Tool gaps.** When a capability requires a tool that doesn't exist,
+Donna does not auto-draft it (security, dependencies, credentials,
+image rebuild). Gaps are surfaced to the user via the tool-gap
+protocol in
+[`docs/superpowers/specs/manual-escalation.md` §7](../docs/superpowers/specs/manual-escalation.md);
+high-blocking gaps ping in real time, speculative gaps file silently
+and surface in a digest. Tool *builds*, when the user decides to
+fulfill a request, follow the manual `claude_code` mode protocol with
+extra security lints (canonical spec §10.5). This work lands in
+`slice_22_tool_gap_surfacing.md`.
 
 **23.4 Lifecycle: sandbox → shadow → trusted → degraded**
 

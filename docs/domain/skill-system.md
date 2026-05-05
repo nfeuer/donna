@@ -621,3 +621,17 @@ All under `/admin/automations`:
 - Automation sharing across users (OOS-7).
 - Dashboard UI (JSON routes only this phase).
 - Discord natural-language creation ("watch URL daily") — requires challenger refactor, tracked separately.
+
+## Manual Escalation (drafting under budget pressure)
+
+When a `skill_draft` or `skill_evolution` task would exceed the daily
+API budget, AutoDrafter is replaced by user-driven Claude Code via the
+manual `claude_code` mode. The user receives a Discord ping with a
+dashboard link, copies the spec from `/admin/escalations/<id>`, runs
+Claude Code locally in a `git worktree`, and clicks "Mark as built".
+Donna ingests the branch and runs the existing `ValidationExecutor`
+pipeline (sandbox → shadow → trusted) unchanged. Iteration cap is 3.
+
+See [`docs/superpowers/specs/manual-escalation.md`](../superpowers/specs/manual-escalation.md)
+(canonical) for the full protocol, data model, and failure modes. The
+work lands in `slice_21_claude_code_mode.md`.
