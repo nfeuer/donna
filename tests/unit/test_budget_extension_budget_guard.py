@@ -6,7 +6,9 @@ the effective daily cap. Realizes manual-escalation.md §10.6 row 2.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
@@ -61,7 +63,7 @@ def _make_tracker(daily_spent: float = 0.0) -> MagicMock:
 
 
 @pytest_asyncio.fixture
-async def conn(tmp_path):
+async def conn(tmp_path: Path) -> AsyncIterator[aiosqlite.Connection]:
     db_path = tmp_path / "test.db"
     async with aiosqlite.connect(str(db_path)) as c:
         await c.execute("PRAGMA journal_mode=WAL")
@@ -120,7 +122,7 @@ async def conn(tmp_path):
 
 
 @pytest_asyncio.fixture
-async def extension_repo(conn):
+async def extension_repo(conn: aiosqlite.Connection) -> BudgetExtensionRepository:
     return BudgetExtensionRepository(conn)
 
 
@@ -130,7 +132,7 @@ async def extension_repo(conn):
 
 
 @pytest.mark.asyncio
-async def test_check_pre_call_passes_when_under_base_limit():
+async def test_check_pre_call_passes_when_under_base_limit() -> None:
     """No extension; spend < base limit → no error."""
     tracker = _make_tracker(daily_spent=5.0)
     guard = BudgetGuard(tracker=tracker, models_config=_make_models_config(daily_pause=20.0))
@@ -139,7 +141,7 @@ async def test_check_pre_call_passes_when_under_base_limit():
 
 
 @pytest.mark.asyncio
-async def test_check_pre_call_raises_when_over_base_limit():
+async def test_check_pre_call_raises_when_over_base_limit() -> None:
     """No extension; spend >= base limit → BudgetPausedError."""
     tracker = _make_tracker(daily_spent=20.0)
     guard = BudgetGuard(tracker=tracker, models_config=_make_models_config(daily_pause=20.0))
@@ -150,7 +152,9 @@ async def test_check_pre_call_raises_when_over_base_limit():
 
 
 @pytest.mark.asyncio
-async def test_check_pre_call_extension_raises_effective_cap(conn, extension_repo):
+async def test_check_pre_call_extension_raises_effective_cap(
+    conn: aiosqlite.Connection, extension_repo: BudgetExtensionRepository
+) -> None:
     """Extension of 5.0 → effective cap = 25.0; spend=22.0 → passes."""
     # Insert a $5 extension
     now = datetime.now(tz=UTC).isoformat()
@@ -176,7 +180,9 @@ async def test_check_pre_call_extension_raises_effective_cap(conn, extension_rep
 
 
 @pytest.mark.asyncio
-async def test_check_pre_call_extension_still_raises_when_over(conn, extension_repo):
+async def test_check_pre_call_extension_still_raises_when_over(
+    conn: aiosqlite.Connection, extension_repo: BudgetExtensionRepository
+) -> None:
     """Extension raises cap but spend still exceeds it → BudgetPausedError."""
     now = datetime.now(tz=UTC).isoformat()
     await conn.execute(
@@ -203,7 +209,9 @@ async def test_check_pre_call_extension_still_raises_when_over(conn, extension_r
 
 
 @pytest.mark.asyncio
-async def test_check_pre_call_voided_extension_ignored(conn, extension_repo):
+async def test_check_pre_call_voided_extension_ignored(
+    conn: aiosqlite.Connection, extension_repo: BudgetExtensionRepository
+) -> None:
     """Voided extensions do not count toward the effective cap."""
     now = datetime.now(tz=UTC).isoformat()
     await conn.execute(
@@ -229,7 +237,7 @@ async def test_check_pre_call_voided_extension_ignored(conn, extension_repo):
 
 
 @pytest.mark.asyncio
-async def test_check_pre_call_extension_lookup_failure_uses_base_limit():
+async def test_check_pre_call_extension_lookup_failure_uses_base_limit() -> None:
     """If extension_repo raises, fall back to the base limit gracefully."""
     tracker = _make_tracker(daily_spent=21.0)
     broken_repo = MagicMock()

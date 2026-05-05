@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import calendar as _calendar
 import dataclasses
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -259,7 +260,7 @@ def _columns(cursor: aiosqlite.Cursor) -> list[str]:
 
 
 def _row_to_extension(
-    cols: list[str], row: tuple[Any, ...]
+    cols: list[str], row: Sequence[Any]
 ) -> DailyBudgetExtensionRow:
     record = dict(zip(cols, row, strict=True))
     raw_date = record["date"]

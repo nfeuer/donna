@@ -96,7 +96,7 @@ def _make_api_extended_outcome(
 
 
 @pytest.mark.asyncio
-async def test_token_limit_reached_error_raised_when_truncated():
+async def test_token_limit_reached_error_raised_when_truncated() -> None:
     """When provider returns token_limited=True, TokenLimitReachedError is raised."""
     models_config = _make_models_config()
     task_types_config = _make_task_types_config()
@@ -138,15 +138,17 @@ async def test_token_limit_reached_error_raised_when_truncated():
 
 
 @pytest.mark.asyncio
-async def test_max_tokens_passed_to_provider_for_api_extended():
+async def test_max_tokens_passed_to_provider_for_api_extended() -> None:
     """extension_amount_usd / output_cost_per_token_usd → max_tokens cap."""
     # $2.50 / $0.000015 per token = 166666 tokens
     models_config = _make_models_config(output_cost_per_token=0.000015)
     task_types_config = _make_task_types_config()
 
-    captured_kwargs: dict = {}
+    captured_kwargs: dict[str, object] = {}
 
-    async def fake_complete(prompt: str, model: str, **kwargs):
+    async def fake_complete(
+        prompt: str, model: str, **kwargs: object
+    ) -> tuple[dict[str, bool], CompletionMetadata]:
         captured_kwargs.update(kwargs)
         return {"ok": True}, _make_completion_metadata(token_limited=False)
 
@@ -183,14 +185,16 @@ async def test_max_tokens_passed_to_provider_for_api_extended():
 
 
 @pytest.mark.asyncio
-async def test_no_token_limit_when_not_api_extended():
+async def test_no_token_limit_when_not_api_extended() -> None:
     """Normal (non-escalated) calls must NOT pass max_tokens to the provider."""
     models_config = _make_models_config()
     task_types_config = _make_task_types_config()
 
-    captured_kwargs: dict = {}
+    captured_kwargs: dict[str, object] = {}
 
-    async def fake_complete(prompt: str, model: str, **kwargs):
+    async def fake_complete(
+        prompt: str, model: str, **kwargs: object
+    ) -> tuple[dict[str, bool], CompletionMetadata]:
         captured_kwargs.update(kwargs)
         return {"ok": True}, _make_completion_metadata(token_limited=False)
 
@@ -213,7 +217,7 @@ async def test_no_token_limit_when_not_api_extended():
 
 
 @pytest.mark.asyncio
-async def test_token_limit_not_raised_when_not_escalated():
+async def test_token_limit_not_raised_when_not_escalated() -> None:
     """token_limited=True in a non-escalated call must NOT raise TokenLimitReachedError."""
     models_config = _make_models_config()
     task_types_config = _make_task_types_config()
@@ -240,14 +244,16 @@ async def test_token_limit_not_raised_when_not_escalated():
 
 
 @pytest.mark.asyncio
-async def test_no_max_tokens_when_output_cost_missing():
+async def test_no_max_tokens_when_output_cost_missing() -> None:
     """When output_cost_per_token_usd is None, no max_tokens is set but no error raised."""
     models_config = _make_models_config(output_cost_per_token=None)
     task_types_config = _make_task_types_config()
 
-    captured_kwargs: dict = {}
+    captured_kwargs: dict[str, object] = {}
 
-    async def fake_complete(prompt: str, model: str, **kwargs):
+    async def fake_complete(
+        prompt: str, model: str, **kwargs: object
+    ) -> tuple[dict[str, bool], CompletionMetadata]:
         captured_kwargs.update(kwargs)
         return {"ok": True}, _make_completion_metadata(token_limited=False)
 

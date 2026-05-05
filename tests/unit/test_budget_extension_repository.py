@@ -8,7 +8,9 @@ Realizes docs/superpowers/specs/manual-escalation.md §10.6.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import aiosqlite
 import pytest
@@ -22,7 +24,7 @@ from donna.cost.budget_extension import BudgetExtensionRepository
 
 
 @pytest_asyncio.fixture
-async def conn(tmp_path):
+async def conn(tmp_path: Path) -> AsyncIterator[aiosqlite.Connection]:
     """In-memory SQLite connection with the minimal schema for these tests."""
     db_path = tmp_path / "test.db"
     async with aiosqlite.connect(str(db_path)) as c:
@@ -95,11 +97,15 @@ async def conn(tmp_path):
 
 
 @pytest_asyncio.fixture
-async def repo(conn):
+async def repo(conn: aiosqlite.Connection) -> BudgetExtensionRepository:
     return BudgetExtensionRepository(conn)
 
 
-async def _insert_escalation(conn, esc_id: int, resolution: str = "api_extended"):
+async def _insert_escalation(
+    conn: aiosqlite.Connection,
+    esc_id: int,
+    resolution: str = "api_extended",
+) -> None:
     now = datetime.now(tz=UTC).isoformat()
     await conn.execute(
         """
@@ -120,7 +126,10 @@ async def _insert_escalation(conn, esc_id: int, resolution: str = "api_extended"
 
 
 @pytest.mark.asyncio
-async def test_grant_creates_row(repo, conn):
+async def test_grant_creates_row(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     await _insert_escalation(conn, 1)
     row = await repo.grant(
         user_id="nick",
@@ -136,7 +145,10 @@ async def test_grant_creates_row(repo, conn):
 
 
 @pytest.mark.asyncio
-async def test_grant_idempotent_same_key_returns_existing(repo, conn):
+async def test_grant_idempotent_same_key_returns_existing(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     await _insert_escalation(conn, 2)
     first = await repo.grant(
         user_id="nick",
@@ -163,7 +175,9 @@ async def test_grant_idempotent_same_key_returns_existing(repo, conn):
     cursor = await conn.execute(
         "SELECT COUNT(*) FROM daily_budget_extension WHERE escalation_request_id = 2"
     )
-    (count,) = await cursor.fetchone()
+    row = await cursor.fetchone()
+    assert row is not None
+    (count,) = row
     assert count == 1
 
 
@@ -173,7 +187,10 @@ async def test_grant_idempotent_same_key_returns_existing(repo, conn):
 
 
 @pytest.mark.asyncio
-async def test_get_daily_total_sums_non_voided(repo, conn):
+async def test_get_daily_total_sums_non_voided(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     await _insert_escalation(conn, 3)
     await _insert_escalation(conn, 4)
     await _insert_escalation(conn, 5)
@@ -200,7 +217,7 @@ async def test_get_daily_total_sums_non_voided(repo, conn):
 
 
 @pytest.mark.asyncio
-async def test_get_daily_total_zero_when_none(repo):
+async def test_get_daily_total_zero_when_none(repo: BudgetExtensionRepository) -> None:
     total = await repo.get_daily_total("nick", date(2026, 5, 5))
     assert total == 0.0
 
@@ -211,7 +228,10 @@ async def test_get_daily_total_zero_when_none(repo):
 
 
 @pytest.mark.asyncio
-async def test_get_monthly_total(repo, conn):
+async def test_get_monthly_total(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     await _insert_escalation(conn, 6)
     await _insert_escalation(conn, 7)
     await repo.grant(
@@ -227,7 +247,10 @@ async def test_get_monthly_total(repo, conn):
 
 
 @pytest.mark.asyncio
-async def test_get_monthly_total_excludes_other_months(repo, conn):
+async def test_get_monthly_total_excludes_other_months(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     await _insert_escalation(conn, 8)
     await repo.grant(
         user_id="nick", for_date=date(2026, 4, 30), amount_usd=5.0,
@@ -243,7 +266,10 @@ async def test_get_monthly_total_excludes_other_months(repo, conn):
 
 
 @pytest.mark.asyncio
-async def test_void_returns_true_when_updated(repo, conn):
+async def test_void_returns_true_when_updated(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     await _insert_escalation(conn, 9)
     await repo.grant(
         user_id="nick", for_date=date(2026, 5, 5), amount_usd=2.0,
@@ -254,13 +280,16 @@ async def test_void_returns_true_when_updated(repo, conn):
 
 
 @pytest.mark.asyncio
-async def test_void_returns_false_when_no_row(repo):
+async def test_void_returns_false_when_no_row(repo: BudgetExtensionRepository) -> None:
     voided = await repo.void_by_escalation_request_id(999)
     assert voided is False
 
 
 @pytest.mark.asyncio
-async def test_void_idempotent_second_call_returns_false(repo, conn):
+async def test_void_idempotent_second_call_returns_false(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     await _insert_escalation(conn, 10)
     await repo.grant(
         user_id="nick", for_date=date(2026, 5, 5), amount_usd=2.0,
@@ -277,7 +306,10 @@ async def test_void_idempotent_second_call_returns_false(repo, conn):
 
 
 @pytest.mark.asyncio
-async def test_find_stale_grants_returns_unrun_escalation_ids(repo, conn):
+async def test_find_stale_grants_returns_unrun_escalation_ids(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     # Escalation 11: api_extended, extension granted, NO invocation_log row.
     await _insert_escalation(conn, 11)
     await repo.grant(
@@ -289,7 +321,10 @@ async def test_find_stale_grants_returns_unrun_escalation_ids(repo, conn):
 
 
 @pytest.mark.asyncio
-async def test_find_stale_grants_excludes_completed(repo, conn):
+async def test_find_stale_grants_excludes_completed(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     # Escalation 12: api_extended, extension granted, HAS a real invocation.
     await _insert_escalation(conn, 12)
     await repo.grant(
@@ -310,7 +345,10 @@ async def test_find_stale_grants_excludes_completed(repo, conn):
 
 
 @pytest.mark.asyncio
-async def test_find_stale_grants_excludes_voided(repo, conn):
+async def test_find_stale_grants_excludes_voided(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     # Escalation 13: already voided (previous crash recovery ran).
     await _insert_escalation(conn, 13)
     await repo.grant(
@@ -324,7 +362,10 @@ async def test_find_stale_grants_excludes_voided(repo, conn):
 
 
 @pytest.mark.asyncio
-async def test_find_stale_grants_excludes_non_api_extended(repo, conn):
+async def test_find_stale_grants_excludes_non_api_extended(
+    repo: BudgetExtensionRepository,
+    conn: aiosqlite.Connection,
+) -> None:
     # Escalation 14: resolution = 'pause', not api_extended.
     await _insert_escalation(conn, 14, resolution="pause")
     # Even if a row exists in daily_budget_extension (shouldn't happen, but

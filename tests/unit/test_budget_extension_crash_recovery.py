@@ -11,7 +11,9 @@ Realizes manual-escalation.md §10.6 row 4.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from pathlib import Path
 
 import aiosqlite
 import pytest
@@ -28,7 +30,7 @@ from donna.cost.escalation_repository import EscalationRepository
 
 
 @pytest_asyncio.fixture
-async def conn(tmp_path):
+async def conn(tmp_path: Path) -> AsyncIterator[aiosqlite.Connection]:
     """Full schema needed by crash-recovery (escalation_request + extensions + invocation_log)."""
     db_path = tmp_path / "test.db"
     async with aiosqlite.connect(str(db_path)) as c:
@@ -120,8 +122,8 @@ async def conn(tmp_path):
 
 
 async def _insert_escalation(
-    conn, esc_id: int, correlation_id: str, resolution: str = "api_extended"
-):
+    conn: aiosqlite.Connection, esc_id: int, correlation_id: str, resolution: str = "api_extended"
+) -> None:
     now = datetime.now(tz=UTC).isoformat()
     await conn.execute(
         """
@@ -135,7 +137,7 @@ async def _insert_escalation(
     await conn.commit()
 
 
-async def _insert_extension(conn, esc_id: int):
+async def _insert_extension(conn: aiosqlite.Connection, esc_id: int) -> None:
     now = datetime.now(tz=UTC).isoformat()
     await conn.execute(
         """
@@ -154,7 +156,7 @@ async def _insert_extension(conn, esc_id: int):
 
 
 @pytest.mark.asyncio
-async def test_crash_recovery_voids_stale_grant(conn):
+async def test_crash_recovery_voids_stale_grant(conn: aiosqlite.Connection) -> None:
     """A stale grant (no invocation) is voided and audit event written."""
     await _insert_escalation(conn, 1, "corr-1")
     await _insert_extension(conn, 1)
@@ -194,7 +196,7 @@ async def test_crash_recovery_voids_stale_grant(conn):
 
 
 @pytest.mark.asyncio
-async def test_crash_recovery_skips_completed_invocation(conn):
+async def test_crash_recovery_skips_completed_invocation(conn: aiosqlite.Connection) -> None:
     """An extension that has a real invocation log entry is not voided."""
     await _insert_escalation(conn, 2, "corr-2")
     await _insert_extension(conn, 2)
@@ -232,7 +234,7 @@ async def test_crash_recovery_skips_completed_invocation(conn):
 
 
 @pytest.mark.asyncio
-async def test_crash_recovery_skips_already_voided(conn):
+async def test_crash_recovery_skips_already_voided(conn: aiosqlite.Connection) -> None:
     """An already-voided grant is not touched a second time."""
     await _insert_escalation(conn, 3, "corr-3")
     # Insert pre-voided extension
@@ -266,12 +268,14 @@ async def test_crash_recovery_skips_already_voided(conn):
         WHERE task_type = 'escalation_lifecycle' AND escalation_request_id = 3
         """
     )
-    (count,) = await cursor.fetchone()
+    row = await cursor.fetchone()
+    assert row is not None
+    (count,) = row
     assert count == 0
 
 
 @pytest.mark.asyncio
-async def test_crash_recovery_multiple_stale_all_voided(conn):
+async def test_crash_recovery_multiple_stale_all_voided(conn: aiosqlite.Connection) -> None:
     """All stale grants in a batch are voided."""
     for i in (10, 11, 12):
         await _insert_escalation(conn, i, f"corr-{i}")
@@ -298,7 +302,7 @@ async def test_crash_recovery_multiple_stale_all_voided(conn):
 
 
 @pytest.mark.asyncio
-async def test_crash_recovery_no_stale_grants_noop(conn):
+async def test_crash_recovery_no_stale_grants_noop(conn: aiosqlite.Connection) -> None:
     """With no stale grants, crash recovery runs without error and changes nothing."""
     extension_repo = BudgetExtensionRepository(conn)
     escalation_repo = EscalationRepository(conn)
@@ -314,5 +318,7 @@ async def test_crash_recovery_no_stale_grants_noop(conn):
     )
 
     cursor = await conn.execute("SELECT COUNT(*) FROM daily_budget_extension")
-    (count,) = await cursor.fetchone()
+    row = await cursor.fetchone()
+    assert row is not None
+    (count,) = row
     assert count == 0

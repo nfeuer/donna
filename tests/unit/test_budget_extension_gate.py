@@ -11,7 +11,9 @@ Realizes manual-escalation.md §5.1, §6.1, §10.6.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
@@ -25,7 +27,7 @@ from donna.config import (
     ManualEscalationTriggersConfig,
 )
 from donna.cost.budget_extension import BudgetExtensionRepository
-from donna.cost.escalation_gate import EscalationGate
+from donna.cost.escalation_gate import DeliveryCallback, EscalationGate
 from donna.cost.escalation_repository import (
     EscalationRepository,
 )
@@ -37,7 +39,7 @@ from donna.cost.tracker import CostSummary
 
 
 @pytest_asyncio.fixture
-async def conn(tmp_path):
+async def conn(tmp_path: Path) -> AsyncIterator[aiosqlite.Connection]:
     db_path = tmp_path / "gate_test.db"
     async with aiosqlite.connect(str(db_path)) as c:
         await c.execute("PRAGMA journal_mode=WAL")
@@ -149,7 +151,6 @@ def _make_config(
         ),
         triggers=ManualEscalationTriggersConfig(
             task_approval_threshold_usd=5.0,
-            daily_pause_threshold_usd=daily_pause_threshold_usd,
         ),
     )
     return config, daily_pause_threshold_usd
@@ -170,13 +171,13 @@ def _make_tracker(daily_spent: float = 0.0) -> MagicMock:
 
 
 async def _make_gate(
-    conn,
+    conn: aiosqlite.Connection,
     *,
     daily_spent: float = 0.0,
     max_daily_extension_usd: float = 10.0,
     hard_monthly_ceiling_usd: float = 150.0,
     enabled: bool = True,
-    deliver=None,
+    deliver: DeliveryCallback | None = None,
 ) -> tuple[EscalationGate, BudgetExtensionRepository, EscalationRepository]:
     config, daily_pause = _make_config(
         enabled=enabled,
@@ -186,7 +187,7 @@ async def _make_gate(
     extension_repo = BudgetExtensionRepository(conn)
     escalation_repo = EscalationRepository(conn)
 
-    async def _no_deliver(row):
+    async def _no_deliver(row: object) -> bool:
         return True
 
     gate = EscalationGate(
@@ -201,7 +202,12 @@ async def _make_gate(
     return gate, extension_repo, escalation_repo
 
 
-async def _insert_escalation(conn, esc_id: int, correlation_id: str, estimate_usd: float = 2.50):
+async def _insert_escalation(
+    conn: aiosqlite.Connection,
+    esc_id: int,
+    correlation_id: str,
+    estimate_usd: float = 2.50,
+) -> None:
     now = datetime.now(tz=UTC).isoformat()
     await conn.execute(
         """
@@ -222,7 +228,7 @@ async def _insert_escalation(conn, esc_id: int, correlation_id: str, estimate_us
 
 
 @pytest.mark.asyncio
-async def test_should_offer_extension_basic(conn):
+async def test_should_offer_extension_basic(conn: aiosqlite.Connection) -> None:
     """api_extended renders when extension is enabled and there's enough headroom."""
     gate, _extension_repo, _ = await _make_gate(
         conn, max_daily_extension_usd=10.0, hard_monthly_ceiling_usd=150.0
@@ -232,7 +238,7 @@ async def test_should_offer_extension_basic(conn):
 
 
 @pytest.mark.asyncio
-async def test_should_offer_extension_disabled_by_config(conn):
+async def test_should_offer_extension_disabled_by_config(conn: aiosqlite.Connection) -> None:
     """When budget_extension.enabled=False via resolver, api_extended is not offered."""
     _, daily_pause = _make_config()
     config = ManualEscalationConfig(
@@ -241,7 +247,6 @@ async def test_should_offer_extension_disabled_by_config(conn):
         budget_extension=BudgetExtensionConfig(enabled=True),  # YAML says True
         triggers=ManualEscalationTriggersConfig(
             task_approval_threshold_usd=5.0,
-            daily_pause_threshold_usd=daily_pause,
         ),
     )
     extension_repo = BudgetExtensionRepository(conn)
@@ -263,7 +268,7 @@ async def test_should_offer_extension_disabled_by_config(conn):
 
 
 @pytest.mark.asyncio
-async def test_should_offer_extension_headroom_too_small(conn):
+async def test_should_offer_extension_headroom_too_small(conn: aiosqlite.Connection) -> None:
     """Estimate exceeds remaining daily headroom → api_extended not offered."""
     gate, _extension_repo, _ = await _make_gate(
         conn, max_daily_extension_usd=2.0  # only $2 headroom
@@ -274,7 +279,7 @@ async def test_should_offer_extension_headroom_too_small(conn):
 
 
 @pytest.mark.asyncio
-async def test_should_offer_extension_monthly_ceiling_reached(conn):
+async def test_should_offer_extension_monthly_ceiling_reached(conn: aiosqlite.Connection) -> None:
     """Monthly ceiling already reached → api_extended not offered."""
     # Insert non-voided extensions totalling $149 for this month
     now = datetime.now(tz=UTC).isoformat()
@@ -298,7 +303,9 @@ async def test_should_offer_extension_monthly_ceiling_reached(conn):
 
 
 @pytest.mark.asyncio
-async def test_should_offer_extension_monthly_ceiling_not_yet_reached(conn):
+async def test_should_offer_extension_monthly_ceiling_not_yet_reached(
+    conn: aiosqlite.Connection,
+) -> None:
     """Monthly total well below ceiling → api_extended offered."""
     now = datetime.now(tz=UTC).isoformat()
     today = date.today()
@@ -325,7 +332,7 @@ async def test_should_offer_extension_monthly_ceiling_not_yet_reached(conn):
 
 
 @pytest.mark.asyncio
-async def test_grant_budget_extension_creates_row(conn):
+async def test_grant_budget_extension_creates_row(conn: aiosqlite.Connection) -> None:
     """grant_budget_extension creates a daily_budget_extension row."""
     await _insert_escalation(conn, 1, "corr-1", estimate_usd=2.50)
     gate, _extension_repo, _ = await _make_gate(conn)
@@ -339,7 +346,7 @@ async def test_grant_budget_extension_creates_row(conn):
 
 
 @pytest.mark.asyncio
-async def test_grant_budget_extension_idempotent(conn):
+async def test_grant_budget_extension_idempotent(conn: aiosqlite.Connection) -> None:
     """Second call with same args returns existing row, no duplicate."""
     await _insert_escalation(conn, 2, "corr-2")
     gate, _extension_repo, _ = await _make_gate(conn)
@@ -354,12 +361,16 @@ async def test_grant_budget_extension_idempotent(conn):
     cursor = await conn.execute(
         "SELECT COUNT(*) FROM daily_budget_extension WHERE escalation_request_id = 2"
     )
-    (count,) = await cursor.fetchone()
+    row = await cursor.fetchone()
+    assert row is not None
+    (count,) = row
     assert count == 1
 
 
 @pytest.mark.asyncio
-async def test_grant_budget_extension_missing_escalation_returns_none(conn):
+async def test_grant_budget_extension_missing_escalation_returns_none(
+    conn: aiosqlite.Connection,
+) -> None:
     """Returns None when escalation row cannot be found."""
     gate, _, _ = await _make_gate(conn)
     result = await gate.grant_budget_extension(
@@ -369,7 +380,7 @@ async def test_grant_budget_extension_missing_escalation_returns_none(conn):
 
 
 @pytest.mark.asyncio
-async def test_grant_budget_extension_monthly_ceiling_blocks(conn):
+async def test_grant_budget_extension_monthly_ceiling_blocks(conn: aiosqlite.Connection) -> None:
     """Returns None when granting would exceed monthly ceiling."""
     await _insert_escalation(conn, 3, "corr-3", estimate_usd=5.0)
     # Pre-fill $149 of monthly extensions
@@ -397,7 +408,7 @@ async def test_grant_budget_extension_monthly_ceiling_blocks(conn):
 
 
 @pytest.mark.asyncio
-async def test_daily_remaining_without_extensions(conn):
+async def test_daily_remaining_without_extensions(conn: aiosqlite.Connection) -> None:
     """Remaining = daily_pause_threshold - spent (no extensions)."""
     gate, _, _ = await _make_gate(conn, daily_spent=5.0)
     remaining = await gate._daily_remaining("nick")
@@ -406,7 +417,7 @@ async def test_daily_remaining_without_extensions(conn):
 
 
 @pytest.mark.asyncio
-async def test_daily_remaining_with_extensions_raises_cap(conn):
+async def test_daily_remaining_with_extensions_raises_cap(conn: aiosqlite.Connection) -> None:
     """Approved extension raises the effective cap for remaining computation."""
     now = datetime.now(tz=UTC).isoformat()
     today = date.today()
@@ -427,7 +438,7 @@ async def test_daily_remaining_with_extensions_raises_cap(conn):
 
 
 @pytest.mark.asyncio
-async def test_daily_remaining_never_negative(conn):
+async def test_daily_remaining_never_negative(conn: aiosqlite.Connection) -> None:
     """Remaining is clamped to 0.0 when spend exceeds effective cap."""
     gate, _, _ = await _make_gate(conn, daily_spent=99.0)
     remaining = await gate._daily_remaining("nick")

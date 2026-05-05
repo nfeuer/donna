@@ -268,7 +268,9 @@ class TestFireAndWait:
         )
         cid = await _await_correlation_id(repo)
         cursor = await repo._conn.execute("SELECT offered_modes FROM escalation_request")
-        (modes_raw,) = await cursor.fetchone()
+        row = await cursor.fetchone()
+        assert row is not None
+        (modes_raw,) = row
         await gate.record_user_resolution(
             correlation_id=cid,
             mode="pause",
