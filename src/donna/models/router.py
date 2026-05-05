@@ -348,16 +348,41 @@ class ModelRouter:
                 num_ctx_to_send = None  # fallback is not Ollama
                 overflow_escalated = True
 
-        # Compute token limit from extension amount + per-model output cost.
-        # The model alias is now resolved so we can look up the rate.
+        # Compute token limit so total spend (input + output) cannot exceed
+        # the approved extension. §10.6 row 1 says "extension_amount × token_rate";
+        # in practice both prompt input and generated output are billed, so we
+        # reserve input cost first and let max_tokens cap the remainder.
+        # If the prompt's input cost alone exhausts the extension, raise so the
+        # caller re-estimates rather than burning the budget on input only.
         if _escalation_request_id is not None and _extension_amount_usd is not None:
             output_cost = model_config.output_cost_per_token_usd
+            input_cost = model_config.input_cost_per_token_usd
             if output_cost and output_cost > 0:
-                _max_tokens_override = max(1, int(_extension_amount_usd / output_cost))
+                input_tokens = estimated_in if estimated_in is not None else estimate_tokens(prompt)
+                input_spend = (input_tokens * input_cost) if input_cost else 0.0
+                remaining_budget = _extension_amount_usd - input_spend
+                if remaining_budget <= 0:
+                    assert _escalation_correlation_id is not None
+                    logger.warning(
+                        "model_router_extension_input_exhausts_budget",
+                        extension_amount_usd=_extension_amount_usd,
+                        input_tokens=input_tokens,
+                        input_cost_per_token=input_cost,
+                        input_spend=input_spend,
+                        escalation_request_id=_escalation_request_id,
+                    )
+                    raise TokenLimitReachedError(
+                        escalation_request_id=_escalation_request_id,
+                        correlation_id=_escalation_correlation_id,
+                    )
+                _max_tokens_override = max(1, int(remaining_budget / output_cost))
                 logger.info(
                     "model_router_extension_token_limit",
                     max_tokens=_max_tokens_override,
                     extension_amount_usd=_extension_amount_usd,
+                    input_tokens=input_tokens,
+                    input_spend=input_spend,
+                    remaining_budget_for_output=remaining_budget,
                     output_cost_per_token=output_cost,
                     escalation_request_id=_escalation_request_id,
                 )

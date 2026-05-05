@@ -35,12 +35,16 @@ from donna.models.types import CompletionMetadata
 # ---------------------------------------------------------------------------
 
 
-def _make_models_config(output_cost_per_token: float | None = 0.000015) -> ModelsConfig:
+def _make_models_config(
+    output_cost_per_token: float | None = 0.000015,
+    input_cost_per_token: float | None = 0.000003,
+) -> ModelsConfig:
     return ModelsConfig(
         models={
             "parser": ModelConfig(
                 provider="anthropic",
                 model="claude-sonnet-4-20250514",
+                input_cost_per_token_usd=input_cost_per_token,
                 output_cost_per_token_usd=output_cost_per_token,
             )
         },
@@ -179,9 +183,59 @@ async def test_max_tokens_passed_to_provider_for_api_extended() -> None:
         estimate_usd=2.50,
     )
 
+    # Input cost is subtracted from extension before computing max_tokens:
+    # $2.50 - (1 input token × $0.000003) ≈ $2.499997, then / $0.000015 ≈ 166666.
     assert "max_tokens" in captured_kwargs
-    expected = max(1, int(2.50 / 0.000015))
+    expected = max(1, int((2.50 - (1 * 0.000003)) / 0.000015))
     assert captured_kwargs["max_tokens"] == expected
+
+
+@pytest.mark.asyncio
+async def test_token_limit_reached_when_input_alone_exhausts_budget() -> None:
+    """A long prompt whose input cost alone exceeds the extension raises early.
+
+    Without this guard, the extension would be silently overspent on input
+    tokens before any output is generated. §10.6 row 1.
+    """
+    # Extension of $0.001 vs Sonnet input @ $3/M means budget covers ~333 input
+    # tokens. A prompt comfortably above that should trip the guard.
+    models_config = _make_models_config()
+    task_types_config = _make_task_types_config()
+
+    mock_provider = MagicMock()
+    mock_provider.complete = AsyncMock(
+        return_value=({"ok": True}, _make_completion_metadata(token_limited=False))
+    )
+
+    gate = MagicMock()
+    gate.fire_and_wait = AsyncMock(
+        return_value=_make_api_extended_outcome(extension_amount_usd=0.001)
+    )
+
+    budget_guard = MagicMock()
+    budget_guard.check_pre_call = AsyncMock()
+
+    router = ModelRouter(
+        models_config=models_config,
+        task_types_config=task_types_config,
+        project_root=Path("/nonexistent"),
+        budget_guard=budget_guard,
+        escalation_gate=gate,
+    )
+    router._providers["anthropic"] = mock_provider
+
+    long_prompt = "word " * 5000  # well over the input budget
+
+    with pytest.raises(TokenLimitReachedError):
+        await router.complete(
+            prompt=long_prompt,
+            task_type="skill_draft",
+            user_id="nick",
+            estimate_usd=0.001,
+        )
+
+    # Provider must NOT have been called — guard fires before dispatch.
+    mock_provider.complete.assert_not_called()
 
 
 @pytest.mark.asyncio

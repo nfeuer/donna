@@ -21,6 +21,7 @@ class ModelConfig(BaseModel):
     model: str
     estimated_cost_per_1k_tokens: float | None = None
     num_ctx: int | None = None
+    input_cost_per_token_usd: float | None = None
     output_cost_per_token_usd: float | None = None
 
 
