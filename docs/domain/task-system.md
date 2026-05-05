@@ -141,3 +141,17 @@ The notification dedup resets daily at midnight. This ensures the user knows whe
 | Personal | Evenings (5–8pm), Weekends | Standard (1–3) | Flexible, fills gaps |
 | Work | 8am–5pm weekdays (extends to 7pm) | Standard to High (2–5) | Respects work calendar |
 | Family | Evenings, Weekends, Baby time | High for child-related (3–5) | Never auto-deprioritize |
+
+## Manual Escalation Terminal
+
+Tasks that exceed the daily API budget OR `task_approval_threshold_usd`
+do not silently pause. They flow into the over-budget decision tree
+defined in
+[`docs/superpowers/specs/manual-escalation.md`](../superpowers/specs/manual-escalation.md):
+the user sees a Discord prompt with `Approve $X / Manual / Pause /
+Cancel`, picks a terminal, and the task continues, parks, or closes
+accordingly. `Manual` further branches to either `chat` or
+`claude_code` mode depending on the task type's
+`config/task_types.yaml` `manual_escalation` block. Open escalations
+appear in the dashboard at `/admin/escalations`. The work lands across
+slices 17–24.

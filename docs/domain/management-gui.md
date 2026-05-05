@@ -279,3 +279,24 @@ src/donna/api/routes/
 - [x] UX polish (keyboard shortcuts, saved filter presets, CSV export on all tables, empty states)
 - [x] Anomaly notifications (daily cost, parse accuracy, overdue tasks)
 - [x] Backend: `admin_shadow.py` (3 endpoints), `admin_preferences.py` (4 endpoints)
+
+## Manual Escalation Surfaces (planned, slices 19 + 23)
+
+Two new dashboard surfaces are defined by
+[`docs/superpowers/specs/manual-escalation.md`](../superpowers/specs/manual-escalation.md):
+
+1. **Escalation workspace** at `/admin/escalations` — list view of all
+   open and resolved escalations, plus a detail view per `correlation_id`
+   that renders the full prompt, hosts the chat-mode answer textarea or
+   the claude_code "Mark as built" modal, and shows a status timeline +
+   validation result panel. This is the canonical surface for full
+   prompts and answer submission; Discord is the alert layer only.
+   Lands in `slice_19_dashboard_escalation_workspace.md`.
+2. **Escalation toggle card** — master kill switch, per-mode toggles
+   (chat / claude_code), budget-extension allow + max-daily slider, and
+   a per-task-type override grid. Backed by the `dashboard_setting`
+   table; resolution order `dashboard_setting → YAML default`.
+   `hard_monthly_ceiling_usd` is YAML-only (defense in depth). Lands in
+   `slice_23_dashboard_runtime_overrides.md`.
+
+Both follow the existing dashboard conventions described above.
