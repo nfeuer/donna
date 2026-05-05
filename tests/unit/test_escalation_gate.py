@@ -15,6 +15,7 @@ from donna.config import (
     ManualEscalationModesConfig,
     ManualEscalationTriggersConfig,
 )
+from donna.cost.budget_extension import BudgetExtensionRepository
 from donna.cost.dashboard_setting import DashboardSettingResolver
 from donna.cost.escalation_gate import EscalationGate
 from donna.cost.escalation_repository import EscalationRepository
@@ -126,6 +127,14 @@ def repo(conn: aiosqlite.Connection) -> EscalationRepository:
     return EscalationRepository(conn)
 
 
+def _stub_extension_repo() -> MagicMock:
+    """Return a no-op BudgetExtensionRepository stub (no extensions granted)."""
+    stub = MagicMock(spec=BudgetExtensionRepository)
+    stub.get_daily_total = AsyncMock(return_value=0.0)
+    stub.get_monthly_total = AsyncMock(return_value=0.0)
+    return stub
+
+
 def _gate(
     *,
     repo: EscalationRepository,
@@ -142,6 +151,7 @@ def _gate(
         daily_pause_threshold_usd=daily_pause,
         resolver=DashboardSettingResolver(repo),
         deliver=deliver,
+        extension_repo=_stub_extension_repo(),
     )
     return gate, deliver
 
@@ -242,9 +252,11 @@ class TestFireAndWait:
         outcome = await asyncio.wait_for(task, timeout=2.0)
         assert outcome.mode == "cancel"
 
-    async def test_offered_modes_are_pause_cancel(
+    async def test_offered_modes_include_api_extended_when_enabled(
         self, repo: EscalationRepository
     ) -> None:
+        """Slice 18: api_extended is offered when extension config is enabled
+        and there is enough daily headroom (stub repo returns 0 total)."""
         gate, _deliver = _gate(repo=repo, daily_total=0.0)
         task = asyncio.create_task(
             gate.fire_and_wait(
@@ -265,7 +277,10 @@ class TestFireAndWait:
         )
         await asyncio.wait_for(task, timeout=2.0)
         import json
-        assert json.loads(modes_raw) == ["pause", "cancel"]
+        modes = json.loads(modes_raw)
+        assert "api_extended" in modes
+        assert "pause" in modes
+        assert "cancel" in modes
 
 
 class TestRecordUserResolution:

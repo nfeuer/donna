@@ -13,9 +13,20 @@ excluded from the default CI run and, when run, get the real model.
 from __future__ import annotations
 
 import hashlib
+import sys
+import types
 
 import numpy as np
 import pytest
+
+# ---------------------------------------------------------------------------
+# Stub out feedparser before any import touches donna.skills.tools.rss_fetch.
+# feedparser depends on sgmllib3k which cannot be built in the test environment
+# (Python 3.11, restricted pip). Unit tests never exercise RSS functionality.
+# ---------------------------------------------------------------------------
+if "feedparser" not in sys.modules:
+    _fake_feedparser = types.ModuleType("feedparser")
+    sys.modules["feedparser"] = _fake_feedparser
 
 
 class _StubSentenceTransformer:

@@ -21,6 +21,7 @@ class ModelConfig(BaseModel):
     model: str
     estimated_cost_per_1k_tokens: float | None = None
     num_ctx: int | None = None
+    output_cost_per_token_usd: float | None = None
 
 
 class RoutingEntry(BaseModel):
@@ -325,12 +326,23 @@ class ManualEscalationTriggersConfig(BaseModel):
     manual_iteration_limit: int = 3
 
 
+class BudgetExtensionConfig(BaseModel):
+    """Budget extension settings (§6.1 of manual-escalation spec)."""
+
+    enabled: bool = True
+    max_daily_extension_usd: float = 10.0
+    hard_monthly_ceiling_usd: float = 150.0
+
+
 class ManualEscalationConfig(BaseModel):
     """Top-level manual escalation configuration (bootstrap defaults)."""
 
     enabled: bool = True
     modes: ManualEscalationModesConfig = Field(
         default_factory=ManualEscalationModesConfig
+    )
+    budget_extension: BudgetExtensionConfig = Field(
+        default_factory=BudgetExtensionConfig
     )
     triggers: ManualEscalationTriggersConfig = Field(
         default_factory=ManualEscalationTriggersConfig

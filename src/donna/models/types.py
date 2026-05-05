@@ -24,3 +24,4 @@ class CompletionMetadata:
     is_shadow: bool = False
     estimated_tokens_in: int | None = None
     overflow_escalated: bool = False
+    token_limited: bool = False

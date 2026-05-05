@@ -87,12 +87,17 @@ class AnthropicProvider:
         raw_text = first_block.text
         parsed = parse_json_response(raw_text)
 
+        # stop_reason == "max_tokens" means the response was truncated by the
+        # caller-supplied max_tokens cap (used for extension-budget enforcement).
+        token_limited = response.stop_reason == "max_tokens"
+
         metadata = CompletionMetadata(
             latency_ms=elapsed_ms,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             cost_usd=_compute_cost(tokens_in, tokens_out),
             model_actual=f"anthropic/{response.model}",
+            token_limited=token_limited,
         )
 
         logger.info(

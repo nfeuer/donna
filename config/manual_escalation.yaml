@@ -12,6 +12,11 @@ modes:
   claude_code:
     enabled: true
 
+budget_extension:
+  enabled: true
+  max_daily_extension_usd: 10.0
+  hard_monthly_ceiling_usd: 150.0      # absolute cap, dashboard cannot exceed
+
 triggers:
   task_approval_threshold_usd: 5.0     # estimate above this always offers escalation
   escalation_timeout_minutes: 60       # auto-pause after this many minutes if no click

@@ -52,6 +52,26 @@ class EscalationDecisionError(Exception):
         )
 
 
+class TokenLimitReachedError(Exception):
+    """Raised by ``complete()`` when the provider truncated its output at the
+    extension-derived token cap (§10.6 row 1).
+
+    The caller should re-estimate the task and re-offer escalation so the
+    user can approve a larger extension rather than receiving a silently
+    truncated result.
+    """
+
+    def __init__(
+        self, *, escalation_request_id: int, correlation_id: str
+    ) -> None:
+        self.escalation_request_id = escalation_request_id
+        self.correlation_id = correlation_id
+        super().__init__(
+            f"Token limit reached for api_extended call "
+            f"(request_id={escalation_request_id}). Re-escalation required."
+        )
+
+
 class RoutingError(Exception):
     """Raised when a task type or model alias cannot be resolved."""
 
@@ -219,6 +239,13 @@ class ModelRouter:
                 responsible for transitioning the task to the matching
                 terminal state.
         """
+        # Track escalation context for invocation logging and token-limit
+        # enforcement after the gate is consulted.
+        _escalation_request_id: int | None = None
+        _escalation_correlation_id: str | None = None
+        _max_tokens_override: int | None = None
+        _extension_amount_usd: float | None = None
+
         if (
             self._escalation_gate is not None
             and estimate_usd is not None
@@ -238,6 +265,15 @@ class ModelRouter:
                     escalation_request_id=outcome.escalation_request_id,
                     correlation_id=outcome.correlation_id,
                 )
+            if outcome.fired and outcome.mode == "api_extended":
+                _escalation_request_id = outcome.escalation_request_id
+                _escalation_correlation_id = outcome.correlation_id
+                # Derive max_tokens from the extension amount so actual spend
+                # cannot silently exceed the approved budget (§10.6 row 1).
+                # Token rate comes from config/donna_models.yaml per alias;
+                # route resolution happens below, so we defer the calculation.
+                # Store the extension amount; the cap is applied after routing.
+                _extension_amount_usd = outcome.extension_amount_usd
 
         if self._budget_guard is not None:
             await self._budget_guard.check_pre_call(user_id)
@@ -312,6 +348,26 @@ class ModelRouter:
                 num_ctx_to_send = None  # fallback is not Ollama
                 overflow_escalated = True
 
+        # Compute token limit from extension amount + per-model output cost.
+        # The model alias is now resolved so we can look up the rate.
+        if _escalation_request_id is not None and _extension_amount_usd is not None:
+            output_cost = model_config.output_cost_per_token_usd
+            if output_cost and output_cost > 0:
+                _max_tokens_override = max(1, int(_extension_amount_usd / output_cost))
+                logger.info(
+                    "model_router_extension_token_limit",
+                    max_tokens=_max_tokens_override,
+                    extension_amount_usd=_extension_amount_usd,
+                    output_cost_per_token=output_cost,
+                    escalation_request_id=_escalation_request_id,
+                )
+            else:
+                logger.warning(
+                    "model_router_no_output_cost_rate",
+                    alias=alias,
+                    task_type=task_type,
+                )
+
         logger.info(
             "model_router_dispatch",
             task_type=task_type,
@@ -320,7 +376,12 @@ class ModelRouter:
             task_id=task_id,
             estimated_tokens_in=estimated_in,
             overflow_escalated=overflow_escalated,
+            escalation_request_id=_escalation_request_id,
         )
+
+        call_kwargs: dict[str, Any] = {"num_ctx": num_ctx_to_send}
+        if _max_tokens_override is not None:
+            call_kwargs["max_tokens"] = _max_tokens_override
 
         result, metadata = await resilient_call(
             provider.complete,
@@ -328,7 +389,7 @@ class ModelRouter:
             model_id,
             category=TaskCategory.STANDARD,
             circuit_breaker=self._circuit_breaker,
-            num_ctx=num_ctx_to_send,
+            **call_kwargs,
         )
 
         enriched_metadata = CompletionMetadata(
@@ -340,7 +401,18 @@ class ModelRouter:
             is_shadow=metadata.is_shadow,
             estimated_tokens_in=estimated_in,
             overflow_escalated=overflow_escalated,
+            token_limited=metadata.token_limited,
         )
+
+        # §10.6 row 1: if the response was cut off by the extension token cap,
+        # raise so the caller can re-estimate and re-escalate rather than
+        # silently returning a truncated result.
+        if metadata.token_limited and _escalation_request_id is not None:
+            assert _escalation_correlation_id is not None
+            raise TokenLimitReachedError(
+                escalation_request_id=_escalation_request_id,
+                correlation_id=_escalation_correlation_id,
+            )
 
         # Shadow mode: fire secondary model in parallel if configured.
         routing = self._models_config.routing.get(task_type)

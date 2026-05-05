@@ -33,6 +33,8 @@ EVENT_OFFERED = "escalation_offered"
 EVENT_RESOLVED = "escalation_resolved"
 EVENT_TIMED_OUT = "escalation_timed_out"
 EVENT_OWNER_MISMATCH = "escalation_owner_mismatch"
+EVENT_EXTENSION_GRANTED = "extension_granted"
+EVENT_EXTENSION_VOIDED = "extension_voided"
 
 
 async def write_escalation_event(
