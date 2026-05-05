@@ -102,6 +102,7 @@ def _build_router(
     router._project_root = Path(".")
     router._budget_guard = None
     router._on_shadow_complete = None
+    router._escalation_gate = None
     router._providers = {"ollama": ollama, "anthropic": anthropic}
     router._prompt_cache = {}
     router._schema_cache = {}

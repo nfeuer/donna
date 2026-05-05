@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -41,6 +42,7 @@ class TaskStatus(enum.StrEnum):
     IN_PROGRESS = "in_progress"
     BLOCKED = "blocked"
     WAITING_INPUT = "waiting_input"
+    PAUSED = "paused"
     DONE = "done"
     CANCELLED = "cancelled"
 
@@ -209,6 +211,14 @@ class InvocationLog(Base):
     user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     skill_id: Mapped[str | None] = mapped_column(
         String(36), nullable=True, index=True
+    )
+    # Slice 17: links audit rows for over-budget decisions back to their
+    # escalation_request. Always NULL for non-escalation invocations.
+    escalation_request_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("escalation_request.id"),
+        nullable=True,
+        index=True,
     )
 
 
@@ -680,3 +690,89 @@ class MemoryChunk(Base):
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     embedding_version: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Slice 17 — manual escalation / over-budget decision tree
+# (docs/superpowers/specs/manual-escalation.md §8)
+# ---------------------------------------------------------------------------
+
+
+class EscalationRequest(Base):
+    """One over-budget decision: cost router → user → resolution.
+
+    Created when the cost router's estimate exceeds either the daily
+    remaining budget or `task_approval_threshold_usd`. Resolved by a
+    Discord button click or by the delivery loop's timeout sweep.
+    """
+
+    __tablename__ = "escalation_request"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    correlation_id: Mapped[str] = mapped_column(
+        String(36), nullable=False, unique=True
+    )
+    task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    task_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    estimate_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    daily_remaining_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    offered_modes: Mapped[Any] = mapped_column(JSON, nullable=False)
+    resolution: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    prompt_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    branch_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    iteration: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="open", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    delivery_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    delivery_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_delivery_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    parent_escalation_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("escalation_request.id"), nullable=True
+    )
+
+
+class DailyBudgetExtension(Base):
+    """One-shot increase to today's effective daily budget cap.
+
+    Slice 17 creates the table for FK targets only; the grant flow
+    lands in slice 18.
+    """
+
+    __tablename__ = "daily_budget_extension"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    date: Mapped[datetime] = mapped_column(Date, nullable=False)
+    amount_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    granted_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    escalation_request_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("escalation_request.id"), nullable=True
+    )
+    voided: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class DashboardSetting(Base):
+    """Runtime override layer for YAML config keys.
+
+    Read-only resolution lands in slice 17 (so other slices can flip
+    toggles by writing rows directly during testing); the dashboard
+    write/UI lands in slice 23.
+    """
+
+    __tablename__ = "dashboard_setting"
+
+    key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    value: Mapped[Any] = mapped_column(JSON, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(100), nullable=False)

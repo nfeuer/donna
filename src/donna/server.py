@@ -38,6 +38,9 @@ if TYPE_CHECKING:
     from donna.integrations.twilio_sms import TwilioSMS
     from donna.notifications.digest import MorningDigest
     from donna.notifications.escalation import EscalationManager
+    from donna.notifications.escalation_delivery_loop import (
+        EscalationDeliveryLoop,
+    )
     from donna.notifications.overdue import OverdueDetector
     from donna.notifications.proactive_prompts import (
         AfternoonInactivityCheck,
@@ -62,6 +65,8 @@ class NotificationTasks:
     overdue_detector: OverdueDetector
     morning_digest: MorningDigest
     escalation_manager: EscalationManager | None = None
+    # Slice 17 — over-budget escalation delivery + timeout sweep.
+    escalation_delivery_loop: EscalationDeliveryLoop | None = None
     # Phase 2 additions:
     prep_agent: PrepAgent | None = None
     priority_recalculator: PriorityRecalculator | None = None
@@ -266,6 +271,13 @@ async def run_server(
                 asyncio.create_task(
                     notification_tasks.escalation_manager.check_and_advance(),
                     name="escalation_manager",
+                )
+            )
+        if notification_tasks.escalation_delivery_loop is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.escalation_delivery_loop.run(),
+                    name="escalation_delivery_loop",
                 )
             )
         if notification_tasks.prep_agent is not None:

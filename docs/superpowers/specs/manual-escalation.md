@@ -427,9 +427,9 @@ fix the gap.
 -- New: tracks every over-budget decision and outcome.
 CREATE TABLE escalation_request (
   id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  correlation_id TEXT UNIQUE NOT NULL,    -- ULID, sent on Discord
-  task_id INTEGER,                        -- nullable: drafting has no task_id
+  user_id TEXT NOT NULL,                  -- slice 17 ships TEXT to match other tables
+  correlation_id TEXT UNIQUE NOT NULL,    -- UUIDv7 (uuid6.uuid7), sent on Discord
+  task_id TEXT,                           -- nullable: drafting has no task_id
   task_type TEXT NOT NULL,
   estimate_usd REAL NOT NULL,
   daily_remaining_usd REAL NOT NULL,
@@ -440,9 +440,17 @@ CREATE TABLE escalation_request (
   prompt_path TEXT,                       -- workspace path for claude_code mode
   branch_name TEXT,                       -- for claude_code mode
   iteration INTEGER DEFAULT 1,
-  status TEXT DEFAULT 'open',             -- open|submitted|validated|failed|cancelled
+  status TEXT DEFAULT 'open',             -- open|resolved|submitted|validated|failed|cancelled
+  created_at TIMESTAMP NOT NULL,          -- slice 17 addition; needed by retry loop
   submitted_at TIMESTAMP,
   validated_at TIMESTAMP,
+  priority INTEGER DEFAULT 2,             -- slice 17 addition; gates SMS tier-2 fan-out
+  -- Slice 17 delivery-retry bookkeeping (drift vs original §8 — required
+  -- so escalation_delivery_loop can poll deliverable rows separately
+  -- from rows already sent).
+  delivery_status TEXT,                   -- pending | sent | failed
+  delivery_attempts INTEGER DEFAULT 0,
+  last_delivery_attempt_at TIMESTAMP,
   parent_escalation_id INTEGER,           -- for re-escalations
   FOREIGN KEY (parent_escalation_id) REFERENCES escalation_request(id)
 );
@@ -487,7 +495,12 @@ ALTER TABLE invocation_log ADD COLUMN escalation_request_id INTEGER
   REFERENCES escalation_request(id);
 ```
 
-Migrations: one Alembic revision per table. No manual ALTERs.
+Migrations: one Alembic revision **per slice**, not per table. Slice 17
+ships all three new tables (`escalation_request`,
+`daily_budget_extension`, `dashboard_setting`) and the `invocation_log`
+ALTER in a single revision (`c7d8e9f0a1b2`). Splitting an FK target
+across revisions adds no value when the slice is already an atomic
+shipping unit. No manual ALTERs.
 
 ---
 
@@ -689,6 +702,26 @@ matching brief in `slices/`.
 - Privacy / delivery: **Dashboard is canonical for full prompts and answer submission.** Discord delivers a summary + optional MD attachment; full prompt always exists in `escalation_request.prompt_body`. Owner-DM channel is the trust boundary for the Discord side; dashboard auth is the trust boundary for the canonical side.
 - Toggles: **Dashboard is canonical at runtime; YAML is bootstrap default.**
 - Budget extension and manual handoff: **Unified four-button decision tree, not two separate flows.**
+- **(2026-05-05, slice 17)** Correlation IDs are **UUIDv7** via the
+  existing `uuid6` dependency, not ULID. Same sortability properties,
+  no new dependency.
+- **(2026-05-05, slice 17)** Discord retry uses a **single polling
+  coroutine** (`escalation_delivery_loop`) modelled on
+  `EscalationManager.check_and_advance`, not per-request
+  `asyncio.create_task`. Survives bot restarts because state lives in
+  the row, not in a coroutine.
+- **(2026-05-05, slice 17)** SMS tier-2 fan-out on timeout is gated on
+  `priority >= 4` per §4. The §10.1 row-1 ≥ 3 threshold (Discord
+  delivery failure) is a separate trigger and not yet wired; the
+  delivery loop instead retries within the timeout window and lets the
+  ≥ 4 timeout rule cover sustained delivery failures. To be reconciled
+  in slice 24.
+- **(2026-05-05, slice 17)** `OWNER_DISCORD_ID` source: env var
+  `DONNA_OWNER_DISCORD_ID`. When unset *and* a Discord bot is wired
+  *and* `manual_escalation.enabled=true`, boot logs
+  `escalation_gate_disabled_no_owner` and continues with the gate
+  inactive (rather than crashing the entire orchestrator) — over-budget
+  paths fall back to `BudgetGuard.check_pre_call`.
 
 ---
 

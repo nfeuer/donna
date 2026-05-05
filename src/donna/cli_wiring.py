@@ -39,18 +39,24 @@ from donna.automations.dispatcher import AutomationDispatcher
 from donna.automations.repository import AutomationRepository
 from donna.automations.scheduler import AutomationScheduler
 from donna.config import (
+    ManualEscalationConfig,
     ModelsConfig,
     SkillSystemConfig,
     TaskTypesConfig,
+    load_manual_escalation_config,
     load_models_config,
     load_skill_system_config,
     load_state_machine_config,
     load_task_types_config,
 )
 from donna.cost.budget import BudgetGuard
+from donna.cost.dashboard_setting import DashboardSettingResolver
+from donna.cost.escalation_gate import EscalationGate
+from donna.cost.escalation_repository import EscalationRepository
 from donna.cost.tracker import CostTracker
 from donna.logging.invocation_logger import InvocationLogger
 from donna.models.router import ModelRouter
+from donna.notifications.escalation_delivery_loop import EscalationDeliveryLoop
 from donna.notifications.service import NotificationService
 from donna.orchestrator.input_parser import InputParser
 from donna.skills.startup_wiring import SkillSystemBundle
@@ -815,6 +821,14 @@ class StartupContext:
     # wiring (which runs before bot.start()) can see a live notifier.
     bot: Any | None
     notification_service: NotificationService | None
+    # Slice 17: over-budget escalation infrastructure. Optional so tests
+    # that hand-construct StartupContext don't have to know about them.
+    manual_escalation_config: ManualEscalationConfig | None = None
+    escalation_repository: EscalationRepository | None = None
+    dashboard_setting_resolver: DashboardSettingResolver | None = None
+    escalation_gate: EscalationGate | None = None
+    escalation_delivery_loop: EscalationDeliveryLoop | None = None
+    owner_discord_id: int | None = None
     # Shared asyncio task list — every helper that spawns a background
     # loop appends to this. `_run_orchestrator` awaits it.
     tasks: list[asyncio.Task[Any]] = field(default_factory=list)
@@ -894,6 +908,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     task_types_config = load_task_types_config(config_dir)
     state_machine_config = load_state_machine_config(config_dir)
     skill_config = load_skill_system_config(config_dir)
+    manual_escalation_config = load_manual_escalation_config(config_dir)
 
     # Initialise state machine and database
     state_machine = StateMachine(state_machine_config)
@@ -906,6 +921,25 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     router = ModelRouter(models_config, task_types_config, project_root)
     invocation_logger = InvocationLogger(db.connection)
     input_parser = InputParser(router, invocation_logger, project_root)
+
+    # Slice 17 — over-budget escalation infrastructure. Built before the
+    # bot so the gate's delivery callback can capture a bot reference
+    # once that's constructed below; the gate itself is wired only when
+    # the bot is available because Discord delivery is the canonical
+    # surface in this slice.
+    escalation_repository = EscalationRepository(db.connection)
+    dashboard_setting_resolver = DashboardSettingResolver(escalation_repository)
+
+    # OWNER_DISCORD_ID — parsed up front. The env-var requirement is
+    # enforced below only once a Discord bot is actually being wired
+    # (with no bot, manual escalation has no surface to land on, so
+    # missing the env var is benign).
+    owner_discord_id_str = os.environ.get("DONNA_OWNER_DISCORD_ID")
+    owner_discord_id: int | None
+    if owner_discord_id_str is not None and owner_discord_id_str.strip():
+        owner_discord_id = int(owner_discord_id_str.strip())
+    else:
+        owner_discord_id = None
 
     port: int = args.port or int(os.environ.get("DONNA_PORT", "8100"))
 
@@ -951,7 +985,52 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         except Exception:
             log.exception("notification_service_init_failed")
 
-    return StartupContext(
+    # Slice 17 — assemble the gate + delivery loop only when the bot is
+    # available. Without a bot the four-button view has nowhere to land;
+    # callers can still detect over-budget tasks via BudgetGuard.
+    escalation_gate: EscalationGate | None = None
+    escalation_delivery_loop: EscalationDeliveryLoop | None = None
+    if (
+        bot is not None
+        and manual_escalation_config.enabled
+        and owner_discord_id is None
+    ):
+        # In production an operator should set DONNA_OWNER_DISCORD_ID so
+        # buttons can be resolved. Log loudly and continue with the gate
+        # disabled — failing to boot here would cripple every other
+        # subsystem for an issue scoped to over-budget escalations only.
+        log.warning(
+            "escalation_gate_disabled_no_owner",
+            reason="DONNA_OWNER_DISCORD_ID is unset; "
+            "manual escalation buttons cannot be authorised",
+        )
+    if bot is not None and owner_discord_id is not None:
+        cost_tracker_for_gate = CostTracker(db.connection)
+        deliver = _make_escalation_delivery_callback(
+            bot=bot,
+            owner_discord_id=owner_discord_id,
+            gate_holder=lambda: escalation_gate,  # late binding
+        )
+        escalation_gate = EscalationGate(
+            repository=escalation_repository,
+            tracker=cost_tracker_for_gate,
+            config=manual_escalation_config,
+            daily_pause_threshold_usd=models_config.cost.daily_pause_threshold_usd,
+            resolver=dashboard_setting_resolver,
+            deliver=deliver,
+        )
+        escalation_delivery_loop = EscalationDeliveryLoop(
+            db=db,
+            repository=escalation_repository,
+            timeout_minutes=manual_escalation_config.triggers.escalation_timeout_minutes,
+            deliver=deliver,
+        )
+        # The router is constructed before the bot, so we late-bind the
+        # gate here so estimate-bearing calls can reach it.
+        router.set_escalation_gate(escalation_gate)
+        log.info("escalation_gate_wired")
+
+    ctx_obj = StartupContext(
         args=args,
         config_dir=config_dir,
         project_root=project_root,
@@ -959,11 +1038,17 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         models_config=models_config,
         task_types_config=task_types_config,
         skill_config=skill_config,
+        manual_escalation_config=manual_escalation_config,
         db=db,
         state_machine=state_machine,
         router=router,
         invocation_logger=invocation_logger,
         input_parser=input_parser,
+        escalation_repository=escalation_repository,
+        dashboard_setting_resolver=dashboard_setting_resolver,
+        escalation_gate=escalation_gate,
+        escalation_delivery_loop=escalation_delivery_loop,
+        owner_discord_id=owner_discord_id,
         port=port,
         user_id=user_id,
         discord_token=discord_token,
@@ -974,6 +1059,58 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         bot=bot,
         notification_service=notification_service,
     )
+    if escalation_delivery_loop is not None:
+        ctx_obj.tasks.append(
+            asyncio.create_task(
+                escalation_delivery_loop.run(),
+                name="escalation_delivery_loop",
+            )
+        )
+    return ctx_obj
+
+
+def _make_escalation_delivery_callback(
+    *,
+    bot: Any,
+    owner_discord_id: int,
+    gate_holder: Callable[[], EscalationGate | None],
+) -> Callable[[Any], Awaitable[bool]]:
+    """Build the Discord delivery callback consumed by the gate + loop.
+
+    Returns True if the four-button message landed in #donna-tasks.
+    Late-binds the gate via ``gate_holder`` because the gate, the
+    callback, and the bot are all needed to talk to one another.
+    """
+    from donna.integrations.discord_views import BudgetEscalationView
+
+    async def deliver(row: Any) -> bool:
+        gate = gate_holder()
+        if gate is None:
+            return False
+        view = BudgetEscalationView(
+            correlation_id=row.correlation_id,
+            offered_modes=list(row.offered_modes),
+            owner_discord_id=owner_discord_id,
+            gate=gate,
+            task_id=row.task_id,
+        )
+        text = (
+            f"**Over-budget decision** — {row.task_type}\n"
+            f"Estimate: ${row.estimate_usd:.2f}  |  "
+            f"Daily remaining: ${row.daily_remaining_usd:.2f}\n"
+            f"Choose: pause for now, or cancel."
+        )
+        try:
+            sent = await bot.send_message_with_view("tasks", text, view)
+        except Exception:
+            logger.exception(
+                "escalation_delivery_send_raised",
+                correlation_id=row.correlation_id,
+            )
+            return False
+        return sent is not None
+
+    return deliver
 
 
 # ---------------------------------------------------------------------------
