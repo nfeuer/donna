@@ -52,7 +52,7 @@ def _make_interaction(user_id: int) -> MagicMock:
 
 def _find_button(view: BudgetEscalationView, mode: str) -> _ModeButton:
     for child in view.children:
-        if isinstance(child, _ModeButton) and child._mode == mode:  # noqa: SLF001
+        if isinstance(child, _ModeButton) and child._mode == mode:
             return child
     raise AssertionError(f"button {mode} not found")
 
@@ -102,7 +102,7 @@ class TestRendering:
             owner_discord_id=OWNER_ID,
             gate=MagicMock(),
         )
-        modes = {c._mode for c in view.children if isinstance(c, _ModeButton)}  # noqa: SLF001
+        modes = {c._mode for c in view.children if isinstance(c, _ModeButton)}
         assert modes == {"pause", "cancel"}
 
 

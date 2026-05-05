@@ -749,7 +749,7 @@ class BudgetEscalationView(discord.ui.View):
         return self._task_id
 
 
-class _ModeButton(discord.ui.Button):
+class _ModeButton(discord.ui.Button[discord.ui.View]):
     """Single button on a :class:`BudgetEscalationView`.
 
     Owner-ID check, stale-click guard, and audit write all happen
@@ -767,9 +767,9 @@ class _ModeButton(discord.ui.Button):
         super().__init__(label=label, style=style, custom_id=f"escalation_{mode}")
         self._mode = mode
 
-    async def callback(self, interaction: Interaction) -> None:  # type: ignore[override]
-        view: BudgetEscalationView = self.view  # type: ignore[assignment]
-        if view is None:
+    async def callback(self, interaction: Interaction) -> None:
+        view = self.view
+        if not isinstance(view, BudgetEscalationView):
             return
 
         # Owner check — only the configured owner Discord ID can resolve.

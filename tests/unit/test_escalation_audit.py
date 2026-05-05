@@ -66,8 +66,9 @@ async def test_offered_row_shape(conn: aiosqlite.Connection) -> None:
     )
     row = await (
         await conn.execute(
-            "SELECT task_type, model_alias, cost_usd, escalation_request_id, output, user_id, task_id, input_hash"
-            " FROM invocation_log WHERE id = ?",
+            "SELECT task_type, model_alias, cost_usd, "
+            "escalation_request_id, output, user_id, task_id, input_hash "
+            "FROM invocation_log WHERE id = ?",
             (new_id,),
         )
     ).fetchone()

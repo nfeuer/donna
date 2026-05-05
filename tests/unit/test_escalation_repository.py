@@ -14,7 +14,6 @@ from donna.cost.escalation_repository import (
     EscalationRepository,
 )
 
-
 _SCHEMA = """
 CREATE TABLE escalation_request (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,7 +93,9 @@ class TestCreate:
             offered_modes=["pause"],
             priority=2,
         )
-        with pytest.raises(Exception):
+        # aiosqlite raises sqlite3.IntegrityError on the UNIQUE conflict;
+        # we don't import the type here to keep the test surface minimal.
+        with pytest.raises(Exception):  # noqa: B017 — narrow type would couple test to driver
             await repo.create(
                 user_id="nick",
                 correlation_id="dup",
@@ -174,7 +175,7 @@ class TestListQueries:
 
     async def test_timeout_listing(self, repo: EscalationRepository) -> None:
         now = datetime.now(tz=UTC)
-        old = await repo.create(
+        await repo.create(
             user_id="nick",
             correlation_id="old",
             task_id=None,
