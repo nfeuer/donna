@@ -13,9 +13,22 @@ excluded from the default CI run and, when run, get the real model.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
+import sys
+import types
 
 import numpy as np
 import pytest
+
+# ---------------------------------------------------------------------------
+# Stub feedparser only when it cannot actually be imported (e.g. local Python
+# 3.11 environments where sgmllib3k fails to build). In CI / the project's
+# 3.12 venv, feedparser is installed properly and must NOT be stubbed —
+# tests/unit/test_rss_fetch_*.py exercise the real library.
+# ---------------------------------------------------------------------------
+if "feedparser" not in sys.modules and importlib.util.find_spec("feedparser") is None:
+    _fake_feedparser = types.ModuleType("feedparser")
+    sys.modules["feedparser"] = _fake_feedparser
 
 
 class _StubSentenceTransformer:

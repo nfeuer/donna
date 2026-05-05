@@ -44,6 +44,7 @@ class InvocationMetadata:
     estimated_tokens_in: int | None = None
     overflow_escalated: bool = False
     skill_id: str | None = None
+    escalation_request_id: int | None = None
 
 
 class InvocationLogger:
@@ -64,8 +65,9 @@ class InvocationLogger:
              output, quality_score, is_shadow, eval_session_id,
              spot_check_queued, user_id,
              queue_wait_ms, interrupted, chain_id, caller,
-             estimated_tokens_in, overflow_escalated, skill_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             estimated_tokens_in, overflow_escalated, skill_id,
+             escalation_request_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 invocation_id,
                 now,
@@ -91,6 +93,7 @@ class InvocationLogger:
                 metadata.estimated_tokens_in,
                 metadata.overflow_escalated,
                 metadata.skill_id,
+                metadata.escalation_request_id,
             ),
         )
         await self._conn.commit()

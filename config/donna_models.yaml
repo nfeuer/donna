@@ -5,12 +5,18 @@ models:
   parser:
     provider: anthropic
     model: claude-sonnet-4-20250514
+    input_cost_per_token_usd: 0.000003    # $3/M input tokens (Sonnet pricing)
+    output_cost_per_token_usd: 0.000015   # $15/M output tokens (Sonnet pricing)
   reasoner:
     provider: anthropic
     model: claude-sonnet-4-20250514
+    input_cost_per_token_usd: 0.000003
+    output_cost_per_token_usd: 0.000015
   fallback:
     provider: anthropic
     model: claude-sonnet-4-20250514
+    input_cost_per_token_usd: 0.000003
+    output_cost_per_token_usd: 0.000015
   local_parser:
     provider: ollama
     model: qwen2.5:32b-instruct-q6_K

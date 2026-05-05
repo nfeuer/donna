@@ -35,7 +35,8 @@ async def _create_invocation_log_table(conn: aiosqlite.Connection) -> None:
             caller TEXT,
             estimated_tokens_in INTEGER,
             overflow_escalated INTEGER NOT NULL DEFAULT 0,
-            skill_id TEXT
+            skill_id TEXT,
+            escalation_request_id INTEGER
         )"""
     )
     await conn.commit()

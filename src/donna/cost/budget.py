@@ -16,11 +16,15 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import date
+from typing import TYPE_CHECKING
 
 import structlog
 
 from donna.config import ModelsConfig
 from donna.cost.tracker import CostTracker
+
+if TYPE_CHECKING:
+    from donna.cost.budget_extension import BudgetExtensionRepository
 
 logger = structlog.get_logger()
 
@@ -56,10 +60,12 @@ class BudgetGuard:
         tracker: CostTracker,
         models_config: ModelsConfig,
         notifier: Notifier | None = None,
+        extension_repo: BudgetExtensionRepository | None = None,
     ) -> None:
         self._tracker = tracker
         self._cost_config = models_config.cost
         self._notifier = notifier
+        self._extension_repo = extension_repo
         # Track which months we've already sent a warning for (in-memory).
         self._warned_months: set[tuple[int, int]] = set()
 
@@ -78,6 +84,16 @@ class BudgetGuard:
         spent = daily_summary.total_usd
         limit = self._cost_config.daily_pause_threshold_usd
 
+        # Factor in any approved extensions to raise the effective cap.
+        if self._extension_repo is not None:
+            try:
+                extension_total = await self._extension_repo.get_daily_total(
+                    user_id, date.today()
+                )
+                limit = limit + extension_total
+            except Exception:
+                logger.exception("budget_guard_extension_lookup_failed", user_id=user_id)
+
         if spent >= limit:
             msg = (
                 f"Daily budget hit: ${spent:.2f} spent (limit ${limit:.2f}). "
@@ -87,7 +103,7 @@ class BudgetGuard:
             logger.warning(
                 "budget_daily_threshold_hit",
                 daily_spent=spent,
-                daily_limit=limit,
+                effective_daily_limit=limit,
                 user_id=user_id,
             )
             if self._notifier is not None:

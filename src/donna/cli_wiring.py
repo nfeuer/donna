@@ -50,7 +50,9 @@ from donna.config import (
     load_task_types_config,
 )
 from donna.cost.budget import BudgetGuard
+from donna.cost.budget_extension import BudgetExtensionRepository
 from donna.cost.dashboard_setting import DashboardSettingResolver
+from donna.cost.escalation_audit import EVENT_EXTENSION_VOIDED, write_escalation_event
 from donna.cost.escalation_gate import EscalationGate
 from donna.cost.escalation_repository import EscalationRepository
 from donna.cost.tracker import CostTracker
@@ -821,11 +823,12 @@ class StartupContext:
     # wiring (which runs before bot.start()) can see a live notifier.
     bot: Any | None
     notification_service: NotificationService | None
-    # Slice 17: over-budget escalation infrastructure. Optional so tests
+    # Slice 17/18: over-budget escalation infrastructure. Optional so tests
     # that hand-construct StartupContext don't have to know about them.
     manual_escalation_config: ManualEscalationConfig | None = None
     escalation_repository: EscalationRepository | None = None
     dashboard_setting_resolver: DashboardSettingResolver | None = None
+    budget_extension_repo: BudgetExtensionRepository | None = None
     escalation_gate: EscalationGate | None = None
     escalation_delivery_loop: EscalationDeliveryLoop | None = None
     owner_discord_id: int | None = None
@@ -922,13 +925,23 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     invocation_logger = InvocationLogger(db.connection)
     input_parser = InputParser(router, invocation_logger, project_root)
 
-    # Slice 17 — over-budget escalation infrastructure. Built before the
-    # bot so the gate's delivery callback can capture a bot reference
+    # Slice 17/18 — over-budget escalation infrastructure. Built before
+    # the bot so the gate's delivery callback can capture a bot reference
     # once that's constructed below; the gate itself is wired only when
-    # the bot is available because Discord delivery is the canonical
-    # surface in this slice.
+    # the bot is available.
     escalation_repository = EscalationRepository(db.connection)
     dashboard_setting_resolver = DashboardSettingResolver(escalation_repository)
+    budget_extension_repo = BudgetExtensionRepository(db.connection)
+
+    # Crash-recovery scan (§10.6 row 4): void extensions granted before a
+    # previous crash that never ran their associated API call.
+    await _run_crash_recovery(
+        extension_repo=budget_extension_repo,
+        escalation_repo=escalation_repository,
+        conn=db.connection,
+        user_id=os.environ.get("DONNA_USER_ID", "nick"),
+        log=log,
+    )
 
     # OWNER_DISCORD_ID — parsed up front. The env-var requirement is
     # enforced below only once a Discord bot is actually being wired
@@ -1018,6 +1031,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             daily_pause_threshold_usd=models_config.cost.daily_pause_threshold_usd,
             resolver=dashboard_setting_resolver,
             deliver=deliver,
+            extension_repo=budget_extension_repo,
         )
         escalation_delivery_loop = EscalationDeliveryLoop(
             db=db,
@@ -1046,6 +1060,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         input_parser=input_parser,
         escalation_repository=escalation_repository,
         dashboard_setting_resolver=dashboard_setting_resolver,
+        budget_extension_repo=budget_extension_repo,
         escalation_gate=escalation_gate,
         escalation_delivery_loop=escalation_delivery_loop,
         owner_discord_id=owner_discord_id,
@@ -1067,6 +1082,55 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             )
         )
     return ctx_obj
+
+
+async def _run_crash_recovery(
+    *,
+    extension_repo: BudgetExtensionRepository,
+    escalation_repo: EscalationRepository,
+    conn: Any,
+    user_id: str,
+    log: Any,
+) -> None:
+    """Void budget extensions that were granted but never consumed.
+
+    On orchestrator boot, find every ``daily_budget_extension`` row for an
+    ``api_extended`` resolution that has no corresponding real invocation_log
+    row (i.e. the API call never ran because the orchestrator crashed between
+    grant and execution). Void those extensions so the phantom headroom does
+    not persist across restarts.
+
+    Realizes docs/superpowers/specs/manual-escalation.md §10.6 row 4.
+    """
+    try:
+        stale_ids = await extension_repo.find_stale_grants()
+    except Exception:
+        log.exception("crash_recovery_find_stale_failed")
+        return
+
+    for esc_id in stale_ids:
+        try:
+            voided = await extension_repo.void_by_escalation_request_id(esc_id)
+            if voided:
+                row = await escalation_repo.get(esc_id)
+                if row:
+                    await write_escalation_event(
+                        conn,
+                        event=EVENT_EXTENSION_VOIDED,
+                        escalation_request_id=esc_id,
+                        correlation_id=row.correlation_id,
+                        user_id=user_id,
+                        task_id=row.task_id,
+                        payload={"reason": "crash_recovery"},
+                    )
+                log.info(
+                    "extension_voided_crash_recovery",
+                    escalation_request_id=esc_id,
+                )
+        except Exception:
+            log.exception(
+                "crash_recovery_void_failed", escalation_request_id=esc_id
+            )
 
 
 def _make_escalation_delivery_callback(
@@ -1093,12 +1157,16 @@ def _make_escalation_delivery_callback(
             owner_discord_id=owner_discord_id,
             gate=gate,
             task_id=row.task_id,
+            estimate_usd=row.estimate_usd,
+        )
+        action_hint = (
+            "approve an extension, " if "api_extended" in row.offered_modes else ""
         )
         text = (
             f"**Over-budget decision** — {row.task_type}\n"
             f"Estimate: ${row.estimate_usd:.2f}  |  "
             f"Daily remaining: ${row.daily_remaining_usd:.2f}\n"
-            f"Choose: pause for now, or cancel."
+            f"Choose: {action_hint}pause, or cancel."
         )
         try:
             sent = await bot.send_message_with_view("tasks", text, view)
@@ -1245,6 +1313,7 @@ async def wire_skill_system(
             tracker=cost_tracker,
             models_config=ctx.models_config,
             notifier=lambda channel, message: _skill_system_notifier(message),
+            extension_repo=ctx.budget_extension_repo,
         )
 
         bundle = assemble_skill_system(

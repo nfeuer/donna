@@ -673,8 +673,8 @@ class BudgetEscalationView(discord.ui.View):
     """Four-button view for the over-budget decision tree.
 
     Buttons render conditionally based on ``offered_modes``. Slice 17
-    renders only ``Pause`` and ``Cancel``; ``api_extended`` and
-    ``manual`` ship in slices 18, 20 and 21.
+    ships Pause + Cancel; slice 18 adds ``api_extended`` with the real
+    dollar amount on the button label. Manual modes ship in slices 20/21.
 
     See docs/superpowers/specs/manual-escalation.md §4 / §10.1.
     """
@@ -687,6 +687,7 @@ class BudgetEscalationView(discord.ui.View):
         owner_discord_id: int,
         gate: Any,
         task_id: str | None = None,
+        estimate_usd: float | None = None,
         timeout_seconds: float = 3600,
     ) -> None:
         super().__init__(timeout=timeout_seconds)
@@ -696,13 +697,16 @@ class BudgetEscalationView(discord.ui.View):
         self._gate = gate
         self._task_id = task_id
 
-        # Render the slice-17 buttons. We always add Pause + Cancel last
-        # so the order matches the spec's `[Approve][Manual][Pause][Cancel]`
-        # layout once the other modes ship.
+        # Buttons in spec order: [Approve $X extension] [Manual] [Pause] [Cancel]
         if "api_extended" in offered_modes:
+            amount_label = (
+                f"Approve ${estimate_usd:.2f} extension"
+                if estimate_usd is not None
+                else "Approve extension"
+            )
             self.add_item(
                 _ModeButton(
-                    label="Approve $X extension",
+                    label=amount_label,
                     style=ButtonStyle.green,
                     mode="api_extended",
                 )
@@ -785,6 +789,28 @@ class _ModeButton(discord.ui.Button[discord.ui.View]):
                 "Only the account owner can resolve this.", ephemeral=True
             )
             return
+
+        # For api_extended: persist the extension row BEFORE resolving the
+        # escalation. This ordering ensures the extension exists if the
+        # orchestrator crashes between grant and resolution. The operation is
+        # idempotent — a Discord retry will find the existing row.
+        if self._mode == "api_extended":
+            try:
+                await view.gate.grant_budget_extension(
+                    correlation_id=view.correlation_id,
+                    granted_by=str(interaction.user.id),
+                )
+            except Exception:
+                logger.exception(
+                    "budget_extension_grant_failed",
+                    correlation_id=view.correlation_id,
+                    mode=self._mode,
+                )
+                await interaction.response.send_message(
+                    "Couldn't grant extension — please try again or check the dashboard.",
+                    ephemeral=True,
+                )
+                return
 
         # The gate's repository handles atomicity — `record_user_resolution`
         # returns False if the row was already resolved (timeout sweep won

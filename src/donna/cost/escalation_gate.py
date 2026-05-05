@@ -1,18 +1,23 @@
-"""Estimate-driven gate for the over-budget decision tree (slice 17).
+"""Estimate-driven gate for the over-budget decision tree (slice 17/18).
 
 When a task's pre-flight ``estimate_usd`` exceeds either the daily
 budget remaining or ``task_approval_threshold_usd``, the gate writes
 an :class:`EscalationRequest` row, posts a Discord message with the
-configured buttons, and awaits the user's resolution. ``Pause`` and
-``Cancel`` are the only buttons rendered in slice 17; ``api_extended``,
-``chat`` and ``claude_code`` modes ship in slices 18, 20 and 21.
+configured buttons, and awaits the user's resolution.
+
+Slice 17 shipped Pause + Cancel. Slice 18 adds ``api_extended``:
+``[Approve $X extension]`` button, idempotent grant via
+:class:`~donna.cost.budget_extension.BudgetExtensionRepository`,
+hard daily and monthly ceilings, and the ``extension_amount_usd``
+field on :class:`GateOutcome` for token-limit enforcement.
 
 This is *not* a replacement for :class:`donna.cost.budget.BudgetGuard`.
 ``BudgetGuard`` continues to be the post-hoc spend-vs-threshold backstop
 that runs even when no estimate is available; the gate is the
 estimate-aware path that gives the user agency.
 
-Realizes docs/superpowers/specs/manual-escalation.md §4 and §6.1.
+Realizes docs/superpowers/specs/manual-escalation.md §4, §5.1, §6.1,
+§10.6.
 """
 
 from __future__ import annotations
@@ -20,14 +25,17 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 from collections.abc import Awaitable, Callable
-from typing import ClassVar, Literal
+from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING, ClassVar, Literal
 
 import structlog
 import uuid6
 
 from donna.config import ManualEscalationConfig
+from donna.cost.budget_extension import BudgetExtensionRepository, DailyBudgetExtensionRow
 from donna.cost.dashboard_setting import DashboardSettingResolver
 from donna.cost.escalation_audit import (
+    EVENT_EXTENSION_GRANTED,
     EVENT_OFFERED,
     EVENT_RESOLVED,
     write_escalation_event,
@@ -38,17 +46,15 @@ from donna.cost.escalation_repository import (
 )
 from donna.cost.tracker import CostTracker
 
+if TYPE_CHECKING:
+    pass
+
 logger = structlog.get_logger()
 
-# Internal escalation outcomes the gate can return. The set deliberately
-# matches the canonical spec §4 even though slice 17 only renders two
-# of these — slices 18/20/21 will return the others.
+
+# Internal escalation outcomes the gate can return.
 EscalationMode = Literal["pause", "cancel", "api_extended", "chat", "claude_code"]
 ResolvedBy = Literal["user", "timeout"]
-
-# Buttons rendered in slice 17. The other modes are intentionally
-# deferred even when their config flags are on.
-SLICE_17_RENDERED_MODES: tuple[str, ...] = ("pause", "cancel")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -64,6 +70,12 @@ class GateOutcome:
     escalation_request_id: int | None
     """FK so callers can stamp resulting invocation_log rows."""
     correlation_id: str | None
+    extension_amount_usd: float | None = None
+    """Granted extension amount when ``mode='api_extended'``.
+
+    Callers use this to derive the ``max_tokens`` hard cap so actual
+    spend cannot exceed the approved extension (§10.6 row 1).
+    """
 
 
 # Type alias for the Discord delivery callback supplied by the bot
@@ -88,6 +100,7 @@ class EscalationGate:
         daily_pause_threshold_usd: float,
         resolver: DashboardSettingResolver,
         deliver: DeliveryCallback,
+        extension_repo: BudgetExtensionRepository,
     ) -> None:
         self._repo = repository
         self._tracker = tracker
@@ -95,6 +108,7 @@ class EscalationGate:
         self._daily_pause_threshold_usd = daily_pause_threshold_usd
         self._resolver = resolver
         self._deliver = deliver
+        self._extension_repo = extension_repo
 
     # ------------------------------------------------------------------
     # Public API
@@ -118,7 +132,9 @@ class EscalationGate:
             ``paused`` and exits without spending.
           * ``fired=True, mode='cancel'`` — caller transitions task to
             ``cancelled`` and exits without spending.
-          * Other modes are reserved for slices 18+.
+          * ``fired=True, mode='api_extended'`` — extension was granted;
+            caller proceeds with the API call. ``extension_amount_usd``
+            is set for token-limit enforcement.
         """
         if not await self._is_enabled():
             return GateOutcome(
@@ -140,7 +156,14 @@ class EscalationGate:
                 correlation_id=None,
             )
 
-        offered_modes = list(SLICE_17_RENDERED_MODES)
+        # Build offered_modes dynamically. Pause + Cancel are always present;
+        # api_extended renders when the extension config allows it and there
+        # is enough daily / monthly headroom.
+        offered_modes: list[str] = []
+        if await self._should_offer_extension(estimate_usd, user_id):
+            offered_modes.append("api_extended")
+        offered_modes.extend(["pause", "cancel"])
+
         correlation_id = str(uuid6.uuid7())
         row = await self._repo.create(
             user_id=user_id,
@@ -186,9 +209,6 @@ class EscalationGate:
             await event.wait()
             resolved = await self._repo.get(row.id)
             if resolved is None or resolved.resolution is None:
-                # Defensive: the event was set but the row isn't
-                # actually resolved. Treat as a pause so the caller
-                # doesn't spend.
                 logger.warning(
                     "escalation_event_set_without_resolution",
                     escalation_request_id=row.id,
@@ -201,12 +221,16 @@ class EscalationGate:
                     escalation_request_id=row.id,
                     correlation_id=correlation_id,
                 )
+            extension_amount: float | None = None
+            if resolved.resolution == "api_extended":
+                extension_amount = resolved.estimate_usd
             return GateOutcome(
                 fired=True,
                 mode=_coerce_mode(resolved.resolution),
                 resolved_by=_coerce_resolved_by(resolved.resolved_by),
                 escalation_request_id=row.id,
                 correlation_id=correlation_id,
+                extension_amount_usd=extension_amount,
             )
         finally:
             EscalationGate._events.pop(correlation_id, None)
@@ -260,6 +284,74 @@ class EscalationGate:
         EscalationGate.signal_resolution(correlation_id)
         return True
 
+    async def grant_budget_extension(
+        self,
+        *,
+        correlation_id: str,
+        granted_by: str,
+    ) -> DailyBudgetExtensionRow | None:
+        """Grant a budget extension for the given escalation.
+
+        Called by the Discord button callback BEFORE ``record_user_resolution``
+        so the extension row exists before the resolution event fires. The
+        operation is idempotent: a Discord retry will find the existing row
+        and return it unchanged without double-granting.
+
+        Returns:
+            The new or existing ``DailyBudgetExtensionRow``, or ``None``
+            if the escalation row cannot be found or DB insertion fails.
+        """
+        row = await self._repo.get_by_correlation(correlation_id)
+        if row is None:
+            logger.warning(
+                "grant_budget_extension_no_row",
+                correlation_id=correlation_id,
+            )
+            return None
+
+        # Guard: enforce monthly ceiling before granting.
+        today = date.today()
+        if not await self._monthly_headroom_ok(row.user_id, today, row.estimate_usd):
+            logger.warning(
+                "grant_budget_extension_monthly_ceiling",
+                correlation_id=correlation_id,
+                user_id=row.user_id,
+            )
+            return None
+
+        extension = await self._extension_repo.grant(
+            user_id=row.user_id,
+            for_date=today,
+            amount_usd=row.estimate_usd,
+            granted_by=granted_by,
+            escalation_request_id=row.id,
+            now=datetime.now(tz=UTC),
+        )
+        if extension is None:
+            return None
+
+        # Audit log (idempotent: duplicate audit rows are acceptable on retry).
+        try:
+            await write_escalation_event(
+                self._repo._conn,
+                event=EVENT_EXTENSION_GRANTED,
+                escalation_request_id=row.id,
+                correlation_id=correlation_id,
+                user_id=row.user_id,
+                task_id=row.task_id,
+                payload={
+                    "extension_id": extension.id,
+                    "amount_usd": extension.amount_usd,
+                    "granted_by": granted_by,
+                },
+            )
+        except Exception:
+            logger.exception(
+                "grant_budget_extension_audit_failed",
+                correlation_id=correlation_id,
+            )
+        return extension
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -270,22 +362,62 @@ class EscalationGate:
             "manual_escalation.enabled", self._config.enabled
         )
 
+    async def _should_offer_extension(
+        self, estimate_usd: float, user_id: str
+    ) -> bool:
+        """Return True if the api_extended button should be rendered.
+
+        Checks (in order):
+        1. Budget extension enabled (dashboard → YAML).
+        2. Estimate fits within remaining daily headroom.
+        3. Monthly ceiling not reached.
+        """
+        ext_cfg = self._config.budget_extension
+        enabled: bool = await self._resolver.get(
+            "budget_extension.enabled", ext_cfg.enabled
+        )
+        if not enabled:
+            return False
+
+        today = date.today()
+        existing_total = await self._extension_repo.get_daily_total(user_id, today)
+        max_daily = ext_cfg.max_daily_extension_usd
+        headroom = max_daily - existing_total
+        if headroom < estimate_usd:
+            return False
+
+        return await self._monthly_headroom_ok(user_id, today, estimate_usd)
+
+    async def _monthly_headroom_ok(
+        self, user_id: str, today: date, estimate_usd: float
+    ) -> bool:
+        """Return True if the monthly ceiling would not be breached."""
+        ext_cfg = self._config.budget_extension
+        monthly_total = await self._extension_repo.get_monthly_total(
+            user_id, today.year, today.month
+        )
+        return (monthly_total + estimate_usd) <= ext_cfg.hard_monthly_ceiling_usd
+
     async def _daily_remaining(self, user_id: str) -> float:
-        """Compute today's remaining budget envelope.
+        """Compute today's remaining budget envelope (including extensions).
 
         Mirrors :class:`donna.cost.budget.BudgetGuard` exclusions so the
-        gate's accounting matches the rest of the cost subsystem.
+        gate's accounting matches the rest of the cost subsystem. Extensions
+        raise the effective cap so already-approved spend isn't double-counted.
         """
         summary = await self._tracker.get_daily_cost(
             exclude_task_types=["external_llm_call", "escalation_lifecycle"]
         )
-        remaining = self._daily_pause_threshold_usd - summary.total_usd
+        extension_total = await self._extension_repo.get_daily_total(
+            user_id, date.today()
+        )
+        effective_cap = self._daily_pause_threshold_usd + extension_total
+        remaining = effective_cap - summary.total_usd
         return max(0.0, remaining)
 
 
 def _coerce_mode(raw: str) -> EscalationMode:
     if raw not in {"pause", "cancel", "api_extended", "chat", "claude_code"}:
-        # Defensive — DB shouldn't allow this.
         logger.warning("escalation_unknown_resolution", resolution=raw)
         return "pause"
     return raw  # type: ignore[return-value]
