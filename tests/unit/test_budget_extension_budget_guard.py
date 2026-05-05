@@ -6,19 +6,24 @@ the effective daily cap. Realizes manual-escalation.md §10.6 row 2.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
 import pytest
 import pytest_asyncio
 
-from donna.config import CostConfig, ModelsConfig, ModelConfig, RoutingEntry, OllamaConfig, QualityMonitoringConfig
+from donna.config import (
+    CostConfig,
+    ModelConfig,
+    ModelsConfig,
+    OllamaConfig,
+    QualityMonitoringConfig,
+    RoutingEntry,
+)
 from donna.cost.budget import BudgetGuard, BudgetPausedError
 from donna.cost.budget_extension import BudgetExtensionRepository
 from donna.cost.tracker import CostSummary
-
 
 # ---------------------------------------------------------------------------
 # Helpers

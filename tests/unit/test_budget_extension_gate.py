@@ -11,8 +11,6 @@ Realizes manual-escalation.md §5.1, §6.1, §10.6.
 
 from __future__ import annotations
 
-import asyncio
-import json
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -30,10 +28,8 @@ from donna.cost.budget_extension import BudgetExtensionRepository
 from donna.cost.escalation_gate import EscalationGate
 from donna.cost.escalation_repository import (
     EscalationRepository,
-    EscalationRequestRow,
 )
 from donna.cost.tracker import CostSummary
-
 
 # ---------------------------------------------------------------------------
 # Schema fixture
@@ -212,7 +208,8 @@ async def _insert_escalation(conn, esc_id: int, correlation_id: str, estimate_us
         INSERT INTO escalation_request
             (id, user_id, correlation_id, task_id, task_type, estimate_usd,
              daily_remaining_usd, offered_modes, resolution, status, created_at)
-        VALUES (?, 'nick', ?, 'task-1', 'skill_draft', ?, 17.50, '[]', 'api_extended', 'resolved', ?)
+        VALUES (?, 'nick', ?, 'task-1', 'skill_draft', ?, 17.50, '[]',
+                'api_extended', 'resolved', ?)
         """,
         (esc_id, correlation_id, estimate_usd, now),
     )
@@ -227,7 +224,7 @@ async def _insert_escalation(conn, esc_id: int, correlation_id: str, estimate_us
 @pytest.mark.asyncio
 async def test_should_offer_extension_basic(conn):
     """api_extended renders when extension is enabled and there's enough headroom."""
-    gate, extension_repo, _ = await _make_gate(
+    gate, _extension_repo, _ = await _make_gate(
         conn, max_daily_extension_usd=10.0, hard_monthly_ceiling_usd=150.0
     )
     result = await gate._should_offer_extension(2.50, "nick")
@@ -268,7 +265,7 @@ async def test_should_offer_extension_disabled_by_config(conn):
 @pytest.mark.asyncio
 async def test_should_offer_extension_headroom_too_small(conn):
     """Estimate exceeds remaining daily headroom → api_extended not offered."""
-    gate, extension_repo, _ = await _make_gate(
+    gate, _extension_repo, _ = await _make_gate(
         conn, max_daily_extension_usd=2.0  # only $2 headroom
     )
     # Requesting $2.50 when max_daily is $2.00
@@ -315,7 +312,9 @@ async def test_should_offer_extension_monthly_ceiling_not_yet_reached(conn):
     )
     await conn.commit()
 
-    gate, _, _ = await _make_gate(conn, max_daily_extension_usd=10.0, hard_monthly_ceiling_usd=150.0)
+    gate, _, _ = await _make_gate(
+        conn, max_daily_extension_usd=10.0, hard_monthly_ceiling_usd=150.0
+    )
     result = await gate._should_offer_extension(2.50, "nick")
     assert result is True
 
@@ -329,7 +328,7 @@ async def test_should_offer_extension_monthly_ceiling_not_yet_reached(conn):
 async def test_grant_budget_extension_creates_row(conn):
     """grant_budget_extension creates a daily_budget_extension row."""
     await _insert_escalation(conn, 1, "corr-1", estimate_usd=2.50)
-    gate, extension_repo, _ = await _make_gate(conn)
+    gate, _extension_repo, _ = await _make_gate(conn)
 
     result = await gate.grant_budget_extension(
         correlation_id="corr-1", granted_by="discord-999"
@@ -343,7 +342,7 @@ async def test_grant_budget_extension_creates_row(conn):
 async def test_grant_budget_extension_idempotent(conn):
     """Second call with same args returns existing row, no duplicate."""
     await _insert_escalation(conn, 2, "corr-2")
-    gate, extension_repo, _ = await _make_gate(conn)
+    gate, _extension_repo, _ = await _make_gate(conn)
 
     first = await gate.grant_budget_extension(correlation_id="corr-2", granted_by="u1")
     second = await gate.grant_budget_extension(correlation_id="corr-2", granted_by="u1")

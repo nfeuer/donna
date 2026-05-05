@@ -11,9 +11,8 @@ Realizes manual-escalation.md §10.6 row 1.
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -24,13 +23,12 @@ from donna.config import (
     OllamaConfig,
     QualityMonitoringConfig,
     RoutingEntry,
-    TaskTypesConfig,
     TaskTypeEntry,
+    TaskTypesConfig,
 )
 from donna.cost.escalation_gate import GateOutcome
 from donna.models.router import ModelRouter, TokenLimitReachedError
 from donna.models.types import CompletionMetadata
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -172,7 +170,7 @@ async def test_max_tokens_passed_to_provider_for_api_extended():
     )
     router._providers["anthropic"] = mock_provider
 
-    result, metadata = await router.complete(
+    await router.complete(
         prompt="test",
         task_type="skill_draft",
         user_id="nick",

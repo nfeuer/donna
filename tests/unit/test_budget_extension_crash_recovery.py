@@ -11,8 +11,7 @@ Realizes manual-escalation.md §10.6 row 4.
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock, MagicMock
+from datetime import UTC, datetime
 
 import aiosqlite
 import pytest
@@ -22,7 +21,6 @@ import structlog
 from donna.cli_wiring import _run_crash_recovery
 from donna.cost.budget_extension import BudgetExtensionRepository
 from donna.cost.escalation_repository import EscalationRepository
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -121,7 +119,9 @@ async def conn(tmp_path):
         yield c
 
 
-async def _insert_escalation(conn, esc_id: int, correlation_id: str, resolution: str = "api_extended"):
+async def _insert_escalation(
+    conn, esc_id: int, correlation_id: str, resolution: str = "api_extended"
+):
     now = datetime.now(tz=UTC).isoformat()
     await conn.execute(
         """

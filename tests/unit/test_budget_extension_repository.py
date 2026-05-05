@@ -8,7 +8,6 @@ Realizes docs/superpowers/specs/manual-escalation.md §10.6.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, date, datetime
 
 import aiosqlite
@@ -16,7 +15,6 @@ import pytest
 import pytest_asyncio
 
 from donna.cost.budget_extension import BudgetExtensionRepository
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

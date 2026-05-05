@@ -187,7 +187,7 @@ class BudgetExtensionRepository:
             (escalation_request_id,),
         )
         await self._conn.commit()
-        return cursor.rowcount > 0
+        return bool(cursor.rowcount > 0)
 
     async def find_stale_grants(self) -> list[int]:
         """Return escalation_request_ids with a granted-but-unrun extension.
@@ -263,10 +263,7 @@ def _row_to_extension(
 ) -> DailyBudgetExtensionRow:
     record = dict(zip(cols, row, strict=True))
     raw_date = record["date"]
-    if isinstance(raw_date, date):
-        parsed_date = raw_date
-    else:
-        parsed_date = date.fromisoformat(str(raw_date))
+    parsed_date = raw_date if isinstance(raw_date, date) else date.fromisoformat(str(raw_date))
 
     raw_granted_at = record["granted_at"]
     if isinstance(raw_granted_at, datetime):

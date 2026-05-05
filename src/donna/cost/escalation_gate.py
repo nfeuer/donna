@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal
 import structlog
 import uuid6
 
-from donna.config import BudgetExtensionConfig, ManualEscalationConfig
+from donna.config import ManualEscalationConfig
 from donna.cost.budget_extension import BudgetExtensionRepository, DailyBudgetExtensionRow
 from donna.cost.dashboard_setting import DashboardSettingResolver
 from donna.cost.escalation_audit import (
