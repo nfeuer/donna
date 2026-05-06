@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import date
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from donna.config import ManualEscalationConfig
 
@@ -157,7 +157,7 @@ def coerce_task_type_override(raw: Any) -> TaskTypeOverride:
         raise ValueError(
             f"override must be one of {TASK_TYPE_OVERRIDE_VALUES}, got {raw!r}"
         )
-    return raw  # type: ignore[return-value]
+    return cast(TaskTypeOverride, raw)
 
 
 # ---------------------------------------------------------------------------
