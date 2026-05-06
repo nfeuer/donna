@@ -453,6 +453,68 @@ visible.
 
 ---
 
+### S23 — canonical dashboard_setting key namespace + legacy aliases
+
+- **Surfaced by:** `slices/slice_23_dashboard_runtime_overrides.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§6.3(a)`
+- **Status:** resolved-in-slice-23
+- **Decision / Reasoning:** Slice 17/18/21 wrote two
+  ``dashboard_setting`` keys without the ``manual_escalation.`` prefix
+  (``modes.claude_code.enabled``, ``budget_extension.enabled``). Slice
+  23 unifies the namespace so the resolver, write API, and YAML parser
+  share one shape. Existing rows are still honoured via legacy aliases
+  registered in ``donna.cost.dashboard_settings_catalog``; new writes
+  go to the canonical key only.
+- **Follow-up:** None. The legacy aliases can be retired after a
+  full deployment cycle confirms no rows under the old names — track
+  in slice 24 hardening.
+
+### S23 — escalation settings page lives on its own route
+
+- **Surfaced by:** `slices/slice_23_dashboard_runtime_overrides.md`
+- **Spec section(s):** `docs/domain/management-gui.md` "Manual Escalation Surfaces" §
+- **Status:** resolved-in-slice-23
+- **Decision / Reasoning:** Brainstorm gap weighed putting the
+  per-task-type override grid as a section on the existing
+  ``/escalations`` workspace vs. a dedicated page. Picked dedicated
+  ``/escalation-settings``: the workspace is per-row (one escalation),
+  the settings page is per-subsystem (toggles + grid). Mixing the two
+  would bloat the detail view that slice 19 already shaped for the
+  escalation lifecycle. Sidebar carries a separate nav entry.
+- **Follow-up:** Phase 2 multi-user might need user-scoped overrides
+  on the same page; revisit when that lands.
+
+### S23 — UI 409 behaviour: visible toast over silent retry
+
+- **Surfaced by:** `slices/slice_23_dashboard_runtime_overrides.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§10.7` row 1
+- **Status:** resolved-in-slice-23
+- **Decision / Reasoning:** Brainstorm gap. Silent refetch + retry
+  could race against an intentional change in another tab and leave
+  the operator unsure which value is authoritative. The page now
+  surfaces a `Setting changed in another tab. Showing latest.` toast
+  with the conflict's live state and replaces the stale value
+  in-place, so the user sees exactly what's stored.
+- **Follow-up:** None.
+
+### S23 — slider cap is recomputed at GET time, not live
+
+- **Surfaced by:** `slices/slice_23_dashboard_runtime_overrides.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§6.3(a)`
+- **Status:** resolved-in-slice-23
+- **Decision / Reasoning:** Brainstorm gap (live "remaining headroom"
+  vs page-load only). The cap is
+  ``hard_monthly_ceiling_usd / days_left_in_month``. Recomputing it
+  live on every keystroke would require either a WebSocket or
+  polling, neither of which the dashboard uses today (30 s manual
+  refresh is the convention per `docs/domain/management-gui.md`). The
+  slider's max is set from the cap returned by the GET response, and
+  the PUT route re-validates server-side, so a stale cap can never
+  produce an over-ceiling write — it just refuses with 422.
+- **Follow-up:** None.
+
+---
+
 ## How to add an entry (template)
 
 Copy this when you finish a slice:

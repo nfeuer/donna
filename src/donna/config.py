@@ -429,6 +429,58 @@ def load_manual_escalation_config(config_dir: Path) -> ManualEscalationConfig:
     return ManualEscalationConfig(**data)
 
 
+class ManualEscalationConfigError(ValueError):
+    """Raised when manual_escalation + task_types are inconsistent at boot.
+
+    Used by :func:`validate_manual_escalation_config` so callers (slice 23
+    boot path) can distinguish a config mistake from any other ValueError
+    when surfacing failures.
+    """
+
+
+def validate_manual_escalation_config(
+    *,
+    task_types: TaskTypesConfig,
+) -> None:
+    """Boot-time validation per docs/superpowers/specs/manual-escalation.md
+    §10.7 row 3.
+
+    Any task type declaring ``manual_escalation.mode == 'claude_code'``
+    MUST also declare both ``target_paths`` (non-empty) and
+    ``reference_module``. A task type with claude_code mode but no
+    targets would render a spec the user cannot act on, and the diff
+    validator would reject every submission for being out-of-scope.
+    Hard-fail at boot rather than allowing this drift to ship.
+
+    The chat mode has no equivalent precondition — it carries no
+    file-scope contract.
+
+    Raises:
+        ManualEscalationConfigError: When at least one task type fails
+            the contract. The error message lists every offender so the
+            operator can fix them all in one config edit.
+    """
+    offenders: list[str] = []
+    for name, entry in task_types.task_types.items():
+        manual = entry.manual_escalation
+        if manual is None:
+            continue
+        if manual.mode != "claude_code":
+            continue
+        missing: list[str] = []
+        if not manual.target_paths:
+            missing.append("target_paths")
+        if not manual.reference_module:
+            missing.append("reference_module")
+        if missing:
+            offenders.append(f"{name}: missing {', '.join(missing)}")
+    if offenders:
+        raise ManualEscalationConfigError(
+            "task_types with manual_escalation.mode=claude_code must declare "
+            "target_paths and reference_module: " + "; ".join(offenders)
+        )
+
+
 # === Email / Gmail Config ===
 
 

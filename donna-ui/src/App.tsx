@@ -13,6 +13,7 @@ import LLMGatewayPage from "./pages/LLMGateway";
 import SkillSystemPage from "./pages/SkillSystem";
 import EscalationsPage from "./pages/Escalations";
 import EscalationDetail from "./pages/Escalations/EscalationDetail";
+import EscalationSettingsPage from "./pages/EscalationSettings";
 import DevPrimitivesPage from "./pages/DevPrimitives";
 import { useTheme } from "./hooks/useTheme";
 import { Skeleton } from "./primitives";
@@ -54,6 +55,7 @@ export default function App() {
           <Route path="/skill-system" element={<ErrorBoundary><SkillSystemPage /></ErrorBoundary>} />
           <Route path="/escalations" element={<ErrorBoundary><EscalationsPage /></ErrorBoundary>} />
           <Route path="/escalations/:correlation_id" element={<ErrorBoundary><EscalationDetail /></ErrorBoundary>} />
+          <Route path="/escalation-settings" element={<ErrorBoundary><EscalationSettingsPage /></ErrorBoundary>} />
         </Route>
       </Routes>
     </RadixTooltip.Provider>

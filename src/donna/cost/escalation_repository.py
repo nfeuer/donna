@@ -15,6 +15,7 @@ double-resolving.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 from collections.abc import Sequence
@@ -279,7 +280,7 @@ class EscalationRepository:
         return [_row_to_request(cols, r) for r in rows]
 
     # ------------------------------------------------------------------
-    # dashboard_setting (read-only — write path lands in slice 23)
+    # dashboard_setting — read + lock-aware write (slice 23)
     # ------------------------------------------------------------------
 
     async def get_dashboard_setting(self, key: str) -> Any | None:
@@ -293,6 +294,54 @@ class EscalationRepository:
         if isinstance(raw, str):
             return json.loads(raw)
         return raw
+
+    async def get_dashboard_setting_row(
+        self, key: str
+    ) -> tuple[Any, str, str] | None:
+        """Return ``(value, updated_at, updated_by)`` for ``key`` if present.
+
+        Slice 23 needs the timestamp + actor to seed the optimistic-lock
+        UI and surface "last changed by" provenance. Returning ``None``
+        means no override exists for the key.
+        """
+        cursor = await self._conn.execute(
+            "SELECT value, updated_at, updated_by FROM dashboard_setting WHERE key = ?",
+            (key,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        raw_value, updated_at, updated_by = row[0], row[1], row[2]
+        value: Any = (
+            json.loads(raw_value) if isinstance(raw_value, str) else raw_value
+        )
+        return value, str(updated_at), str(updated_by)
+
+    async def list_dashboard_settings(
+        self, *, prefix: str | None = None
+    ) -> list[tuple[str, Any, str, str]]:
+        """Return every override row, optionally filtered by ``prefix``.
+
+        Powers the slice 23 ``GET /admin/escalation-settings`` aggregation:
+        we want the entire override snapshot in a single query so the UI
+        can render side-by-side YAML defaults + dashboard overrides.
+        """
+        if prefix is not None:
+            cursor = await self._conn.execute(
+                "SELECT key, value, updated_at, updated_by "
+                "FROM dashboard_setting WHERE key LIKE ?",
+                (prefix + "%",),
+            )
+        else:
+            cursor = await self._conn.execute(
+                "SELECT key, value, updated_at, updated_by FROM dashboard_setting"
+            )
+        out: list[tuple[str, Any, str, str]] = []
+        for r in await cursor.fetchall():
+            raw_value = r[1]
+            value = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
+            out.append((str(r[0]), value, str(r[2]), str(r[3])))
+        return out
 
     # ------------------------------------------------------------------
     # Slice 21 — claude_code poller helpers
@@ -488,10 +537,12 @@ class EscalationRepository:
         *,
         updated_by: str = "system",
         now: datetime | None = None,
-    ) -> None:
+    ) -> str:
         """Direct upsert. Slice 17 uses this in tests and for SQL-driven
         toggle flips during slice 18–22 development; the dashboard
-        write-path UI ships in slice 23.
+        write-path UI ships in slice 23 and prefers
+        :meth:`set_dashboard_setting_with_lock`. Returns the new
+        ``updated_at`` ISO-8601 string so callers can echo it back.
         """
         ts = (now or datetime.now(tz=UTC)).isoformat()
         await self._conn.execute(
@@ -506,6 +557,92 @@ class EscalationRepository:
             (key, json.dumps(value), ts, updated_by),
         )
         await self._conn.commit()
+        return ts
+
+    async def set_dashboard_setting_with_lock(
+        self,
+        key: str,
+        value: Any,
+        *,
+        expected_updated_at: str | None,
+        updated_by: str,
+        now: datetime | None = None,
+    ) -> tuple[bool, Any, str, str]:
+        """Optimistic-lock write for slice 23 (spec §10.7 row 1).
+
+        Semantics:
+        - ``expected_updated_at is None`` means "the client believed the
+          row did not exist". The write succeeds only if no row exists.
+        - Otherwise the write succeeds only if the stored ``updated_at``
+          equals the value the client last read.
+        - On conflict, returns ``(False, current_value, current_updated_at,
+          current_updated_by)`` so the caller can surface the live state
+          in a 409 response.
+        - On success, returns ``(True, value, new_updated_at, updated_by)``.
+
+        The write is wrapped in a transaction so two parallel callers
+        racing for the same key see a consistent ordering.
+        """
+        ts = (now or datetime.now(tz=UTC)).isoformat()
+        # SQLite's aiosqlite default is autocommit; an explicit BEGIN
+        # serialises this against any concurrent writer.
+        await self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            cursor = await self._conn.execute(
+                "SELECT value, updated_at, updated_by FROM dashboard_setting "
+                "WHERE key = ?",
+                (key,),
+            )
+            current = await cursor.fetchone()
+
+            if current is None:
+                if expected_updated_at is not None:
+                    # Client thought there was a row; there isn't (could
+                    # have been deleted out from under them). Treat as
+                    # conflict so they re-read fresh state.
+                    await self._conn.rollback()
+                    return False, None, "", ""
+                await self._conn.execute(
+                    """
+                    INSERT INTO dashboard_setting (key, value, updated_at, updated_by)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (key, json.dumps(value), ts, updated_by),
+                )
+                await self._conn.commit()
+                return True, value, ts, updated_by
+
+            current_value_raw, current_updated_at, current_updated_by = current
+            if expected_updated_at is None or str(
+                current_updated_at
+            ) != expected_updated_at:
+                await self._conn.rollback()
+                current_value: Any = (
+                    json.loads(current_value_raw)
+                    if isinstance(current_value_raw, str)
+                    else current_value_raw
+                )
+                return (
+                    False,
+                    current_value,
+                    str(current_updated_at),
+                    str(current_updated_by),
+                )
+
+            await self._conn.execute(
+                """
+                UPDATE dashboard_setting
+                   SET value = ?, updated_at = ?, updated_by = ?
+                 WHERE key = ?
+                """,
+                (json.dumps(value), ts, updated_by, key),
+            )
+            await self._conn.commit()
+            return True, value, ts, updated_by
+        except Exception:
+            with contextlib.suppress(Exception):
+                await self._conn.rollback()
+            raise
 
 
 # ---------------------------------------------------------------------------

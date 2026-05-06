@@ -247,19 +247,28 @@ class EscalationGate:
                 correlation_id=None,
             )
 
+        # Slice 23 — per-task-type override grid. ``disabled`` short-
+        # circuits to Pause / Cancel only; ``force_api`` and
+        # ``force_manual`` filter the offered_modes after they are built
+        # so the override always honours other gates (e.g. force_manual
+        # cannot offer chat for a task type without a chat config block).
+        override = await self._task_type_override(task_type)
+
         # Build offered_modes dynamically. Pause + Cancel are always present;
         # api_extended renders when the extension config allows it and there
         # is enough daily / monthly headroom; claude_code (slice 21) renders
         # when the per-task-type config + host_repo + spec_builder line up.
         offered_modes: list[str] = []
-        if await self._should_offer_extension(estimate_usd, user_id):
+        if override != "disabled" and await self._should_offer_extension(
+            estimate_usd, user_id
+        ):
             offered_modes.append("api_extended")
         # Slice 20 — per-task-type chat mode. Only offer when:
         #   1. The master kill-switch is on (already checked above).
         #   2. Modes.chat is enabled (YAML, override-able via dashboard).
         #   3. The task type declares ``manual_escalation: {mode: chat}``.
         #   4. The caller passed an ``original_prompt`` for us to render.
-        chat_eligible = await self._chat_mode_eligible(
+        chat_eligible = override != "disabled" and await self._chat_mode_eligible(
             task_type=task_type, original_prompt=original_prompt
         )
         if chat_eligible:
@@ -269,7 +278,7 @@ class EscalationGate:
         #   2. Modes.claude_code is enabled (YAML, dashboard).
         #   3. The task type declares ``manual_escalation: {mode: claude_code}``.
         #   4. The host repo + spec builder are configured (cli_wiring).
-        if await self._should_offer_claude_code(task_type):
+        if override != "disabled" and await self._should_offer_claude_code(task_type):
             offered_modes.append("claude_code")
             # If the gate caller didn't pre-render target_paths, do it
             # now from the per-task-type config so the row carries the
@@ -287,6 +296,19 @@ class EscalationGate:
                     )
                 except Exception:
                     base_sha = None
+
+        # Slice 23 — apply ``force_api`` / ``force_manual`` filters after
+        # the modes are gathered so we never offer a button whose
+        # underlying preconditions failed.
+        if override == "force_api":
+            offered_modes = [m for m in offered_modes if m == "api_extended"]
+        elif override == "force_manual":
+            offered_modes = [
+                m for m in offered_modes if m in ("chat", "claude_code")
+            ]
+        # Whether the chat-mode prompt builder should run below depends on
+        # the post-override modes, not just ``chat_eligible``.
+        chat_eligible = "chat" in offered_modes
         offered_modes.extend(["pause", "cancel"])
 
         correlation_id = str(uuid6.uuid7())
@@ -520,11 +542,27 @@ class EscalationGate:
             "manual_escalation.enabled", self._config.enabled
         )
 
+    async def _task_type_override(self, task_type: str) -> str:
+        """Resolve the slice 23 per-task-type override grid value.
+
+        Returns one of ``auto`` / ``force_api`` / ``force_manual`` /
+        ``disabled``. Default is ``auto`` (no override).
+        """
+        from donna.cost.dashboard_settings_catalog import (
+            TASK_TYPE_OVERRIDE_DEFAULT,
+            task_type_override_key,
+        )
+
+        return await self._resolver.get(
+            task_type_override_key(task_type), TASK_TYPE_OVERRIDE_DEFAULT
+        )
+
     async def _should_offer_claude_code(self, task_type: str) -> bool:
         """Slice 21: gate the claude_code button on full preconditions.
 
         All four must hold:
-        1. ``modes.claude_code.enabled`` (dashboard → YAML).
+        1. ``manual_escalation.modes.claude_code.enabled``
+           (dashboard → YAML; canonical key per slice 23 §6.3(a)).
         2. The host repo is mounted (``self._host_repo`` is not None).
         3. The spec builder was wired (cli_wiring passes it when paths
            resolve at boot).
@@ -535,7 +573,8 @@ class EscalationGate:
         if self._task_types_config is None:
             return False
         cc_enabled: bool = await self._resolver.get(
-            "modes.claude_code.enabled", self._config.modes.claude_code.enabled
+            "manual_escalation.modes.claude_code.enabled",
+            self._config.modes.claude_code.enabled,
         )
         if not cc_enabled:
             return False
@@ -736,20 +775,28 @@ class EscalationGate:
 
         Checks (in order):
         1. Budget extension enabled (dashboard → YAML).
-        2. Estimate fits within remaining daily headroom.
+        2. Estimate fits within remaining daily headroom (slider value
+           dashboard → YAML; capped at the monthly ceiling).
         3. Monthly ceiling not reached.
         """
         ext_cfg = self._config.budget_extension
         enabled: bool = await self._resolver.get(
-            "budget_extension.enabled", ext_cfg.enabled
+            "manual_escalation.budget_extension.enabled", ext_cfg.enabled
         )
         if not enabled:
             return False
 
         today = date.today()
         existing_total = await self._extension_repo.get_daily_total(user_id, today)
-        max_daily = ext_cfg.max_daily_extension_usd
-        headroom = max_daily - existing_total
+        # Slice 23 — slider value resolves through the dashboard with
+        # the YAML default as fallback. The value the dashboard accepts
+        # is server-validated against the monthly ceiling, so reading
+        # it back here cannot exceed ``hard_monthly_ceiling_usd``.
+        max_daily = await self._resolver.get(
+            "manual_escalation.budget_extension.max_daily_extension_usd",
+            ext_cfg.max_daily_extension_usd,
+        )
+        headroom = float(max_daily) - existing_total
         if headroom < estimate_usd:
             return False
 

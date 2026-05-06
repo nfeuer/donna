@@ -1,10 +1,15 @@
 """Read-only resolution layer for dashboard runtime overrides.
 
 Resolution order (per docs/superpowers/specs/manual-escalation.md §6.3):
-``dashboard_setting`` row → caller-supplied YAML default. The dashboard
-write path and UI ship in slice 23; slice 17 only needs the read side
-so other slices can flip toggles by upserting rows directly during
-testing.
+``dashboard_setting`` row → caller-supplied YAML default. Slice 23
+adds the write path; resolution stays through this single class so
+the gate's read sites do not change shape.
+
+When slice 23's canonical key namespace was unified, two legacy keys
+from earlier slices kept their old names in production rows
+(``modes.claude_code.enabled`` and ``budget_extension.enabled``). The
+resolver consults the canonical key first and falls back to legacy
+aliases registered in :mod:`donna.cost.dashboard_settings_catalog`.
 """
 
 from __future__ import annotations
@@ -13,6 +18,7 @@ from typing import TypeVar
 
 import structlog
 
+from donna.cost.dashboard_settings_catalog import SETTINGS_BY_KEY
 from donna.cost.escalation_repository import EscalationRepository
 
 logger = structlog.get_logger()
@@ -35,6 +41,16 @@ class DashboardSettingResolver:
         """
         try:
             stored = await self._repo.get_dashboard_setting(key)
+            if stored is None:
+                # Slice 23 — accept legacy keys written before the
+                # namespace unification.
+                spec = SETTINGS_BY_KEY.get(key)
+                if spec is not None:
+                    for alias in spec.legacy_aliases:
+                        legacy = await self._repo.get_dashboard_setting(alias)
+                        if legacy is not None:
+                            stored = legacy
+                            break
         except Exception:
             logger.exception("dashboard_setting_lookup_failed", key=key)
             return default

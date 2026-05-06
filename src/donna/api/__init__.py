@@ -28,6 +28,7 @@ from donna.api.routes import (
     admin_access,
     admin_config,
     admin_dashboard,
+    admin_escalation_settings,
     admin_escalations,
     admin_health,
     admin_invocations,
@@ -128,6 +129,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.db = db
     app.state.config_dir = config_dir
+
+    # Slice 23 — admin escalation-settings routes need both the
+    # manual_escalation YAML defaults (to show alongside overrides) and
+    # the task-types config (to enumerate the per-task-type override
+    # grid). Validation runs the §10.7 row 3 boot check; failures are
+    # logged + the configs are still attached so the route can surface
+    # the problem rather than the API silently failing to start.
+    try:
+        from donna.config import (
+            load_manual_escalation_config,
+            load_task_types_config,
+            validate_manual_escalation_config,
+        )
+
+        manual_escalation_config = load_manual_escalation_config(config_dir)
+        task_types_config = load_task_types_config(config_dir)
+        validate_manual_escalation_config(task_types=task_types_config)
+        app.state.manual_escalation_config = manual_escalation_config
+        app.state.task_types_config = task_types_config
+    except Exception:
+        logger.exception("manual_escalation_config_load_failed")
+        app.state.manual_escalation_config = None
+        app.state.task_types_config = None
 
     # Load models config for LLM gateway
     models_path = config_dir / "donna_models.yaml"
@@ -341,6 +365,9 @@ def create_app() -> FastAPI:
     app.include_router(admin_health.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_access.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_escalations.router, prefix="/admin", tags=["admin"])
+    app.include_router(
+        admin_escalation_settings.router, prefix="/admin", tags=["admin"]
+    )
     app.include_router(capabilities_routes.router, prefix="/admin", tags=["capabilities"])
     app.include_router(skills_routes.router, prefix="/admin", tags=["skills"])
     app.include_router(skill_runs_routes.router, prefix="/admin", tags=["skill-runs"])

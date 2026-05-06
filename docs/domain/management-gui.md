@@ -292,11 +292,30 @@ Two new dashboard surfaces are defined by
    validation result panel. This is the canonical surface for full
    prompts and answer submission; Discord is the alert layer only.
    Lands in `slice_19_dashboard_escalation_workspace.md`.
-2. **Escalation toggle card** — master kill switch, per-mode toggles
-   (chat / claude_code), budget-extension allow + max-daily slider, and
-   a per-task-type override grid. Backed by the `dashboard_setting`
-   table; resolution order `dashboard_setting → YAML default`.
-   `hard_monthly_ceiling_usd` is YAML-only (defense in depth). Lands in
-   `slice_23_dashboard_runtime_overrides.md`.
+2. **Escalation Settings page (slice 23)** at `/escalation-settings` —
+   master kill switch, per-mode toggles (chat / claude_code),
+   budget-extension allow + max-daily slider, and a per-task-type
+   override grid (`Auto / Force-API / Force-Manual / Disabled`). Backed
+   by the `dashboard_setting` table; resolution order
+   `dashboard_setting → YAML default`.
+   - **API:** `GET /admin/escalation-settings`,
+     `PUT /admin/escalation-settings/{key:path}`,
+     `PUT /admin/escalation-settings/task-types/{task_type}`.
+   - **Optimistic locking:** every PUT carries `expected_updated_at`
+     from the most recent GET; the server returns 409 with the live
+     state on a stale token (spec §10.7 row 1). The page surfaces a
+     toast and replaces the stale value with the live state — no
+     silent retry.
+   - **Slider safety:** `max_daily_extension_usd` is server-validated
+     against `hard_monthly_ceiling_usd / days_left_in_month`; the GET
+     response carries the cap so the slider's max matches the PUT
+     acceptance window.
+   - **YAML-only ceiling:** `hard_monthly_ceiling_usd` is **not**
+     dashboard-mutable — defense in depth so a compromised dashboard
+     session cannot raise it (spec §10.7 row 4).
+   - **Audit:** every successful write inserts an
+     `escalation_lifecycle` row in `invocation_log` with
+     `event='dashboard_setting_changed'`, so toggle changes surface in
+     the existing timeline view alongside actual escalations.
 
 Both follow the existing dashboard conventions described above.
