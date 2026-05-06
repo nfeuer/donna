@@ -267,3 +267,52 @@ class TestRequiresRebuildNagger:
             "SELECT last_pinged_at FROM tool_request WHERE id = ?", (rid,)
         )
         assert (await cur.fetchone())[0] is None
+
+
+class TestProductionWiringContract:
+    """Slice 24 review-fix — guard the boot integration so the nagger
+    isn't accidentally dropped in a future cli_wiring refactor.
+
+    These tests assert the contract the
+    :func:`donna.cli_wiring.build_startup_context` boot path relies
+    on (DEFAULT_TOOL_REGISTRY.list_tool_names is callable, the bot
+    sends to a channel, the StartupContext slot exists). They do NOT
+    boot the orchestrator — that's pytest-too-heavy. The combination
+    of (a) this contract test + (b) the import from cli_wiring.py
+    catches the original "exists as dead code" gap the slice-24 self-
+    review surfaced.
+    """
+
+    def test_default_tool_registry_provides_list_tool_names(self) -> None:
+        from donna.skills.tools import DEFAULT_TOOL_REGISTRY
+
+        # The provider closure passes ``DEFAULT_TOOL_REGISTRY.list_tool_names``
+        # directly. Confirm it returns an Iterable[str] without args
+        # so the nagger's ``_live_tools`` helper works.
+        names = DEFAULT_TOOL_REGISTRY.list_tool_names()
+        assert isinstance(names, list)
+        assert all(isinstance(n, str) for n in names)
+
+    def test_startup_context_has_requires_rebuild_nagger_slot(self) -> None:
+        from donna.cli_wiring import StartupContext
+
+        # Assert the dataclass field exists. A future refactor that
+        # drops the slot would leave the boot path orphaned (the
+        # nagger gets constructed but never reachable through ctx).
+        fields = {f.name for f in StartupContext.__dataclass_fields__.values()}
+        assert "requires_rebuild_nagger" in fields
+
+    def test_cli_wiring_module_imports_nagger(self) -> None:
+        """The boot path imports the nagger lazily inside the wiring
+        block. Asserting the source string keeps the contract
+        explicit: removing the wiring block would fail this test
+        (rather than only failing at production runtime when no
+        Discord channel sees the reminder)."""
+        from pathlib import Path
+
+        wiring_src = (
+            Path(__file__).resolve().parents[2] / "src/donna/cli_wiring.py"
+        ).read_text(encoding="utf-8")
+        assert "from donna.cost.requires_rebuild_nag import RequiresRebuildNagger" in wiring_src
+        assert "ctx.requires_rebuild_nagger = nagger" in wiring_src
+        assert "requires_rebuild_nag_loop" in wiring_src

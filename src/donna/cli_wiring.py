@@ -845,6 +845,10 @@ class StartupContext:
     # was loaded (boot fail-soft).
     tool_request_repository: Any | None = None
     tool_gap_surfacer: Any | None = None
+    # Slice 24 — hourly nag for ``requires_rebuild=True`` tools that
+    # haven't been redeployed (spec §10.5 row 1). None when no
+    # tool_gap_surfacer was wired.
+    requires_rebuild_nagger: Any | None = None
     # Shared asyncio task list — every helper that spawns a background
     # loop appends to this. `_run_orchestrator` awaits it.
     tasks: list[asyncio.Task[Any]] = field(default_factory=list)
@@ -1164,6 +1168,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         owner_discord_id=owner_discord_id,
         tool_request_repository=tool_request_repository,
         tool_gap_surfacer=tool_gap_surfacer,
+        requires_rebuild_nagger=None,  # late-bound below once the bot is up
         port=port,
         user_id=user_id,
         discord_token=discord_token,
@@ -2026,6 +2031,72 @@ async def wire_discord(
             log.info("tool_gap_ping_poster_wired", channel=_channel)
         except Exception:
             log.exception("tool_gap_ping_poster_wire_failed")
+
+    # Slice 24 — wire the requires_rebuild=True hourly nag (spec §10.5
+    # row 1). Mirrors the slice-22 poster pattern: closure over the bot
+    # + owner + channel, plus a ticker task on the same task list as
+    # the other escalation loops. The provider returns the live
+    # ToolRegistry tool-name set so the nagger stops once the user
+    # rebuilds + restarts.
+    if (
+        ctx.bot is not None
+        and ctx.owner_discord_id is not None
+        and ctx.tool_request_repository is not None
+        and ctx.manual_escalation_config is not None
+    ):
+        try:
+            from donna.cost.requires_rebuild_nag import RequiresRebuildNagger
+            from donna.skills.tools import DEFAULT_TOOL_REGISTRY
+
+            _nag_bot = ctx.bot
+            _nag_owner = ctx.owner_discord_id
+            _nag_channel = (
+                ctx.manual_escalation_config.tool_gap.realtime_channel
+            )
+
+            async def _post_rebuild_nag(row: Any) -> bool:
+                text = (
+                    f":wrench: **Rebuild reminder:** "
+                    f"`{row.tool_name}` is built (branch "
+                    f"`{row.resolved_branch}`) but the orchestrator "
+                    f"hasn't been restarted with the new image yet. "
+                    f"Run `docker compose build && docker compose up -d` "
+                    f"once you've merged."
+                )
+                _ = _nag_owner  # owner-DM scoping is the channel itself
+                msg = await _nag_bot.send_message(_nag_channel, text)
+                return msg is not None
+
+            nagger = RequiresRebuildNagger(
+                repository=ctx.tool_request_repository,
+                registered_tools_provider=DEFAULT_TOOL_REGISTRY.list_tool_names,
+                ping_poster=_post_rebuild_nag,
+            )
+            ctx.requires_rebuild_nagger = nagger
+
+            async def _nag_loop() -> None:
+                # Tick every minute, same cadence as the other
+                # escalation loops. The nagger's per-row cooldown
+                # (1 h default) makes the tick rate cheap.
+                import asyncio as _asyncio
+
+                while True:
+                    try:
+                        await nagger.tick_once()
+                    except Exception:
+                        log.exception("requires_rebuild_nag_tick_failed")
+                    await _asyncio.sleep(60)
+
+            ctx.tasks.append(
+                asyncio.create_task(
+                    _nag_loop(), name="requires_rebuild_nag_loop"
+                )
+            )
+            log.info(
+                "requires_rebuild_nagger_wired", channel=_nag_channel
+            )
+        except Exception:
+            log.exception("requires_rebuild_nagger_wire_failed")
 
     bot = ctx.bot
     # Load Discord config and register slash commands if enabled.

@@ -927,28 +927,28 @@ append-only polling.
 ## 11. Verification / acceptance criteria
 
 ### Functional
-- [ ] Cost router emits the four-button Discord message when estimate > min(daily_remaining, threshold) AND any escalation mode enabled.
-- [ ] Each of `api_extended`, `chat`, `claude_code`, `pause`, `cancel` reaches the documented terminal state.
-- [ ] Per-task-type `manual_escalation` config gates which buttons render.
-- [ ] Dashboard toggles override YAML and take effect on next escalation (no restart).
-- [ ] Master kill switch removes Manual handoff button entirely.
-- [ ] Discord notification carries summary + dashboard link + optional MD attachment; full prompt body always lives in `escalation_request.prompt_body` and is rendered by the dashboard.
-- [ ] Dashboard `/admin/escalations/<id>` page renders prompt, accepts answers (chat) or branch confirmations (claude_code), and writes back to the same row.
-- [ ] Tool gaps file `tool_request` rows; high-blocking gaps ping in real time.
-- [ ] All escalation outcomes logged to `invocation_log` with the correlation_id.
-- [ ] Iteration cap hits force-cancel and write a `human_review` flag.
+- [x] Cost router emits the four-button Discord message when estimate > min(daily_remaining, threshold) AND any escalation mode enabled. *Slice 17 — `test_escalation_gate.py`.*
+- [x] Each of `api_extended`, `chat`, `claude_code`, `pause`, `cancel` reaches the documented terminal state. *Slices 17/18/20/21 unit tests cover each path; slice 24 ties chat + api_extended + tool_gap together end-to-end.*
+- [x] Per-task-type `manual_escalation` config gates which buttons render. *Slice 20 — `test_escalation_gate_chat_mode.py`; slice 23 — `test_escalation_gate_overrides.py`.*
+- [x] Dashboard toggles override YAML and take effect on next escalation (no restart). *Slice 23 — `test_admin_escalation_settings.py` and `test_dashboard_setting_resolver.py`.*
+- [x] Master kill switch removes Manual handoff button entirely. *Slice 17 — `TestShouldFire::test_does_not_fire_when_kill_switch_off`.*
+- [x] Discord notification carries summary + dashboard link + optional MD attachment; full prompt body always lives in `escalation_request.prompt_body` and is rendered by the dashboard. *Slice 20 — `test_escalation_chat_prompt.py` + `test_escalation_delivery_callback.py`.*
+- [x] Dashboard `/admin/escalations/<id>` page renders prompt, accepts answers (chat) or branch confirmations (claude_code), and writes back to the same row. *Slice 19 — `test_admin_escalations.py`; slice 24 added the merged-task-type timeline + the dedicated `/timeline` endpoint.*
+- [x] Tool gaps file `tool_request` rows; high-blocking gaps ping in real time. *Slice 22 — `test_tool_gap_surfacer.py`; slice 24 wired the §10.5 row 1 hourly nag for unrebuilt tools.*
+- [x] All escalation outcomes logged to `invocation_log` with the correlation_id. *Slices 17/22 escalation_lifecycle + tool_gap_lifecycle audits; slice 24 multi-user isolation test pins ``user_id`` on every row.*
+- [x] Iteration cap hits force-cancel and write a `human_review` flag. *Slice 21 — `test_claude_code_poller.py::test_iteration_cap_promotes_to_human_review`.*
 
 ### Failure-mode regression tests (one per row in §10)
-- [ ] Each mitigation has a corresponding fixture / unit test.
-- [ ] Discord 5xx retry is integration-tested with mocked Twilio + Discord.
-- [ ] Stale button click test asserts no double-resolution.
-- [ ] Dashboard down → Discord MD attachment fallback exercised by a fixture.
+- [x] Each mitigation has a corresponding fixture / unit test. *Slice 24 closed the audit-flagged gaps (§10.1 row 5, §10.5 row 1 nag, §10.6 row 4 + 5, §10.8 row 1, §10.9 rows 1–2, §10.10 row 6) in `tests/integration/test_section_10_residual_gaps.py`, `tests/integration/test_multi_user_isolation.py`, and `tests/cost/test_requires_rebuild_nag.py`. The §10.4 row 4 dependent-skill regression remains explicitly deferred per `docs/superpowers/specs/followups.md#S24`; §10.6 row 1 re-estimate-on-overspend is also deferred there.*
+- [ ] Discord 5xx retry is integration-tested with mocked Twilio + Discord. *Tier-2 SMS fallback wiring lives in `tests/unit/test_escalation_tiers.py` (slice 7 plumbing); the Discord-5xx → escalation-row resilience is covered by the slice-17 `test_escalation_delivery_loop.py` retry suite. Twilio-mock-end-to-end remains an integration harness gap.*
+- [x] Stale button click test asserts no double-resolution. *Slice 17 — `test_escalation_delivery_callback.py`; slice 19 — `test_admin_escalations.py::TestSubmit` 409 paths.*
+- [ ] Dashboard down → Discord MD attachment fallback exercised by a fixture. *Discord attachment is best-effort in the slice-17 delivery callback; a dedicated fixture for the dashboard-down branch is open.*
 
 ### End-to-end
-- [ ] **chat mode E2E:** trigger an over-budget chat_escalation; receive Discord prompt; submit answer via dashboard; task completes with answer as result.
-- [ ] **claude_code mode E2E:** trigger over-budget skill_draft; receive Discord ping; build branch in worktree; mark as built via dashboard; skill enters sandbox state.
-- [ ] **api_extended E2E:** approve extension; task runs; daily_remaining reflects extension; invocation_log carries escalation_request_id.
-- [ ] **tool gap E2E:** add a capability that requires a missing tool; capability_tool_check fires; ping arrives in real time; user files request.
+- [x] **chat mode E2E:** trigger an over-budget chat_escalation; receive Discord prompt; submit answer via dashboard; task completes with answer as result. *(Slice 20 added `tests/integration/test_chat_mode_e2e.py`; slice 24 restored it after the ORM/Alembic drift broke it on main.)*
+- [ ] **claude_code mode E2E:** trigger over-budget skill_draft; receive Discord ping; build branch in worktree; mark as built via dashboard; skill enters sandbox state. *Deferred — needs a real-disk worktree harness; the slice-21 `test_claude_code_poller.py` battery covers every transition individually. Logged as a follow-up so the next slice that introduces an integration harness picks it up.*
+- [x] **api_extended E2E:** approve extension; task runs; daily_remaining reflects extension; invocation_log carries escalation_request_id. *(Slice 24 — `tests/integration/test_api_extended_e2e.py`.)*
+- [x] **tool gap E2E:** add a capability that requires a missing tool; capability_tool_check fires; ping arrives in real time; user files request. *(Slice 24 — `tests/integration/test_tool_gap_e2e.py`.)*
 
 ---
 
@@ -957,8 +957,8 @@ append-only polling.
 1. **Default `OWNER_DISCORD_ID` source** — env var, vault entry, or `auth.yaml`? *Resolved (slice 17, §15): env var `DONNA_OWNER_DISCORD_ID`; fail-soft when unset.*
 2. **Local-only branches** — does the orchestrator have read access to the host repo's `.git` directory? *Resolved (slice 21, §15): env var `DONNA_HOST_REPO_PATH` points at a read-only mount; pushed and local branches are equivalent through it; fail-soft when unset.*
 3. **`human_review_request` table vs reusing `tool_request`** — do we want one queue for all manual interventions, or separate queues per kind? *Resolved (slice 21, §15): reuse `escalation_request` with a `human_review` BOOLEAN column; revisit when Phase 2 surfaces non-skill / non-tool human-review cases.*
-4. **Tier 2 SMS escalation on Discord delivery failure** — confirm we want this; SMS rate limits in slice 7 are tight (10/day). *Open — slice 24 (escalation hardening) owns the resolution.*
-5. **Re-escalation parent chains** — current spec stores `parent_escalation_id`. Do we need a depth limit beyond `manual_iteration_limit`? *Open — slice 24 (escalation hardening) owns the resolution.*
+4. **Tier 2 SMS escalation on Discord delivery failure** — confirm we want this; SMS rate limits in slice 7 are tight (10/day). *Resolved (slice 17, audited slice 24). The slice-17 timeout sweep already calls `EscalationDeliveryLoop._maybe_fan_out_sms` for any timed-out row whose `priority >= sms_priority_threshold`, hitting `start_at_tier=2` so the slice-7 SMS tiers carry it. Slice 24 confirmed the wiring; the only open thread is a Twilio-mock integration test (tracked under §11 "Discord 5xx retry").*
+5. **Re-escalation parent chains** — current spec stores `parent_escalation_id`. Do we need a depth limit beyond `manual_iteration_limit`? *Open. Slice 24 audited the path: `manual_iteration_limit` (default 3) bounds the inner loop, and no real cross-row chains have been observed in slice 17–23 deployments. Adding `max_re_escalation_depth` is a new behaviour and explicitly out of slice-24 scope per the brief's "Not in Scope" section. Logged in `followups.md#S24` for the next behavioural slice.*
 
 ---
 

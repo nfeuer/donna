@@ -192,9 +192,9 @@ Per `CLAUDE.md`: *"When a PR changes behavior, schema, routing, config contract,
 
 Drift checklist for this slice:
 
-- [ ] Did any §10 mitigation turn out impossible-as-written? Update the row.
-- [ ] Did the audit timeline differ from §10.10? Update §10.10.
-- [ ] Did multi-user assumptions in §10.9 hold up? Update §10.9.
-- [ ] Did the E2E test list in §11 need additions or removals? Update §11.
-- [ ] Did the §15 decisions hold across all slices? Add a closing entry summarizing the as-built state and date.
-- [ ] Did any prior-slice spec drift that wasn't reconciled in its own PR show up here? Reconcile now.
+- [x] Did any §10 mitigation turn out impossible-as-written? Update the row. *§10.5 row 1 (`requires_rebuild=True` Discord nag) updated in `manual-escalation.md` to reference the new `donna.cost.requires_rebuild_nag.RequiresRebuildNagger`. §10.9 row 1 mitigation updated to cite the slice-24 `find_open_for_originating_entity` fix + parametrised fixture.*
+- [x] Did the audit timeline differ from §10.10? Update §10.10. *§10.10 now describes the dedicated `GET /admin/escalations/{correlation_id}/timeline` endpoint and the merge of `escalation_lifecycle` + `tool_gap_lifecycle` rows.*
+- [x] Did multi-user assumptions in §10.9 hold up? Update §10.9. *Both rows updated. Row 1 cites the parametrised `tests/integration/test_multi_user_isolation.py`; row 2 cites the slice-24 budget-isolation test.*
+- [x] Did the E2E test list in §11 need additions or removals? Update §11. *§11 checklist boxes ticked: chat / api_extended / tool gap. claude_code mode E2E explicitly footnoted as deferred (worktree harness needed) and logged in `followups.md#S24`. Functional + regression-test checklists ticked off where the integrated suite now covers them; the two remaining open items (Discord-5xx Twilio integration, dashboard-down attachment fallback) are footnoted with what's covered today.*
+- [x] Did the §15 decisions hold across all slices? Add a closing entry summarizing the as-built state and date. *Five slice-24 decision-log entries appended to `manual-escalation.md` §15 (audit-timeline merge, find_open user_id, ORM/Alembic guard, requires_rebuild nag, decision-log close).*
+- [x] Did any prior-slice spec drift that wasn't reconciled in its own PR show up here? Reconcile now. *Caught and reconciled: (a) ORM ↔ Alembic drift on `escalation_request` (slice 21), `tool_request` (slice 22), `invocation_log` (LLM-gateway / context-budget) — fixed in `db_models.py` with regression guard. (b) `find_open_for_originating_entity` cross-tenant query (slice 21) — `user_id` now required. (c) `test_chat_mode_e2e.py` was broken on main due to the ORM drift — fixed by the schema-sync, kept green by the consistency guard.*

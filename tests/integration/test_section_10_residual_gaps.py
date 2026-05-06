@@ -305,6 +305,65 @@ class TestVaultNamesNotValuesInPrompt:
         # is what got rendered, so the contract is what we expect.
         assert "chat_escalation request" in summary
 
+    @pytest.mark.asyncio
+    async def test_llm_summary_path_truncates_to_max_chars(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The LLM path can't avoid pulling the prompt through the
+        summariser — that's what summarising means — but the resulting
+        summary is bounded by ``discord_summary_max_chars``. The test
+        below asserts the cap is applied so a model that hallucinates
+        and echoes a long secret-laden ``prompt_body`` cannot exceed
+        the configured ceiling. The strict no-echo guarantee on the
+        LLM path is intentionally NOT a runtime invariant — the
+        template explicitly asks the model to summarise, and a
+        regression that templated *raw values* into the prompt would
+        still be flagged in code review on the prompt template (see
+        ``prompts/escalation/summarize.md``). What we CAN pin
+        mechanically: the summariser's output never exceeds the
+        configured Discord cap regardless of input length.
+        """
+        # Stub the router to return the rendered template + a payload
+        # the validator accepts.
+        router = MagicMock()
+        router.get_prompt_template = MagicMock(return_value="summarise: {{ original_prompt }}")
+        # Return a long string that would exceed the cap if not
+        # truncated. The router contract returns ``(payload, meta)``.
+        long_summary = "echoed body " * 200  # ~2400 chars
+        router.complete = AsyncMock(
+            return_value=(
+                {"title": "Q", "summary": long_summary},
+                {"latency_ms": 1, "cost_usd": 0.0},
+            )
+        )
+
+        config = PromptDeliveryConfig(discord_summary_max_chars=200)
+        builder = ChatPromptBuilder(
+            router=router,
+            project_root=Path(__file__).resolve().parents[2],
+            config=config,
+            workspace_root=tmp_path / "workspace",
+        )
+
+        row = MagicMock()
+        row.id = 1
+        row.user_id = "nick"
+        row.task_type = "chat_escalation"
+        row.estimate_usd = 3.0
+        row.correlation_id = "vault-2"
+        row.task_id = "task-2"
+
+        summary = await builder._generate_summary(
+            row=row, original_prompt="any body"
+        )
+        # Ceiling: the configured max plus any one-character ellipsis.
+        assert len(summary) <= config.discord_summary_max_chars
+        # And the summariser was actually called (we're on the LLM
+        # path, not the deterministic fallback) — confirms what we
+        # tested.
+        router.complete.assert_awaited_once()
+
 
 # ---------------------------------------------------------------------
 # §10.10 row 6 — extension_granted audit row

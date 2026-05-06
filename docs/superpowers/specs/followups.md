@@ -413,14 +413,20 @@ visible.
 
 - **Surfaced by:** `slices/slice_21_claude_code_mode.md`
 - **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§12` Q5.
-- **Status:** open
+- **Status:** open (deferred from slice 24, see S24 audit residue
+  entry below)
 - **Decision / Reasoning:** Slice 21 left `parent_escalation_id` in
   place but did not add a depth limit. The iteration cap on a single
   escalation already bounds the inner loop; cross-row chains haven't
-  been observed yet. Slice 24 (escalation hardening) is the right
-  place to introduce a cap once we have data on real chains.
-- **Follow-up:** Slice 24 — add `max_re_escalation_depth` and reject
-  new escalations whose ancestor chain exceeds it.
+  been observed yet. Slice 24 audited the path and confirmed the
+  iteration cap keeps the inner loop bounded; adding a new
+  cross-row depth limit is a product behaviour change and falls
+  outside slice 24's hardening-only charter. Re-routed to whichever
+  next slice touches the gate behaviourally.
+- **Follow-up:** Tracked under
+  ``S24 — Audit residue: §12 Q5 re-escalation depth limit deferred``
+  below for the next behavioural slice. Concrete shape unchanged
+  (`max_re_escalation_depth` config + gate reject path).
 
 ## S21 — `originating_entity_*` columns added to `escalation_request`
 
@@ -870,6 +876,52 @@ visible.
   validation infrastructure expands ``ManualValidationRouter._validate_tool``
   to include the regression step. Tracked here so the deferral
   doesn't slip a third time.
+
+---
+
+## S24 — Audit residue: §12 Q5 re-escalation depth limit deferred
+
+- **Surfaced by:** `slices/slice_24_escalation_hardening.md` (audit).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§12`
+  Q5.
+- **Status:** open (deferred — out-of-scope per slice 24's
+  "Not in Scope" charter)
+- **Decision / Reasoning:** Slice 21 followup S21 logged this for
+  slice 24, but slice 24's brief explicitly bars new behaviours.
+  Adding a `max_re_escalation_depth` config + reject path is a
+  product change, not a hardening / audit deliverable. Slice 24
+  confirmed the iteration cap (default 3) keeps the inner loop
+  bounded and that no real cross-row chains have been observed in
+  slice 17–23 deployments — leaving the depth limit out is safe
+  for now. §12 Q5 in the canonical spec was updated to cite this
+  reasoning.
+- **Follow-up:** The next behavioural slice that touches the gate
+  picks this up. Concrete shape: `manual_escalation.triggers
+  .max_re_escalation_depth` (default 5), enforced in
+  `EscalationGate.fire_and_wait` before the row is created.
+
+---
+
+## S24 — Audit residue: §11 Twilio-mock E2E for Discord-5xx retry
+
+- **Surfaced by:** `slices/slice_24_escalation_hardening.md` (audit).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§11`
+  failure-mode regression tests row 2.
+- **Status:** open (deferred — Twilio mock harness gap, not a
+  spec-impossibility)
+- **Decision / Reasoning:** The slice-17
+  `EscalationDeliveryLoop._maybe_fan_out_sms` calls into the
+  slice-7 SMS manager with `start_at_tier=2`, and the existing
+  `tests/unit/test_escalation_tiers.py` covers the SMS-tier
+  contract. What's missing is a single integration test that
+  drives Discord-5xx → timeout → SMS-fanout end to end with
+  mocked Twilio + Discord. Slice 24 confirmed every component
+  works in isolation; the integration harness is not in scope.
+- **Follow-up:** Whichever future slice introduces a unified
+  Discord+Twilio integration harness picks this up. Test shape:
+  drive the loop with a deliver-callback that returns False until
+  the timeout fires, assert the SMS manager is called with
+  `start_at_tier=2`.
 
 ---
 
