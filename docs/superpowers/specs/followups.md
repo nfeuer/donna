@@ -227,6 +227,72 @@ visible.
 
 ---
 
+## S20 — Vault-name redaction in chat-mode prompts
+
+- **Surfaced by:** `slices/slice_20_chat_mode.md` (open question 6).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.2`,
+  `#§10.8`.
+- **Status:** wontfix-by-spec
+- **Decision / Reasoning:** Spec §10.8 explicitly accepts raw delivery
+  ("send raw") with the trust boundary being the owner-DM Discord channel.
+  Slice 20 ships the rendered prompt body as-is, both inline as the
+  Discord summary and as a `.md` attachment. Building a vault-name
+  redaction step would conflict with the documented design and slow the
+  hot path with extra LLM calls.
+- **Follow-up:** Revisit if multi-user lands and the spec's privacy
+  boundaries change. Track under §10.8 if the assumption inverts.
+
+## S20 — Re-escalation textarea pre-fill deferred
+
+- **Surfaced by:** `slices/slice_20_chat_mode.md` (open question 7).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.2`,
+  `#§10.4` row 1.
+- **Status:** open (UX polish)
+- **Decision / Reasoning:** When iteration > 1, the spec is silent on
+  whether the dashboard textarea should pre-fill with the prior answer.
+  Slice 20 ships an empty textarea on every render; the slice 19 SPA
+  already has the row's last `result` available via `GET
+  /admin/escalations/<cid>` so a future PR can flip this on without any
+  backend changes.
+- **Follow-up:** Schedule for slice 23 (dashboard runtime overrides) or
+  whenever the SPA next gets a UX pass.
+
+## S20 — Manual handoff button mode disambiguation
+
+- **Surfaced by:** `slices/slice_20_chat_mode.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§4`
+- **Status:** resolved-in-slice-20
+- **Decision / Reasoning:** Pre-slice-20, the four-button view shipped
+  a "Manual handoff" button that hard-coded ``mode='manual'``. The gate's
+  `_coerce_mode` rejected `manual` and silently downgraded to `pause`,
+  which was harmless under slice 17's "Pause / Cancel only" surface but
+  broke chat-mode resolution. Slice 20 picks the specific mode (`chat`
+  for now, `claude_code` for slice 21) at view-construction time based
+  on the row's ``offered_modes`` so the button click resolves the row
+  to the correct terminal state.
+- **Follow-up:** Slice 21 will add the `claude_code` branch to
+  `_pick_manual_mode` (already a no-op stub) and `BudgetEscalationView`
+  rendering picks it up automatically.
+
+## S20 — Chat-mode submit shares HTTP path with slash command
+
+- **Surfaced by:** `slices/slice_20_chat_mode.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.2`,
+  `#§10.10`.
+- **Status:** resolved-in-slice-20
+- **Decision / Reasoning:** Slice 19's `submit_escalation` HTTP handler
+  contained validation + audit + optimistic-lock logic that slice 20's
+  `/donna_submit` slash command needed verbatim. Rather than duplicate
+  it, slice 20 lifted the body into
+  :func:`donna.cost.escalation_submit_service.apply_submission` so both
+  surfaces share the exact path. The HTTP handler is now a thin wrapper
+  that translates :class:`SubmissionError` codes to FastAPI HTTP
+  responses; the slash command translates them to ephemeral Discord
+  replies.
+- **Follow-up:** None.
+
+---
+
 ## How to add an entry (template)
 
 Copy this when you finish a slice:

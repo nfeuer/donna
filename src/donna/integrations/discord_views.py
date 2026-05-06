@@ -711,12 +711,17 @@ class BudgetEscalationView(discord.ui.View):
                     mode="api_extended",
                 )
             )
-        if "manual" in offered_modes or "chat" in offered_modes or "claude_code" in offered_modes:
+        # Slice 20: only one manual handoff button renders even when both
+        # chat and claude_code are eligible — the gate's per-task-type
+        # routing means at most one will be in offered_modes for any given
+        # row, so the resolved mode goes through unambiguously.
+        manual_mode = self._pick_manual_mode(offered_modes)
+        if manual_mode is not None:
             self.add_item(
                 _ModeButton(
                     label="Manual handoff",
                     style=ButtonStyle.blurple,
-                    mode="manual",
+                    mode=manual_mode,
                 )
             )
         if "pause" in offered_modes:
@@ -751,6 +756,23 @@ class BudgetEscalationView(discord.ui.View):
     @property
     def task_id(self) -> str | None:
         return self._task_id
+
+    @staticmethod
+    def _pick_manual_mode(offered_modes: list[str]) -> str | None:
+        """Resolve which specific manual mode the handoff button should
+        carry. ``chat`` (slice 20) is preferred over ``claude_code``
+        (slice 21) when both happen to be present, but in practice the
+        gate's per-task-type routing only ever puts one in
+        ``offered_modes``. Falls back to the legacy ``"manual"`` literal
+        only when neither is present (older callers / fixtures).
+        """
+        if "chat" in offered_modes:
+            return "chat"
+        if "claude_code" in offered_modes:
+            return "claude_code"
+        if "manual" in offered_modes:
+            return "manual"
+        return None
 
 
 class _ModeButton(discord.ui.Button[discord.ui.View]):

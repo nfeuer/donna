@@ -41,6 +41,7 @@ from donna.automations.scheduler import AutomationScheduler
 from donna.config import (
     ManualEscalationConfig,
     ModelsConfig,
+    PromptDeliveryConfig,
     SkillSystemConfig,
     TaskTypesConfig,
     load_manual_escalation_config,
@@ -1023,6 +1024,18 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             bot=bot,
             owner_discord_id=owner_discord_id,
             gate_holder=lambda: escalation_gate,  # late binding
+            prompt_delivery=manual_escalation_config.prompt_delivery,
+        )
+        # Slice 20 — chat-mode prompt builder. Renders chat_question.md,
+        # generates the local-Ollama summary, persists prompt_body /
+        # summary / prompt_path on the escalation_request row, and
+        # writes the workspace .md the delivery callback attaches.
+        from donna.cost.escalation_chat_prompt import ChatPromptBuilder
+
+        chat_prompt_builder = ChatPromptBuilder(
+            router=router,
+            project_root=project_root,
+            config=manual_escalation_config.prompt_delivery,
         )
         escalation_gate = EscalationGate(
             repository=escalation_repository,
@@ -1032,6 +1045,8 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             resolver=dashboard_setting_resolver,
             deliver=deliver,
             extension_repo=budget_extension_repo,
+            task_types_config=task_types_config,
+            chat_prompt_builder=chat_prompt_builder,
         )
         escalation_delivery_loop = EscalationDeliveryLoop(
             db=db,
@@ -1081,6 +1096,24 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
                 name="escalation_delivery_loop",
             )
         )
+
+    # Slice 20 — chat-mode submission ingestion. Always start when
+    # manual escalation is enabled in YAML, regardless of whether a
+    # Discord bot is wired: the dashboard submit endpoint is the
+    # canonical surface and works even without Discord.
+    if manual_escalation_config.enabled:
+        from donna.skills.chat_escalation_ingestion_poller import (
+            ChatEscalationIngestionPoller,
+        )
+
+        chat_ingestion_poller = ChatEscalationIngestionPoller(db=db)
+        ctx_obj.tasks.append(
+            asyncio.create_task(
+                chat_ingestion_poller.run(),
+                name="chat_escalation_ingestion_poller",
+            )
+        )
+        log.info("chat_escalation_ingestion_poller_started")
     return ctx_obj
 
 
@@ -1138,14 +1171,22 @@ def _make_escalation_delivery_callback(
     bot: Any,
     owner_discord_id: int,
     gate_holder: Callable[[], EscalationGate | None],
+    prompt_delivery: PromptDeliveryConfig | None = None,
 ) -> Callable[[Any], Awaitable[bool]]:
     """Build the Discord delivery callback consumed by the gate + loop.
 
     Returns True if the four-button message landed in #donna-tasks.
     Late-binds the gate via ``gate_holder`` because the gate, the
     callback, and the bot are all needed to talk to one another.
+
+    Slice 20: when the row carries a chat-mode summary + prompt path,
+    the message body switches to the summary and the rendered prompt
+    is attached as ``<correlation_id>.md``. Attachment failures are
+    best-effort per spec §10.2 row 2 — the message still posts.
     """
     from donna.integrations.discord_views import BudgetEscalationView
+
+    host_base_url = os.environ.get("DONNA_HOST_BASE_URL", "").rstrip("/")
 
     async def deliver(row: Any) -> bool:
         gate = gate_holder()
@@ -1159,26 +1200,129 @@ def _make_escalation_delivery_callback(
             task_id=row.task_id,
             estimate_usd=row.estimate_usd,
         )
-        action_hint = (
-            "approve an extension, " if "api_extended" in row.offered_modes else ""
+        text = _build_escalation_message_body(
+            row=row,
+            host_base_url=host_base_url,
         )
-        text = (
-            f"**Over-budget decision** — {row.task_type}\n"
-            f"Estimate: ${row.estimate_usd:.2f}  |  "
-            f"Daily remaining: ${row.daily_remaining_usd:.2f}\n"
-            f"Choose: {action_hint}pause, or cancel."
+        attachment = _build_attachment(
+            row=row, prompt_delivery=prompt_delivery
         )
         try:
-            sent = await bot.send_message_with_view("tasks", text, view)
+            sent = await bot.send_message_with_view(
+                "tasks", text, view, file=attachment
+            )
+        except TypeError:
+            # Older DonnaBot stub without the ``file`` kwarg — fall back
+            # to the no-attachment path so the notification still lands.
+            try:
+                sent = await bot.send_message_with_view("tasks", text, view)
+            except Exception:
+                logger.exception(
+                    "escalation_delivery_send_raised",
+                    correlation_id=row.correlation_id,
+                )
+                return False
         except Exception:
             logger.exception(
                 "escalation_delivery_send_raised",
                 correlation_id=row.correlation_id,
             )
+            if attachment is not None:
+                logger.warning(
+                    "attachment_upload_failed",
+                    correlation_id=row.correlation_id,
+                )
+                try:
+                    sent = await bot.send_message_with_view(
+                        "tasks", text, view
+                    )
+                except Exception:
+                    return False
+                return sent is not None
             return False
         return sent is not None
 
     return deliver
+
+
+def _build_escalation_message_body(*, row: Any, host_base_url: str) -> str:
+    """Compose the inline text for the escalation Discord notification."""
+    summary = getattr(row, "summary", None)
+    parts: list[str] = []
+    if summary:
+        parts.append(f"**Escalation** — {row.task_type}\n{summary}")
+    else:
+        action_hint = (
+            "approve an extension, "
+            if "api_extended" in row.offered_modes
+            else ""
+        )
+        parts.append(
+            f"**Over-budget decision** — {row.task_type}\n"
+            f"Estimate: ${row.estimate_usd:.2f}  |  "
+            f"Daily remaining: ${row.daily_remaining_usd:.2f}\n"
+            f"Choose: {action_hint}pause, or cancel."
+        )
+    parts.append(
+        f"Estimate: ${row.estimate_usd:.2f}  |  "
+        f"Daily remaining: ${row.daily_remaining_usd:.2f}  |  "
+        f"ID: `{row.correlation_id}`"
+    )
+    if host_base_url:
+        parts.append(
+            f"Dashboard: {host_base_url}/admin/escalations/{row.correlation_id}"
+        )
+    return "\n".join(parts)
+
+
+def _build_attachment(
+    *,
+    row: Any,
+    prompt_delivery: PromptDeliveryConfig | None,
+) -> Any | None:
+    """Construct a ``discord.File`` for the workspace .md, or ``None``.
+
+    Best-effort: returns ``None`` when the feature flag is off, the row
+    has no prompt path, the file is missing, or the file is too large to
+    upload. Logs ``attachment_upload_failed`` so the operational team
+    can spot the case where the prompt body never reached Discord.
+    """
+    if prompt_delivery is None or not prompt_delivery.attach_full_prompt_to_discord:
+        return None
+    prompt_path = getattr(row, "prompt_path", None)
+    if not prompt_path:
+        return None
+    try:
+        from pathlib import Path as _Path
+
+        import discord as _discord
+
+        path = _Path(prompt_path)
+        if not path.exists():
+            logger.warning(
+                "attachment_upload_failed",
+                correlation_id=row.correlation_id,
+                reason="missing_file",
+                prompt_path=prompt_path,
+            )
+            return None
+        max_bytes = prompt_delivery.attachment_size_limit_mb * 1024 * 1024
+        if path.stat().st_size > max_bytes:
+            logger.warning(
+                "attachment_upload_failed",
+                correlation_id=row.correlation_id,
+                reason="oversize",
+                prompt_path=prompt_path,
+            )
+            return None
+        return _discord.File(str(path), filename=f"{row.correlation_id}.md")
+    except Exception:
+        logger.exception(
+            "attachment_upload_failed",
+            correlation_id=row.correlation_id,
+            prompt_path=prompt_path,
+        )
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -1587,10 +1731,21 @@ async def wire_discord(
     try:
         from donna.config import load_discord_config
         from donna.integrations.discord_commands import register_commands
+        from donna.integrations.discord_submit_command import register_submit_command
 
         discord_config = load_discord_config(ctx.config_dir)
         if discord_config.commands.enabled:
             register_commands(bot, ctx.db, ctx.user_id)
+            # Slice 20 — register `/donna_submit` for the chat-mode
+            # fallback path. Skipped silently when the bot is unavailable.
+            if bot is not None:
+                register_submit_command(
+                    bot=bot,
+                    conn=ctx.db.connection,
+                    config=ctx.manual_escalation_config.prompt_delivery,
+                    iteration_limit=ctx.manual_escalation_config.triggers.manual_iteration_limit,
+                    owner_discord_id=ctx.owner_discord_id,
+                )
             log.info("discord_slash_commands_registered")
 
         # Wire agent activity feed if agents channel is configured.

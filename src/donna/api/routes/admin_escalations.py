@@ -10,28 +10,28 @@ canonical place to view and submit escalations. Slice 19 ships:
 - ``POST /admin/escalations/{correlation_id}/submit`` — mode-agnostic
   submit endpoint; accepts a payload validated against
   ``schemas/escalation_submission.json`` (discriminated by ``mode``).
-  Mode-specific UI behavior (chat textarea, claude_code "Mark as built"
-  modal) attaches in slices 20/21.
+  Slice 20 wires the chat-mode entry path; slice 21 wires claude_code.
 
 The submit endpoint uses an optimistic lock on ``status`` so racing
 submissions (re-submit after validation failure, two browser tabs) get
-a 409 instead of silently overwriting each other.
+a 409 instead of silently overwriting each other. Slice 20 factored the
+heavy lifting into :mod:`donna.cost.escalation_submit_service` so the
+``/donna submit`` Discord slash command can reuse it without copying
+validation or audit logic.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
-import jsonschema
 from fastapi import HTTPException, Query, Request
 
 from donna.api.auth import admin_router
-from donna.cost.escalation_audit import (
-    ESCALATION_TASK_TYPE,
-    write_escalation_event,
+from donna.cost.escalation_audit import ESCALATION_TASK_TYPE
+from donna.cost.escalation_submit_service import (
+    SubmissionError,
+    apply_submission,
 )
 
 router = admin_router()
@@ -49,26 +49,6 @@ _LIST_STATUSES = (
     "cancelled",
 )
 
-# Spec §6.1 manual_iteration_limit default. The full config-driven
-# resolution lands with the dashboard runtime overrides in slice 23;
-# this constant is the floor every endpoint must respect today.
-_MANUAL_ITERATION_LIMIT = 3
-
-
-_SCHEMA_PATH = (
-    Path(__file__).resolve().parents[3].parent
-    / "schemas"
-    / "escalation_submission.json"
-)
-_SUBMISSION_SCHEMA: dict[str, Any] | None = None
-
-
-def _load_submission_schema() -> dict[str, Any]:
-    global _SUBMISSION_SCHEMA
-    if _SUBMISSION_SCHEMA is None:
-        with open(_SCHEMA_PATH) as f:
-            _SUBMISSION_SCHEMA = json.load(f)
-    return _SUBMISSION_SCHEMA
 
 
 def _row_to_summary(row: dict[str, Any]) -> dict[str, Any]:
@@ -260,140 +240,37 @@ async def submit_escalation(
 ) -> dict[str, Any]:
     """Accept the user's submission for a manual-handoff escalation.
 
-    Mode-agnostic for slice 19: validates the payload against the
-    discriminated-union schema, ensures ``mode`` matches the row's
-    selected mode, and atomically transitions ``resolved → submitted``
-    (or ``failed → submitted`` for re-submits within the iteration cap).
-
-    Mode-specific UI behaviour (chat textarea, claude_code "Mark as built"
-    modal) attaches in slices 20 and 21 — they POST the same payload to
-    this endpoint.
+    Delegates to :func:`donna.cost.escalation_submit_service.apply_submission`
+    so the ``/donna submit`` Discord slash command (slice 20) and any
+    future surface share the exact validation, optimistic lock, and
+    audit-log path. Mode-specific affordances (chat textarea,
+    claude_code "Mark as built" modal) all POST the same payload here.
     """
-    schema = _load_submission_schema()
     try:
         payload = await request.json()
     except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=400, detail={"error": "invalid_json", "message": str(exc)}
         ) from exc
-    try:
-        jsonschema.validate(payload, schema)
-    except jsonschema.ValidationError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail={"error": "schema_validation_failed", "message": exc.message},
-        ) from exc
 
     conn = request.app.state.db.connection
-    cursor = await conn.execute(
-        """
-        SELECT id, user_id, task_id, status, mode, iteration
-          FROM escalation_request
-         WHERE correlation_id = ?
-        """,
-        (correlation_id,),
-    )
-    row = await cursor.fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail={"error": "not_found"})
-    record = _row_dict(cursor, row)
-
-    if record["status"] not in ("resolved", "failed"):
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "not_awaiting_submission",
-                "status": record["status"],
-            },
+    try:
+        result = await apply_submission(
+            conn=conn,
+            correlation_id=correlation_id,
+            payload=payload,
         )
-    if record["mode"] is not None and record["mode"] != payload["mode"]:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "mode_mismatch",
-                "expected_mode": record["mode"],
-                "submitted_mode": payload["mode"],
-            },
-        )
-    # Iteration cap (spec §6.1, §10.4 row 2). Refusing the next submit
-    # keeps `iteration` bounded; cancel-on-cap-and-route-to-human is
-    # slice 21 scope.
-    if record["status"] == "failed" and int(record["iteration"]) >= _MANUAL_ITERATION_LIMIT:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "iteration_cap_reached",
-                "iteration": int(record["iteration"]),
-                "limit": _MANUAL_ITERATION_LIMIT,
-            },
-        )
-
-    now = datetime.now(tz=UTC)
-    ts = now.isoformat()
-    branch = payload["branch"] if payload["mode"] == "claude_code" else None
-
-    # The mode discriminator is folded into the WHERE so a concurrent
-    # writer can't slip a wrong-mode update through between the SELECT
-    # above and this UPDATE. The CASE on the iteration column reads
-    # `status` BEFORE the SET (SQLite evaluates the right-hand side of
-    # all SET expressions against the row's pre-update values), so this
-    # increments only on the failed → submitted transition.
-    update_cursor = await conn.execute(
-        """
-        UPDATE escalation_request
-           SET status = 'submitted',
-               submitted_at = ?,
-               result = ?,
-               branch_name = COALESCE(?, branch_name),
-               iteration = iteration + CASE WHEN status = 'failed' THEN 1 ELSE 0 END,
-               mode = COALESCE(mode, ?)
-         WHERE correlation_id = ?
-           AND status IN ('resolved', 'failed')
-           AND (mode IS NULL OR mode = ?)
-        """,
-        (
-            ts,
-            json.dumps(payload),
-            branch,
-            payload["mode"],
-            correlation_id,
-            payload["mode"],
-        ),
-    )
-    if update_cursor.rowcount == 0:
-        # Lost the race — another submission or status change won.
-        raise HTTPException(
-            status_code=409,
-            detail={"error": "concurrent_submission"},
-        )
-    await conn.commit()
-
-    # Re-read to return the post-update view.
-    cursor = await conn.execute(
-        "SELECT iteration FROM escalation_request WHERE correlation_id = ?",
-        (correlation_id,),
-    )
-    iteration = (await cursor.fetchone())[0]
-
-    await write_escalation_event(
-        conn,
-        event="escalation_submitted",
-        escalation_request_id=int(record["id"]),
-        correlation_id=correlation_id,
-        user_id=str(record["user_id"]),
-        task_id=record["task_id"],
-        payload={
-            "mode": payload["mode"],
-            "branch": branch,
-            "iteration": int(iteration),
-        },
-        now=now,
-    )
+    except SubmissionError as exc:
+        detail: dict[str, Any] = {"error": exc.code}
+        if exc.message:
+            detail["message"] = exc.message
+        detail.update(exc.extras)
+        raise HTTPException(status_code=exc.status_code, detail=detail) from exc
 
     return {
-        "correlation_id": correlation_id,
-        "status": "submitted",
-        "submitted_at": ts,
-        "iteration": int(iteration),
-        "mode": payload["mode"],
+        "correlation_id": result.correlation_id,
+        "status": result.status,
+        "submitted_at": result.submitted_at,
+        "iteration": result.iteration,
+        "mode": result.mode,
     }

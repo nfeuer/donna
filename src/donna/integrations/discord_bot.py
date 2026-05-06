@@ -175,8 +175,15 @@ class DonnaBot(discord.Client):
         text: str,
         view: discord.ui.View,
         embed: discord.Embed | None = None,
+        file: discord.File | None = None,
     ) -> discord.Message | None:
-        """Send a message with an interactive View to a named channel."""
+        """Send a message with an interactive View to a named channel.
+
+        ``file`` is optional and used by slice 20 to attach the rendered
+        chat-mode prompt as ``<correlation_id>.md`` alongside the
+        notification (spec §5.2 / §6.1). Discord caps the upload at the
+        free-tier limit; the caller is expected to pre-check size.
+        """
         channel = self._resolve_channel(channel_name)
         if channel is None:
             logger.warning("send_message_with_view_channel_unavailable", channel_name=channel_name)
@@ -184,6 +191,8 @@ class DonnaBot(discord.Client):
         kwargs: dict[str, Any] = {"content": text, "view": view}
         if embed is not None:
             kwargs["embed"] = embed
+        if file is not None:
+            kwargs["file"] = file
         msg: discord.Message = await channel.send(**kwargs)
         return msg
 

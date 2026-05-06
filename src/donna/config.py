@@ -75,6 +75,25 @@ class ModelsConfig(BaseModel):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
 
 
+class ManualEscalationTaskTypeConfig(BaseModel):
+    """Per-task-type manual-escalation routing (spec §6.2).
+
+    The presence of this block is what gates the "Manual handoff" button
+    in the over-budget escalation Discord view: task types without a
+    ``manual_escalation`` block only get Approve / Pause / Cancel.
+
+    ``mode`` selects whether this task type is a text-only chat handoff
+    (slice 20) or a code-artifact ``claude_code`` handoff (slice 21).
+    The remaining fields are only meaningful for ``claude_code``; they
+    are accepted here so ``task_types.yaml`` can declare them today
+    even though slice 20 ships only the chat path.
+    """
+
+    mode: Literal["chat", "claude_code"]
+    target_paths: dict[str, str] | None = None
+    reference_module: str | None = None
+
+
 class TaskTypeEntry(BaseModel):
     """A single task type definition."""
 
@@ -84,6 +103,7 @@ class TaskTypeEntry(BaseModel):
     output_schema: str
     tools: list[str] = Field(default_factory=list)
     shadow: str | None = None
+    manual_escalation: ManualEscalationTaskTypeConfig | None = None
 
 
 class TaskTypesConfig(BaseModel):
@@ -335,6 +355,29 @@ class BudgetExtensionConfig(BaseModel):
     hard_monthly_ceiling_usd: float = 150.0
 
 
+class PromptDeliveryConfig(BaseModel):
+    """Chat-mode prompt delivery settings (slice 20 — spec §6.1).
+
+    Controls how the Discord notification carries the rendered chat-mode
+    prompt: a short summary inline plus an optional ``.md`` attachment.
+    The full prompt always lives in ``escalation_request.prompt_body``
+    and on disk under ``${DONNA_WORKSPACE_PATH}/<workspace_subdir>/`` —
+    these knobs only affect what the user sees in Discord.
+    """
+
+    attach_full_prompt_to_discord: bool = True
+    discord_summary_max_chars: int = 1500
+    attachment_size_limit_mb: int = 25
+    workspace_subdir: str = "escalations"
+    # Slice 20 — slash command argument cap (Discord max is 6000;
+    # spec §10.3 enforces this server-side and tells the user to use
+    # the dashboard for longer answers).
+    slash_command_max_chars: int = 3000
+    # Mirrors ``schemas/escalation_submission.json#properties/answer/minLength``
+    # so all chat-mode entry points enforce the same minimum.
+    chat_min_answer_chars: int = 50
+
+
 class ManualEscalationConfig(BaseModel):
     """Top-level manual escalation configuration (bootstrap defaults)."""
 
@@ -347,6 +390,9 @@ class ManualEscalationConfig(BaseModel):
     )
     triggers: ManualEscalationTriggersConfig = Field(
         default_factory=ManualEscalationTriggersConfig
+    )
+    prompt_delivery: PromptDeliveryConfig = Field(
+        default_factory=PromptDeliveryConfig
     )
 
 
