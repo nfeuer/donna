@@ -99,7 +99,8 @@ class ClaudeCodeSpecBuilder:
         base_sha: str,
         task_summary: str,
         acceptance_criteria: list[str],
-        template: str = "skill_draft.md",
+        template: str | None = None,
+        extra_context: dict[str, Any] | None = None,
     ) -> RenderedSpec:
         """Render the spec, write to disk, return the artifact.
 
@@ -168,7 +169,10 @@ class ClaudeCodeSpecBuilder:
             ),
             "iteration_limit": self._iteration_limit,
         }
-        body = self._env.get_template(template).render(**ctx)
+        if extra_context:
+            ctx.update(extra_context)
+        chosen_template = template or _default_template_for(task_type)
+        body = self._env.get_template(chosen_template).render(**ctx)
 
         spec_dir = self._workspace_path / "escalations"
         spec_dir.mkdir(parents=True, exist_ok=True)
@@ -195,6 +199,23 @@ class ClaudeCodeSpecBuilder:
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
+
+_TASK_TYPE_TO_TEMPLATE: dict[str, str] = {
+    "skill_auto_draft": "skill_draft.md",
+    "skill_evolution": "skill_draft.md",
+    "tool_request_fulfillment": "tool_build.md",
+}
+
+
+def _default_template_for(task_type: str) -> str:
+    """Pick the default Jinja template for a task_type.
+
+    Slice 22 added ``tool_build.md`` for tool_request_fulfillment;
+    skill_* paths keep ``skill_draft.md``. Unknown task_types fall back
+    to the skill template (same behavior as slice 21).
+    """
+    return _TASK_TYPE_TO_TEMPLATE.get(task_type, "skill_draft.md")
 
 
 def _branch_name(correlation_id: str, capability_name: str) -> str:

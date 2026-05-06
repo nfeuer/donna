@@ -13,10 +13,29 @@ from donna.capabilities.capability_tool_check import (
 from donna.skills.tool_registry import ToolRegistry
 
 
-def _conn_returning(rows: list[tuple[str, str | None]]) -> MagicMock:
+def _conn_returning(
+    rows: list[tuple],
+    *,
+    default_status: str = "active",
+    default_trigger_type: str = "on_schedule",
+) -> MagicMock:
+    """Build a mock connection.
+
+    Each row in ``rows`` may be a 2-tuple ``(name, tools_json)`` (slice
+    21 schema, before slice 22 added status/trigger_type to the SELECT)
+    or a 4-tuple ``(name, tools_json, status, trigger_type)``. The
+    helper normalises 2-tuples to 4-tuples using the defaults above so
+    pre-slice-22 tests keep treating the row as fatal-eligible.
+    """
+    normalised: list[tuple] = []
+    for row in rows:
+        if len(row) == 2:
+            normalised.append((row[0], row[1], default_status, default_trigger_type))
+        else:
+            normalised.append(tuple(row))
     conn = MagicMock()
     cursor = AsyncMock()
-    cursor.fetchall = AsyncMock(return_value=rows)
+    cursor.fetchall = AsyncMock(return_value=normalised)
     conn.execute = AsyncMock(return_value=cursor)
     return conn
 
@@ -97,3 +116,82 @@ async def test_validate_all_reports_all_mismatches():
     message = str(excinfo.value)
     assert "missing_a" in message
     assert "missing_b" in message
+
+
+# ---------------------------------------------------------------------------
+# Slice 22 — speculative emission for non-fatal mismatches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_validate_all_emits_speculative_for_pending_review():
+    """A mismatch on pending_review capability surfaces but doesn't raise."""
+    rows = [
+        ("dormant_cap", json.dumps(["missing_tool"]), "pending_review", "on_schedule"),
+    ]
+    conn = _conn_returning(rows)
+    registry = _registry_with()
+    surfaced: list = []
+
+    class _StubSurfacer:
+        async def surface(self, gap):
+            surfaced.append(gap)
+
+    check = CapabilityToolRegistryCheck(
+        registry=registry, connection=conn, surfacer=_StubSurfacer(),
+    )
+    await check.validate_all()  # does NOT raise
+    assert len(surfaced) == 1
+    assert surfaced[0].tool_name == "missing_tool"
+    assert surfaced[0].severity == "speculative"
+    assert surfaced[0].blocking_capability_id == "dormant_cap"
+
+
+@pytest.mark.asyncio
+async def test_validate_all_emits_speculative_for_on_manual_trigger():
+    """Active but on_manual capability is speculative-only, no raise."""
+    rows = [
+        ("manual_cap", json.dumps(["missing_tool"]), "active", "on_manual"),
+    ]
+    conn = _conn_returning(rows)
+    registry = _registry_with()
+    surfaced: list = []
+
+    class _StubSurfacer:
+        async def surface(self, gap):
+            surfaced.append(gap)
+
+    check = CapabilityToolRegistryCheck(
+        registry=registry, connection=conn, surfacer=_StubSurfacer(),
+    )
+    await check.validate_all()  # does NOT raise
+    assert len(surfaced) == 1
+    assert surfaced[0].severity == "speculative"
+
+
+@pytest.mark.asyncio
+async def test_validate_all_still_raises_on_active_scheduled_with_speculative_surfaced():
+    """Mixed batch: speculative gets surfaced, fatal still raises."""
+    rows = [
+        ("dormant_cap", json.dumps(["missing_a"]), "pending_review", "on_schedule"),
+        ("live_cap", json.dumps(["missing_b"]), "active", "on_schedule"),
+    ]
+    conn = _conn_returning(rows)
+    registry = _registry_with()
+    surfaced: list = []
+
+    class _StubSurfacer:
+        async def surface(self, gap):
+            surfaced.append(gap)
+
+    check = CapabilityToolRegistryCheck(
+        registry=registry, connection=conn, surfacer=_StubSurfacer(),
+    )
+    with pytest.raises(CapabilityToolConfigError) as excinfo:
+        await check.validate_all()
+    # Speculative was surfaced even though boot then died.
+    assert len(surfaced) == 1
+    assert surfaced[0].tool_name == "missing_a"
+    # Fatal subset only.
+    assert "missing_b" in str(excinfo.value)
+    assert "missing_a" not in str(excinfo.value)

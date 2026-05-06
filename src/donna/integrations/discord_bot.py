@@ -657,10 +657,44 @@ class DonnaBot(discord.Client):
                     + f" and `{exc.missing[-1]}`"
                 )
                 verb = "are"
+            # Slice 22 — surface each missing tool as a high-severity
+            # ToolGap so the user gets the actionable [File request]
+            # button rather than only a flat text reply.
+            tool_gap_surfacer = getattr(self, "_tool_gap_surfacer", None)
+            user_id = getattr(view.draft, "user_id", "system")
+            if tool_gap_surfacer is not None:
+                try:
+                    from donna.cost.tool_gap import (
+                        DETECTION_AUTOMATION_CREATE,
+                        SEVERITY_HIGH,
+                        ToolGap,
+                    )
+                    for tool_name in exc.missing:
+                        await tool_gap_surfacer.surface(
+                            ToolGap(
+                                tool_name=tool_name,
+                                user_id=user_id,
+                                severity=SEVERITY_HIGH,
+                                blocking_capability_id=exc.capability,
+                                rationale=(
+                                    f"User attempted to create automation "
+                                    f"'{view.name}' for capability "
+                                    f"'{exc.capability}' which requires "
+                                    f"'{tool_name}'."
+                                ),
+                                proposed_signature=None,
+                                detection_point=DETECTION_AUTOMATION_CREATE,
+                            )
+                        )
+                except Exception:
+                    log.exception(
+                        "automation_create_tool_gap_surface_failed",
+                        capability=exc.capability,
+                    )
             msg = (
                 f"I can't run `{exc.capability}` until "
-                f"{tools_str} {verb} connected — "
-                f"set that up first and try again."
+                f"{tools_str} {verb} connected. I've filed a request — "
+                "see the agents channel to file a build."
             )
             await message.channel.send(msg)
             return

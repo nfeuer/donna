@@ -66,15 +66,97 @@ CREATE TABLE tool_request (
 
 ## What to Build
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+1. **Schema:** `tool_request` table with severity / detection_point /
+   snooze / dedup-on-open partial-unique index (alembic
+   `b2c3d4e5f6a8`).
+2. **Data layer:** `donna.cost.tool_gap.ToolGap`,
+   `donna.cost.tool_request_repository.ToolRequestRepository` with
+   upsert-on-open dedup (priority bump, severity promotion,
+   rationale refresh).
+3. **Surfacer:** `donna.cost.tool_gap_surfacer.ToolGapSurfacer` —
+   single sink for every detection point; routes high vs speculative;
+   audits via `donna.cost.tool_gap_audit.write_tool_gap_event`;
+   rate-limits Discord re-pings via `last_pinged_at`.
+4. **Detection sites:**
+   - Boot: `CapabilityToolRegistryCheck` — partition by
+     status/trigger_type; speculative for inactive/manual, fatal
+     raise preserved for active+scheduled.
+   - Pre-execution: `AutomationDispatcher.dispatch()` short-circuits
+     skill paths with `outcome='blocked_missing_tool'`.
+   - Automation creation: `discord_bot` `MissingToolError` catch
+     surfaces high gaps in addition to the existing reply.
+   - Skill draft pre-flight: `AutoDrafter._surface_speculative_tool_gaps`
+     after `_extract_draft_payload`.
+   - Defensive runtime: `SkillExecutor._run_tool_invocations` emits
+     a high gap before the normal `ToolNotFoundError` path runs.
+5. **Discord view:**
+   `donna.integrations.discord_views.ToolGapPingView` with
+   `[File request]` + `[Snooze 24h]` mirroring `BudgetEscalationView`'s
+   owner-ID + stale-click pattern.
+6. **Build path:** `EscalationGate.open_tool_build_escalation()`
+   creates the `escalation_request` row with
+   `originating_entity=('tool_request', <id>)` and immediately renders
+   `prompts/escalation/tool_build.md` (extends `skill_draft.md` with
+   §10.5 clauses + proposed signature). Validation hops the existing
+   slice-21 poller → `ManualValidationRouter._validate_tool` →
+   `donna.cost.tool_lint.lint_tool_branch` (six rule modules) +
+   subprocess import smoke. Pass marks `tool_request.status='completed'`.
+7. **Digest:** `MorningDigest._assemble_data` queries
+   `list_open_speculative(exclude_snoozed=True)`, surfaces under a
+   new `tool_gaps` template variable + degraded-mode section.
+8. **Config:** `tool_gap` block in `config/manual_escalation.yaml`
+   (`realtime_channel`, `snooze_seconds`, `reping_cooldown_seconds`,
+   `lint.{requires_rebuild_default,default_timeout_seconds,detect_secrets_enabled}`)
+   plus `tool_request_fulfillment` task type entry in
+   `config/task_types.yaml`.
+9. **Wiring:** cli_wiring constructs the repo + surfacer at boot,
+   bolts on the bot-aware ping poster after the bot is alive, and
+   threads the surfacer through every detection site.
 
 ## Implementation Notes
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+- **Brainstorm gap resolutions** (final):
+  - **Severity data shape:** `ToolGap` dataclass with `severity ∈ {high, speculative}`, `detection_point` literal, `blocking_capability_id` optional.
+  - **Digest integration:** Extend morning digest, no standalone post.
+  - **Secret scanner:** Curated regex (default) + `detect-secrets` shim opt-in.
+  - **Lint AST vs grep:** AST (one rule per file under `tool_lint/`).
+  - **`is_inert_at_import` location:** Helper in `donna.skills.tool_test_kit`; the lint check enforces presence of `tests/skills/tools/test_<name>.py` calling it.
+  - **Snooze:** Column on `tool_request` (`snoozed_until`), not separate table.
+  - **Dedup key:** Partial-unique `(user_id, tool_name) WHERE status='open'`. Re-emission upserts; once resolved, fresh row.
+  - **`proposed_signature`:** Loose Python-type-hint shape (name / params / returns / summary / errors_raised). Plumbed through `claude_code_spec.render(extra_context=…)` into `tool_build.md`.
+
+- **No tool lifecycle table.** Source code + manual merge + restart is the lifecycle. Dependent-skill regression deferred to slice 24.
+- **Re-ping cooldown** (4h default) prevents spam on dedup hits.
 
 ## Test Plan
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+Unit + component coverage shipping in this slice (91 tests in total):
+
+- `tests/cost/test_tool_request_repository.py` — dedup, snooze idempotency, status transitions, list filtering.
+- `tests/cost/test_tool_gap_surfacer.py` — high vs speculative routing, audit trail, ping rate-limit, poster failure isolation.
+- `tests/cost/tool_lint/test_anthropic_import.py` — AST positive/negative; allows under `src/donna/llm/`.
+- `tests/cost/tool_lint/test_import_io.py` — module-level I/O rejected; intra-function I/O allowed; pathlib pattern; `If` block descent.
+- `tests/cost/tool_lint/test_secrets.py` — provider patterns, vault naming, vault.read/environ pass-through.
+- `tests/cost/tool_lint/test_metadata.py` — required fields, type checks, `requires_rebuild=True` warning.
+- `tests/cost/tool_lint/test_allowlist.py` — allowlist diff, `unallowlisted=True` marker, missing-mention rejection.
+- `tests/cost/tool_lint/test_inert_test.py` — file presence + AST call check.
+- `tests/cost/tool_lint/test_pipeline.py` — clean / anthropic / secret / requires_rebuild warning / unallowlisted paths.
+- `tests/cost/test_manual_validation_router_tool.py` — pass / lint fail / unknown request / wrong entity type.
+- `tests/cost/test_runtime_tool_check.py` — missing tools, all registered, no requirements, lookup failure.
+- `tests/integrations/test_tool_gap_ping_view.py` — file/snooze callbacks, owner mismatch, stale click.
+- `tests/notifications/test_digest_tool_gaps.py` — speculative inclusion, high exclusion, snooze exclusion, resolved exclusion, expired snooze inclusion.
+- `tests/skills/test_tool_test_kit.py` — inert pass; import-time `open()` raises.
+- `tests/unit/test_capability_tool_registry_check.py` — extended for slice 22 partition logic.
+
+Run end-to-end on a real branch:
+
+```bash
+DONNA_HOST_REPO_PATH=/path/to/repo donna  # boots, files speculative gaps for any pending_review capability
+# trigger an automation requiring an unregistered tool → ping arrives in #agents
+# click [File request] → tool_build.md spec lands in workspace
+# build branch in worktree, commit, /donna submit <correlation_id> --branch <name>
+# poller validates, tool_request → completed
+```
 
 ## Open Questions
 

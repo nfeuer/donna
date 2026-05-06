@@ -841,6 +841,10 @@ class StartupContext:
     # claude_code button is not offered in that case.
     claude_code_poller: ClaudeCodePoller | None = None
     owner_discord_id: int | None = None
+    # Slice 22 — tool gap surfacing. None when no manual_escalation_config
+    # was loaded (boot fail-soft).
+    tool_request_repository: Any | None = None
+    tool_gap_surfacer: Any | None = None
     # Shared asyncio task list — every helper that spawns a background
     # loop appends to this. `_run_orchestrator` awaits it.
     tasks: list[asyncio.Task[Any]] = field(default_factory=list)
@@ -941,6 +945,20 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     escalation_repository = EscalationRepository(db.connection)
     dashboard_setting_resolver = DashboardSettingResolver(escalation_repository)
     budget_extension_repo = BudgetExtensionRepository(db.connection)
+
+    # Slice 22 — tool gap surfacing. Repository is always wired (table
+    # is non-optional). Surfacer is built without a ping_poster here;
+    # the bot-aware poster is bolted on later once the bot exists
+    # (see _wire_tool_gap_ping_poster below).
+    from donna.cost.tool_gap_surfacer import ToolGapSurfacer
+    from donna.cost.tool_request_repository import ToolRequestRepository
+
+    tool_request_repository = ToolRequestRepository(db.connection)
+    tool_gap_surfacer = ToolGapSurfacer(
+        repository=tool_request_repository,
+        conn=db.connection,
+        ping_poster=None,
+    )
 
     # Crash-recovery scan (§10.6 row 4): void extensions granted before a
     # previous crash that never ran their associated API call.
@@ -1137,6 +1155,8 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         escalation_delivery_loop=escalation_delivery_loop,
         claude_code_poller=claude_code_poller,
         owner_discord_id=owner_discord_id,
+        tool_request_repository=tool_request_repository,
+        tool_gap_surfacer=tool_gap_surfacer,
         port=port,
         user_id=user_id,
         discord_token=discord_token,
@@ -1265,12 +1285,41 @@ async def wire_claude_code_poller(
             config=ctx.skill_config,
         )
 
+    # Slice 22 — pass the tool_request repo + lint config so the router
+    # can validate tool_request_fulfillment branches via _validate_tool.
+    from donna.cost.tool_lint import ToolLintConfig as _SLC22ToolLintConfig
+
+    _tool_gap_cfg = (
+        ctx.manual_escalation_config.tool_gap
+        if ctx.manual_escalation_config is not None
+        else None
+    )
+    _tool_lint_config = _SLC22ToolLintConfig(
+        detect_secrets_enabled=(
+            _tool_gap_cfg.lint.detect_secrets_enabled
+            if _tool_gap_cfg is not None
+            else False
+        ),
+        requires_rebuild_default=(
+            _tool_gap_cfg.lint.requires_rebuild_default
+            if _tool_gap_cfg is not None
+            else False
+        ),
+        default_timeout_seconds=(
+            _tool_gap_cfg.lint.default_timeout_seconds
+            if _tool_gap_cfg is not None
+            else 5
+        ),
+    )
     router = ManualValidationRouter(
         conn=ctx.db.connection,
         host_repo=host_repo,
         executor_factory=_executor_factory,
         lifecycle=bundle.lifecycle_manager,
         fixture_pass_rate=ctx.skill_config.auto_draft_fixture_pass_rate,
+        tool_request_repo=ctx.tool_request_repository,
+        tool_lint_config=_tool_lint_config,
+        host_repo_path=host_repo.root,
     )
 
     feedback = _make_claude_code_feedback_callback(
@@ -1619,6 +1668,8 @@ async def wire_skill_system(
         check = CapabilityToolRegistryCheck(
             registry=_skill_tools_module.DEFAULT_TOOL_REGISTRY,
             connection=ctx.db.connection,
+            surfacer=ctx.tool_gap_surfacer,
+            boot_owner_user_id=getattr(ctx, "user_id", "boot") or "boot",
         )
         await check.validate_all()
 
@@ -1638,6 +1689,8 @@ async def wire_skill_system(
             notifier=_skill_system_notifier,
             config=ctx.skill_config,
             validation_executor_factory=None,  # default real ValidationExecutor
+            tool_gap_surfacer=ctx.tool_gap_surfacer,
+            tool_registry=_skill_tools_module.DEFAULT_TOOL_REGISTRY,
         )
 
         if bundle is not None:
@@ -1752,6 +1805,22 @@ async def wire_automation_subsystem(
 
     try:
         automation_repo = AutomationRepository(ctx.db.connection)
+        # Slice 22 — runtime tool-availability check for the dispatcher.
+        runtime_tool_check = None
+        if ctx.tool_gap_surfacer is not None:
+            try:
+                from donna.capabilities.runtime_tool_check import RuntimeToolCheck
+                from donna.capabilities.tool_requirements import (
+                    SkillToolRequirementsLookup,
+                )
+                from donna.skills import tools as _slc22_skill_tools
+
+                runtime_tool_check = RuntimeToolCheck(
+                    registry=_slc22_skill_tools.DEFAULT_TOOL_REGISTRY,
+                    lookup=SkillToolRequirementsLookup(ctx.db.connection),
+                )
+            except Exception:
+                log.exception("runtime_tool_check_wire_failed")
         automation_dispatcher = AutomationDispatcher(
             connection=ctx.db.connection,
             repository=automation_repo,
@@ -1762,6 +1831,8 @@ async def wire_automation_subsystem(
             cron=CronScheduleCalculator(),
             notifier=ctx.notification_service,
             config=ctx.skill_config,
+            runtime_tool_check=runtime_tool_check,
+            tool_gap_surfacer=ctx.tool_gap_surfacer,
         )
         automation_scheduler = AutomationScheduler(
             repository=automation_repo,
@@ -1896,6 +1967,58 @@ async def wire_discord(
             except Exception:
                 log.exception("automation_default_min_interval_load_failed")
         log.info("discord_intent_dispatcher_wired")
+
+    # Slice 22 — wire the tool-gap ping poster onto the surfacer once
+    # we have a bot + escalation_gate + owner_discord_id. The poster is
+    # a small closure that builds a ToolGapPingView and posts it to the
+    # configured channel. Without these dependencies the surfacer
+    # records rows + audits but doesn't ping (boot fail-soft).
+    if (
+        ctx.bot is not None
+        and ctx.escalation_gate is not None
+        and ctx.owner_discord_id is not None
+        and ctx.tool_gap_surfacer is not None
+        and ctx.tool_request_repository is not None
+        and ctx.manual_escalation_config is not None
+    ):
+        try:
+            from donna.integrations.discord_views import ToolGapPingView
+
+            _bot = ctx.bot
+            _gate = ctx.escalation_gate
+            _repo = ctx.tool_request_repository
+            _owner = ctx.owner_discord_id
+            _channel = ctx.manual_escalation_config.tool_gap.realtime_channel
+            _snooze = ctx.manual_escalation_config.tool_gap.snooze_seconds
+
+            async def _post_tool_gap_ping(row: Any) -> bool:
+                blocking = (
+                    f"capability `{row.blocking_capability_id}`"
+                    if row.blocking_capability_id
+                    else "skill draft"
+                )
+                text = (
+                    f":rotating_light: **Tool gap (high blocking):** "
+                    f"`{row.tool_name}` is required by {blocking}.\n"
+                    f"_{row.rationale}_\n"
+                    f"Detected at: `{row.detection_point}`"
+                )
+                view = ToolGapPingView(
+                    tool_request_id=row.id,
+                    tool_name=row.tool_name,
+                    owner_discord_id=_owner,
+                    gate=_gate,
+                    tool_request_repo=_repo,
+                    snooze_seconds=_snooze,
+                )
+                msg = await _bot.send_message_with_view(_channel, text, view)
+                return msg is not None
+
+            ctx.tool_gap_surfacer.set_ping_poster(_post_tool_gap_ping)
+            ctx.bot._tool_gap_surfacer = ctx.tool_gap_surfacer
+            log.info("tool_gap_ping_poster_wired", channel=_channel)
+        except Exception:
+            log.exception("tool_gap_ping_poster_wire_failed")
 
     bot = ctx.bot
     # Load Discord config and register slash commands if enabled.

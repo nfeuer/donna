@@ -46,6 +46,9 @@ Today: {{ current_date }} ({{ day_of_week }})
 Yesterday's spend: ${{ yesterday_cost }}
 Month-to-date: ${{ mtd_cost }} / ${{ monthly_budget }}
 
+### Tool Gaps (speculative — high-blocking already pinged)
+{{ tool_gaps }}
+
 ## Output
 
 Generate the digest as a single message suitable for Discord embed or email. Keep it under 2000 characters for Discord compatibility.

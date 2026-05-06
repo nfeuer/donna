@@ -53,6 +53,8 @@ def assemble_skill_system(
     notifier: Callable[[str], Awaitable[None]],
     config: SkillSystemConfig,
     validation_executor_factory: Callable[[], Any] | None = None,
+    tool_gap_surfacer: Any = None,
+    tool_registry: Any = None,
 ) -> SkillSystemBundle | None:
     """Wire all Phase 3 + 4 skill-system components. Returns None if disabled."""
     if not config.enabled:
@@ -89,6 +91,8 @@ def assemble_skill_system(
         lifecycle_manager=lifecycle,
         config=config,
         executor_factory=validation_executor_factory,
+        tool_registry=tool_registry,
+        tool_gap_surfacer=tool_gap_surfacer,
     )
     degradation = DegradationDetector(
         connection=connection,

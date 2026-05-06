@@ -2952,8 +2952,11 @@ directly from SQLite.
 > and `tool_request` tables, plus an `escalation_request_id` FK on
 > `invocation_log`. Tables land per-slice (`slice_17` creates
 > `escalation_request` + `dashboard_setting`; `slice_18` adds
-> `daily_budget_extension`; `slice_22` adds `tool_request`). This
-> section will be updated by each migration slice as the schemas land.
+> `daily_budget_extension`; `slice_22` adds `tool_request` —
+> migration `b2c3d4e5f6a8`, includes severity / detection_point /
+> snoozed_until / first_seen_at / last_seen_at / escalation_request_id
+> / last_pinged_at on top of the original §8 columns; partial-unique
+> dedup index on `(user_id, tool_name) WHERE status='open'`).
 
 -   **Primary:** SQLite on NVMe: `donna_tasks.db` (WAL mode, single
     database). It hosts task data, corrections, preferences,
@@ -3760,14 +3763,23 @@ are gated on the Stage 3 tool-use work (§8.3).
 
 **Tool gaps.** When a capability requires a tool that doesn't exist,
 Donna does not auto-draft it (security, dependencies, credentials,
-image rebuild). Gaps are surfaced to the user via the tool-gap
-protocol in
-[`docs/superpowers/specs/manual-escalation.md` §7](../docs/superpowers/specs/manual-escalation.md);
-high-blocking gaps ping in real time, speculative gaps file silently
-and surface in a digest. Tool *builds*, when the user decides to
-fulfill a request, follow the manual `claude_code` mode protocol with
-extra security lints (canonical spec §10.5). This work lands in
-`slice_22_tool_gap_surfacing.md`.
+image rebuild). Gaps are detected at five sites
+(`capability_tool_check` boot pass, scheduler pre-run,
+automation-creation, AutoDrafter pre-flight, and a defensive
+runtime trip-wire in `SkillExecutor`) and routed through
+`donna.cost.tool_gap_surfacer.ToolGapSurfacer` to a single
+`tool_request` table. High-blocking gaps post a real-time
+`[File request] [Snooze 24h]` Discord view; speculative gaps file
+silently and surface in the morning digest. Tool *builds*, when
+the user decides to fulfill a request, reuse slice-21's
+`claude_code` mode through `EscalationGate.open_tool_build_escalation`
+with the `prompts/escalation/tool_build.md` template plus the
+`donna.cost.tool_lint` AST/regex/import-smoke pipeline (canonical
+spec §10.5). Tools have **no DB lifecycle table**; activation is
+manual merge + orchestrator restart. Slice 22 ships the data path,
+detection sites, and lint pipeline; dependent-skill regression
+re-runs are deferred to slice 24. See
+[`docs/superpowers/specs/manual-escalation.md` §7 / §10.5](../docs/superpowers/specs/manual-escalation.md).
 
 **23.4 Lifecycle: sandbox → shadow → trusted → degraded**
 
