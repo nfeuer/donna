@@ -72,7 +72,7 @@ def register_submit_command(
 
     guild = discord.Object(id=bot._guild_id) if bot._guild_id else None
 
-    @bot.tree.command(  # type: ignore[arg-type]
+    @bot.tree.command(
         name="donna_submit",
         description="Submit a chat-mode escalation answer (short answers only).",
         guild=guild,

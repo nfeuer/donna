@@ -1737,13 +1737,16 @@ async def wire_discord(
         if discord_config.commands.enabled:
             register_commands(bot, ctx.db, ctx.user_id)
             # Slice 20 — register `/donna_submit` for the chat-mode
-            # fallback path. Skipped silently when the bot is unavailable.
-            if bot is not None:
+            # fallback path. Skipped silently when the bot is unavailable
+            # or when manual escalation hasn't been wired (single-user
+            # boot without a Discord integration leaves the config None).
+            manual_cfg = ctx.manual_escalation_config
+            if bot is not None and manual_cfg is not None:
                 register_submit_command(
                     bot=bot,
                     conn=ctx.db.connection,
-                    config=ctx.manual_escalation_config.prompt_delivery,
-                    iteration_limit=ctx.manual_escalation_config.triggers.manual_iteration_limit,
+                    config=manual_cfg.prompt_delivery,
+                    iteration_limit=manual_cfg.triggers.manual_iteration_limit,
                     owner_discord_id=ctx.owner_discord_id,
                 )
             log.info("discord_slash_commands_registered")
