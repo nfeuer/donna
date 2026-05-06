@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from donna.config import TaskTypeManualEscalation
+from donna.config import ManualEscalationTaskTypeConfig
 from donna.cost.claude_code_spec import (
     ClaudeCodeSpecBuilder,
     expand_workspace_path,
@@ -34,8 +34,8 @@ def builder(tmp_path: Path) -> ClaudeCodeSpecBuilder:
 
 
 @pytest.fixture
-def manual() -> TaskTypeManualEscalation:
-    return TaskTypeManualEscalation(
+def manual() -> ManualEscalationTaskTypeConfig:
+    return ManualEscalationTaskTypeConfig(
         mode="claude_code",
         target_paths={
             "skill": "skills/{name}/**",
@@ -48,7 +48,7 @@ def manual() -> TaskTypeManualEscalation:
 
 def test_render_writes_spec_to_workspace(
     builder: ClaudeCodeSpecBuilder,
-    manual: TaskTypeManualEscalation,
+    manual: ManualEscalationTaskTypeConfig,
     tmp_path: Path,
 ) -> None:
     rendered = builder.render(
@@ -69,7 +69,7 @@ def test_render_writes_spec_to_workspace(
 
 def test_render_substitutes_name_into_target_paths(
     builder: ClaudeCodeSpecBuilder,
-    manual: TaskTypeManualEscalation,
+    manual: ManualEscalationTaskTypeConfig,
 ) -> None:
     rendered = builder.render(
         correlation_id="01923456-aaaa-7bbb-cccc-ddddeeeeffff",
@@ -88,7 +88,7 @@ def test_render_substitutes_name_into_target_paths(
 
 def test_render_includes_worktree_command(
     builder: ClaudeCodeSpecBuilder,
-    manual: TaskTypeManualEscalation,
+    manual: ManualEscalationTaskTypeConfig,
 ) -> None:
     rendered = builder.render(
         correlation_id="01923456-aaaa-7bbb-cccc-ddddeeeeffff",
@@ -107,7 +107,7 @@ def test_render_includes_worktree_command(
 
 def test_render_emits_forbidden_patterns(
     builder: ClaudeCodeSpecBuilder,
-    manual: TaskTypeManualEscalation,
+    manual: ManualEscalationTaskTypeConfig,
 ) -> None:
     rendered = builder.render(
         correlation_id="01923456-aaaa-7bbb-cccc-ddddeeeeffff",
@@ -124,7 +124,7 @@ def test_render_emits_forbidden_patterns(
 
 def test_render_rejects_unsafe_capability_name(
     builder: ClaudeCodeSpecBuilder,
-    manual: TaskTypeManualEscalation,
+    manual: ManualEscalationTaskTypeConfig,
 ) -> None:
     with pytest.raises(ValueError, match="must match"):
         builder.render(

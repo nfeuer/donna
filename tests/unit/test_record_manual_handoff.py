@@ -21,9 +21,9 @@ from donna.config import (
     ManualEscalationConfig,
     ManualEscalationModeConfig,
     ManualEscalationModesConfig,
+    ManualEscalationTaskTypeConfig,
     ManualEscalationTriggersConfig,
     TaskTypeEntry,
-    TaskTypeManualEscalation,
     TaskTypesConfig,
 )
 from donna.cost.budget_extension import BudgetExtensionRepository
@@ -136,7 +136,7 @@ def task_types() -> TaskTypesConfig:
                 prompt_template="prompts/skill_auto_draft.md",
                 output_schema="schemas/skill_auto_draft_output.json",
                 tools=[],
-                manual_escalation=TaskTypeManualEscalation(
+                manual_escalation=ManualEscalationTaskTypeConfig(
                     mode="claude_code",
                     target_paths={
                         "skill": "skills/{name}/**",

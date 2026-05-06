@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 import structlog
 import uuid6
 
-from donna.config import ManualEscalationConfig
+from donna.config import ManualEscalationConfig, TaskTypesConfig
 from donna.cost.budget_extension import BudgetExtensionRepository, DailyBudgetExtensionRow
 from donna.cost.claude_code_spec import ClaudeCodeSpecBuilder, RenderedSpec
 from donna.cost.dashboard_setting import DashboardSettingResolver
@@ -41,6 +41,7 @@ from donna.cost.escalation_audit import (
     EVENT_RESOLVED,
     write_escalation_event,
 )
+from donna.cost.escalation_chat_prompt import ChatPromptBuilder
 from donna.cost.escalation_repository import (
     EscalationRepository,
     EscalationRequestRow,
@@ -102,8 +103,9 @@ class EscalationGate:
         resolver: DashboardSettingResolver,
         deliver: DeliveryCallback,
         extension_repo: BudgetExtensionRepository,
+        task_types_config: TaskTypesConfig | None = None,
+        chat_prompt_builder: ChatPromptBuilder | None = None,
         spec_builder: ClaudeCodeSpecBuilder | None = None,
-        task_types_config: Any = None,
         host_repo: Any = None,
     ) -> None:
         self._repo = repository
@@ -113,11 +115,16 @@ class EscalationGate:
         self._resolver = resolver
         self._deliver = deliver
         self._extension_repo = extension_repo
-        # Slice 21 wiring — optional so existing tests that build the
-        # gate with the slice 17 signature keep working. cli_wiring
-        # passes all three when claude_code mode is enabled.
-        self._spec_builder = spec_builder
+        # Slice 20: per-task-type manual mode resolution + chat prompt
+        # rendering. Both are optional so existing test fixtures + boots
+        # without a Discord bot continue to assemble a gate that only
+        # offers Pause / Cancel.
         self._task_types_config = task_types_config
+        self._chat_prompt_builder = chat_prompt_builder
+        # Slice 21 wiring — claude_code spec rendering + host repo for
+        # base_sha capture. Optional; absence disables the claude_code
+        # button without crashing boot.
+        self._spec_builder = spec_builder
         self._host_repo = host_repo
 
     # ------------------------------------------------------------------
@@ -135,6 +142,7 @@ class EscalationGate:
         originating_entity: tuple[str, str] | None = None,
         target_paths: dict[str, str] | None = None,
         base_sha: str | None = None,
+        original_prompt: str | None = None,
     ) -> GateOutcome:
         """Decide whether to escalate; if so, post the view and await.
 
@@ -148,6 +156,20 @@ class EscalationGate:
           * ``fired=True, mode='api_extended'`` — extension was granted;
             caller proceeds with the API call. ``extension_amount_usd``
             is set for token-limit enforcement.
+          * ``fired=True, mode='chat'`` — slice 20 manual handoff. Caller
+            should treat the task as parked; the chat-mode ingestion
+            poller transitions it to ``done`` once the user submits an
+            answer through the dashboard or ``/donna submit``.
+          * ``fired=True, mode='claude_code'`` — slice 21 manual handoff.
+            Caller treats the task as parked; the ClaudeCodePoller
+            validates the user's branch and updates lifecycle state on
+            success.
+
+        ``original_prompt`` is the fully-rendered prompt the caller would
+        otherwise have sent to the API. Slice 20 uses it (with the chat
+        prompt builder) to produce the prompt body the user pastes into
+        Claude. Without it, chat mode cannot be offered for this call —
+        the gate degrades to Pause / Cancel only.
 
         ``originating_entity`` (slice 21) is the FK pair the
         claude_code poller uses to render ``{name}``-substituted
@@ -232,6 +254,21 @@ class EscalationGate:
         offered_modes: list[str] = []
         if await self._should_offer_extension(estimate_usd, user_id):
             offered_modes.append("api_extended")
+        # Slice 20 — per-task-type chat mode. Only offer when:
+        #   1. The master kill-switch is on (already checked above).
+        #   2. Modes.chat is enabled (YAML, override-able via dashboard).
+        #   3. The task type declares ``manual_escalation: {mode: chat}``.
+        #   4. The caller passed an ``original_prompt`` for us to render.
+        chat_eligible = await self._chat_mode_eligible(
+            task_type=task_type, original_prompt=original_prompt
+        )
+        if chat_eligible:
+            offered_modes.append("chat")
+        # Slice 21 — claude_code mode. Only offer when:
+        #   1. The master kill-switch is on (already checked above).
+        #   2. Modes.claude_code is enabled (YAML, dashboard).
+        #   3. The task type declares ``manual_escalation: {mode: claude_code}``.
+        #   4. The host repo + spec builder are configured (cli_wiring).
         if await self._should_offer_claude_code(task_type):
             offered_modes.append("claude_code")
             # If the gate caller didn't pre-render target_paths, do it
@@ -266,6 +303,36 @@ class EscalationGate:
             target_paths=target_paths,
             base_sha=base_sha,
         )
+
+        # Render the chat-mode prompt + summary BEFORE the delivery
+        # callback runs so the Discord notification can attach the .md
+        # alongside the summary text. Best-effort: failures here are
+        # logged inside the builder but do not abort the escalation —
+        # the row still exists, the buttons still render, and the user
+        # can fall back to Pause / Cancel.
+        if (
+            chat_eligible
+            and self._chat_prompt_builder is not None
+            and original_prompt is not None
+        ):
+            try:
+                await self._chat_prompt_builder.build_and_persist(
+                    conn=self._repo._conn,
+                    row=row,
+                    original_prompt=original_prompt,
+                )
+                # Re-read the row so downstream consumers (delivery
+                # callback) see the freshly-persisted summary + prompt
+                # path without an extra round trip.
+                refreshed = await self._repo.get(row.id)
+                if refreshed is not None:
+                    row = refreshed
+            except Exception:
+                logger.exception(
+                    "escalation_chat_prompt_build_failed",
+                    correlation_id=correlation_id,
+                    escalation_request_id=row.id,
+                )
 
         await write_escalation_event(
             self._repo._conn,
@@ -520,7 +587,7 @@ class EscalationGate:
         entry = self._task_types_config.task_types.get(task_type)
         if entry is None or entry.manual_escalation is None:
             return None
-        return dict(entry.manual_escalation.target_paths)
+        return dict(entry.manual_escalation.target_paths or {})
 
     async def record_manual_handoff(
         self,
@@ -629,6 +696,38 @@ class EscalationGate:
         )
         EscalationGate.signal_resolution(correlation_id)
         return rendered
+
+    async def _chat_mode_eligible(
+        self,
+        *,
+        task_type: str,
+        original_prompt: str | None,
+    ) -> bool:
+        """Return True iff the chat-mode button should render this call.
+
+        The four-pronged check (spec §5.2 / §6.1 / §6.2):
+          1. ``original_prompt`` was supplied — chat mode is meaningless
+             without something to render into the prompt body.
+          2. The chat prompt builder is wired (slice 20 dependency
+             injection — tests + minimal boots can omit it).
+          3. The task type's :class:`TaskTypeEntry` declares
+             ``manual_escalation.mode='chat'``.
+          4. The runtime ``modes.chat.enabled`` flag is on (resolved
+             through the dashboard override layer).
+        """
+        if original_prompt is None or self._chat_prompt_builder is None:
+            return False
+        if self._task_types_config is None:
+            return False
+        entry = self._task_types_config.task_types.get(task_type)
+        if entry is None or entry.manual_escalation is None:
+            return False
+        if entry.manual_escalation.mode != "chat":
+            return False
+        return bool(await self._resolver.get(
+            "manual_escalation.modes.chat.enabled",
+            self._config.modes.chat.enabled,
+        ))
 
     async def _should_offer_extension(
         self, estimate_usd: float, user_id: str

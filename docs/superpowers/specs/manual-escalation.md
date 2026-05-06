@@ -191,12 +191,27 @@ paste-into-thread.
    ingestion poller (§5.3 pattern) picks up.
 
 **User → Donna (Discord fallback path):**
-- `/donna submit <correlation_id>` slash command with the answer as
-  a single argument (Discord's slash command arg limit is ~6000
-  chars, plenty for short answers). Useful for mobile when desktop
-  isn't available.
-- Long-form answers must use the dashboard. Slash command rejects
-  payloads near the limit with "use dashboard for long answers".
+- `/donna_submit <correlation_id> <answer>` slash command (the
+  on-the-wire name has no space). Discord's per-option limit is
+  ~6000 chars, but the server enforces a tighter
+  ``prompt_delivery.slash_command_max_chars`` (default 3000) so
+  there is headroom for metadata and so the user gets a clear "use
+  dashboard for long answers" instead of Discord's generic truncation.
+  Useful for mobile when desktop isn't available.
+- Min length is ``prompt_delivery.chat_min_answer_chars`` (default
+  50), matching the JSON schema's ``minLength``.
+- The slash command goes through the same shared
+  :func:`donna.cost.escalation_submit_service.apply_submission`
+  helper as the dashboard endpoint so validation, optimistic locking,
+  and audit log writes are identical.
+
+**Result ingestion (slice 20):** `donna.skills.chat_escalation_ingestion_poller.ChatEscalationIngestionPoller`
+polls every 30 seconds for ``mode='chat' AND status='submitted' AND task_id IS NOT NULL``
+rows. For each row it appends ``[escalation:<correlation_id>] <answer>``
+to the originating task's notes, transitions the task to ``done``,
+flips the escalation row to ``status='validated'``, and writes an
+``escalation_validated`` audit row. Failures leave the row in
+``submitted`` so the next tick retries.
 
 **Failure handling:** see §10.
 
@@ -386,7 +401,19 @@ prompt_delivery:
   attach_full_prompt_to_discord: true   # Discord MD attachment alongside summary
   discord_summary_max_chars: 1500       # safety margin under 2000 char message limit
   attachment_size_limit_mb: 25          # Discord free-tier ceiling; MD never approaches this
+  workspace_subdir: escalations         # slice 20: subdir under ${DONNA_WORKSPACE_PATH}
+  slash_command_max_chars: 3000         # slice 20: /donna submit hard cap (§10.3)
+  chat_min_answer_chars: 50             # mirrors schemas/escalation_submission.json
 ```
+
+The slice 20 build adds three keys to the original block. ``workspace_subdir``
+was implicit in §5.2 (`${DONNA_WORKSPACE_PATH}/escalations/`); it is exposed so
+future deployments can change the workspace layout without code edits.
+``slash_command_max_chars`` is the server-side ceiling for the
+``/donna submit`` slash command — anything over that redirects to the
+dashboard. ``chat_min_answer_chars`` mirrors the JSON schema's ``minLength``
+so the dashboard, the slash command, and the schema layer all enforce the
+same minimum.
 
 The full prompt **always** lives in `escalation_request.prompt_body`
 and on disk under `${DONNA_WORKSPACE_PATH}/escalations/`. The
@@ -633,8 +660,10 @@ original `CREATE TABLE` listing.
 | `config/dashboard.yaml` | **Modify.** Add `escalation_card` section listing the runtime keys this dashboard exposes. |
 | `prompts/escalation/skill_draft.md` | **New.** Jinja template for `claude_code` mode skill builds. |
 | `prompts/escalation/tool_build.md` | **New.** Jinja template for tool builds (extra security clauses). |
-| `prompts/escalation/chat_question.md` | **New.** Jinja for `chat` mode. |
+| `prompts/escalation/chat_question.md` | **New.** Jinja for `chat` mode (slice 20). |
+| `prompts/escalation/summarize.md` | **New.** Local-Ollama summarizer prompt invoked from `ChatPromptBuilder` (slice 20). |
 | `schemas/escalation_submission.json` | **New.** For `/donna submit` endpoint payload. |
+| `schemas/escalation_summary_output.json` | **New.** Strict shape for the local-Ollama summarizer output (slice 20). Validated in `ChatPromptBuilder._generate_summary`; malformed responses fall through to the deterministic fallback per §10.2 row 3. |
 
 ---
 
@@ -666,8 +695,9 @@ Organized by failure category.
 
 | Failure | Mitigation |
 |---|---|
-| User submits empty / malformed answer in chat mode | `/donna submit` validates non-empty + min length (50 chars default). Discord button click without text reply prompts "paste your answer first". |
-| User submits but never builds the branch in claude_code mode | Poller checks `branch_exists(branch_name)` against the read-only host-repo mount on every tick. If absent: posts a one-shot "branch not found, did you push?" feedback and leaves the row in `submitted` so a later push triggers re-ingestion (no iteration burn). The slice 21 implementation runs this check immediately on each poller tick rather than after a 5-min delay — branch resolution is cheap (`git rev-parse`) and the user benefits from the fastest possible feedback. Pushed and local-only branches are equivalent through the read-only mount, so a separate `/donna submit-local` command was not needed; the single `/donna submit` covers both. |
+| User submits empty / malformed answer in chat mode | Both the dashboard endpoint and the `/donna_submit` slash command run through `donna.cost.escalation_submit_service.apply_submission`, which enforces the JSON schema (``answer.minLength=50``). The slash command also enforces an upper bound (``prompt_delivery.slash_command_max_chars``, default 3000) and replies "use dashboard for long answers" when exceeded. Discord button click without text reply prompts "paste your answer first". |
+| User submits but never builds the branch in claude_code mode | Poller checks `branch_exists(branch_name)` against the read-only host-repo mount on every tick. If absent: posts a one-shot "branch not found, did you push?" feedback and leaves the row in `submitted` so a later push triggers re-ingestion (no iteration burn). The slice 21 implementation runs this check immediately on each poller tick rather than after a 5-min delay — branch resolution is cheap (`git rev-parse`) and the user benefits from the fastest possible feedback. Pushed and local-only branches are equivalent through the read-only mount, so a separate `/donna submit-local` command was not needed; the dashboard's "Mark as built" + the `/donna_submit_built` slash command both cover the case. |
+
 | User pushes a branch with wrong files (touched files outside spec scope) | Diff-validator rejects with specific list of out-of-scope files. User can edit and resubmit; iteration count increments. |
 | User force-pushes branch between submission and validation | Resolution is locked to the SHA at submission time. New SHA = new submission required. |
 | Branch contains uncommitted/staged changes mixed with the work | Diff is computed against `base..tip`, ignoring working tree. User's local mess is irrelevant. |

@@ -711,11 +711,14 @@ class BudgetEscalationView(discord.ui.View):
                     mode="api_extended",
                 )
             )
-        # Slice 21: render mode-specific manual buttons. claude_code
-        # rendering routes through the gate's record_manual_handoff()
-        # so the spec file is written + the row is resolved as a
-        # single transaction. Slice 20's chat button reuses the
-        # generic ``record_user_resolution`` path.
+        # Slice 21: render mode-specific manual buttons.
+        # ``claude_code`` rendering routes through the gate's
+        # ``record_manual_handoff()`` so the spec file is written +
+        # the row is resolved as a single transaction. ``chat`` (slice
+        # 20) reuses the generic ``record_user_resolution`` path. The
+        # gate's per-task-type config typically narrows offered_modes
+        # to at most one of these per row, but we render whichever
+        # tokens are present so a future config could surface both.
         if "claude_code" in offered_modes:
             self.add_item(
                 _ClaudeCodeHandoffButton(label="Claude Code")
@@ -731,9 +734,11 @@ class BudgetEscalationView(discord.ui.View):
         # Backwards-compatible "Manual handoff" path: only render when
         # the gate sent the legacy ``manual`` token alone (no
         # mode-specific token). Existing slice 17/18 deployments fall
-        # here.
+        # here. Slice 20's :meth:`_pick_manual_mode` reduces multi-mode
+        # views to a single label for that legacy path.
+        legacy_manual_mode = self._pick_manual_mode(offered_modes)
         if (
-            "manual" in offered_modes
+            legacy_manual_mode == "manual"
             and "claude_code" not in offered_modes
             and "chat" not in offered_modes
         ):
@@ -741,7 +746,7 @@ class BudgetEscalationView(discord.ui.View):
                 _ModeButton(
                     label="Manual handoff",
                     style=ButtonStyle.blurple,
-                    mode="manual",
+                    mode=legacy_manual_mode,
                 )
             )
         if "pause" in offered_modes:
@@ -776,6 +781,23 @@ class BudgetEscalationView(discord.ui.View):
     @property
     def task_id(self) -> str | None:
         return self._task_id
+
+    @staticmethod
+    def _pick_manual_mode(offered_modes: list[str]) -> str | None:
+        """Resolve which specific manual mode the handoff button should
+        carry. ``chat`` (slice 20) is preferred over ``claude_code``
+        (slice 21) when both happen to be present, but in practice the
+        gate's per-task-type routing only ever puts one in
+        ``offered_modes``. Falls back to the legacy ``"manual"`` literal
+        only when neither is present (older callers / fixtures).
+        """
+        if "chat" in offered_modes:
+            return "chat"
+        if "claude_code" in offered_modes:
+            return "claude_code"
+        if "manual" in offered_modes:
+            return "manual"
+        return None
 
 
 class _ModeButton(discord.ui.Button[discord.ui.View]):

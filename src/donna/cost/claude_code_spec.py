@@ -26,7 +26,7 @@ from typing import Any
 import structlog
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from donna.config import TaskTypeManualEscalation
+from donna.config import ManualEscalationTaskTypeConfig
 
 logger = structlog.get_logger()
 
@@ -95,7 +95,7 @@ class ClaudeCodeSpecBuilder:
         correlation_id: str,
         task_type: str,
         capability_name: str,
-        manual: TaskTypeManualEscalation,
+        manual: ManualEscalationTaskTypeConfig,
         base_sha: str,
         task_summary: str,
         acceptance_criteria: list[str],
@@ -129,7 +129,7 @@ class ClaudeCodeSpecBuilder:
 
         target_paths = {
             label: glob.format(name=capability_name)
-            for label, glob in manual.target_paths.items()
+            for label, glob in (manual.target_paths or {}).items()
         }
         reference_module_path = (
             manual.reference_module.format(name=capability_name)

@@ -283,23 +283,21 @@ class ModelRouter:
                 originating_entity=originating_entity,
                 target_paths=target_paths,
                 base_sha=base_sha,
+                # Slice 20 — pass the rendered prompt so the gate can
+                # offer chat mode and persist the prompt body for the
+                # dashboard / Discord attachment.
+                original_prompt=prompt,
             )
-            if outcome.fired and outcome.mode in ("pause", "cancel"):
-                assert outcome.escalation_request_id is not None
-                assert outcome.correlation_id is not None
-                raise EscalationDecisionError(
-                    mode=outcome.mode,
-                    escalation_request_id=outcome.escalation_request_id,
-                    correlation_id=outcome.correlation_id,
-                )
-            # Slice 21: ``claude_code`` (and slice 20's ``chat``) mean the
-            # user is doing the work themselves. The autonomous API call
-            # MUST NOT happen — falling through here would charge the
-            # budget for a request that's about to be replaced by a
-            # manual artifact. Raise so the caller can defer the task
-            # until the poller (claude_code) or chat-submit path lands
-            # the result.
-            if outcome.fired and outcome.mode in ("claude_code", "chat"):
+            # ``pause``, ``cancel``, ``chat`` (slice 20), and ``claude_code``
+            # (slice 21) all mean "no autonomous API call". The caller
+            # catches the exception and parks the task. For chat /
+            # claude_code, the relevant submit-poller path will land the
+            # result once the user submits manually — falling through
+            # here would charge the budget for a request the user is
+            # replacing.
+            if outcome.fired and outcome.mode in (
+                "pause", "cancel", "chat", "claude_code",
+            ):
                 assert outcome.escalation_request_id is not None
                 assert outcome.correlation_id is not None
                 raise EscalationDecisionError(

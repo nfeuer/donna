@@ -10,8 +10,7 @@ canonical place to view and submit escalations. Slice 19 ships:
 - ``POST /admin/escalations/{correlation_id}/submit`` — mode-agnostic
   submit endpoint; accepts a payload validated against
   ``schemas/escalation_submission.json`` (discriminated by ``mode``).
-  Mode-specific UI behavior (chat textarea, claude_code "Mark as built"
-  modal) attaches in slices 20/21.
+  Slice 20 wires the chat-mode entry path; slice 21 wires claude_code.
 
 Slice 21 adds:
 - ``POST /admin/escalations/{correlation_id}/mark-merged`` — pure
@@ -22,7 +21,10 @@ Slice 21 adds:
 
 The submit endpoint uses an optimistic lock on ``status`` so racing
 submissions (re-submit after validation failure, two browser tabs) get
-a 409 instead of silently overwriting each other.
+a 409 instead of silently overwriting each other. Slice 20 factored the
+heavy lifting into :mod:`donna.cost.escalation_submit_service` so the
+``/donna submit`` Discord slash command can reuse it without copying
+validation or audit logic.
 """
 
 from __future__ import annotations
@@ -35,14 +37,9 @@ from fastapi import HTTPException, Query, Request
 
 from donna.api.auth import admin_router
 from donna.cost.escalation_audit import ESCALATION_TASK_TYPE
-from donna.cost.escalation_submit import (
-    ConcurrentSubmissionError,
-    IterationCapReachedError,
-    ModeMismatchError,
-    NotAwaitingSubmissionError,
-    NotFoundError,
-    SchemaValidationError,
-    submit_escalation_core,
+from donna.cost.escalation_submit_service import (
+    SubmissionError,
+    apply_submission,
 )
 
 router = admin_router()
@@ -265,11 +262,11 @@ async def submit_escalation(
 ) -> dict[str, Any]:
     """Accept the user's submission for a manual-handoff escalation.
 
-    Thin HTTP wrapper around
-    :func:`donna.cost.escalation_submit.submit_escalation_core`. The
-    core function is shared with the ``/donna submit`` Discord slash
-    command (slice 21) so both surfaces enforce identical schema +
-    iteration-cap + concurrent-write guards.
+    Delegates to :func:`donna.cost.escalation_submit_service.apply_submission`
+    so the ``/donna submit`` Discord slash command (slice 20) and the
+    claude_code dashboard "Mark as built" modal (slice 21) share the
+    exact validation, optimistic lock, and audit-log path. Mode-specific
+    affordances all POST the same discriminated-union payload here.
     """
     try:
         payload = await request.json()
@@ -280,41 +277,17 @@ async def submit_escalation(
 
     conn = request.app.state.db.connection
     try:
-        result = await submit_escalation_core(conn, correlation_id, payload)
-    except SchemaValidationError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail={"error": "schema_validation_failed", "message": exc.message},
-        ) from exc
-    except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail={"error": "not_found"}) from exc
-    except NotAwaitingSubmissionError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={"error": "not_awaiting_submission", "status": exc.status},
-        ) from exc
-    except ModeMismatchError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "mode_mismatch",
-                "expected_mode": exc.expected,
-                "submitted_mode": exc.submitted,
-            },
-        ) from exc
-    except IterationCapReachedError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "iteration_cap_reached",
-                "iteration": exc.iteration,
-                "limit": exc.limit,
-            },
-        ) from exc
-    except ConcurrentSubmissionError as exc:
-        raise HTTPException(
-            status_code=409, detail={"error": "concurrent_submission"}
-        ) from exc
+        result = await apply_submission(
+            conn=conn,
+            correlation_id=correlation_id,
+            payload=payload,
+        )
+    except SubmissionError as exc:
+        detail: dict[str, Any] = {"error": exc.code}
+        if exc.message:
+            detail["message"] = exc.message
+        detail.update(exc.extras)
+        raise HTTPException(status_code=exc.status_code, detail=detail) from exc
 
     return {
         "correlation_id": result.correlation_id,

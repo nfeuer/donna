@@ -119,6 +119,21 @@ task_types:
     prompt_template: prompts/chat/chat_respond.md
     output_schema: schemas/chat_respond_output.json
     tools: []
+    # Slice 20 — when this task is over-budget, the manual handoff is a
+    # text-only round trip via dashboard. Spec §5.2 / §6.2.
+    manual_escalation:
+      mode: chat
+
+  # Slice 20 — Ollama-rendered summary for the chat-mode Discord
+  # notification. Output schema is intentionally tight so a malformed
+  # local-LLM response surfaces as an exception that the prompt builder
+  # catches and replaces with a deterministic fallback (§10.2 row 3).
+  escalation_summary:
+    description: "Summarize an escalation prompt for the Discord notification"
+    model: local_parser
+    prompt_template: prompts/escalation/summarize.md
+    output_schema: schemas/escalation_summary_output.json
+    tools: []
 
   triage_failure:
     description: "Decide how to handle a skill runtime failure"
