@@ -57,6 +57,18 @@ class EscalationRequestRow:
     delivery_status: str | None
     delivery_attempts: int
     last_delivery_attempt_at: datetime | None
+    # Slice 21 additions — see docs/superpowers/specs/manual-escalation.md §5.3
+    mode: str | None = None
+    branch_name: str | None = None
+    target_paths: dict[str, str] | None = None
+    originating_entity_type: str | None = None
+    originating_entity_id: str | None = None
+    base_sha: str | None = None
+    human_review: bool = False
+    merged_at: datetime | None = None
+    submitted_payload: dict[str, Any] | None = None
+    """Decoded ``escalation_request.result`` JSON. Slice 21 reads
+    ``sha`` from it for force-push protection (§10.3 row 4)."""
 
 
 class EscalationRepository:
@@ -80,19 +92,41 @@ class EscalationRepository:
         daily_remaining_usd: float,
         offered_modes: Sequence[str],
         priority: int,
+        originating_entity: tuple[str, str] | None = None,
+        target_paths: dict[str, str] | None = None,
+        base_sha: str | None = None,
         now: datetime | None = None,
     ) -> EscalationRequestRow:
-        """Insert a new escalation_request row in ``status='open'``."""
+        """Insert a new escalation_request row in ``status='open'``.
+
+        ``originating_entity`` (slice 21) carries the FK pair pointing at
+        the row that triggered the escalation — e.g.
+        ``('skill_candidate_report', candidate.id)`` for skill_auto_draft.
+        Required so the diff validator can render ``{name}``-substituted
+        target_paths globs without inferring identity from ``task_id``
+        (which is NULL for these task types).
+
+        ``target_paths`` snapshots the rendered scope at gate-fire time
+        so subsequent config changes don't retroactively widen scope.
+
+        ``base_sha`` pins the worktree against a specific main SHA per
+        spec §5.3 (worktree drift mitigation).
+        """
         ts = (now or datetime.now(tz=UTC)).isoformat()
+        ent_type = originating_entity[0] if originating_entity else None
+        ent_id = originating_entity[1] if originating_entity else None
+        target_paths_json = json.dumps(target_paths) if target_paths else None
         cursor = await self._conn.execute(
             """
             INSERT INTO escalation_request (
                 user_id, correlation_id, task_id, task_type,
                 estimate_usd, daily_remaining_usd, offered_modes,
                 iteration, status, created_at, priority,
-                delivery_status, delivery_attempts
+                delivery_status, delivery_attempts,
+                originating_entity_type, originating_entity_id,
+                target_paths, base_sha
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -106,6 +140,10 @@ class EscalationRepository:
                 ts,
                 priority,
                 DELIVERY_PENDING,
+                ent_type,
+                ent_id,
+                target_paths_json,
+                base_sha,
             ),
         )
         await self._conn.commit()
@@ -237,6 +275,193 @@ class EscalationRepository:
             return json.loads(raw)
         return raw
 
+    # ------------------------------------------------------------------
+    # Slice 21 — claude_code poller helpers
+    # ------------------------------------------------------------------
+
+    async def list_submitted_claude_code(self) -> list[EscalationRequestRow]:
+        """Rows the claude_code poller should pick up.
+
+        Selects ``mode='claude_code' AND status='submitted'`` — the
+        narrow contract the slice 21 poller operates on. Slice 19's
+        submit endpoint is the only writer that produces this state.
+        """
+        cursor = await self._conn.execute(
+            """
+            SELECT * FROM escalation_request
+             WHERE mode = ? AND status = ?
+             ORDER BY submitted_at ASC
+            """,
+            ("claude_code", "submitted"),
+        )
+        rows = await cursor.fetchall()
+        cols = _columns(cursor)
+        return [_row_to_request(cols, r) for r in rows]
+
+    async def list_failed_at_iteration_cap(
+        self, *, manual_iteration_limit: int
+    ) -> list[EscalationRequestRow]:
+        """Rows that hit the iteration cap and need human review routing."""
+        cursor = await self._conn.execute(
+            """
+            SELECT * FROM escalation_request
+             WHERE mode = ?
+               AND status = ?
+               AND iteration >= ?
+               AND human_review = 0
+            """,
+            ("claude_code", "failed", manual_iteration_limit),
+        )
+        rows = await cursor.fetchall()
+        cols = _columns(cursor)
+        return [_row_to_request(cols, r) for r in rows]
+
+    async def find_open_for_originating_entity(
+        self,
+        *,
+        entity_type: str,
+        entity_id: str,
+    ) -> EscalationRequestRow | None:
+        """Return the open/in-flight claude_code row for the given entity.
+
+        Used by the gate to de-dup escalations: if a previous
+        ``claude_code`` run for the same skill/candidate is still
+        in-flight (open / resolved / submitted / failed-but-under-cap),
+        the gate re-delivers the existing notification instead of
+        opening a parallel branch race.
+
+        Returns the most-recent matching row if any.
+        """
+        cursor = await self._conn.execute(
+            """
+            SELECT * FROM escalation_request
+             WHERE originating_entity_type = ?
+               AND originating_entity_id = ?
+               AND status IN ('open', 'resolved', 'submitted', 'failed')
+             ORDER BY created_at DESC
+             LIMIT 1
+            """,
+            (entity_type, entity_id),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return _row_to_request(_columns(cursor), row)
+
+    async def mark_validated(
+        self,
+        request_id: int,
+        *,
+        validation_result: dict[str, Any],
+        now: datetime | None = None,
+    ) -> bool:
+        """Transition ``submitted → validated`` and record the result blob."""
+        ts = (now or datetime.now(tz=UTC)).isoformat()
+        cursor = await self._conn.execute(
+            """
+            UPDATE escalation_request
+               SET status = 'validated',
+                   validated_at = ?,
+                   validation_result = ?
+             WHERE id = ?
+               AND status = 'submitted'
+            """,
+            (ts, json.dumps(validation_result), request_id),
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
+    async def mark_failed(
+        self,
+        request_id: int,
+        *,
+        validation_result: dict[str, Any],
+        human_review: bool = False,
+        now: datetime | None = None,
+    ) -> bool:
+        """Transition ``submitted → failed`` and record the result blob.
+
+        ``human_review=True`` is set by the iteration_cap_sweep when
+        re-iteration is no longer available.
+        """
+        ts = (now or datetime.now(tz=UTC)).isoformat()
+        cursor = await self._conn.execute(
+            """
+            UPDATE escalation_request
+               SET status = 'failed',
+                   validation_result = ?,
+                   human_review = CASE WHEN ? THEN 1 ELSE human_review END,
+                   resolved_at = COALESCE(resolved_at, ?)
+             WHERE id = ?
+               AND status = 'submitted'
+            """,
+            (
+                json.dumps(validation_result),
+                1 if human_review else 0,
+                ts,
+                request_id,
+            ),
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
+    async def mark_iteration_cap_reached(
+        self,
+        request_id: int,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        """Cancel a row that hit the iteration cap, flag for human review.
+
+        Spec §10.4 row 2: at iteration cap, auto-cancel and route to a
+        human review surface. We cancel the row (status='cancelled') and
+        set human_review=1 so the dashboard list view can highlight it.
+        """
+        ts = (now or datetime.now(tz=UTC)).isoformat()
+        cursor = await self._conn.execute(
+            """
+            UPDATE escalation_request
+               SET status = 'cancelled',
+                   human_review = 1,
+                   resolved_at = COALESCE(resolved_at, ?)
+             WHERE id = ?
+               AND mode = 'claude_code'
+               AND status = 'failed'
+               AND human_review = 0
+            """,
+            (ts, request_id),
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
+    async def set_manual_handoff(
+        self,
+        request_id: int,
+        *,
+        mode: str,
+        prompt_path: str,
+        prompt_body: str,
+    ) -> bool:
+        """Persist the rendered spec + selected mode on a row.
+
+        Called by ``EscalationGate.record_manual_handoff`` BEFORE the
+        resolution event fires, so the dashboard can render the spec
+        the moment the user follows the Discord link.
+        """
+        cursor = await self._conn.execute(
+            """
+            UPDATE escalation_request
+               SET mode = ?,
+                   prompt_path = ?,
+                   prompt_body = ?
+             WHERE id = ?
+               AND status = ?
+            """,
+            (mode, prompt_path, prompt_body, request_id, STATUS_OPEN),
+        )
+        await self._conn.commit()
+        return cursor.rowcount > 0
+
     async def upsert_dashboard_setting(
         self,
         key: str,
@@ -282,6 +507,31 @@ def _row_to_request(
         offered_modes = list(json.loads(offered_modes_raw))
     else:
         offered_modes = list(offered_modes_raw or [])
+
+    target_paths_raw = record.get("target_paths")
+    target_paths: dict[str, str] | None
+    if isinstance(target_paths_raw, str) and target_paths_raw:
+        try:
+            target_paths = json.loads(target_paths_raw)
+        except (TypeError, ValueError):
+            target_paths = None
+    elif isinstance(target_paths_raw, dict):
+        target_paths = dict(target_paths_raw)
+    else:
+        target_paths = None
+
+    submitted_payload_raw = record.get("result")
+    submitted_payload: dict[str, Any] | None
+    if isinstance(submitted_payload_raw, str) and submitted_payload_raw:
+        try:
+            submitted_payload = json.loads(submitted_payload_raw)
+        except (TypeError, ValueError):
+            submitted_payload = None
+    elif isinstance(submitted_payload_raw, dict):
+        submitted_payload = dict(submitted_payload_raw)
+    else:
+        submitted_payload = None
+
     return EscalationRequestRow(
         id=int(record["id"]),
         user_id=str(record["user_id"]),
@@ -301,6 +551,15 @@ def _row_to_request(
         delivery_status=record["delivery_status"],
         delivery_attempts=int(record["delivery_attempts"]),
         last_delivery_attempt_at=_parse_dt(record["last_delivery_attempt_at"]),
+        mode=record.get("mode"),
+        branch_name=record.get("branch_name"),
+        target_paths=target_paths,
+        originating_entity_type=record.get("originating_entity_type"),
+        originating_entity_id=record.get("originating_entity_id"),
+        base_sha=record.get("base_sha"),
+        human_review=bool(record.get("human_review", 0) or 0),
+        merged_at=_parse_dt(record.get("merged_at")),
+        submitted_payload=submitted_payload,
     )
 
 

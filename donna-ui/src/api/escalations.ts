@@ -26,6 +26,9 @@ export interface EscalationSummary {
   priority: number;
   summary: string | null;
   branch_name: string | null;
+  // Slice 21
+  human_review?: boolean;
+  merged_at?: string | null;
   created_at: string;
   resolved_at: string | null;
   submitted_at: string | null;
@@ -37,6 +40,11 @@ export interface EscalationDetail extends EscalationSummary {
   prompt_body: string | null;
   result: string | null;
   validation_result: Record<string, unknown> | null;
+  // Slice 21 additions
+  target_paths?: Record<string, string> | null;
+  originating_entity_type?: string | null;
+  originating_entity_id?: string | null;
+  base_sha?: string | null;
 }
 
 export interface EscalationTimelineEvent {
@@ -106,6 +114,23 @@ export async function submitEscalation(
   const { data } = await client.post(
     `/admin/escalations/${encodeURIComponent(correlationId)}/submit`,
     payload,
+  );
+  return data;
+}
+
+export interface EscalationMarkMergedResponse {
+  correlation_id: string;
+  merged_at: string;
+}
+
+// Slice 21: pure tracking write — Donna does NOT auto-merge (spec §15).
+// The user runs `git checkout main && git merge --no-ff <branch>` themselves
+// and clicks this when they're done so the dashboard reflects the new state.
+export async function markEscalationMerged(
+  correlationId: string,
+): Promise<EscalationMarkMergedResponse> {
+  const { data } = await client.post(
+    `/admin/escalations/${encodeURIComponent(correlationId)}/mark-merged`,
   );
   return data;
 }

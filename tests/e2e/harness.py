@@ -122,6 +122,11 @@ class FakeRouter:
         task_type: str,
         task_id: str | None = None,
         user_id: str = "system",
+        estimate_usd: float | None = None,
+        priority: int = 2,
+        originating_entity: tuple[str, str] | None = None,
+        target_paths: dict[str, str] | None = None,
+        base_sha: str | None = None,
     ) -> tuple[dict, Any]:
         if task_type.startswith("skill_validation::") or task_type.startswith("chat_"):
             return await self._ollama.complete(task_type=task_type, prompt=prompt)

@@ -227,6 +227,85 @@ visible.
 
 ---
 
+## S21 — `human_review_request` table vs reuse `escalation_request`
+
+- **Surfaced by:** `slices/slice_21_claude_code_mode.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§12` Q3,
+  `#§10.4` row 2.
+- **Status:** resolved-in-slice-21
+- **Decision / Reasoning:** §12 Q3 asked whether to add a separate
+  `human_review_request` table or reuse `escalation_request` for the
+  iteration-cap-reached case. We reused `escalation_request` and added
+  a `human_review` BOOLEAN column. The dashboard already projects all
+  needed fields; a separate table would have meant a polymorphic queue
+  with no win for slice 21 / 22 (tools also reuse this protocol). When
+  Phase 2 introduces other intervention types, the polymorphic-queue
+  decision can be revisited based on actual usage.
+- **Follow-up:** None for slice 21. Slice 22 (tools) reuses the same
+  flag. If Phase 2 adds non-skill / non-tool human-review surfaces, an
+  ADR can split the flag into a dedicated table.
+
+## S21 — Local-only branch read access via env-var mount
+
+- **Surfaced by:** `slices/slice_21_claude_code_mode.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§12` Q2,
+  `#§5.3`.
+- **Status:** resolved-in-slice-21
+- **Decision / Reasoning:** §12 Q2 asked whether the orchestrator has a
+  mount on the host repo's `.git` for branch-not-pushed verification.
+  Slice 21 adds a new `DONNA_HOST_REPO_PATH` env var that points at a
+  read-only mount of the host repo. The poller uses
+  `git rev-parse` / `git diff --name-only` / `git show` against this
+  mount — never writes. If the env var is unset or the path isn't a
+  git repo, claude_code mode is disabled (logged once, fail-soft) and
+  only `chat` / `pause` / `cancel` buttons render. Documented in
+  `docker/.env.example` (slice 21 update) and `SETUP.md`.
+- **Follow-up:** None.
+
+## S21 — Re-escalation parent-chain depth limit
+
+- **Surfaced by:** `slices/slice_21_claude_code_mode.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§12` Q5.
+- **Status:** open
+- **Decision / Reasoning:** Slice 21 left `parent_escalation_id` in
+  place but did not add a depth limit. The iteration cap on a single
+  escalation already bounds the inner loop; cross-row chains haven't
+  been observed yet. Slice 24 (escalation hardening) is the right
+  place to introduce a cap once we have data on real chains.
+- **Follow-up:** Slice 24 — add `max_re_escalation_depth` and reject
+  new escalations whose ancestor chain exceeds it.
+
+## S21 — `originating_entity_*` columns added to `escalation_request`
+
+- **Surfaced by:** `slices/slice_21_claude_code_mode.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§8`.
+- **Status:** spec-update-pending
+- **Decision / Reasoning:** §8 enumerates `task_id` as the FK to the
+  originating row but every claude_code call site (auto_drafter,
+  evolution) passes `task_id=None`. We added explicit
+  `originating_entity_type` + `originating_entity_id` columns so the
+  diff validator can render `{name}`-substituted target_paths globs
+  without inferring identity. §8 needs an "Added by slice 21" note.
+- **Follow-up:** Spec §8 already updated in this slice's PR.
+
+## S21 — Manual claude_code lifecycle ends in `sandbox`, not `draft`
+
+- **Surfaced by:** `slices/slice_21_claude_code_mode.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.3`,
+  `spec_v3.md#§23.4`.
+- **Status:** resolved-in-slice-21
+- **Decision / Reasoning:** AutoDrafter ends a generated skill in
+  `draft` and requires a separate human approval to enter `sandbox`.
+  Manual `claude_code` mode treats the user's "Mark as built" click +
+  passing fixtures as the explicit human gate (`reason='human_approval'`,
+  `actor='user'`, `actor_id=<discord_id>`), so it lands the skill one
+  hop deeper at `sandbox`. From `sandbox` the existing automatic
+  promotion gates take over.
+- **Follow-up:** None. `docs/domain/skill-system.md` "Manual escalation"
+  subsection updated to describe this asymmetry.
+
+---
+
 ## How to add an entry (template)
 
 Copy this when you finish a slice:

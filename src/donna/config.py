@@ -75,6 +75,24 @@ class ModelsConfig(BaseModel):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
 
 
+class TaskTypeManualEscalation(BaseModel):
+    """Manual-handoff routing for one task type (slice 21).
+
+    Realizes docs/superpowers/specs/manual-escalation.md §6.2. Task types
+    that omit this block can never be offered the ``Manual handoff``
+    button — only ``Approve / Pause / Cancel``.
+
+    ``target_paths`` keys are unconstrained (skill, test, fixtures, …).
+    Values are glob patterns with a single ``{name}`` placeholder
+    substituted from the originating entity at gate-fire time.
+    """
+
+    mode: str  # "claude_code" | "chat"
+    target_paths: dict[str, str] = Field(default_factory=dict)
+    reference_module: str | None = None
+    forbidden_patterns: list[str] = Field(default_factory=list)
+
+
 class TaskTypeEntry(BaseModel):
     """A single task type definition."""
 
@@ -84,6 +102,7 @@ class TaskTypeEntry(BaseModel):
     output_schema: str
     tools: list[str] = Field(default_factory=list)
     shadow: str | None = None
+    manual_escalation: TaskTypeManualEscalation | None = None
 
 
 class TaskTypesConfig(BaseModel):
@@ -310,13 +329,30 @@ class ManualEscalationModeConfig(BaseModel):
     enabled: bool = True
 
 
+class ClaudeCodeModeConfig(ManualEscalationModeConfig):
+    """Settings for the ``claude_code`` manual-handoff mode (slice 21).
+
+    Realizes docs/superpowers/specs/manual-escalation.md §5.3 / §6.1.
+
+    ``host_repo_path_env`` names the environment variable that points at
+    the read-only host-repo mount the poller diffs against. If unset at
+    boot, claude_code mode is disabled (logged) and only ``chat`` /
+    ``pause`` / ``cancel`` buttons render — same fail-soft pattern slice
+    17 used for ``OWNER_DISCORD_ID``.
+    """
+
+    worktree_root: str = "${DONNA_WORKSPACE_PATH}/worktrees"
+    host_repo_path_env: str = "DONNA_HOST_REPO_PATH"
+    base_ref: str = "main"
+    feedback_max_failing_cases: int = 3
+    poll_tick_seconds: int = 60
+
+
 class ManualEscalationModesConfig(BaseModel):
     """Manual handoff modes."""
 
     chat: ManualEscalationModeConfig = Field(default_factory=ManualEscalationModeConfig)
-    claude_code: ManualEscalationModeConfig = Field(
-        default_factory=ManualEscalationModeConfig
-    )
+    claude_code: ClaudeCodeModeConfig = Field(default_factory=ClaudeCodeModeConfig)
 
 
 class ManualEscalationTriggersConfig(BaseModel):

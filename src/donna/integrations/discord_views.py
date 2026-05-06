@@ -711,7 +711,32 @@ class BudgetEscalationView(discord.ui.View):
                     mode="api_extended",
                 )
             )
-        if "manual" in offered_modes or "chat" in offered_modes or "claude_code" in offered_modes:
+        # Slice 21: render mode-specific manual buttons. claude_code
+        # rendering routes through the gate's record_manual_handoff()
+        # so the spec file is written + the row is resolved as a
+        # single transaction. Slice 20's chat button reuses the
+        # generic ``record_user_resolution`` path.
+        if "claude_code" in offered_modes:
+            self.add_item(
+                _ClaudeCodeHandoffButton(label="Claude Code")
+            )
+        if "chat" in offered_modes:
+            self.add_item(
+                _ModeButton(
+                    label="Chat",
+                    style=ButtonStyle.blurple,
+                    mode="chat",
+                )
+            )
+        # Backwards-compatible "Manual handoff" path: only render when
+        # the gate sent the legacy ``manual`` token alone (no
+        # mode-specific token). Existing slice 17/18 deployments fall
+        # here.
+        if (
+            "manual" in offered_modes
+            and "claude_code" not in offered_modes
+            and "chat" not in offered_modes
+        ):
             self.add_item(
                 _ModeButton(
                     label="Manual handoff",
@@ -848,6 +873,87 @@ class _ModeButton(discord.ui.Button[discord.ui.View]):
             "escalation_resolved_via_button",
             correlation_id=view.correlation_id,
             mode=self._mode,
+            user_id=interaction.user.id,
+        )
+        view.stop()
+
+
+class _ClaudeCodeHandoffButton(discord.ui.Button[discord.ui.View]):
+    """Slice 21 — render the spec file + resolve as ``claude_code``.
+
+    Distinct from :class:`_ModeButton` because the manual handoff path
+    requires an extra atomic step (rendering the spec to disk and
+    mirroring into ``escalation_request.prompt_body``) BEFORE the
+    resolution event fires. Implemented as a separate button class so
+    the resolution-specific code path stays linear and the audit log
+    captures ``mode='claude_code'`` with a stable spec_path payload.
+    """
+
+    def __init__(self, *, label: str = "Claude Code") -> None:
+        super().__init__(
+            label=label,
+            style=ButtonStyle.blurple,
+            custom_id="escalation_claude_code",
+        )
+
+    async def callback(self, interaction: Interaction) -> None:
+        view = self.view
+        if not isinstance(view, BudgetEscalationView):
+            return
+
+        if interaction.user.id != view.owner_discord_id:
+            logger.warning(
+                "escalation_owner_mismatch",
+                correlation_id=view.correlation_id,
+                actual_user_id=interaction.user.id,
+                expected_user_id=view.owner_discord_id,
+                mode="claude_code",
+            )
+            await interaction.response.send_message(
+                "Only the account owner can resolve this.", ephemeral=True
+            )
+            return
+
+        try:
+            rendered = await view.gate.record_manual_handoff(
+                correlation_id=view.correlation_id,
+                mode="claude_code",
+                actor_id=str(interaction.user.id),
+            )
+        except Exception:
+            logger.exception(
+                "claude_code_handoff_failed",
+                correlation_id=view.correlation_id,
+            )
+            await interaction.response.send_message(
+                "Couldn't prepare the Claude Code handoff — check the dashboard.",
+                ephemeral=True,
+            )
+            return
+
+        if rendered is None:
+            await interaction.response.send_message(
+                "This escalation can't be handed off to Claude Code "
+                "(missing config or already resolved).",
+                ephemeral=True,
+            )
+            view.stop()
+            return
+
+        await interaction.response.send_message(
+            (
+                f"Spec written to `{rendered.path}`.\n"
+                f"Branch: `{rendered.branch_name}`.\n"
+                f"Open the dashboard for the worktree command and "
+                f"target paths."
+            ),
+            ephemeral=True,
+        )
+        logger.info(
+            "claude_code_handoff_recorded",
+            correlation_id=view.correlation_id,
+            spec_path=str(rendered.path),
+            branch_name=rendered.branch_name,
             user_id=interaction.user.id,
         )
         view.stop()

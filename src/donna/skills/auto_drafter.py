@@ -165,11 +165,17 @@ class AutoDrafter:
         try:
             if self._budget_guard is not None:
                 await self._budget_guard.check_pre_call(user_id="system")
+            # Slice 21: thread the candidate's identity so the
+            # claude_code escalation gate can populate
+            # ``escalation_request.originating_entity_*``. Capability
+            # name is the substitution source for {name} in target_paths
+            # globs (see config/task_types.yaml manual_escalation block).
             parsed, _metadata = await self._router.complete(
                 prompt=self._build_prompt(capability, samples),
                 task_type=TASK_TYPE,
                 task_id=None,
                 user_id="system",
+                originating_entity=("skill_candidate_report", candidate.id),
             )
         except BudgetPausedError:
             logger.info(

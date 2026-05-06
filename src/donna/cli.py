@@ -200,6 +200,7 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     from donna.cli_wiring import (
         build_startup_context,
         wire_automation_subsystem,
+        wire_claude_code_poller,
         wire_discord,
         wire_skill_system,
     )
@@ -323,6 +324,10 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         vault_writer=vault_writer,
         memory_store=memory_store,
     )
+    # Slice 21: poller depends on the skill system's lifecycle manager,
+    # so it wires AFTER wire_skill_system. No-op when claude_code mode
+    # is disabled / mis-configured (gate's host_repo is None).
+    await wire_claude_code_poller(ctx, skill_h)
     automation_h = await wire_automation_subsystem(ctx, skill_h)
     _discord_h = await wire_discord(ctx, skill_h, automation_h)
 

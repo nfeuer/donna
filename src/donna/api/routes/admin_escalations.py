@@ -13,6 +13,13 @@ canonical place to view and submit escalations. Slice 19 ships:
   Mode-specific UI behavior (chat textarea, claude_code "Mark as built"
   modal) attaches in slices 20/21.
 
+Slice 21 adds:
+- ``POST /admin/escalations/{correlation_id}/mark-merged`` — pure
+  tracking write the user clicks AFTER they've manually merged the
+  validated branch into ``main``. Donna never auto-merges (spec §15);
+  this endpoint just flips ``merged_at`` so the dashboard reflects the
+  state.
+
 The submit endpoint uses an optimistic lock on ``status`` so racing
 submissions (re-submit after validation failure, two browser tabs) get
 a 409 instead of silently overwriting each other.
@@ -22,16 +29,20 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
-import jsonschema
 from fastapi import HTTPException, Query, Request
 
 from donna.api.auth import admin_router
-from donna.cost.escalation_audit import (
-    ESCALATION_TASK_TYPE,
-    write_escalation_event,
+from donna.cost.escalation_audit import ESCALATION_TASK_TYPE
+from donna.cost.escalation_submit import (
+    ConcurrentSubmissionError,
+    IterationCapReachedError,
+    ModeMismatchError,
+    NotAwaitingSubmissionError,
+    NotFoundError,
+    SchemaValidationError,
+    submit_escalation_core,
 )
 
 router = admin_router()
@@ -48,27 +59,6 @@ _LIST_STATUSES = (
     "failed",
     "cancelled",
 )
-
-# Spec §6.1 manual_iteration_limit default. The full config-driven
-# resolution lands with the dashboard runtime overrides in slice 23;
-# this constant is the floor every endpoint must respect today.
-_MANUAL_ITERATION_LIMIT = 3
-
-
-_SCHEMA_PATH = (
-    Path(__file__).resolve().parents[3].parent
-    / "schemas"
-    / "escalation_submission.json"
-)
-_SUBMISSION_SCHEMA: dict[str, Any] | None = None
-
-
-def _load_submission_schema() -> dict[str, Any]:
-    global _SUBMISSION_SCHEMA
-    if _SUBMISSION_SCHEMA is None:
-        with open(_SCHEMA_PATH) as f:
-            _SUBMISSION_SCHEMA = json.load(f)
-    return _SUBMISSION_SCHEMA
 
 
 def _row_to_summary(row: dict[str, Any]) -> dict[str, Any]:
@@ -95,6 +85,8 @@ def _row_to_summary(row: dict[str, Any]) -> dict[str, Any]:
         "priority": row["priority"],
         "summary": row.get("summary"),
         "branch_name": row.get("branch_name"),
+        "human_review": bool(row.get("human_review", 0)),
+        "merged_at": row.get("merged_at"),
         "created_at": row["created_at"],
         "resolved_at": row["resolved_at"],
         "submitted_at": row["submitted_at"],
@@ -149,7 +141,7 @@ async def list_escalations(
         SELECT id, correlation_id, user_id, task_id, task_type,
                estimate_usd, daily_remaining_usd, offered_modes,
                resolution, mode, status, iteration, priority,
-               summary, branch_name,
+               summary, branch_name, human_review, merged_at,
                created_at, resolved_at, submitted_at, validated_at
           FROM escalation_request
          WHERE {where}
@@ -196,7 +188,9 @@ async def get_escalation(
                estimate_usd, daily_remaining_usd, offered_modes,
                resolution, mode, status, iteration, priority,
                prompt_path, prompt_body, summary, result, validation_result,
-               branch_name,
+               branch_name, human_review, merged_at,
+               target_paths, originating_entity_type, originating_entity_id,
+               base_sha,
                created_at, resolved_at, submitted_at, validated_at
           FROM escalation_request
          WHERE correlation_id = ?
@@ -217,12 +211,23 @@ async def get_escalation(
         except (TypeError, ValueError):
             validation_result = {"raw": validation_result}
 
+    target_paths = record.get("target_paths")
+    if isinstance(target_paths, str):
+        try:
+            target_paths = json.loads(target_paths)
+        except (TypeError, ValueError):
+            target_paths = None
+
     detail = {
         **summary,
         "prompt_path": record["prompt_path"],
         "prompt_body": record["prompt_body"],
         "result": record["result"],
         "validation_result": validation_result,
+        "target_paths": target_paths,
+        "originating_entity_type": record.get("originating_entity_type"),
+        "originating_entity_id": record.get("originating_entity_id"),
+        "base_sha": record.get("base_sha"),
     }
 
     cursor = await conn.execute(
@@ -260,140 +265,110 @@ async def submit_escalation(
 ) -> dict[str, Any]:
     """Accept the user's submission for a manual-handoff escalation.
 
-    Mode-agnostic for slice 19: validates the payload against the
-    discriminated-union schema, ensures ``mode`` matches the row's
-    selected mode, and atomically transitions ``resolved → submitted``
-    (or ``failed → submitted`` for re-submits within the iteration cap).
-
-    Mode-specific UI behaviour (chat textarea, claude_code "Mark as built"
-    modal) attaches in slices 20 and 21 — they POST the same payload to
-    this endpoint.
+    Thin HTTP wrapper around
+    :func:`donna.cost.escalation_submit.submit_escalation_core`. The
+    core function is shared with the ``/donna submit`` Discord slash
+    command (slice 21) so both surfaces enforce identical schema +
+    iteration-cap + concurrent-write guards.
     """
-    schema = _load_submission_schema()
     try:
         payload = await request.json()
     except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=400, detail={"error": "invalid_json", "message": str(exc)}
         ) from exc
+
+    conn = request.app.state.db.connection
     try:
-        jsonschema.validate(payload, schema)
-    except jsonschema.ValidationError as exc:
+        result = await submit_escalation_core(conn, correlation_id, payload)
+    except SchemaValidationError as exc:
         raise HTTPException(
             status_code=400,
             detail={"error": "schema_validation_failed", "message": exc.message},
         ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail={"error": "not_found"}) from exc
+    except NotAwaitingSubmissionError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "not_awaiting_submission", "status": exc.status},
+        ) from exc
+    except ModeMismatchError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "mode_mismatch",
+                "expected_mode": exc.expected,
+                "submitted_mode": exc.submitted,
+            },
+        ) from exc
+    except IterationCapReachedError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "iteration_cap_reached",
+                "iteration": exc.iteration,
+                "limit": exc.limit,
+            },
+        ) from exc
+    except ConcurrentSubmissionError as exc:
+        raise HTTPException(
+            status_code=409, detail={"error": "concurrent_submission"}
+        ) from exc
 
+    return {
+        "correlation_id": result.correlation_id,
+        "status": result.status,
+        "submitted_at": result.submitted_at,
+        "iteration": result.iteration,
+        "mode": result.mode,
+    }
+
+
+@router.post("/escalations/{correlation_id}/mark-merged")
+async def mark_escalation_merged(
+    request: Request,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """User clicks **Mark as merged** after merging the validated branch.
+
+    Pure tracking write. Donna does **not** auto-merge (spec §15 — human
+    is always the operator for code-writing actions). This endpoint just
+    flips ``merged_at`` so the dashboard reflects the user's manual
+    merge.
+
+    Returns 409 if the escalation is not in ``status='validated'`` (i.e.
+    nothing has actually been validated; merging makes no sense).
+    """
     conn = request.app.state.db.connection
     cursor = await conn.execute(
-        """
-        SELECT id, user_id, task_id, status, mode, iteration
-          FROM escalation_request
-         WHERE correlation_id = ?
-        """,
+        "SELECT status, merged_at FROM escalation_request WHERE correlation_id = ?",
         (correlation_id,),
     )
     row = await cursor.fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail={"error": "not_found"})
-    record = _row_dict(cursor, row)
+    status, merged_at = row[0], row[1]
 
-    if record["status"] not in ("resolved", "failed"):
+    if status != "validated":
         raise HTTPException(
             status_code=409,
-            detail={
-                "error": "not_awaiting_submission",
-                "status": record["status"],
-            },
+            detail={"error": "not_validated", "status": status},
         )
-    if record["mode"] is not None and record["mode"] != payload["mode"]:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "mode_mismatch",
-                "expected_mode": record["mode"],
-                "submitted_mode": payload["mode"],
-            },
-        )
-    # Iteration cap (spec §6.1, §10.4 row 2). Refusing the next submit
-    # keeps `iteration` bounded; cancel-on-cap-and-route-to-human is
-    # slice 21 scope.
-    if record["status"] == "failed" and int(record["iteration"]) >= _MANUAL_ITERATION_LIMIT:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "iteration_cap_reached",
-                "iteration": int(record["iteration"]),
-                "limit": _MANUAL_ITERATION_LIMIT,
-            },
-        )
+    if merged_at is not None:
+        # Idempotent — already marked.
+        return {"correlation_id": correlation_id, "merged_at": merged_at}
 
-    now = datetime.now(tz=UTC)
-    ts = now.isoformat()
-    branch = payload["branch"] if payload["mode"] == "claude_code" else None
-
-    # The mode discriminator is folded into the WHERE so a concurrent
-    # writer can't slip a wrong-mode update through between the SELECT
-    # above and this UPDATE. The CASE on the iteration column reads
-    # `status` BEFORE the SET (SQLite evaluates the right-hand side of
-    # all SET expressions against the row's pre-update values), so this
-    # increments only on the failed → submitted transition.
-    update_cursor = await conn.execute(
+    now_iso = datetime.now(tz=UTC).isoformat()
+    await conn.execute(
         """
         UPDATE escalation_request
-           SET status = 'submitted',
-               submitted_at = ?,
-               result = ?,
-               branch_name = COALESCE(?, branch_name),
-               iteration = iteration + CASE WHEN status = 'failed' THEN 1 ELSE 0 END,
-               mode = COALESCE(mode, ?)
+           SET merged_at = ?
          WHERE correlation_id = ?
-           AND status IN ('resolved', 'failed')
-           AND (mode IS NULL OR mode = ?)
+           AND status = 'validated'
+           AND merged_at IS NULL
         """,
-        (
-            ts,
-            json.dumps(payload),
-            branch,
-            payload["mode"],
-            correlation_id,
-            payload["mode"],
-        ),
+        (now_iso, correlation_id),
     )
-    if update_cursor.rowcount == 0:
-        # Lost the race — another submission or status change won.
-        raise HTTPException(
-            status_code=409,
-            detail={"error": "concurrent_submission"},
-        )
     await conn.commit()
-
-    # Re-read to return the post-update view.
-    cursor = await conn.execute(
-        "SELECT iteration FROM escalation_request WHERE correlation_id = ?",
-        (correlation_id,),
-    )
-    iteration = (await cursor.fetchone())[0]
-
-    await write_escalation_event(
-        conn,
-        event="escalation_submitted",
-        escalation_request_id=int(record["id"]),
-        correlation_id=correlation_id,
-        user_id=str(record["user_id"]),
-        task_id=record["task_id"],
-        payload={
-            "mode": payload["mode"],
-            "branch": branch,
-            "iteration": int(iteration),
-        },
-        now=now,
-    )
-
-    return {
-        "correlation_id": correlation_id,
-        "status": "submitted",
-        "submitted_at": ts,
-        "iteration": int(iteration),
-        "mode": payload["mode"],
-    }
+    return {"correlation_id": correlation_id, "merged_at": now_iso}

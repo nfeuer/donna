@@ -55,7 +55,13 @@ async def conn(tmp_path: Path) -> AsyncIterator[aiosqlite.Connection]:
                 delivery_status TEXT,
                 delivery_attempts INTEGER DEFAULT 0,
                 last_delivery_attempt_at TEXT,
-                parent_escalation_id INTEGER
+                parent_escalation_id INTEGER,
+                human_review INTEGER NOT NULL DEFAULT 0,
+                target_paths TEXT,
+                originating_entity_type TEXT,
+                originating_entity_id TEXT,
+                base_sha TEXT,
+                merged_at TEXT
             )
             """
         )

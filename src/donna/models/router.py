@@ -210,6 +210,9 @@ class ModelRouter:
         user_id: str = "system",
         estimate_usd: float | None = None,
         priority: int = 2,
+        originating_entity: tuple[str, str] | None = None,
+        target_paths: dict[str, str] | None = None,
+        base_sha: str | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Route a completion call through the configured provider.
 
@@ -225,6 +228,18 @@ class ModelRouter:
                 is unchanged.
             priority: Task priority (1–5). Forwarded to the gate for
                 tier-2 SMS fallback on timeout.
+            originating_entity: Slice 21. ``(entity_type, entity_id)``
+                tuple identifying the row that triggered the call (e.g.
+                ``('skill_candidate_report', candidate.id)``). Threaded
+                to the gate so the claude_code diff validator can render
+                ``{name}``-substituted target_paths globs without
+                inferring identity from a NULL ``task_id``.
+            target_paths: Slice 21. Optional pre-rendered glob dict to
+                snapshot on the escalation_request row. When omitted,
+                the gate may render from ``task_types.yaml`` itself.
+            base_sha: Slice 21. Pinned ``main`` SHA captured at the
+                caller side (or by the gate); persisted on the row so
+                the worktree command stays reproducible.
 
         Returns:
             Tuple of (parsed JSON dict, CompletionMetadata).
@@ -256,6 +271,9 @@ class ModelRouter:
                 task_type=task_type,
                 estimate_usd=estimate_usd,
                 priority=priority,
+                originating_entity=originating_entity,
+                target_paths=target_paths,
+                base_sha=base_sha,
             )
             if outcome.fired and outcome.mode in ("pause", "cancel"):
                 assert outcome.escalation_request_id is not None

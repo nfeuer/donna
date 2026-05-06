@@ -27,6 +27,11 @@ CREATE TABLE escalation_request (
     resolved_by TEXT,
     resolved_at TEXT,
     prompt_path TEXT,
+    prompt_body TEXT,
+    summary TEXT,
+    mode TEXT,
+    result TEXT,
+    validation_result TEXT,
     branch_name TEXT,
     iteration INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'open',
@@ -37,7 +42,14 @@ CREATE TABLE escalation_request (
     delivery_status TEXT,
     delivery_attempts INTEGER NOT NULL DEFAULT 0,
     last_delivery_attempt_at TEXT,
-    parent_escalation_id INTEGER REFERENCES escalation_request(id)
+    parent_escalation_id INTEGER REFERENCES escalation_request(id),
+    -- slice 21 additions
+    human_review INTEGER NOT NULL DEFAULT 0,
+    target_paths TEXT,
+    originating_entity_type TEXT,
+    originating_entity_id TEXT,
+    base_sha TEXT,
+    merged_at TEXT
 );
 """
 

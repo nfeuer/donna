@@ -11,6 +11,18 @@ modes:
     enabled: true
   claude_code:
     enabled: true
+    # Slice 21: where the user's worktrees live. Sibling-of-workspace,
+    # NOT inside the host repo, so accidental `git status` in the wrong
+    # cwd doesn't surface stray escalation files.
+    worktree_root: "${DONNA_WORKSPACE_PATH}/worktrees"
+    # Env var name for the read-only host repo mount the poller diffs
+    # against. Spec §5.3 / §10.3 row 5.
+    host_repo_path_env: "DONNA_HOST_REPO_PATH"
+    base_ref: "main"
+    # Discord failure feedback: at most this many failing case names
+    # surface in the message. Full output goes to validation_result JSON.
+    feedback_max_failing_cases: 3
+    poll_tick_seconds: 60
 
 budget_extension:
   enabled: true

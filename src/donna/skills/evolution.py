@@ -108,11 +108,17 @@ class Evolver:
 
         # Call Claude.
         try:
+            # Slice 21: thread the skill identity so the claude_code
+            # escalation gate can populate
+            # ``escalation_request.originating_entity_*``. Manual
+            # evolution edits the skill in-place; the diff validator
+            # uses skill_id → capability_name to render target_paths.
             parsed, metadata = await self._router.complete(
                 prompt=self._build_prompt(package),
                 task_type=TASK_TYPE,
                 task_id=None,
                 user_id="system",
+                originating_entity=("skill", skill_id),
             )
         except BudgetPausedError:
             return EvolutionReport(

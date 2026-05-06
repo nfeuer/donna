@@ -26,7 +26,11 @@ def _downgrade_one(db_path: Path) -> None:
 
     cfg = Config("alembic.ini")
     cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
-    command.downgrade(cfg, "-1")
+    # Downgrade past every slice that touches escalation_request — slice
+    # 17 created it, slices 18 / 19 / 21 added columns / indexes. Target
+    # the parent of c7d8e9f0a1b2 (slice 17 escalation_core) so the table
+    # itself is dropped.
+    command.downgrade(cfg, "c9d1e3f5a7b2")
 
 
 @pytest.mark.integration

@@ -624,13 +624,40 @@ All under `/admin/automations`:
 
 ## Manual Escalation (drafting under budget pressure)
 
-When a `skill_draft` or `skill_evolution` task would exceed the daily
-API budget, AutoDrafter is replaced by user-driven Claude Code via the
-manual `claude_code` mode. The user receives a Discord ping with a
-dashboard link, copies the spec from `/admin/escalations/<id>`, runs
-Claude Code locally in a `git worktree`, and clicks "Mark as built".
-Donna ingests the branch and runs the existing `ValidationExecutor`
-pipeline (sandbox → shadow → trusted) unchanged. Iteration cap is 3.
+When a `skill_auto_draft` or `skill_evolution` task would exceed the
+daily API budget, AutoDrafter is replaced by user-driven Claude Code
+via the manual `claude_code` mode. The user receives a Discord ping
+with a dashboard link, copies the spec from `/admin/escalations/<id>`,
+runs Claude Code locally in a `git worktree`, and clicks **Mark as
+built**. Donna ingests the branch and runs the existing
+`ValidationExecutor` pipeline. Iteration cap is 3.
+
+### Lifecycle landing state — different from AutoDrafter
+
+AutoDrafter ends a generated skill in `draft` and requires a separate
+human approval to enter `sandbox`. **Manual `claude_code` mode lands
+the skill in `sandbox`** — one hop deeper than AutoDrafter — because
+the user's "Mark as built" click + passing fixtures is itself the
+explicit human gate. The `claude_native → skill_candidate → draft →
+sandbox` transition chain ends with `reason='human_approval'`,
+`actor='user'`, `actor_id=<discord_id>`. From `sandbox`, the existing
+automatic promotion gates take over.
+
+### Boundaries
+
+- The host repo is mounted **read-only** at the path named by
+  `manual_escalation.modes.claude_code.host_repo_path_env` (default
+  `DONNA_HOST_REPO_PATH`). Donna's only writes for claude_code mode
+  are the spec markdown file under `${WORKSPACE}/escalations/` (off
+  the source tree) and DB rows.
+- Donna **never** auto-merges. After validation, the user runs
+  `git checkout main && git merge --no-ff <branch> && git push`
+  manually. The dashboard "Mark as merged" button is a tracking-only
+  write that flips `merged_at`.
+- Concurrent claude_code escalations against the same originating
+  entity (skill_candidate_report or skill row) are **de-duplicated**
+  at the gate — the existing notification is re-delivered instead of
+  opening a parallel branch race.
 
 See [`docs/superpowers/specs/manual-escalation.md`](../superpowers/specs/manual-escalation.md)
 (canonical) for the full protocol, data model, and failure modes. The

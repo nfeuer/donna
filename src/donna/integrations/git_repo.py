@@ -224,3 +224,58 @@ class GitRepo:
             return (await self._run(["rev-parse", "HEAD"])).strip()
         except GitRepoError:
             return None
+
+    # ------------------------------------------------------------------
+    # Slice 21 — read-only helpers for the claude_code poller.
+    #
+    # The poller targets the **host** repo (read-only mount). Donna
+    # never writes to that repo — these helpers must remain read-only.
+    # ------------------------------------------------------------------
+
+    async def branch_exists(self, branch: str) -> bool:
+        """Return True if ``refs/heads/<branch>`` resolves locally.
+
+        Uses ``git rev-parse --verify`` instead of listing all branches
+        for O(1) cost on large repos. Quietly returns False on
+        non-zero exit (the only "not found" signal git gives us).
+        """
+        try:
+            await self._run(
+                ["rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"]
+            )
+            return True
+        except GitRepoError:
+            return False
+
+    async def rev_parse(self, ref: str) -> str | None:
+        """Return the SHA for ``ref`` or ``None`` if it doesn't resolve."""
+        try:
+            return (
+                await self._run(["rev-parse", "--verify", "--quiet", ref])
+            ).strip()
+        except GitRepoError:
+            return None
+
+    async def diff_names(self, base_ref: str, tip_ref: str) -> list[str]:
+        """Return paths touched in ``base..tip`` (committed, not working tree).
+
+        Uses ``--name-only`` so the output is a clean list of relative
+        paths. The triple-dot vs double-dot distinction matters here:
+        we want **changes on tip not in base**, which is double-dot.
+        ``base_ref..tip_ref`` is the canonical merge-base form.
+
+        Returns an empty list if the commit range is empty or invalid.
+        """
+        out = await self._run(
+            ["diff", "--name-only", f"{base_ref}..{tip_ref}"]
+        )
+        return [line for line in out.splitlines() if line]
+
+    async def show_file(self, ref: str, path: str) -> str:
+        """Return file contents at ``ref:path``. Raises on missing path.
+
+        Used by the manual_validation_router to read the user's
+        committed skill source / fixture JSON without checking the
+        branch out into the host repo.
+        """
+        return await self._run(["show", f"{ref}:{path}"])
