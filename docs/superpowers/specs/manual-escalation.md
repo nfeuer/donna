@@ -457,7 +457,9 @@ task_types:
 ```
 
 Task types without a `manual_escalation` block are **never** offered
-manual mode — only `Approve / Pause / Cancel`.
+manual mode — only `Approve / Pause / Cancel`. Slice 23 adds a
+**dashboard runtime override** per task type — see §6.3(a) — that filters
+which buttons render at gate-fire time without editing the YAML.
 
 ### 6.3 Dashboard runtime overrides + escalation workspace
 
@@ -468,20 +470,84 @@ to view/submit chat answers and mark claude_code work as built).
 **(a) Toggle control panel**
 
 New table `dashboard_setting (key TEXT PK, value JSON, updated_at,
-updated_by)`. Resolution order: dashboard_setting → YAML default.
+updated_by)`. Resolution order: dashboard_setting → YAML default. Slice
+23 ships the write side (slice 17 only had read), with optimistic
+locking on `updated_at` (§10.7 row 1).
+
+The page lives at SPA route `/escalation-settings` and calls
+`/admin/escalation-settings*` on the API. Both routes are gated by the
+existing admin auth dependency.
+
+**Canonical key namespace.** Every dashboard-mutable setting lives at a
+dot-path under `manual_escalation.*` matching the YAML structure so the
+resolver, write API, and YAML parser share one shape:
+
+| Key | Type | YAML default source | UI control |
+|---|---|---|---|
+| `manual_escalation.enabled` | bool | `manual_escalation.enabled` | Master kill switch |
+| `manual_escalation.modes.chat.enabled` | bool | `manual_escalation.modes.chat.enabled` | Per-mode toggle |
+| `manual_escalation.modes.claude_code.enabled` | bool | `manual_escalation.modes.claude_code.enabled` | Per-mode toggle |
+| `manual_escalation.budget_extension.enabled` | bool | `manual_escalation.budget_extension.enabled` | Allow extensions |
+| `manual_escalation.budget_extension.max_daily_extension_usd` | float | `manual_escalation.budget_extension.max_daily_extension_usd` | Max daily extension slider |
+| `manual_escalation.task_types.<task_type>.override` | string | n/a (default `auto`) | Per-task-type override grid |
+
+The `dashboard_settings_catalog` module (`src/donna/cost/dashboard_settings_catalog.py`)
+is the single source of truth: it defines the catalog, type coercion,
+and **legacy aliases**. Two keys (`modes.claude_code.enabled` and
+`budget_extension.enabled`) shipped in slice 17/18/21 without the
+`manual_escalation.` prefix; the resolver consults the canonical key
+first and falls back to the legacy alias so existing rows do not lose
+their override on upgrade. New writes always go to the canonical key.
 
 Dashboard surfaces (admin section, gated by existing auth):
 - Master kill switch: **Manual escalation**: On / Off
 - Per-mode toggles: **Chat**, **Claude Code**
 - Budget extension: **Allow extensions**: On / Off
 - Slider: **Max daily extension** (capped at `hard_monthly_ceiling_usd
-  / days_left_in_month`)
-- Per-task-type override grid: each task type with a manual mode shows
-  a row with `Auto / Force-API / Force-Manual / Disabled`.
+  / days_left_in_month`, computed and enforced server-side; the GET
+  response carries the cap so the slider's max matches the PUT
+  acceptance window)
+- Per-task-type override grid: each task type with a `manual_escalation`
+  block shows a row with `Auto / Force-API / Force-Manual / Disabled`.
+  - **Auto** — default; offered_modes follow global toggles.
+  - **Force-API** — only the `api_extended` button renders; manual
+    handoff is hidden for this task type.
+  - **Force-Manual** — only the manual handoff button renders;
+    `api_extended` is hidden.
+  - **Disabled** — neither manual nor API extension; the gate falls
+    straight through to Pause / Cancel.
+
+The override is applied AFTER the underlying preconditions (chat
+prompt builder wired, claude_code host repo mounted, budget headroom
+available), so toggling `force_manual` for a task type that has no
+chat or claude_code config does not invent a button.
 
 `hard_monthly_ceiling_usd` is **not** dashboard-mutable — only YAML.
 Prevents a compromised dashboard session from authorizing unlimited
-spend.
+spend (§10.7 row 4).
+
+**Audit.** Every successful write also inserts an
+`escalation_lifecycle` row in `invocation_log` with
+`event='dashboard_setting_changed'` and a payload of `{key, value,
+previous_value, had_lock_token}`. `escalation_request_id` is NULL —
+these are subsystem-level events, not tied to one row. The slice 19
+per-row timeline only surfaces row-scoped events (it filters on
+`escalation_request_id`); these subsystem-level rows are picked up by
+the existing log viewer at `/admin/logs`.
+
+**API contract.**
+
+- `GET /admin/escalation-settings` — returns the catalog rows (resolved
+  value + YAML default + `updated_at` / `updated_by`), the per-task-type
+  override grid, and a `constraints` block with the slider cap.
+- `PUT /admin/escalation-settings/{key:path}` — body
+  `{"value": ..., "expected_updated_at": "<iso8601>"|null}`. Writes the
+  value if `expected_updated_at` matches the stored row (or no row
+  exists when `null`). Returns 409 with the live state on mismatch,
+  422 on type/range violation, 404 on unknown key.
+- `PUT /admin/escalation-settings/task-types/{task_type}` — same
+  contract for the per-task-type override grid. Rejects task types
+  that do not declare a `manual_escalation` block (404).
 
 **(b) Escalation workspace**
 
@@ -770,7 +836,7 @@ iteration cap then governs).
 
 | Failure | Mitigation |
 |---|---|
-| Tool needs new dependency, image not rebuilt | `tool_lint/metadata.py` — module-level `requires_rebuild: bool` is required. `True` is accepted but emits a `requires_rebuild_warning` (surfaced on the dashboard panel). The hourly Discord nag is deferred to slice 24 (escalation hardening). |
+| Tool needs new dependency, image not rebuilt | `tool_lint/metadata.py` — module-level `requires_rebuild: bool` is required. `True` is accepted but emits a `requires_rebuild_warning` (surfaced on the dashboard panel). Slice 24 ships the hourly Discord nag in `donna.cost.requires_rebuild_nag.RequiresRebuildNagger`: an orchestrator-tick scanner that diffs `tool_request WHERE status='completed' AND resolved_at < now-grace` against `ToolRegistry.list_tool_names()`, posts a "tool built but unrebuilt" reminder for any unregistered tool, respects a per-row cooldown via `tool_request.last_pinged_at`, and stops once the rebuild lands. |
 | Tool hardcodes a credential value | `tool_lint/secrets.py` — curated regex list (`sk-ant-…`, `sk-…`, `xoxb-…`, `xapp-…`, `ghp_…`, `AKIA…`, PEM private-key headers, Google `AIza…`) plus a vault-key naming heuristic that flags `*_API_KEY = "…"` assignments unless the value goes through `vault.read(…)` / `os.environ` / `getenv`. The opt-in `detect-secrets` shim runs only when `tool_gap.lint.detect_secrets_enabled = true` AND the package is importable. |
 | Tool calls Anthropic API directly (bypassing gateway) | `tool_lint/anthropic_import.py` — AST walk; `import anthropic` / `from anthropic[…] import …` outside `src/donna/llm/` is a hard fail. |
 | Tool not added to any agent allowlist | `tool_lint/allowlist.py` — diff must include at least one of `config/agents.yaml`, `config/skills.yaml`, `config/task_types.yaml` AND the modified file's text must contain the `tool_name` near a `tools:` / `tools_json` key. OR the tool source declares module-level `unallowlisted = True` (intentional defined-but-unusable). |
@@ -792,9 +858,9 @@ iteration cap then governs).
 
 | Failure | Mitigation |
 |---|---|
-| Dashboard toggle race (two browser tabs flip same setting) | `dashboard_setting` writes use `updated_at` optimistic lock; second write returns 409 with current value. |
+| Dashboard toggle race (two browser tabs flip same setting) | `dashboard_setting` writes use `updated_at` optimistic lock via :meth:`EscalationRepository.set_dashboard_setting_with_lock` (slice 23). The PUT body carries `expected_updated_at` from the GET response; a mismatch returns 409 with `{current_value, current_updated_at, current_updated_by}` so the client can surface the live state. The transaction is wrapped in `BEGIN IMMEDIATE` so two parallel writers see consistent ordering. |
 | Config reload during in-flight escalation | Resolution semantics: an open escalation uses the offered_modes snapshotted in its row, NOT live config. Disabling claude_code mid-flight does not retroactively cancel an open claude_code escalation. |
-| Task type has `manual_escalation: claude_code` but no reference_module configured | Validation at config load: any task type declaring claude_code mode MUST have target_paths + reference_module. Hard fail at boot. |
+| Task type has `manual_escalation: claude_code` but no reference_module configured | Validation at config load via :func:`donna.config.validate_manual_escalation_config` (slice 23): any task type declaring claude_code mode MUST have non-empty ``target_paths`` AND ``reference_module``. Raises :class:`ManualEscalationConfigError` on boot listing every offender at once. Wired into `cli_wiring.build_startup_context` and the API's lifespan startup. |
 | Dashboard authentication compromised | `hard_monthly_ceiling_usd` is YAML-only (§6.3). Worst case attacker can run today's daily extension cap — bounded blast. |
 
 ### 10.8 Privacy / data exposure failures
@@ -809,8 +875,8 @@ iteration cap then governs).
 
 | Failure | Mitigation |
 |---|---|
-| Phase 2 multi-user enabled, escalations from one user trigger another's Discord | Every table has `user_id`; Discord routing uses each user's configured channel. Tested via integration fixture even in Phase 1. |
-| Cross-user budget mixing | Budget is per-user from day one; no global pool. Existing `donna_models.yaml` budget keys would need to move into a per-user config table — call out as a follow-up but enforce schema today. |
+| Phase 2 multi-user enabled, escalations from one user trigger another's Discord | Every table has `user_id`; Discord routing uses each user's configured channel. Slice 24 added :func:`EscalationRepository.find_open_for_originating_entity` `user_id` argument (was previously cross-tenant) and pinned the contract via the parametrised `tests/integration/test_multi_user_isolation.py` fixture so two users running the same skill_draft never collide on dedup. |
+| Cross-user budget mixing | Budget is per-user from day one; no global pool. Existing `donna_models.yaml` budget keys would need to move into a per-user config table — call out as a follow-up but enforce schema today. Slice 24 pinned :meth:`BudgetExtensionRepository.get_daily_total` per-user isolation in `tests/integration/test_multi_user_isolation.py::TestBudgetExtensionIsolation`. |
 
 ### 10.10 Audit & observability
 
@@ -844,33 +910,45 @@ is queryable by tool_request id without a JSON scan.
 
 Dashboard renders these as a timeline per escalation_request_id.
 
+Slice 24 ships the dedicated :http:get:`/admin/escalations/{correlation_id}/timeline`
+endpoint (separate from the slice-19 detail-blob timeline) so the
+detail page can poll for newly-landed audit rows on its 30-second
+tick without re-fetching the entire detail payload. The endpoint
+joins `escalation_lifecycle` and `tool_gap_lifecycle` rows for the
+same `escalation_request_id` so a `tool_request_fulfillment`
+escalation surfaces both its lifecycle envelope (offered, resolved,
+submitted) and the slice-22 tool-gap audit chain
+(`tool_request_filled`, `tool_request_filed`, etc.) on one
+timeline. The response carries `next_after_id` for cursor-style
+append-only polling.
+
 ---
 
 ## 11. Verification / acceptance criteria
 
 ### Functional
-- [ ] Cost router emits the four-button Discord message when estimate > min(daily_remaining, threshold) AND any escalation mode enabled.
-- [ ] Each of `api_extended`, `chat`, `claude_code`, `pause`, `cancel` reaches the documented terminal state.
-- [ ] Per-task-type `manual_escalation` config gates which buttons render.
-- [ ] Dashboard toggles override YAML and take effect on next escalation (no restart).
-- [ ] Master kill switch removes Manual handoff button entirely.
-- [ ] Discord notification carries summary + dashboard link + optional MD attachment; full prompt body always lives in `escalation_request.prompt_body` and is rendered by the dashboard.
-- [ ] Dashboard `/admin/escalations/<id>` page renders prompt, accepts answers (chat) or branch confirmations (claude_code), and writes back to the same row.
-- [ ] Tool gaps file `tool_request` rows; high-blocking gaps ping in real time.
-- [ ] All escalation outcomes logged to `invocation_log` with the correlation_id.
-- [ ] Iteration cap hits force-cancel and write a `human_review` flag.
+- [x] Cost router emits the four-button Discord message when estimate > min(daily_remaining, threshold) AND any escalation mode enabled. *Slice 17 — `test_escalation_gate.py`.*
+- [x] Each of `api_extended`, `chat`, `claude_code`, `pause`, `cancel` reaches the documented terminal state. *Slices 17/18/20/21 unit tests cover each path; slice 24 ties chat + api_extended + tool_gap together end-to-end.*
+- [x] Per-task-type `manual_escalation` config gates which buttons render. *Slice 20 — `test_escalation_gate_chat_mode.py`; slice 23 — `test_escalation_gate_overrides.py`.*
+- [x] Dashboard toggles override YAML and take effect on next escalation (no restart). *Slice 23 — `test_admin_escalation_settings.py` and `test_dashboard_setting_resolver.py`.*
+- [x] Master kill switch removes Manual handoff button entirely. *Slice 17 — `TestShouldFire::test_does_not_fire_when_kill_switch_off`.*
+- [x] Discord notification carries summary + dashboard link + optional MD attachment; full prompt body always lives in `escalation_request.prompt_body` and is rendered by the dashboard. *Slice 20 — `test_escalation_chat_prompt.py` + `test_escalation_delivery_callback.py`.*
+- [x] Dashboard `/admin/escalations/<id>` page renders prompt, accepts answers (chat) or branch confirmations (claude_code), and writes back to the same row. *Slice 19 — `test_admin_escalations.py`; slice 24 added the merged-task-type timeline + the dedicated `/timeline` endpoint.*
+- [x] Tool gaps file `tool_request` rows; high-blocking gaps ping in real time. *Slice 22 — `test_tool_gap_surfacer.py`; slice 24 wired the §10.5 row 1 hourly nag for unrebuilt tools.*
+- [x] All escalation outcomes logged to `invocation_log` with the correlation_id. *Slices 17/22 escalation_lifecycle + tool_gap_lifecycle audits; slice 24 multi-user isolation test pins ``user_id`` on every row.*
+- [x] Iteration cap hits force-cancel and write a `human_review` flag. *Slice 21 — `test_claude_code_poller.py::test_iteration_cap_promotes_to_human_review`.*
 
 ### Failure-mode regression tests (one per row in §10)
-- [ ] Each mitigation has a corresponding fixture / unit test.
-- [ ] Discord 5xx retry is integration-tested with mocked Twilio + Discord.
-- [ ] Stale button click test asserts no double-resolution.
-- [ ] Dashboard down → Discord MD attachment fallback exercised by a fixture.
+- [x] Each mitigation has a corresponding fixture / unit test. *Slice 24 closed the audit-flagged gaps (§10.1 row 5, §10.5 row 1 nag, §10.6 row 4 + 5, §10.8 row 1, §10.9 rows 1–2, §10.10 row 6) in `tests/integration/test_section_10_residual_gaps.py`, `tests/integration/test_multi_user_isolation.py`, and `tests/cost/test_requires_rebuild_nag.py`. The §10.4 row 4 dependent-skill regression remains explicitly deferred per `docs/superpowers/specs/followups.md#S24`; §10.6 row 1 re-estimate-on-overspend is also deferred there.*
+- [ ] Discord 5xx retry is integration-tested with mocked Twilio + Discord. *Tier-2 SMS fallback wiring lives in `tests/unit/test_escalation_tiers.py` (slice 7 plumbing); the Discord-5xx → escalation-row resilience is covered by the slice-17 `test_escalation_delivery_loop.py` retry suite. Twilio-mock-end-to-end remains an integration harness gap.*
+- [x] Stale button click test asserts no double-resolution. *Slice 17 — `test_escalation_delivery_callback.py`; slice 19 — `test_admin_escalations.py::TestSubmit` 409 paths.*
+- [ ] Dashboard down → Discord MD attachment fallback exercised by a fixture. *Discord attachment is best-effort in the slice-17 delivery callback; a dedicated fixture for the dashboard-down branch is open.*
 
 ### End-to-end
-- [ ] **chat mode E2E:** trigger an over-budget chat_escalation; receive Discord prompt; submit answer via dashboard; task completes with answer as result.
-- [ ] **claude_code mode E2E:** trigger over-budget skill_draft; receive Discord ping; build branch in worktree; mark as built via dashboard; skill enters sandbox state.
-- [ ] **api_extended E2E:** approve extension; task runs; daily_remaining reflects extension; invocation_log carries escalation_request_id.
-- [ ] **tool gap E2E:** add a capability that requires a missing tool; capability_tool_check fires; ping arrives in real time; user files request.
+- [x] **chat mode E2E:** trigger an over-budget chat_escalation; receive Discord prompt; submit answer via dashboard; task completes with answer as result. *(Slice 20 added `tests/integration/test_chat_mode_e2e.py`; slice 24 restored it after the ORM/Alembic drift broke it on main.)*
+- [ ] **claude_code mode E2E:** trigger over-budget skill_draft; receive Discord ping; build branch in worktree; mark as built via dashboard; skill enters sandbox state. *Deferred — needs a real-disk worktree harness; the slice-21 `test_claude_code_poller.py` battery covers every transition individually. Logged as a follow-up so the next slice that introduces an integration harness picks it up.*
+- [x] **api_extended E2E:** approve extension; task runs; daily_remaining reflects extension; invocation_log carries escalation_request_id. *(Slice 24 — `tests/integration/test_api_extended_e2e.py`.)*
+- [x] **tool gap E2E:** add a capability that requires a missing tool; capability_tool_check fires; ping arrives in real time; user files request. *(Slice 24 — `tests/integration/test_tool_gap_e2e.py`.)*
 
 ---
 
@@ -879,8 +957,8 @@ Dashboard renders these as a timeline per escalation_request_id.
 1. **Default `OWNER_DISCORD_ID` source** — env var, vault entry, or `auth.yaml`? *Resolved (slice 17, §15): env var `DONNA_OWNER_DISCORD_ID`; fail-soft when unset.*
 2. **Local-only branches** — does the orchestrator have read access to the host repo's `.git` directory? *Resolved (slice 21, §15): env var `DONNA_HOST_REPO_PATH` points at a read-only mount; pushed and local branches are equivalent through it; fail-soft when unset.*
 3. **`human_review_request` table vs reusing `tool_request`** — do we want one queue for all manual interventions, or separate queues per kind? *Resolved (slice 21, §15): reuse `escalation_request` with a `human_review` BOOLEAN column; revisit when Phase 2 surfaces non-skill / non-tool human-review cases.*
-4. **Tier 2 SMS escalation on Discord delivery failure** — confirm we want this; SMS rate limits in slice 7 are tight (10/day). *Open — slice 24 (escalation hardening) owns the resolution.*
-5. **Re-escalation parent chains** — current spec stores `parent_escalation_id`. Do we need a depth limit beyond `manual_iteration_limit`? *Open — slice 24 (escalation hardening) owns the resolution.*
+4. **Tier 2 SMS escalation on Discord delivery failure** — confirm we want this; SMS rate limits in slice 7 are tight (10/day). *Resolved (slice 17, audited slice 24). The slice-17 timeout sweep already calls `EscalationDeliveryLoop._maybe_fan_out_sms` for any timed-out row whose `priority >= sms_priority_threshold`, hitting `start_at_tier=2` so the slice-7 SMS tiers carry it. Slice 24 confirmed the wiring; the only open thread is a Twilio-mock integration test (tracked under §11 "Discord 5xx retry").*
+5. **Re-escalation parent chains** — current spec stores `parent_escalation_id`. Do we need a depth limit beyond `manual_iteration_limit`? *Open. Slice 24 audited the path: `manual_iteration_limit` (default 3) bounds the inner loop, and no real cross-row chains have been observed in slice 17–23 deployments. Adding `max_re_escalation_depth` is a new behaviour and explicitly out of slice-24 scope per the brief's "Not in Scope" section. Logged in `followups.md#S24` for the next behavioural slice.*
 
 ---
 
@@ -1021,6 +1099,70 @@ matching brief in `slices/`.
   on the next reboot. New `surfacer` and `boot_owner_user_id`
   constructor kwargs default to `None` / `"boot"` for backward
   compatibility.
+- **(2026-05-06, slice 23)** Canonical dashboard_setting key namespace.
+  Every dashboard-mutable key follows the dot-path of the YAML
+  structure under ``manual_escalation.*``. Slice 17/18/21 had drifted
+  to two short names (``modes.claude_code.enabled``,
+  ``budget_extension.enabled``); the resolver now consults the
+  canonical key first and falls back to legacy aliases registered in
+  ``donna.cost.dashboard_settings_catalog`` so existing rows do not
+  silently lose their override on upgrade. New writes always go to
+  the canonical key.
+- **(2026-05-06, slice 23)** Optimistic-lock UI behaviour on 409.
+  Brainstorm gap (silent retry vs visible toast): we surface a
+  `Setting changed in another tab. Showing latest.` toast and replace
+  the stale value with the live state from the conflict response,
+  rather than silently retrying. Silent retry would race with another
+  intentional change and confuse the operator about which value is
+  authoritative.
+- **(2026-05-06, slice 23)** Per-task-type override grid lives on a
+  dedicated page (`/escalation-settings`) rather than as a section on
+  the existing `/escalations` workspace. The escalation workspace is
+  per-row; the settings page is per-subsystem. Mixing the two would
+  bloat the row detail view that slice 19 already designed for the
+  escalation lifecycle.
+- **(2026-05-06, slice 23)** Audit log target. Toggle changes write
+  an `escalation_lifecycle` row to `invocation_log` with
+  `event='dashboard_setting_changed'`. Brainstorm gap weighed adding a
+  dedicated audit table; reusing `invocation_log` lets the slice 19
+  timeline view surface toggle changes alongside actual escalations
+  without bolting on a second source. `escalation_request_id` stays
+  NULL because these are subsystem-level events, not tied to one
+  escalation row.
+- **(2026-05-06, slice 24)** Per-row timeline merges
+  ``tool_gap_lifecycle`` events. Slice 22's tool-build audit rows
+  share an ``escalation_request_id`` when a tool gap drives a
+  ``tool_request_fulfillment`` escalation; slice 24's
+  :http:get:`/admin/escalations/{correlation_id}/timeline`
+  surfaces both task_types under one chronological feed so the
+  detail UI no longer hides the lint outcome. Cursor-style
+  ``next_after_id`` enables append-only polling on the existing 30 s
+  dashboard refresh cadence.
+- **(2026-05-06, slice 24)** ``find_open_for_originating_entity``
+  now requires ``user_id``. Multi-user §10.9 row 1 bug: the slice-21
+  helper was cross-tenant, so user B's open tool_request would
+  shadow user A's dedup lookup once Phase 2 lands. Both call sites
+  in :class:`EscalationGate` already had the owner in scope; the
+  signature change is enforced by ``tests/integration/test_multi_user_isolation.py``
+  parametrised over two distinct user_ids.
+- **(2026-05-06, slice 24)** Schema-source of truth pinned by
+  ``tests/unit/test_orm_alembic_consistency.py``. Slice 21's
+  Alembic migration added six columns to ``escalation_request``
+  (``human_review``, ``target_paths``, ``originating_entity_*``,
+  ``base_sha``, ``merged_at``) without updating the SQLAlchemy
+  ORM, so any test fixture that built schema from
+  ``Base.metadata.create_all`` raised ``OperationalError`` on the
+  first write. Slice 24 added the columns + a regression test that
+  diffs ORM column-set vs. ``alembic upgrade head`` for every
+  manually-managed table. Future ORM/Alembic drift fails the test
+  suite within seconds.
+- **(2026-05-06, slice 24)** ``requires_rebuild=True`` Discord nag
+  (§10.5 row 1) shipped as
+  :class:`donna.cost.requires_rebuild_nag.RequiresRebuildNagger` —
+  hourly tick scans completed tool_requests, diffs against
+  ``ToolRegistry.list_tool_names()``, posts a reminder per
+  unregistered tool with a per-row cooldown via
+  ``tool_request.last_pinged_at``. Closes the deferral S22 logged.
 
 ---
 

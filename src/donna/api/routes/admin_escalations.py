@@ -41,8 +41,19 @@ from donna.cost.escalation_submit_service import (
     SubmissionError,
     apply_submission,
 )
+from donna.cost.tool_gap_audit import TOOL_GAP_TASK_TYPE
 
 router = admin_router()
+
+
+# Slice 24 — task_types whose audit rows are joined onto the per-row
+# timeline. ``escalation_lifecycle`` covers the slice-17 lifecycle;
+# ``tool_gap_lifecycle`` covers slice-22 audit rows for tool builds
+# (``tool_request_filed`` / ``tool_request_filled`` / etc.) that share
+# the escalation_request_id when an escalation drives the tool build.
+# Spec §10.10 — every state transition is on the timeline regardless of
+# task_type.
+_TIMELINE_TASK_TYPES = (ESCALATION_TASK_TYPE, TOOL_GAP_TASK_TYPE)
 
 
 # Status values are documented in spec §8: open|resolved|submitted|
@@ -227,32 +238,114 @@ async def get_escalation(
         "base_sha": record.get("base_sha"),
     }
 
-    cursor = await conn.execute(
-        """
-        SELECT id, timestamp, output
-          FROM invocation_log
-         WHERE escalation_request_id = ? AND task_type = ?
-         ORDER BY timestamp ASC
-        """,
-        (record["id"], ESCALATION_TASK_TYPE),
+    events = await _fetch_timeline(conn, escalation_request_id=record["id"])
+
+    return {"escalation": detail, "timeline": events}
+
+
+async def _fetch_timeline(
+    conn: Any,
+    *,
+    escalation_request_id: int,
+    after_id: str | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return chronologically-ordered audit rows for one escalation.
+
+    Joins ``escalation_lifecycle`` (slice 17) and ``tool_gap_lifecycle``
+    (slice 22) rows so a single response covers the full lifecycle of
+    both standard escalations and tool-build escalations. Spec §10.10:
+    *every* state transition lands on the timeline.
+
+    Args:
+        conn: aiosqlite connection from app state.
+        escalation_request_id: FK on ``invocation_log`` to filter.
+        after_id: Optional cursor — return rows whose ``id`` sorts
+            after this (UUIDv7 sorts lexicographically by time).
+        limit: Optional ``LIMIT`` cap for paginated polling.
+
+    Returns:
+        List of ``{id, timestamp, task_type, event, payload}`` rows.
+    """
+    placeholders = ",".join("?" * len(_TIMELINE_TASK_TYPES))
+    sql = (
+        "SELECT id, timestamp, task_type, output "
+        "FROM invocation_log "
+        f"WHERE escalation_request_id = ? AND task_type IN ({placeholders})"
     )
+    params: list[Any] = [escalation_request_id, *_TIMELINE_TASK_TYPES]
+    if after_id is not None:
+        sql += " AND id > ?"
+        params.append(after_id)
+    sql += " ORDER BY timestamp ASC, id ASC"
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(int(limit))
+
+    cursor = await conn.execute(sql, params)
     events: list[dict[str, Any]] = []
     for ev_row in await cursor.fetchall():
-        raw_output = ev_row[2]
+        raw_output = ev_row[3]
         try:
             payload = (
                 json.loads(raw_output) if isinstance(raw_output, str) else raw_output
             )
         except (TypeError, ValueError):
             payload = {"raw": str(raw_output)}
+        event_name = (
+            payload.get("event") if isinstance(payload, dict) else None
+        )
         events.append({
             "id": ev_row[0],
             "timestamp": ev_row[1],
-            "event": (payload or {}).get("event") if isinstance(payload, dict) else None,
+            "task_type": ev_row[2],
+            "event": event_name,
             "payload": payload if isinstance(payload, dict) else {"raw": payload},
         })
+    return events
 
-    return {"escalation": detail, "timeline": events}
+
+@router.get("/escalations/{correlation_id}/timeline")
+async def get_escalation_timeline(
+    request: Request,
+    correlation_id: str,
+    after_id: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+) -> dict[str, Any]:
+    """Standalone timeline endpoint for live-refresh on the detail page.
+
+    Slice 24 (spec §10.10). Unlike the embedded timeline in the detail
+    response, this can be polled independently and supports an
+    ``after_id`` cursor so the dashboard can append new events without
+    re-rendering history.
+
+    Returns ``{escalation_id, correlation_id, timeline, next_after_id}``;
+    ``next_after_id`` is the last event's id (or echoes ``after_id`` when
+    no rows landed) so the client can use it as the next cursor.
+    """
+    conn = request.app.state.db.connection
+    cursor = await conn.execute(
+        "SELECT id FROM escalation_request WHERE correlation_id = ?",
+        (correlation_id,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail={"error": "not_found"})
+    escalation_id = row[0]
+
+    events = await _fetch_timeline(
+        conn,
+        escalation_request_id=escalation_id,
+        after_id=after_id,
+        limit=limit,
+    )
+    next_after_id = events[-1]["id"] if events else after_id
+    return {
+        "escalation_id": escalation_id,
+        "correlation_id": correlation_id,
+        "timeline": events,
+        "next_after_id": next_after_id,
+    }
 
 
 @router.post("/escalations/{correlation_id}/submit")

@@ -11,6 +11,7 @@ import {
   Radio,
   Network,
   AlertOctagon,
+  SlidersHorizontal,
   BookOpen,
   ExternalLink,
 } from "lucide-react";
@@ -40,6 +41,11 @@ const NAV_ITEMS: NavEntry[] = [
   { path: "/llm-gateway", label: "LLM Gateway", icon: <Radio size={18} /> },
   { path: "/skill-system", label: "Skill System", icon: <Network size={18} /> },
   { path: "/escalations", label: "Escalations", icon: <AlertOctagon size={18} /> },
+  {
+    path: "/escalation-settings",
+    label: "Escalation Settings",
+    icon: <SlidersHorizontal size={18} />,
+  },
 ];
 
 function isActive(pathname: string, itemPath: string): boolean {

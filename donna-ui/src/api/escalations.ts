@@ -52,6 +52,17 @@ export interface EscalationTimelineEvent {
   timestamp: string;
   event: string | null;
   payload: Record<string, unknown>;
+  // Slice 24 — task_type lets the UI distinguish escalation lifecycle
+  // events from tool-gap lifecycle events (slice 22) on the same row.
+  // Optional for backward compatibility with old detail responses.
+  task_type?: string;
+}
+
+export interface EscalationTimelineResponse {
+  escalation_id: number;
+  correlation_id: string;
+  timeline: EscalationTimelineEvent[];
+  next_after_id: string | null;
 }
 
 export interface EscalationListResponse {
@@ -103,6 +114,25 @@ export async function fetchEscalationDetail(
 ): Promise<EscalationDetailResponse> {
   const { data } = await client.get(
     `/admin/escalations/${encodeURIComponent(correlationId)}`,
+  );
+  return data;
+}
+
+// Slice 24 (spec §10.10) — standalone timeline poll. Pass `afterId` from
+// the previous response's `next_after_id` to fetch only newly-landed
+// audit events. Backed by GET /admin/escalations/{id}/timeline which
+// merges escalation_lifecycle (slice 17) and tool_gap_lifecycle
+// (slice 22) audit rows for the same escalation_request_id.
+export async function fetchEscalationTimeline(
+  correlationId: string,
+  afterId: string | null = null,
+  limit = 200,
+): Promise<EscalationTimelineResponse> {
+  const params: Record<string, string | number> = { limit };
+  if (afterId) params.after_id = afterId;
+  const { data } = await client.get(
+    `/admin/escalations/${encodeURIComponent(correlationId)}/timeline`,
+    { params },
   );
   return data;
 }

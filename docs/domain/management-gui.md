@@ -299,16 +299,42 @@ Three dashboard surfaces are defined by
    `requires_rebuild_warning`. Lands in
    `slice_19_dashboard_escalation_workspace.md`; tool-build row support
    lands in `slice_22_tool_gap_surfacing.md`.
-2. **Escalation toggle card** — master kill switch, per-mode toggles
-   (chat / claude_code), budget-extension allow + max-daily slider, and
-   a per-task-type override grid. Backed by the `dashboard_setting`
-   table; resolution order `dashboard_setting → YAML default`.
-   `hard_monthly_ceiling_usd` is YAML-only (defense in depth). Lands in
-   `slice_23_dashboard_runtime_overrides.md`.
-3. **Tool gap queue** (planned, slice 23) — list view of `tool_request`
-   rows that surfaces speculative gaps from the morning digest in a
-   queryable form, plus snooze / file-request / reject controls. Slice
-   22 ships the data model and Discord ping; slice 23 will surface the
-   same rows on the dashboard alongside the toggle card.
+2. **Escalation Settings page (slice 23)** at `/escalation-settings` —
+   master kill switch, per-mode toggles (chat / claude_code),
+   budget-extension allow + max-daily slider, and a per-task-type
+   override grid (`Auto / Force-API / Force-Manual / Disabled`). Backed
+   by the `dashboard_setting` table; resolution order
+   `dashboard_setting → YAML default`.
+   - **API:** `GET /admin/escalation-settings`,
+     `PUT /admin/escalation-settings/{key:path}`,
+     `PUT /admin/escalation-settings/task-types/{task_type}`.
+   - **Optimistic locking:** every PUT carries `expected_updated_at`
+     from the most recent GET; the server returns 409 with the live
+     state on a stale token (spec §10.7 row 1). The page surfaces a
+     toast and replaces the stale value with the live state — no
+     silent retry.
+   - **Slider safety:** `max_daily_extension_usd` is server-validated
+     against `hard_monthly_ceiling_usd / days_left_in_month`; the GET
+     response carries the cap so the slider's max matches the PUT
+     acceptance window.
+   - **YAML-only ceiling:** `hard_monthly_ceiling_usd` is **not**
+     dashboard-mutable — defense in depth so a compromised dashboard
+     session cannot raise it (spec §10.7 row 4).
+   - **Audit:** every successful write inserts an
+     `escalation_lifecycle` row in `invocation_log` with
+     `event='dashboard_setting_changed'` and a payload of `{key, value,
+     previous_value, had_lock_token}`. `escalation_request_id` stays
+     NULL because these are subsystem-level events; the slice 19
+     per-row timeline filters on that FK and so only surfaces
+     row-scoped events. Dashboard-setting changes are visible in the
+     log viewer at `/admin/logs`.
+3. **Tool gap queue** (future) — a dedicated list view of `tool_request`
+   rows that would surface speculative gaps from the morning digest in
+   a queryable form, plus snooze / file-request / reject controls.
+   Slice 22 ships the data model and Discord ping; the standalone
+   queue surface is not yet scheduled. For now, tool requests are
+   visible as escalation-workspace rows of type
+   `tool_request_fulfillment` (surface 1) and as dashboard-setting
+   audit entries in `/admin/logs`.
 
 All three follow the existing dashboard conventions described above.

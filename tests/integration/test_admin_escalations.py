@@ -20,6 +20,7 @@ from httpx import ASGITransport, AsyncClient
 from donna.api.auth.router_factory import _admin_dep
 from donna.api.routes import admin_escalations
 from donna.cost.escalation_audit import write_escalation_event
+from donna.cost.tool_gap_audit import write_tool_gap_event
 
 # Self-contained schema: slice 17 columns + slice 19 additions + slice 21 columns.
 # Mirrors c7d8e9f0a1b2 + d8e9f0a1b2c3 + a1b2c3d4e5f7 without invoking
@@ -251,6 +252,171 @@ class TestDetail:
         r = await client.get("/admin/escalations/does-not-exist")
         assert r.status_code == 404
         assert r.json()["detail"]["error"] == "not_found"
+
+    async def test_detail_timeline_merges_tool_gap_lifecycle_events(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        """Slice 24 (spec §10.10) — when a tool-build escalation runs, its
+        ``tool_gap_lifecycle`` audit rows must surface on the same per-row
+        timeline. Without the merge, ``tool_request_fulfillment`` rows
+        showed only their escalation_lifecycle envelope and the lint
+        outcome was invisible on the dashboard.
+        """
+        _app, conn = app_and_conn
+        rid = await _make_row(
+            conn,
+            correlation_id="tool-1",
+            task_type="tool_request_fulfillment",
+            status="resolved",
+        )
+        await write_escalation_event(
+            conn,
+            event="escalation_offered",
+            escalation_request_id=rid,
+            correlation_id="tool-1",
+            user_id="nick",
+            task_id=None,
+            payload={"offered": ["claude_code"]},
+        )
+        await write_tool_gap_event(
+            conn,
+            event="tool_request_filled",
+            tool_request_id=42,
+            user_id="nick",
+            escalation_request_id=rid,
+            payload={"branch": "donna/tool/foo"},
+        )
+
+        r = await client.get("/admin/escalations/tool-1")
+        assert r.status_code == 200
+        timeline = r.json()["timeline"]
+        events = [(e["event"], e["task_type"]) for e in timeline]
+        assert ("escalation_offered", "escalation_lifecycle") in events
+        assert ("tool_request_filled", "tool_gap_lifecycle") in events
+
+
+class TestTimelineEndpoint:
+    """Slice 24 — dedicated GET /escalations/{id}/timeline used by the
+    detail page's append-only poll. Must return events strictly after
+    the cursor and merge both lifecycle task_types."""
+
+    async def test_returns_events_in_chronological_order(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        rid = await _make_row(conn, correlation_id="t-1", status="resolved")
+        await write_escalation_event(
+            conn,
+            event="escalation_offered",
+            escalation_request_id=rid,
+            correlation_id="t-1",
+            user_id="nick",
+            task_id="t",
+            payload={},
+        )
+        await write_escalation_event(
+            conn,
+            event="escalation_resolved",
+            escalation_request_id=rid,
+            correlation_id="t-1",
+            user_id="nick",
+            task_id="t",
+            payload={"mode": "claude_code"},
+        )
+
+        r = await client.get("/admin/escalations/t-1/timeline")
+        body = r.json()
+        assert r.status_code == 200
+        assert body["correlation_id"] == "t-1"
+        assert body["escalation_id"] == rid
+        assert [e["event"] for e in body["timeline"]] == [
+            "escalation_offered",
+            "escalation_resolved",
+        ]
+        assert body["next_after_id"] == body["timeline"][-1]["id"]
+
+    async def test_after_id_returns_only_newer_events(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        rid = await _make_row(conn, correlation_id="t-2", status="resolved")
+        first = await write_escalation_event(
+            conn,
+            event="escalation_offered",
+            escalation_request_id=rid,
+            correlation_id="t-2",
+            user_id="nick",
+            task_id=None,
+            payload={},
+        )
+
+        r = await client.get(
+            "/admin/escalations/t-2/timeline",
+            params={"after_id": first},
+        )
+        body = r.json()
+        assert r.status_code == 200
+        assert body["timeline"] == []
+        assert body["next_after_id"] == first
+
+        await write_escalation_event(
+            conn,
+            event="escalation_resolved",
+            escalation_request_id=rid,
+            correlation_id="t-2",
+            user_id="nick",
+            task_id=None,
+            payload={"mode": "chat"},
+        )
+        r2 = await client.get(
+            "/admin/escalations/t-2/timeline",
+            params={"after_id": first},
+        )
+        body2 = r2.json()
+        assert [e["event"] for e in body2["timeline"]] == ["escalation_resolved"]
+
+    async def test_merges_tool_gap_lifecycle(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        rid = await _make_row(
+            conn,
+            correlation_id="t-3",
+            task_type="tool_request_fulfillment",
+            status="submitted",
+        )
+        await write_escalation_event(
+            conn,
+            event="escalation_submitted",
+            escalation_request_id=rid,
+            correlation_id="t-3",
+            user_id="nick",
+            task_id=None,
+            payload={"branch": "donna/tool/foo"},
+        )
+        await write_tool_gap_event(
+            conn,
+            event="tool_request_filled",
+            tool_request_id=7,
+            user_id="nick",
+            escalation_request_id=rid,
+            payload={"branch": "donna/tool/foo"},
+        )
+
+        r = await client.get("/admin/escalations/t-3/timeline")
+        body = r.json()
+        assert r.status_code == 200
+        events = [e["event"] for e in body["timeline"]]
+        task_types = [e["task_type"] for e in body["timeline"]]
+        assert "escalation_submitted" in events
+        assert "tool_request_filled" in events
+        assert "tool_gap_lifecycle" in task_types
+
+    async def test_404_when_correlation_id_missing(
+        self, client: AsyncClient
+    ) -> None:
+        r = await client.get("/admin/escalations/nope/timeline")
+        assert r.status_code == 404
 
 
 class TestSubmit:

@@ -70,20 +70,90 @@ Dashboard surfaces (admin section):
 
 ## What to Build
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+1. **Catalog module** at `src/donna/cost/dashboard_settings_catalog.py` —
+   single source of truth for the keys the dashboard exposes, their
+   types, legacy aliases, and the slider-cap helpers.
+2. **Optimistic-lock writer** —
+   `EscalationRepository.set_dashboard_setting_with_lock(key, value, *,
+   expected_updated_at, updated_by)` returns `(ok, current_value,
+   updated_at, updated_by)` so a 409 carries enough state for the UI to
+   self-correct without a re-fetch round trip.
+3. **Admin routes** at `src/donna/api/routes/admin_escalation_settings.py` —
+   `GET /admin/escalation-settings`,
+   `PUT /admin/escalation-settings/{key:path}`,
+   `PUT /admin/escalation-settings/task-types/{task_type}`.
+4. **Boot validation** — `validate_manual_escalation_config(task_types)` in
+   `src/donna/config.py`, called from `cli_wiring.build_startup_context` and
+   the API `lifespan`. Hard-fails when a `claude_code`-mode task type lacks
+   `target_paths` or `reference_module` (§10.7 row 3).
+5. **Gate plumbing** — `EscalationGate` consumes the per-task-type
+   override (`auto / force_api / force_manual / disabled`) and the new
+   `max_daily_extension_usd` slider through the existing
+   `DashboardSettingResolver`. Existing chat / claude_code / budget
+   reads are migrated to canonical key names, with legacy aliases
+   honoured for backward compatibility.
+6. **Frontend page** at `donna-ui/src/pages/EscalationSettings/` — toggles,
+   slider, and override grid bound to the API client at
+   `donna-ui/src/api/escalationSettings.ts`. Sidebar nav entry.
 
 ## Implementation Notes
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+- **Resolution order** — `dashboard_setting → YAML default` (spec §6.3).
+  The catalog records each setting's YAML default function so the GET
+  response can show the override value AND the default side by side.
+- **Canonical key namespace** — every key is the dot-path of the YAML
+  structure under `manual_escalation.*`. Slice 17/18/21 had drifted to
+  two short names; the resolver now consults the canonical key first
+  and falls back to documented legacy aliases. New writes always go to
+  canonical keys (see `S23` in `docs/superpowers/specs/followups.md`).
+- **Audit** — successful writes also append an `escalation_lifecycle`
+  row to `invocation_log` with `event='dashboard_setting_changed'`. The
+  slice 19 timeline view picks these up automatically.
+- **Slider cap** — `hard_monthly_ceiling_usd / days_left_in_month`
+  recomputed server-side on each PUT (so a stale GET cannot smuggle a
+  larger value through). The GET response includes the cap and the
+  basis (`hard_monthly_ceiling_usd`, `days_left_in_month`) so the UI
+  can render the slider's max + a help string in one trip.
+- **Per-task-type override application** — applied **after**
+  the per-mode preconditions are evaluated. `force_manual` cannot
+  invent a chat or claude_code button when the underlying gate is not
+  wired; `force_api` cannot conjure budget headroom that does not
+  exist. `disabled` short-circuits to Pause / Cancel only.
+- **Route ordering** — the per-task-type PUT is declared **before**
+  the catch-all `{key:path}` PUT so FastAPI's path converter does not
+  swallow `task-types/...` URLs.
 
 ## Test Plan
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+- `tests/unit/test_dashboard_settings_writes.py` — catalog drift guards,
+  type coercion, slider-cap math, optimistic-lock happy-path / stale-
+  token / no-row cases, and resolver fallback to legacy aliases.
+- `tests/unit/test_manual_escalation_validation.py` — §10.7 row 3
+  boot-time check covers no-block, chat-only, claude_code-with-full-
+  contract, missing-target_paths, missing-reference_module, and
+  multi-offender enumeration.
+- `tests/unit/test_escalation_gate_overrides.py` — `auto / force_api /
+  force_manual / disabled` each produce the right `offered_modes` set,
+  and the slider's stored value lowers headroom past the YAML default.
+- `tests/integration/test_admin_escalation_settings.py` — end-to-end
+  through `httpx.ASGITransport` covering GET shape, override grid
+  filtering, audit row written, optimistic-lock 409, value-type 422,
+  slider over-cap 422, and the path-routes-block check that prevents
+  the catch-all PUT from masquerading as the task-type endpoint.
+- UI build (`npx vite build`) and typecheck (`npx tsc --noEmit`) must
+  pass — these are the bar per `donna-ui/CLAUDE.md`.
 
 ## Open Questions
 
-- Do existing dashboard cards have an established optimistic-locking pattern this slice should reuse, or is this the first?
-- Where does the per-task-type override grid live — its own page or a section of the toggle card?
+- ~~Do existing dashboard cards have an established optimistic-locking pattern this slice should reuse, or is this the first?~~
+  **Resolved (slice 23):** First subsystem with optimistic locks. Pattern
+  lives at `EscalationRepository.set_dashboard_setting_with_lock` —
+  reuseable for any future dashboard-mutable subsystem with the same
+  `key TEXT PK, value JSON, updated_at, updated_by` schema.
+- ~~Where does the per-task-type override grid live — its own page or a section of the toggle card?~~
+  **Resolved (slice 23):** dedicated `/escalation-settings` page with a
+  separate sidebar entry. The escalations workspace is per-row;
+  settings are per-subsystem. See `S23` in the followups log.
 
 ## Not in Scope
 
@@ -98,12 +168,30 @@ Load only: `CLAUDE.md`, this brief, canonical spec, `docs/domain/management-gui.
 
 > Run the superpowers brainstorm skill against this slice.
 
-- [ ] Optimistic lock contract for the API: client sends `updated_at` it last read; server compares and 409s on mismatch. What does the UI do on 409 — silent refetch + retry, or surface a "Setting changed elsewhere — reload?" toast?
-- [ ] Define the per-task-type override grid's data source — it needs both YAML defaults and the override list joined, with empty rows for task types missing a `manual_escalation` block.
-- [ ] Should the slider for `Max daily extension` show today's "remaining headroom under monthly ceiling" live, or only at page load?
-- [ ] Validation at boot for §10.7 row 3 (`claude_code` mode requires `target_paths` + `reference_module`) — does the existing config loader have a place for this, or do we add a `validate_manual_escalation_config()` step?
-- [ ] What happens when a toggle is flipped while an escalation is open? Spec §10.7 row 2 says no retroactive effect — confirm the implementation snapshots `offered_modes` at creation time (slice 17 should already do this — verify).
-- [ ] Audit: should toggle changes write to `invocation_log` (with `task_type='dashboard_setting_change'`), or a dedicated audit table? `dashboard_setting.updated_by` already covers most needs.
+- [x] Optimistic lock — UI 409 behaviour: **visible toast + replace-in-place
+      with the live state**. Silent retry could race with another tab; toast
+      keeps the user in control. See `S23` in `docs/superpowers/specs/followups.md`.
+- [x] Per-task-type override grid data source: catalog joins
+      `task_types_config` (only entries with a `manual_escalation` block) with
+      `dashboard_setting` rows under the
+      `manual_escalation.task_types.<task_type>.override` key prefix. Default
+      is `auto` when no override exists.
+- [x] Slider headroom: **page-load only**. Cap (`hard_monthly_ceiling_usd /
+      days_left_in_month`) is computed at GET and re-validated at PUT, so
+      stale UI cannot smuggle an over-ceiling value. See `S23` slider entry
+      in followups.
+- [x] Boot validation: new `validate_manual_escalation_config(task_types)`
+      in `src/donna/config.py`, raising `ManualEscalationConfigError`. Wired
+      into both `cli_wiring.build_startup_context` and the API lifespan
+      startup so either process catches drift on boot.
+- [x] In-flight escalations: confirmed — the gate snapshots `offered_modes`
+      onto the row at fire time (`EscalationGate.fire_and_wait` → `repo.create`).
+      Slice 23 toggles do not retroactively rewrite open rows. Spec §10.7 row 2
+      already covered this; no new code needed.
+- [x] Audit: toggle changes write an `escalation_lifecycle` row to
+      `invocation_log` (`event='dashboard_setting_changed'`) so the slice 19
+      timeline view surfaces them alongside actual escalations. Reusing
+      `invocation_log` avoids a parallel audit table.
 
 ## Spec Drift Protocol
 
@@ -113,8 +201,17 @@ Per `CLAUDE.md`: *"When a PR changes behavior, schema, routing, config contract,
 
 Drift checklist for this slice:
 
-- [ ] Did the dashboard surface differ from §6.3(a)? Update §6.3(a).
-- [ ] Did the per-task-type config differ from §6.2? Update §6.2.
-- [ ] Did the failure mitigations differ from §10.7? Update §10.7.
-- [ ] Did acceptance criteria need adjustment? Update §11.
-- [ ] Did `docs/domain/management-gui.md` need a new subsection for the escalation toggle card? Add it.
+- [x] §6.3(a) updated with the canonical key namespace, the API
+      contract, the slider-cap rule, the audit log entry, and the
+      page route + sidebar.
+- [x] §6.2 updated with a sentence pointing at §6.3(a) for the
+      runtime override.
+- [x] §10.7 row 1 updated with the `set_dashboard_setting_with_lock`
+      contract; row 3 updated with the
+      `validate_manual_escalation_config` function name + behaviour.
+- [x] §11 acceptance criteria already covered "Dashboard toggles
+      override YAML and take effect on next escalation (no restart)";
+      no adjustment needed.
+- [x] `docs/domain/management-gui.md` Manual Escalation Surfaces §
+      replaced the "planned" toggle-card description with the shipped
+      page + API + audit + ceiling notes.

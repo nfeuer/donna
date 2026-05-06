@@ -36,6 +36,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from donna.config import (
+    ClaudeCodeModeConfig,
     ManualEscalationConfig,
     ManualEscalationModeConfig,
     ManualEscalationModesConfig,
@@ -71,7 +72,7 @@ def _manual_escalation_config() -> ManualEscalationConfig:
         enabled=True,
         modes=ManualEscalationModesConfig(
             chat=ManualEscalationModeConfig(enabled=True),
-            claude_code=ManualEscalationModeConfig(enabled=True),
+            claude_code=ClaudeCodeModeConfig(enabled=True),
         ),
         triggers=ManualEscalationTriggersConfig(task_approval_threshold_usd=5.0),
         prompt_delivery=PromptDeliveryConfig(),

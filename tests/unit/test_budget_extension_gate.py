@@ -163,8 +163,19 @@ def _make_config(
 
 
 def _make_resolver(enabled: bool = True) -> MagicMock:
+    """Mock resolver that mimics the production fall-through-to-default
+    behaviour: the ``enabled`` switch overrides bool keys, but every
+    other key (notably the slice 23 ``max_daily_extension_usd`` slider)
+    returns the YAML default the gate passes in.
+    """
+
+    async def _get(key: str, default: object) -> object:
+        if isinstance(default, bool):
+            return enabled
+        return default
+
     resolver = MagicMock()
-    resolver.get = AsyncMock(return_value=enabled)
+    resolver.get = AsyncMock(side_effect=_get)
     return resolver
 
 

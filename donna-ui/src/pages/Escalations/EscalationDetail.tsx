@@ -9,6 +9,7 @@ import { EmptyState } from "../../primitives/EmptyState";
 import { Skeleton } from "../../primitives/Skeleton";
 import {
   fetchEscalationDetail,
+  fetchEscalationTimeline,
   markEscalationMerged,
   type EscalationDetailResponse,
   type EscalationStatus,
@@ -68,6 +69,13 @@ function ContextRow({
   );
 }
 
+// Slice 24 — task_type drives the badge so tool-gap lifecycle events
+// (slice 22) read distinctly from escalation lifecycle events (slice 17).
+function timelineVariant(taskType: string | undefined): PillVariant {
+  if (taskType === "tool_gap_lifecycle") return "accent";
+  return "muted";
+}
+
 function TimelineRow({ event }: { event: EscalationTimelineEvent }) {
   const eventName = event.event ?? "(unknown event)";
   const payload = { ...event.payload };
@@ -76,7 +84,7 @@ function TimelineRow({ event }: { event: EscalationTimelineEvent }) {
   return (
     <li className={styles.timelineItem}>
       <div className={styles.timelineEvent}>
-        <Pill variant="muted">{eventName}</Pill>
+        <Pill variant={timelineVariant(event.task_type)}>{eventName}</Pill>
         <span className={styles.muted}>{formatTs(event.timestamp)}</span>
       </div>
       {showPayload && (
@@ -88,6 +96,10 @@ function TimelineRow({ event }: { event: EscalationTimelineEvent }) {
   );
 }
 
+// Slice 24 — 30s interval matches the dashboard convention
+// (`docs/domain/management-gui.md`).
+const TIMELINE_POLL_INTERVAL_MS = 30_000;
+
 export default function EscalationDetail() {
   const { correlation_id: correlationId } = useParams<{ correlation_id: string }>();
   const navigate = useNavigate();
@@ -98,6 +110,9 @@ export default function EscalationDetail() {
   const [copyState, setCopyState] = useState<string>("");
   const [markBuiltOpen, setMarkBuiltOpen] = useState(false);
   const [mergeBusy, setMergeBusy] = useState(false);
+  // Slice 24 — append-only timeline poll. Stores the next cursor so
+  // each tick only pulls newly-landed audit rows.
+  const [timelineAfterId, setTimelineAfterId] = useState<string | null>(null);
 
   const doFetch = useCallback(async () => {
     if (!correlationId) return;
@@ -106,6 +121,10 @@ export default function EscalationDetail() {
     try {
       const data = await fetchEscalationDetail(correlationId);
       setDetail(data);
+      const lastId = data.timeline.length
+        ? data.timeline[data.timeline.length - 1].id
+        : null;
+      setTimelineAfterId(lastId);
     } catch (err) {
       setDetail(null);
       const msg = err instanceof Error ? err.message : "Failed to load";
@@ -118,6 +137,37 @@ export default function EscalationDetail() {
   useEffect(() => {
     doFetch();
   }, [doFetch]);
+
+  // Slice 24 (spec §10.10) — poll the dedicated timeline endpoint so the
+  // panel reflects new lifecycle / tool-gap events without refetching the
+  // full detail blob. Append-only so the visible scroll position is
+  // preserved across ticks.
+  useEffect(() => {
+    if (!correlationId || !detail) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const resp = await fetchEscalationTimeline(
+          correlationId,
+          timelineAfterId,
+        );
+        if (cancelled || resp.timeline.length === 0) return;
+        setDetail((prev) =>
+          prev
+            ? { ...prev, timeline: [...prev.timeline, ...resp.timeline] }
+            : prev,
+        );
+        if (resp.next_after_id) setTimelineAfterId(resp.next_after_id);
+      } catch {
+        // Silent — the global axios interceptor surfaces hard errors.
+      }
+    };
+    const handle = window.setInterval(tick, TIMELINE_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(handle);
+    };
+  }, [correlationId, detail, timelineAfterId]);
 
   const handleCopyPrompt = useCallback(async () => {
     if (!detail?.escalation.prompt_body) return;

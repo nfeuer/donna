@@ -422,3 +422,29 @@ class ToolRequestRepository:
         rows = await cursor.fetchall()
         cols = _columns(cursor)
         return [_row_to_request(cols, row) for row in rows]
+
+    async def list_completed_resolved_before(
+        self,
+        *,
+        cutoff: datetime,
+    ) -> list[ToolRequestRow]:
+        """Return ``status='completed'`` rows resolved before ``cutoff``.
+
+        Slice 24 (spec §10.5 row 1) feeds this into the
+        ``RequiresRebuildNagger``: a tool that's been merged for
+        longer than the nag threshold but hasn't appeared in the
+        orchestrator's ``ToolRegistry`` since reboot still needs a
+        rebuild. We sort by ``resolved_at`` ASC so the oldest stuck
+        rows nag first.
+        """
+        cursor = await self._conn.execute(
+            """
+            SELECT * FROM tool_request
+             WHERE status = ? AND resolved_at IS NOT NULL AND resolved_at < ?
+             ORDER BY resolved_at ASC
+            """,
+            (STATUS_COMPLETED, cutoff.isoformat()),
+        )
+        rows = await cursor.fetchall()
+        cols = _columns(cursor)
+        return [_row_to_request(cols, row) for row in rows]
