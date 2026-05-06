@@ -722,6 +722,11 @@ class EscalationRequest(Base):
     resolved_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     prompt_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    prompt_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mode: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    validation_result: Mapped[Any | None] = mapped_column(JSON, nullable=True)
     branch_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     iteration: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(

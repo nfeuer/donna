@@ -143,6 +143,62 @@ visible.
 
 ---
 
+## S19 — Frontend route uses `/escalations`, spec says `/admin/escalations`
+
+- **Surfaced by:** `slices/slice_19_dashboard_escalation_workspace.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§6.3(b)`
+- **Status:** resolved-in-slice-19
+- **Decision / Reasoning:** Spec §6.3(b) reads "New dashboard area at
+  `/admin/escalations`", but every existing donna-ui page lives at a
+  root-level path (`/skill-system`, `/shadow`, etc.) — `/admin/*` is the
+  *backend API* convention, not the SPA route convention. Slice 19
+  follows the existing UI convention: SPA routes are `/escalations` and
+  `/escalations/<correlation_id>`; the backend endpoints stay at
+  `/admin/escalations*` per spec §5.2/§5.3. Discord notification deep
+  links (slice 20) will use `/escalations/<correlation_id>` to match.
+- **Follow-up:** Spec §6.3(b) updated in this slice's PR.
+
+---
+
+## S19 — `escalation_request` columns added that §8 didn't enumerate
+
+- **Surfaced by:** `slices/slice_19_dashboard_escalation_workspace.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§8`,
+  `#§5.2`, `#§5.3`
+- **Status:** resolved-in-slice-19
+- **Decision / Reasoning:** §5.2 and §5.3 reference
+  `escalation_request.prompt_body` (TEXT) inline, but §8's `CREATE TABLE`
+  block only listed `prompt_path` (workspace path for claude_code mode).
+  Slice 17's migration (`c7d8e9f0a1b2`) faithfully implemented §8 and
+  therefore also missed `prompt_body`. Slice 19 ships migration
+  `d8e9f0a1b2c3_escalation_workspace_columns.py` adding `prompt_body`,
+  `summary` (the Discord-summary text), `mode` (the chosen manual mode
+  for fast filtering), `result` (JSON of the submission payload), and
+  `validation_result` (JSON for the validation panel). §8 updated in this
+  PR to enumerate all five columns.
+- **Follow-up:** None. Slices 20 and 21 will populate `prompt_body`,
+  `summary`, and `validation_result` as part of their own scope.
+
+---
+
+## S19 — Submission endpoint URL contract
+
+- **Surfaced by:** `slices/slice_19_dashboard_escalation_workspace.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.2`,
+  `#§9` (`schemas/escalation_submission.json`)
+- **Status:** resolved-in-slice-19
+- **Decision / Reasoning:** Spec §5.2 names
+  `/admin/escalations/<correlation_id>/submit` for the dashboard POST.
+  Slice 19 implements it exactly as written, with the JSON body
+  validated against `schemas/escalation_submission.json` (a discriminated
+  oneOf on `mode`: `chat` carries `answer` ≥ 50 chars; `claude_code`
+  carries `branch` plus optional `sha`). The endpoint is mode-agnostic;
+  slices 20 and 21 attach the mode-specific UI controls (textarea vs
+  "Mark as built" modal) but POST the same payload here.
+- **Follow-up:** None.
+
+---
+
 ## How to add an entry (template)
 
 Copy this when you finish a slice:
