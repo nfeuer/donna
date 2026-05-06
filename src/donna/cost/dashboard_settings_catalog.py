@@ -110,6 +110,24 @@ SETTINGS: tuple[DashboardSettingSpec, ...] = (
             "Capped at hard_monthly_ceiling_usd / days_left_in_month."
         ),
     ),
+    # Slice 25 — re-escalation chain controls (§10.6 row 1, §12 Q5).
+    DashboardSettingSpec(
+        key="manual_escalation.triggers.max_re_escalation_depth",
+        value_type=float,
+        description=(
+            "Max depth of the cross-row re-escalation chain produced "
+            "by token-cap recovery. Distinct from manual_iteration_limit."
+        ),
+    ),
+    DashboardSettingSpec(
+        key="manual_escalation.triggers.re_escalation_estimate_multiplier",
+        value_type=float,
+        description=(
+            "Multiplier applied to the previous estimate when a "
+            "token-cap recovery re-fires the gate (clamped to "
+            "hard_monthly_ceiling_usd headroom)."
+        ),
+    ),
 )
 """Catalog of dashboard-mutable settings, in display order."""
 
@@ -186,6 +204,10 @@ def yaml_default_for(
         return config.budget_extension.enabled
     if key == "manual_escalation.budget_extension.max_daily_extension_usd":
         return config.budget_extension.max_daily_extension_usd
+    if key == "manual_escalation.triggers.max_re_escalation_depth":
+        return config.triggers.max_re_escalation_depth
+    if key == "manual_escalation.triggers.re_escalation_estimate_multiplier":
+        return config.triggers.re_escalation_estimate_multiplier
     raise KeyError(key)
 
 

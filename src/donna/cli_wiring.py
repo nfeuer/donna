@@ -1145,6 +1145,22 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         router.set_escalation_gate(escalation_gate)
         log.info("escalation_gate_wired")
 
+        # Slice 25 — token-cap recovery (§10.6 row 1). Built after the
+        # gate because it depends on the gate + extension repo + the
+        # repo's chain-depth helper. Without this, ``complete()``
+        # raises :class:`TokenLimitReachedError` straight to the
+        # caller exactly as before slice 25.
+        from donna.cost.re_escalation_coordinator import ReEscalationCoordinator
+
+        re_escalation_coordinator = ReEscalationCoordinator(
+            gate=escalation_gate,
+            repo=escalation_repository,
+            extension_repo=budget_extension_repo,
+            manual_escalation_config=manual_escalation_config,
+        )
+        router.set_re_escalation_coordinator(re_escalation_coordinator)
+        log.info("re_escalation_coordinator_wired")
+
     ctx_obj = StartupContext(
         args=args,
         config_dir=config_dir,

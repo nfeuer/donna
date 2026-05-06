@@ -32,7 +32,22 @@ budget_extension:
 triggers:
   task_approval_threshold_usd: 5.0     # estimate above this always offers escalation
   escalation_timeout_minutes: 60       # auto-pause after this many minutes if no click
-  manual_iteration_limit: 3            # used by slices 20/21
+  manual_iteration_limit: 3            # used by slices 20/21 — bounds the inner loop
+                                       # of a single manual handoff (resubmits against
+                                       # the same row), NOT the cross-row chain.
+  # Slice 25 — bounds the cross-row re-escalation chain produced by
+  # token-cap recovery (§10.6 row 1). When `complete()` hits the
+  # extension-derived token cap, ReEscalationCoordinator re-fires the
+  # gate with parent_escalation_id set; this cap stops a runaway chain
+  # past N persisted ancestors. Default 5 — see canonical spec §15
+  # for the rationale. Dashboard runtime override at key
+  # `manual_escalation.triggers.max_re_escalation_depth`.
+  max_re_escalation_depth: 5
+  # Slice 25 — multiplier applied to the previous estimate when a
+  # token-cap recovery re-fires the gate. Hard-clamped to remaining
+  # monthly headroom under hard_monthly_ceiling_usd, so 2.0 is a safe
+  # default even on high-cost task types.
+  re_escalation_estimate_multiplier: 2.0
 
 # Slice 20 — chat mode delivery (canonical spec §6.1). The full prompt
 # always lives on disk + DB; Discord only carries summary + optional

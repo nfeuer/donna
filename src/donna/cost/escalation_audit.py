@@ -36,6 +36,25 @@ EVENT_OWNER_MISMATCH = "escalation_owner_mismatch"
 EVENT_EXTENSION_GRANTED = "extension_granted"
 EVENT_EXTENSION_VOIDED = "extension_voided"
 
+# Slice 25 — token-cap recovery / re-escalation chain events.
+EVENT_RE_ESCALATION_OFFERED = "re_escalation_offered"
+"""Written before the standard ``escalation_offered`` row when a
+token-cap recovery creates a child escalation. Payload carries
+``parent_id``, ``parent_correlation_id``, ``depth``,
+``previous_estimate_usd``, ``new_estimate_usd``, ``consumed_tokens``."""
+
+EVENT_RE_ESCALATION_CHAIN_CAPPED = "re_escalation_chain_capped"
+"""Written when ``triggers.max_re_escalation_depth`` refuses a re-fire.
+Keyed off the *parent's* ``escalation_request_id`` so the dashboard
+timeline shows the failure marker on the link the user actually saw.
+Payload: ``{parent_id, depth, cap}``."""
+
+EVENT_RE_ESCALATION_TOKEN_LIMITED = "re_escalation_token_limited"
+"""Written when the coordinator's in-flight loop terminates without a
+successful recovery (every chain link resolved to a non-``api_extended``
+mode, or the chain capped). Payload:
+``{root_correlation_id, depth, last_outcome_mode}``."""
+
 
 async def write_escalation_event(
     conn: aiosqlite.Connection,

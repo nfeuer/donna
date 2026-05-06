@@ -29,6 +29,7 @@ from donna.resilience.retry import CircuitBreaker, TaskCategory, resilient_call
 if TYPE_CHECKING:
     from donna.cost.budget import BudgetGuard
     from donna.cost.escalation_gate import EscalationGate
+    from donna.cost.re_escalation_coordinator import ReEscalationCoordinator
 
 logger = structlog.get_logger()
 
@@ -123,6 +124,7 @@ class ModelRouter:
         ]
         | None = None,
         escalation_gate: EscalationGate | None = None,
+        re_escalation_coordinator: ReEscalationCoordinator | None = None,
     ) -> None:
         self._models_config = models_config
         self._task_types_config = task_types_config
@@ -130,6 +132,12 @@ class ModelRouter:
         self._budget_guard = budget_guard
         self._on_shadow_complete = on_shadow_complete
         self._escalation_gate = escalation_gate
+        # Slice 25 — token-cap recovery (§10.6 row 1). When wired, a
+        # ``TokenLimitReachedError`` from `complete()` is caught and
+        # the coordinator re-fires the gate. Late-bound via
+        # :meth:`set_re_escalation_coordinator` because the coordinator
+        # depends on the gate, which boots after the router.
+        self._re_escalation_coordinator = re_escalation_coordinator
         self._circuit_breaker = CircuitBreaker()
 
         # Instantiate one provider instance per unique provider name in config.
@@ -172,6 +180,20 @@ class ModelRouter:
         is built earlier in the boot sequence.
         """
         self._escalation_gate = gate
+
+    def set_re_escalation_coordinator(
+        self, coordinator: ReEscalationCoordinator | None
+    ) -> None:
+        """Late-bind the slice-25 token-cap recovery coordinator.
+
+        The coordinator depends on the gate + extension repo, both of
+        which are wired after the router. ``cli_wiring.build_startup_context``
+        constructs the coordinator and calls this setter before the
+        orchestrator starts. Optional: when None, the router behaves
+        exactly as it does pre-slice-25 (raises
+        :class:`TokenLimitReachedError` straight to the caller).
+        """
+        self._re_escalation_coordinator = coordinator
 
     def _resolve_route(self, task_type: str) -> tuple[ModelProvider, str, str]:
         """Resolve task_type → (provider instance, model ID, model alias).
@@ -222,6 +244,8 @@ class ModelRouter:
         originating_entity: tuple[str, str] | None = None,
         target_paths: dict[str, str] | None = None,
         base_sha: str | None = None,
+        _existing_outcome: Any = None,
+        _re_escalation_attempts_remaining: int | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Route a completion call through the configured provider.
 
@@ -270,7 +294,12 @@ class ModelRouter:
         _max_tokens_override: int | None = None
         _extension_amount_usd: float | None = None
 
-        if (
+        # Slice 25 — when the coordinator hands us an outcome it already
+        # produced (the recovery's gate.fire_and_wait already returned
+        # api_extended), reuse it in place. Re-firing the gate here
+        # would write a duplicate chain link for the same recovery.
+        outcome = _existing_outcome
+        if outcome is None and (
             self._escalation_gate is not None
             and estimate_usd is not None
         ):
@@ -288,6 +317,7 @@ class ModelRouter:
                 # dashboard / Discord attachment.
                 original_prompt=prompt,
             )
+        if outcome is not None:
             # ``pause``, ``cancel``, ``chat`` (slice 20), and ``claude_code``
             # (slice 21) all mean "no autonomous API call". The caller
             # catches the exception and parks the task. For chat /
@@ -411,9 +441,21 @@ class ModelRouter:
                         input_spend=input_spend,
                         escalation_request_id=_escalation_request_id,
                     )
-                    raise TokenLimitReachedError(
+                    return await self._raise_or_recover_token_limit(
                         escalation_request_id=_escalation_request_id,
                         correlation_id=_escalation_correlation_id,
+                        prompt=prompt,
+                        task_type=task_type,
+                        task_id=task_id,
+                        user_id=user_id,
+                        estimate_usd=estimate_usd,
+                        priority=priority,
+                        originating_entity=originating_entity,
+                        target_paths=target_paths,
+                        base_sha=base_sha,
+                        previous_estimate_usd=estimate_usd or 0.0,
+                        previous_extension_usd=_extension_amount_usd,
+                        attempts_remaining=_re_escalation_attempts_remaining,
                     )
                 _max_tokens_override = max(1, int(remaining_budget / output_cost))
                 logger.info(
@@ -470,13 +512,27 @@ class ModelRouter:
         )
 
         # §10.6 row 1: if the response was cut off by the extension token cap,
-        # raise so the caller can re-estimate and re-escalate rather than
-        # silently returning a truncated result.
+        # route through the slice-25 recovery coordinator so a re-estimate
+        # gets re-offered. When no coordinator is wired (or it gives up),
+        # the helper re-raises ``TokenLimitReachedError`` and the caller's
+        # existing failure path runs.
         if metadata.token_limited and _escalation_request_id is not None:
             assert _escalation_correlation_id is not None
-            raise TokenLimitReachedError(
+            return await self._raise_or_recover_token_limit(
                 escalation_request_id=_escalation_request_id,
                 correlation_id=_escalation_correlation_id,
+                prompt=prompt,
+                task_type=task_type,
+                task_id=task_id,
+                user_id=user_id,
+                estimate_usd=estimate_usd,
+                priority=priority,
+                originating_entity=originating_entity,
+                target_paths=target_paths,
+                base_sha=base_sha,
+                previous_estimate_usd=estimate_usd or 0.0,
+                previous_extension_usd=_extension_amount_usd,
+                attempts_remaining=_re_escalation_attempts_remaining,
             )
 
         # Shadow mode: fire secondary model in parallel if configured.
@@ -489,6 +545,114 @@ class ModelRouter:
             shadow_task.add_done_callback(self._shadow_tasks.discard)
 
         return result, enriched_metadata
+
+    async def _raise_or_recover_token_limit(
+        self,
+        *,
+        escalation_request_id: int,
+        correlation_id: str,
+        prompt: str,
+        task_type: str,
+        task_id: str | None,
+        user_id: str,
+        estimate_usd: float | None,
+        priority: int,
+        originating_entity: tuple[str, str] | None,
+        target_paths: dict[str, str] | None,
+        base_sha: str | None,
+        previous_estimate_usd: float,
+        previous_extension_usd: float | None,
+        attempts_remaining: int | None,
+    ) -> tuple[dict[str, Any], CompletionMetadata]:
+        """Slice 25 — token-cap recovery glue.
+
+        Either calls the wired coordinator and re-recurses on a fresh
+        ``api_extended`` grant, or surfaces the original
+        :class:`TokenLimitReachedError` / :class:`EscalationDecisionError`
+        to the caller. Centralises the dual-raise-site logic in
+        :meth:`complete` so the pre-call (input-too-big) and post-call
+        (truncated-output) paths share one recovery decision.
+        """
+        if self._re_escalation_coordinator is None:
+            raise TokenLimitReachedError(
+                escalation_request_id=escalation_request_id,
+                correlation_id=correlation_id,
+            )
+
+        token_error = TokenLimitReachedError(
+            escalation_request_id=escalation_request_id,
+            correlation_id=correlation_id,
+        )
+        decision = await self._re_escalation_coordinator.recover(
+            token_error=token_error,
+            user_id=user_id,
+            task_id=task_id,
+            task_type=task_type,
+            priority=priority,
+            originating_entity=originating_entity,
+            target_paths=target_paths,
+            base_sha=base_sha,
+            original_prompt=prompt,
+            previous_estimate_usd=previous_estimate_usd,
+            previous_extension_usd=previous_extension_usd,
+            attempts_remaining=attempts_remaining,
+        )
+
+        if decision.chain_capped:
+            # Coordinator gave up (depth cap or in-flight cap). Re-raise
+            # the original error so the caller's existing failure path
+            # runs untouched.
+            raise token_error
+
+        outcome = decision.outcome
+        if outcome.fired and outcome.mode == "api_extended":
+            # The coordinator already fired the gate (writing the new
+            # row with parent_escalation_id) and got a fresh extension
+            # grant. Re-enter complete() with the OUTCOME, not a fresh
+            # estimate, so the recursion does NOT re-fire the gate
+            # (which would write a duplicate chain link for the same
+            # recovery). The body honours `_existing_outcome` identically
+            # to a freshly-fired one.
+            assert outcome.escalation_request_id is not None
+            assert outcome.correlation_id is not None
+            current_attempts = (
+                attempts_remaining
+                if attempts_remaining is not None
+                else self._re_escalation_coordinator._max_in_flight_attempts
+            )
+            return await self.complete(
+                prompt=prompt,
+                task_type=task_type,
+                task_id=task_id,
+                user_id=user_id,
+                estimate_usd=decision.new_estimate_usd,
+                priority=priority,
+                originating_entity=originating_entity,
+                target_paths=target_paths,
+                base_sha=base_sha,
+                _existing_outcome=outcome,
+                _re_escalation_attempts_remaining=current_attempts - 1,
+            )
+
+        # Recovery resolved to a non-recoverable mode (chat /
+        # claude_code / pause / cancel). Surface that exactly the way
+        # the gate's first call site would have — caller already
+        # handles ``EscalationDecisionError`` per slice 17/20/21.
+        if outcome.fired and outcome.mode in (
+            "pause", "cancel", "chat", "claude_code"
+        ):
+            assert outcome.escalation_request_id is not None
+            assert outcome.correlation_id is not None
+            raise EscalationDecisionError(
+                mode=outcome.mode,
+                escalation_request_id=outcome.escalation_request_id,
+                correlation_id=outcome.correlation_id,
+            )
+
+        # Defensive: an unfired outcome on a recovery means the gate
+        # decided it didn't need to escalate (estimate fits remaining
+        # budget). Re-raise the original error — caller can decide.
+        raise token_error
 
     async def _run_shadow(
         self, prompt: str, task_type: str, shadow_alias: str

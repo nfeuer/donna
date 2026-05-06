@@ -195,6 +195,117 @@ class TestEscalationApproval:
         asyncio.get_event_loop().run_until_complete(_test())
 
 
+class TestEscalationGateWiring:
+    """Slice 25 / S20-FU2 — handle_escalation must forward
+    ``estimate_usd`` so the over-budget gate can fire, and must catch
+    :class:`EscalationDecisionError` so the chat surface deflects the
+    user to the dashboard / Discord workflow rather than crashing.
+    """
+
+    def test_handle_escalation_passes_estimate_usd(
+        self,
+        engine: ConversationEngine,
+        mock_router: AsyncMock,
+        mock_db: AsyncMock,
+    ) -> None:
+        async def _test() -> None:
+            mock_db.get_chat_session.return_value = MagicMock(
+                id="sess-1", user_id="nick", channel="api",
+                status="active", message_count=2, pinned_task_id=None,
+                expires_at="2026-04-12T12:00:00",
+            )
+            mock_db.list_chat_messages.return_value = [
+                MagicMock(role="user", content="Hard question"),
+            ]
+            # Wire enough router state for the estimate helper to read
+            # input/output cost rates off the resolved alias.
+            mock_router._models_config = MagicMock()
+            mock_router._models_config.routing.get.return_value = MagicMock(
+                model="claude-sonnet"
+            )
+            sonnet = MagicMock()
+            sonnet.input_cost_per_token_usd = 0.000003
+            sonnet.output_cost_per_token_usd = 0.000015
+            mock_router._models_config.models.get.return_value = sonnet
+
+            mock_router.complete.side_effect = None
+            mock_router.complete.return_value = (
+                {"response_text": "ok", "suggested_actions": []},
+                MagicMock(tokens_in=100, tokens_out=20, cost_usd=0.01, latency_ms=10),
+            )
+            await engine.handle_escalation(session_id="sess-1", user_id="nick")
+            kwargs = mock_router.complete.await_args.kwargs
+            # 4_000 * 0.000003 + 1_000 * 0.000015 = 0.027
+            assert kwargs.get("estimate_usd") == pytest.approx(0.027)
+
+        asyncio.get_event_loop().run_until_complete(_test())
+
+    def test_handle_escalation_chat_mode_branches_to_handoff(
+        self,
+        engine: ConversationEngine,
+        mock_router: AsyncMock,
+        mock_db: AsyncMock,
+    ) -> None:
+        """Gate resolves to chat-mode handoff → ChatResponse points
+        the user at the Discord / dashboard workflow."""
+
+        async def _test() -> None:
+            from donna.models.router import EscalationDecisionError
+
+            mock_db.get_chat_session.return_value = MagicMock(
+                id="sess-1", user_id="nick", channel="api",
+                pinned_task_id=None,
+                expires_at="2026-04-12T12:00:00",
+            )
+            mock_db.list_chat_messages.return_value = [
+                MagicMock(role="user", content="Hard question"),
+            ]
+            mock_router._models_config = None  # estimator returns 0.0
+            mock_router.complete.side_effect = EscalationDecisionError(
+                mode="chat",
+                escalation_request_id=42,
+                correlation_id="cor-42",
+            )
+            resp = await engine.handle_escalation(
+                session_id="sess-1", user_id="nick"
+            )
+            assert "Discord" in resp.text or "dashboard" in resp.text.lower()
+
+        asyncio.get_event_loop().run_until_complete(_test())
+
+    def test_handle_escalation_estimate_falls_back_when_unconfigured(
+        self,
+        engine: ConversationEngine,
+        mock_router: AsyncMock,
+        mock_db: AsyncMock,
+    ) -> None:
+        """A router whose config has no chat_escalation routing entry
+        still resolves cleanly — estimator returns 0.0 so the gate
+        falls through to the historical "no escalation" path."""
+
+        async def _test() -> None:
+            mock_db.get_chat_session.return_value = MagicMock(
+                id="sess-1", user_id="nick", channel="api",
+                pinned_task_id=None,
+                expires_at="2026-04-12T12:00:00",
+            )
+            mock_db.list_chat_messages.return_value = [
+                MagicMock(role="user", content="Hard question"),
+            ]
+            mock_router._models_config = MagicMock()
+            mock_router._models_config.routing.get.return_value = None
+            mock_router.complete.side_effect = None
+            mock_router.complete.return_value = (
+                {"response_text": "ok", "suggested_actions": []},
+                MagicMock(tokens_in=100, tokens_out=20, cost_usd=0.01, latency_ms=10),
+            )
+            await engine.handle_escalation(session_id="sess-1", user_id="nick")
+            kwargs = mock_router.complete.await_args.kwargs
+            assert kwargs.get("estimate_usd") == pytest.approx(0.0)
+
+        asyncio.get_event_loop().run_until_complete(_test())
+
+
 class TestSessionPinning:
     def test_pin_session(self, engine: ConversationEngine, mock_db: AsyncMock) -> None:
         async def _test() -> None:

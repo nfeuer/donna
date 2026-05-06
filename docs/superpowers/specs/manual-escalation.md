@@ -126,6 +126,27 @@ Estimate: $<estimate>  |  Daily remaining: $<remaining>  |  Type: <task_type>
   timeout: task moves to `paused`, log entry `escalation_timed_out`,
   next escalation tier (SMS via `slice_07_sms_escalation.md`) fires
   if priority ≥ 4.
+- **Re-fire branch (slice 25):** when an `api_extended` extension is
+  granted but `complete()` hits the extension-derived token cap (input
+  cost > extension at pre-call, or `metadata.token_limited=True`
+  post-call), the model layer routes through
+  :class:`donna.cost.re_escalation_coordinator.ReEscalationCoordinator`
+  which re-fires this gate with `parent_escalation_id` linking back
+  to the prior row. The new row carries a re-estimated `estimate_usd`
+  (default `previous × 2`, hard-clamped to monthly headroom). The
+  child row is independent of the parent — buttons render the same
+  four options, the user can pick any of them, and the chain
+  terminates as soon as a non-`api_extended` mode is chosen. Each
+  re-fire writes a `re_escalation_offered` audit event before the
+  standard `escalation_offered` row so the dashboard timeline shows
+  every link.
+- **Chain depth cap (slice 25):** persisted-chain depth is bounded by
+  `triggers.max_re_escalation_depth` (default 5). When a re-fire
+  would exceed the cap the gate refuses to create a row, writes a
+  `re_escalation_chain_capped` audit event keyed off the parent's
+  `escalation_request_id`, and surfaces a synthetic
+  `mode='cancel'` outcome so the caller's existing cancel-handling
+  path runs without further user interaction.
 
 ---
 
@@ -142,6 +163,24 @@ Estimate: $<estimate>  |  Daily remaining: $<remaining>  |  Type: <task_type>
 - Audit: `escalation_request.resolution = 'api_extended'`; the
   resulting API call's `invocation_log` row carries the
   `escalation_request_id` foreign key.
+- **Token-cap recovery (slice 25):** the granted extension is
+  translated to a hard `max_tokens` cap on the API call by the
+  router (slice 18). When the cap fires (input cost exhausts the
+  extension *or* the response is truncated),
+  :class:`donna.cost.re_escalation_coordinator.ReEscalationCoordinator`
+  re-fires the gate with a fresh estimate (default `previous_estimate
+  × triggers.re_escalation_estimate_multiplier`, hard-clamped to the
+  user's remaining month-to-date headroom under
+  `hard_monthly_ceiling_usd`) and `parent_escalation_id` set to the
+  prior row's id. The router's `complete()` calls itself recursively
+  if the recovery resolves to a fresh `api_extended` grant; otherwise
+  it surfaces the recovery's mode through the standard
+  `EscalationDecisionError` path so the caller's existing handlers
+  run unchanged. Recovery is bounded both locally (the coordinator's
+  `max_in_flight_attempts`, default 3) and globally (the persisted
+  `max_re_escalation_depth`, default 5). When the chain caps the
+  coordinator re-raises the original `TokenLimitReachedError` so the
+  caller's failure path runs.
 
 ### 5.2 `chat` mode (text-only round trip)
 
@@ -848,7 +887,7 @@ iteration cap then governs).
 
 | Failure | Mitigation |
 |---|---|
-| User approves extension; then estimate was wrong; actual cost overshoots | API call's `complete()` enforces a hard token limit derived from `extension_amount × token_rate`. Truncated output triggers a re-estimate + re-escalation rather than silent overspend. |
+| User approves extension; then estimate was wrong; actual cost overshoots | API call's `complete()` enforces a hard token limit derived from `extension_amount × token_rate` (slice 18 enforcement). Slice 25 closes the recovery half: when the cap fires, :class:`donna.cost.re_escalation_coordinator.ReEscalationCoordinator` re-fires the gate with `parent_escalation_id` set, a re-estimated spend (default `previous × triggers.re_escalation_estimate_multiplier`, clamped to `hard_monthly_ceiling_usd` minus month-to-date extensions), and `triggers.max_re_escalation_depth` (default 5) bounding the chain. New audit events `re_escalation_offered` / `re_escalation_chain_capped` / `re_escalation_token_limited` (§10.10) surface the chain on the slice-19/24 dashboard timeline. |
 | Multiple extensions in one day stack to absurd amounts | `max_daily_extension_usd` enforced at button render time (button disabled if remaining headroom < estimate). |
 | Approver clicks but interaction fails (Discord 5xx) | Idempotency: granting an extension is keyed on `(escalation_request_id, granted_by)`. Retry-safe. |
 | Extension granted, task never runs (orchestrator crash) | On orchestrator boot, scan `escalation_request WHERE resolution='api_extended' AND task_status NOT IN ('completed','failed')`; resume or rollback the extension. Rolled-back extensions get a `voided=true` flag, never charged. |
@@ -902,6 +941,22 @@ Every state transition writes to `invocation_log` with `task_type='escalation_li
   pass and the row is marked `completed`.
 - `tool_gap_snoozed` / `tool_gap_owner_mismatch` (slice 22) — view
   button hooks; mirror the `escalation_owner_mismatch` precedent.
+- `re_escalation_offered` (slice 25) — written before the standard
+  `escalation_offered` row when a token-cap recovery creates a child
+  escalation. Payload: `{parent_id, parent_correlation_id, depth,
+  previous_estimate_usd, new_estimate_usd, consumed_tokens}`. The
+  child row carries the new `correlation_id`; the audit row points at
+  the child's `escalation_request_id` so a single timeline query
+  surfaces every link.
+- `re_escalation_chain_capped` (slice 25) — written when
+  `triggers.max_re_escalation_depth` (default 5) refuses a re-fire.
+  Keyed off the *parent's* `escalation_request_id` so the dashboard
+  timeline shows the failure marker on the link the user actually
+  saw. Payload: `{parent_id, depth, cap}`.
+- `re_escalation_token_limited` (slice 25) — written when the
+  coordinator's in-flight loop terminates without a successful
+  recovery (every chain link resolved to a non-`api_extended` mode).
+  Payload: `{root_correlation_id, depth, last_outcome_mode}`.
 
 Slice 22 audit rows use `task_type='tool_gap_lifecycle'` (separate
 from `escalation_lifecycle` so cost aggregations and per-subsystem
@@ -937,6 +992,8 @@ append-only polling.
 - [x] Tool gaps file `tool_request` rows; high-blocking gaps ping in real time. *Slice 22 — `test_tool_gap_surfacer.py`; slice 24 wired the §10.5 row 1 hourly nag for unrebuilt tools.*
 - [x] All escalation outcomes logged to `invocation_log` with the correlation_id. *Slices 17/22 escalation_lifecycle + tool_gap_lifecycle audits; slice 24 multi-user isolation test pins ``user_id`` on every row.*
 - [x] Iteration cap hits force-cancel and write a `human_review` flag. *Slice 21 — `test_claude_code_poller.py::test_iteration_cap_promotes_to_human_review`.*
+- [x] Token-cap recovery re-fires the gate with `parent_escalation_id` set, re-estimates the spend, and runs the recovered API call when the user approves a fresh extension. *Slice 25 — `tests/integration/test_re_escalation_recovery.py`; `tests/unit/test_re_escalation_coordinator.py`.*
+- [x] `max_re_escalation_depth` refuses re-fires past the cap with a `re_escalation_chain_capped` audit row keyed off the parent and a synthetic `cancel` outcome to the caller. *Slice 25 — `tests/unit/test_escalation_gate_chain_cap.py`.*
 
 ### Failure-mode regression tests (one per row in §10)
 - [x] Each mitigation has a corresponding fixture / unit test. *Slice 24 closed the audit-flagged gaps (§10.1 row 5, §10.5 row 1 nag, §10.6 row 4 + 5, §10.8 row 1, §10.9 rows 1–2, §10.10 row 6) in `tests/integration/test_section_10_residual_gaps.py`, `tests/integration/test_multi_user_isolation.py`, and `tests/cost/test_requires_rebuild_nag.py`. The §10.4 row 4 dependent-skill regression remains explicitly deferred per `docs/superpowers/specs/followups.md#S24`; §10.6 row 1 re-estimate-on-overspend is also deferred there.*
@@ -958,7 +1015,7 @@ append-only polling.
 2. **Local-only branches** — does the orchestrator have read access to the host repo's `.git` directory? *Resolved (slice 21, §15): env var `DONNA_HOST_REPO_PATH` points at a read-only mount; pushed and local branches are equivalent through it; fail-soft when unset.*
 3. **`human_review_request` table vs reusing `tool_request`** — do we want one queue for all manual interventions, or separate queues per kind? *Resolved (slice 21, §15): reuse `escalation_request` with a `human_review` BOOLEAN column; revisit when Phase 2 surfaces non-skill / non-tool human-review cases.*
 4. **Tier 2 SMS escalation on Discord delivery failure** — confirm we want this; SMS rate limits in slice 7 are tight (10/day). *Resolved (slice 17, audited slice 24). The slice-17 timeout sweep already calls `EscalationDeliveryLoop._maybe_fan_out_sms` for any timed-out row whose `priority >= sms_priority_threshold`, hitting `start_at_tier=2` so the slice-7 SMS tiers carry it. Slice 24 confirmed the wiring; the only open thread is a Twilio-mock integration test (tracked under §11 "Discord 5xx retry").*
-5. **Re-escalation parent chains** — current spec stores `parent_escalation_id`. Do we need a depth limit beyond `manual_iteration_limit`? *Open. Slice 24 audited the path: `manual_iteration_limit` (default 3) bounds the inner loop, and no real cross-row chains have been observed in slice 17–23 deployments. Adding `max_re_escalation_depth` is a new behaviour and explicitly out of slice-24 scope per the brief's "Not in Scope" section. Logged in `followups.md#S24` for the next behavioural slice.*
+5. **Re-escalation parent chains** — current spec stores `parent_escalation_id`. Do we need a depth limit beyond `manual_iteration_limit`? *Resolved (slice 25). Yes — `manual_iteration_limit` bounds the inner loop of a single manual handoff (slice 21 use); a separate `triggers.max_re_escalation_depth` (default 5) bounds the cross-row chain that token-cap recovery (§10.6 row 1) and any future re-escalation path can produce. Slice 25 wires `parent_escalation_id` end-to-end through :class:`donna.cost.re_escalation_coordinator.ReEscalationCoordinator` and :meth:`EscalationGate.fire_and_wait`; the chain-cap surface is a `re_escalation_chain_capped` audit event keyed off the parent's `escalation_request_id` plus a synthetic `mode='cancel'` outcome.*
 
 ---
 
@@ -978,6 +1035,7 @@ matching brief in `slices/`.
 | 22 | `slice_22_tool_gap_surfacing.md` | `tool_request` table. `capability_tool_check` integration with real-time vs digest routing. |
 | 23 | `slice_23_dashboard_runtime_overrides.md` | UI cards for all toggles. `dashboard_setting` resolution. Optimistic locking. |
 | 24 | `slice_24_escalation_hardening.md` | Each row of §10 with a regression test. Audit timeline view. Multi-user scoping audit. |
+| 25 | `slice_25_reescalation_chains.md` | Token-cap recovery + re-estimate + re-fire (`§10.6 row 1`). `parent_escalation_id` end-to-end. `max_re_escalation_depth` (`§12 Q5` resolution). New `re_escalation_*` audit events. Conversation-engine `estimate_usd` wiring (S20-FU2). |
 
 ---
 
@@ -1163,6 +1221,53 @@ matching brief in `slices/`.
   ``ToolRegistry.list_tool_names()``, posts a reminder per
   unregistered tool with a per-row cooldown via
   ``tool_request.last_pinged_at``. Closes the deferral S22 logged.
+- **(2026-05-06, slice 25)** `max_re_escalation_depth` default = 5.
+  Cross-row re-fire chains were unbounded before slice 25.
+  `manual_iteration_limit` (default 3) bounds the inner loop of a
+  single manual handoff — re-runs against the same row — and is the
+  wrong mechanism for token-cap recovery, which writes a *new* row
+  with `parent_escalation_id`. Slice 25 introduces
+  `triggers.max_re_escalation_depth` enforced in
+  :meth:`EscalationGate.fire_and_wait` via
+  :meth:`EscalationRepository.find_chain_depth` (recursive CTE
+  backed by the new ``ix_escalation_request_parent_id`` index).
+  Default 5 because: (a) any value < 3 risks falsely capping a
+  legitimate two-step recovery (e.g. input-too-big at the first
+  link, output-truncation at the second), (b) values > 5 push the
+  user budget approval surface into a regime where a runaway
+  estimate is more likely than an honest under-estimate, and the
+  hard monthly ceiling already brakes the per-link clamp. Resolves
+  §12 Q5.
+- **(2026-05-06, slice 25)** Re-estimate heuristic = previous_estimate
+  × 2.0 (configurable via
+  `triggers.re_escalation_estimate_multiplier`, clamped to monthly
+  headroom). Considered alternatives: fitting the new estimate to the
+  *consumed* tokens × an over-allocation factor (more accurate but
+  requires the post-call path; pre-call has no consumed-tokens
+  signal); asking Claude itself to estimate ("how many more tokens
+  do you need?" — recursive budgeting hole). 2.0 is conservative,
+  monotone, and works identically for pre-call + post-call. Logged
+  in `followups.md#S25` as a knob to revisit if observed re-fires
+  systematically over- or under-shoot.
+- **(2026-05-06, slice 25)** `complete()` recovery is recursive, not
+  iterative. The router catches `TokenLimitReachedError`, calls
+  :meth:`ReEscalationCoordinator.recover`, and on `mode='api_extended'`
+  re-enters `complete()` itself with `parent_escalation_id` set.
+  The coordinator's `max_in_flight_attempts` (default 3) plus the
+  persisted `max_re_escalation_depth` (default 5) bound the
+  recursion to ~5 frames in the worst case. Iterative rewrite
+  considered; the recursive shape exactly mirrors the request graph
+  and makes the audit trail (`re_escalation_offered` events between
+  router dispatch logs) trivially readable.
+- **(2026-05-06, slice 25)** Conversation engine pre-flight estimate
+  (S20-FU2). The slice-20 `chat_escalation` path called
+  `router.complete()` without `estimate_usd`, so the gate never
+  fired for over-budget chat escalations — bypassing the §4
+  decision tree entirely. Slice 25 reads the resolved model
+  alias's cost rates from `donna_models.yaml` and forwards a
+  pre-flight estimate so the gate runs. Falls back to "skip the
+  gate" with a structured log when no rates are configured (test
+  surfaces).
 
 ---
 

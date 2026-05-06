@@ -38,6 +38,8 @@ from donna.cost.dashboard_setting import DashboardSettingResolver
 from donna.cost.escalation_audit import (
     EVENT_EXTENSION_GRANTED,
     EVENT_OFFERED,
+    EVENT_RE_ESCALATION_CHAIN_CAPPED,
+    EVENT_RE_ESCALATION_OFFERED,
     EVENT_RESOLVED,
     write_escalation_event,
 )
@@ -56,7 +58,9 @@ logger = structlog.get_logger()
 
 # Internal escalation outcomes the gate can return.
 EscalationMode = Literal["pause", "cancel", "api_extended", "chat", "claude_code"]
-ResolvedBy = Literal["user", "timeout"]
+# Slice 25 added "system" so a chain-cap synthetic cancel
+# (no user click, no timeout) carries an honest provenance label.
+ResolvedBy = Literal["user", "timeout", "system"]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -143,6 +147,7 @@ class EscalationGate:
         target_paths: dict[str, str] | None = None,
         base_sha: str | None = None,
         original_prompt: str | None = None,
+        parent_escalation_id: int | None = None,
     ) -> GateOutcome:
         """Decide whether to escalate; if so, post the view and await.
 
@@ -182,6 +187,27 @@ class EscalationGate:
         config edit mid-flight cannot widen scope retroactively
         (spec §10.7 row 2) and the worktree command stays pinned to a
         specific main SHA (spec §5.3 / drift mitigation).
+
+        ``parent_escalation_id`` (slice 25) marks this fire as a
+        re-escalation chain link — typically set by
+        :class:`donna.cost.re_escalation_coordinator.ReEscalationCoordinator`
+        recovering from a :class:`TokenLimitReachedError`
+        (spec §10.6 row 1). When set:
+
+          * The originating-entity dedup guard is bypassed (a re-fire
+            *by definition* targets an in-flight entity; the dedup
+            short-circuit would otherwise terminate every chain past
+            the first link).
+          * The chain depth is checked against
+            ``triggers.max_re_escalation_depth`` (spec §12 Q5,
+            default 5). Past the cap the gate writes a
+            ``re_escalation_chain_capped`` audit row keyed off the
+            parent's id and returns a synthetic ``cancel`` outcome
+            so the caller's existing cancel handling runs.
+          * The new row is created with ``parent_escalation_id`` set
+            and a ``re_escalation_offered`` audit row is written
+            *before* the standard ``escalation_offered`` row so the
+            dashboard timeline shows the chain link explicitly.
         """
         if not await self._is_enabled():
             return GateOutcome(
@@ -192,6 +218,18 @@ class EscalationGate:
                 correlation_id=None,
             )
 
+        # Slice 25 — chain-depth cap (§10.6 row 1, §12 Q5). Enforce
+        # before any other branching so a runaway chain refuses without
+        # touching the dedup guard or the override grid.
+        if parent_escalation_id is not None:
+            cap_outcome = await self._check_chain_cap(
+                parent_escalation_id=parent_escalation_id,
+                user_id=user_id,
+                task_id=task_id,
+            )
+            if cap_outcome is not None:
+                return cap_outcome
+
         # De-dup: if a previous claude_code escalation for this same
         # entity is still in-flight, refuse to open a parallel race
         # (spec §10.7 / brainstorm decision §21). We only RE-DELIVER
@@ -200,7 +238,11 @@ class EscalationGate:
         # but hasn't built yet) / ``submitted`` (poller is validating)
         # / ``failed`` (user is iterating) would just spam them about
         # work they already know is in flight.
-        if originating_entity is not None:
+        # Slice 25 — re-fires bypass the originating-entity dedup guard.
+        # A re-escalation by definition targets the same in-flight entity
+        # as its parent; the dedup short-circuit would otherwise terminate
+        # every chain past the first link.
+        if originating_entity is not None and parent_escalation_id is None:
             existing = await self._repo.find_open_for_originating_entity(
                 user_id=user_id,
                 entity_type=originating_entity[0],
@@ -325,7 +367,35 @@ class EscalationGate:
             originating_entity=originating_entity,
             target_paths=target_paths,
             base_sha=base_sha,
+            parent_escalation_id=parent_escalation_id,
         )
+
+        # Slice 25 — `re_escalation_offered` is written BEFORE the
+        # standard `escalation_offered` row so the timeline chronology
+        # surfaces the chain link first. Payload mirrors the spec §10.10
+        # contract.
+        if parent_escalation_id is not None:
+            parent_row = await self._repo.get(parent_escalation_id)
+            depth = await self._repo.find_chain_depth(row.id)
+            await write_escalation_event(
+                self._repo._conn,
+                event=EVENT_RE_ESCALATION_OFFERED,
+                escalation_request_id=row.id,
+                correlation_id=correlation_id,
+                user_id=user_id,
+                task_id=task_id,
+                payload={
+                    "parent_id": parent_escalation_id,
+                    "parent_correlation_id": (
+                        parent_row.correlation_id if parent_row else None
+                    ),
+                    "depth": depth,
+                    "previous_estimate_usd": (
+                        parent_row.estimate_usd if parent_row else None
+                    ),
+                    "new_estimate_usd": estimate_usd,
+                },
+            )
 
         # Render the chat-mode prompt + summary BEFORE the delivery
         # callback runs so the Discord notification can attach the .md
@@ -716,6 +786,94 @@ class EscalationGate:
         """Resolve the master kill switch (dashboard → YAML)."""
         return await self._resolver.get(
             "manual_escalation.enabled", self._config.enabled
+        )
+
+    async def _check_chain_cap(
+        self,
+        *,
+        parent_escalation_id: int,
+        user_id: str,
+        task_id: str | None,
+    ) -> GateOutcome | None:
+        """Slice 25 — return a synthetic ``cancel`` outcome if the
+        re-escalation chain has reached ``max_re_escalation_depth``.
+
+        Returns ``None`` when the cap has not been reached, signalling
+        the caller to proceed with the normal fire path. Returns a
+        :class:`GateOutcome` with ``mode='cancel'`` keyed off the
+        parent's id when the cap is reached, after writing a
+        ``re_escalation_chain_capped`` audit row against the parent.
+
+        The cap is read through :class:`DashboardSettingResolver` so
+        the slice-23 runtime override pipeline can adjust it without a
+        boot. The configured default is ``triggers.max_re_escalation_depth``
+        (default 5; see canonical spec §15).
+        """
+        cap_raw = await self._resolver.get(
+            "manual_escalation.triggers.max_re_escalation_depth",
+            self._config.triggers.max_re_escalation_depth,
+        )
+        # Resolver values are JSON-decoded; numeric runtime overrides
+        # land as float. Coerce to a positive int and fall back to the
+        # YAML default on any malformed value.
+        try:
+            cap = int(cap_raw)
+        except (TypeError, ValueError):
+            cap = int(self._config.triggers.max_re_escalation_depth)
+        if cap < 1:
+            logger.warning(
+                "escalation_chain_cap_invalid",
+                cap_raw=cap_raw,
+                parent_escalation_id=parent_escalation_id,
+            )
+            cap = int(self._config.triggers.max_re_escalation_depth)
+
+        # The new link's depth is parent_depth + 1.
+        parent_depth = await self._repo.find_chain_depth(parent_escalation_id)
+        new_depth = parent_depth + 1
+        if new_depth <= cap:
+            return None
+
+        parent_row = await self._repo.get(parent_escalation_id)
+        parent_correlation_id = (
+            parent_row.correlation_id
+            if parent_row is not None
+            else f"unknown-parent-{parent_escalation_id}"
+        )
+
+        try:
+            await write_escalation_event(
+                self._repo._conn,
+                event=EVENT_RE_ESCALATION_CHAIN_CAPPED,
+                escalation_request_id=parent_escalation_id,
+                correlation_id=parent_correlation_id,
+                user_id=user_id,
+                task_id=task_id,
+                payload={
+                    "parent_id": parent_escalation_id,
+                    "depth": new_depth,
+                    "cap": cap,
+                },
+            )
+        except Exception:
+            logger.exception(
+                "escalation_chain_cap_audit_failed",
+                parent_escalation_id=parent_escalation_id,
+            )
+
+        logger.warning(
+            "escalation_chain_capped",
+            parent_escalation_id=parent_escalation_id,
+            depth=new_depth,
+            cap=cap,
+            user_id=user_id,
+        )
+        return GateOutcome(
+            fired=True,
+            mode="cancel",
+            resolved_by="system",
+            escalation_request_id=parent_escalation_id,
+            correlation_id=parent_correlation_id,
         )
 
     async def _task_type_override(self, task_type: str) -> str:

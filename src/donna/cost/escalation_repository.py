@@ -88,6 +88,10 @@ class EscalationRequestRow:
     submitted_payload: dict[str, Any] | None = None
     """Decoded ``escalation_request.result`` JSON. Slice 21 reads
     ``sha`` from it for force-push protection (§10.3 row 4)."""
+    # Slice 25 — re-escalation chain link. NULL for fresh escalations;
+    # set to the prior row's id when a token-cap recovery re-fires the
+    # gate (§10.6 row 1).
+    parent_escalation_id: int | None = None
 
 
 class EscalationRepository:
@@ -114,6 +118,7 @@ class EscalationRepository:
         originating_entity: tuple[str, str] | None = None,
         target_paths: dict[str, str] | None = None,
         base_sha: str | None = None,
+        parent_escalation_id: int | None = None,
         now: datetime | None = None,
     ) -> EscalationRequestRow:
         """Insert a new escalation_request row in ``status='open'``.
@@ -130,6 +135,12 @@ class EscalationRepository:
 
         ``base_sha`` pins the worktree against a specific main SHA per
         spec §5.3 (worktree drift mitigation).
+
+        ``parent_escalation_id`` (slice 25) links this row to the
+        previous link in a re-escalation chain (token-cap recovery,
+        spec §10.6 row 1). NULL for fresh escalations. The chain depth
+        is bounded by ``triggers.max_re_escalation_depth``; the gate
+        enforces it before calling :meth:`create`.
         """
         ts = (now or datetime.now(tz=UTC)).isoformat()
         ent_type = originating_entity[0] if originating_entity else None
@@ -143,9 +154,9 @@ class EscalationRepository:
                 iteration, status, created_at, priority,
                 delivery_status, delivery_attempts,
                 originating_entity_type, originating_entity_id,
-                target_paths, base_sha
+                target_paths, base_sha, parent_escalation_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -163,6 +174,7 @@ class EscalationRepository:
                 ent_id,
                 target_paths_json,
                 base_sha,
+                parent_escalation_id,
             ),
         )
         await self._conn.commit()
@@ -382,6 +394,55 @@ class EscalationRepository:
         rows = await cursor.fetchall()
         cols = _columns(cursor)
         return [_row_to_request(cols, r) for r in rows]
+
+    async def find_chain_depth(
+        self, escalation_request_id: int, *, max_walk: int = 64
+    ) -> int:
+        """Return the depth of the re-escalation chain rooted at this row.
+
+        Slice 25. Used by :meth:`EscalationGate.fire_and_wait` to enforce
+        ``triggers.max_re_escalation_depth`` (spec §10.6 row 1, §12 Q5).
+
+        Walks ``parent_escalation_id`` upward and returns the count of
+        ancestors:
+
+        - 0 if ``escalation_request_id`` has no parent (root)
+        - 1 if it has exactly one parent
+        - N for an N-deep chain
+
+        ``max_walk`` is a defensive guard against a parent-chain cycle
+        (which the FK semantics on SQLite *can* permit if a parent row
+        is rewritten — vanishingly unlikely but fail-safe). When the
+        cap is hit the function returns ``max_walk`` so callers treat
+        the chain as long-enough-to-refuse without an infinite loop.
+
+        The walk is read-only and naturally :class:`user_id`-isolated
+        because the seed row's ``user_id`` is fixed and parents share
+        an FK; we don't need an explicit user_id predicate. Returning
+        the depth (not the chain) keeps the API small — callers compare
+        against the cap and don't need the intermediate ids.
+        """
+        cursor = await self._conn.execute(
+            """
+            WITH RECURSIVE chain(id, parent_id, depth) AS (
+                SELECT id, parent_escalation_id, 0
+                  FROM escalation_request
+                 WHERE id = ?
+                UNION ALL
+                SELECT e.id, e.parent_escalation_id, c.depth + 1
+                  FROM escalation_request e
+                  JOIN chain c ON e.id = c.parent_id
+                 WHERE c.parent_id IS NOT NULL
+                   AND c.depth < ?
+            )
+            SELECT MAX(depth) FROM chain
+            """,
+            (escalation_request_id, max_walk),
+        )
+        row = await cursor.fetchone()
+        if row is None or row[0] is None:
+            return 0
+        return int(row[0])
 
     async def find_open_for_originating_entity(
         self,
@@ -726,6 +787,11 @@ def _row_to_request(
         human_review=bool(record.get("human_review", 0) or 0),
         merged_at=_parse_dt(record.get("merged_at")),
         submitted_payload=submitted_payload,
+        parent_escalation_id=(
+            int(record["parent_escalation_id"])
+            if record.get("parent_escalation_id") is not None
+            else None
+        ),
     )
 
 

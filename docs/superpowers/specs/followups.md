@@ -946,6 +946,88 @@ visible.
 
 ---
 
+## S25 — Re-escalation chain: parent_escalation_id end-to-end
+
+- **Surfaced by:** `slices/slice_25_reescalation_chains.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§10.6`
+  row 1; `#§12` Q5; `#§15`.
+- **Status:** resolved-in-slice-25 (closes prior `S18` parent-chain
+  not-wired entry, `S21` re-escalation depth limit entry, and `S24`
+  §10.6 row 1 + §12 Q5 audit residue).
+- **Decision / Reasoning:** Slice 25 wires `parent_escalation_id`
+  end-to-end. :class:`EscalationRepository.create` now accepts the
+  kwarg, the alembic-installed `ix_escalation_request_parent_escalation_id`
+  index backs the new recursive-CTE :meth:`find_chain_depth`, and
+  :meth:`EscalationGate.fire_and_wait` enforces
+  `triggers.max_re_escalation_depth` (default 5) before row creation.
+  Token-cap recovery flows through the new
+  :class:`donna.cost.re_escalation_coordinator.ReEscalationCoordinator`,
+  which re-fires the gate with a re-estimated spend
+  (`previous × triggers.re_escalation_estimate_multiplier`, clamped to
+  monthly headroom) and threads the parent id through. The router's
+  `complete()` catches `TokenLimitReachedError` at both raise sites
+  (pre-call input-too-big and post-call truncation) and recurses
+  with `_existing_outcome` set so the gate is not re-fired for the
+  same recovery hop.
+- **Follow-up:** None for the chain itself. Two adjacent items
+  remain open per S25 entries below.
+
+---
+
+## S25 — Per-task-type `re_escalation_estimate_multiplier` override
+
+- **Surfaced by:** `slices/slice_25_reescalation_chains.md` (open
+  question).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.1`,
+  `#§15`.
+- **Status:** open (deferred — promote only on observed need).
+- **Decision / Reasoning:** Slice 25 ships a single global
+  multiplier (default 2.0) on `triggers.re_escalation_estimate_multiplier`.
+  Considered a per-task-type override grid mirroring the slice-23
+  `task_type_override_key` pattern, but no task type today has been
+  observed to systematically over- or under-shoot. Promoting now
+  would add two surfaces (config schema + dashboard card) for a
+  cardinality of one.
+- **Follow-up:** Add the per-task-type knob if production telemetry
+  surfaces a task type whose recoveries either silently waste
+  ceiling headroom (multiplier too high) or repeatedly cap (too low).
+
+---
+
+## S25 — Worktree-style `claude_code` E2E harness still deferred
+
+- **Surfaced by:** `slices/slice_25_reescalation_chains.md` (Not in
+  Scope).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§11`
+  (E2E checklist).
+- **Status:** open (carried forward from `#S24`).
+- **Decision / Reasoning:** Slice 25 closed the chat-mode and
+  api_extended recovery paths but does not introduce a new disk-backed
+  worktree harness. The existing
+  ``ManualClaudeCodePoller`` battery covers every transition the
+  recovery path can land in, but a true gate→worktree→poller→merge
+  harness still requires real `git worktree` I/O.
+- **Follow-up:** Whichever future slice introduces an integration
+  harness with ephemeral host-repo mounts picks this up.
+
+---
+
+## S25 — Twilio-mock E2E for Discord-5xx retry still deferred
+
+- **Surfaced by:** `slices/slice_25_reescalation_chains.md` (Not in
+  Scope).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§11`
+  failure-mode regression tests row 2.
+- **Status:** open (carried forward from `#S24`).
+- **Decision / Reasoning:** Slice 25's recovery loop runs entirely
+  inside the gate / coordinator path that the slice-17 SMS tier-2
+  fan-out already covers in isolation. Slice 25 did not introduce
+  the Twilio mock that the §11 row needs; the followup remains.
+- **Follow-up:** Same as `#S24` entry — picked up when a unified
+  Discord+Twilio integration harness lands.
+
+---
+
 ## S23 — Slider cap is recomputed at GET time, not live
 
 - **Surfaced by:** `slices/slice_23_dashboard_runtime_overrides.md`

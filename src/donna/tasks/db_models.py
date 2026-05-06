@@ -755,7 +755,16 @@ class EscalationRequest(Base):
         DateTime, nullable=True
     )
     parent_escalation_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("escalation_request.id"), nullable=True
+        Integer,
+        ForeignKey("escalation_request.id"),
+        nullable=True,
+        # Slice 25 — index added by alembic revision
+        # f0a1b2c3d4e5_re_escalation_parent_index.py so the recursive-CTE
+        # chain walk in :meth:`EscalationRepository.find_chain_depth`
+        # does not full-scan the table on every token-cap recovery.
+        # Mirrored on the ORM so the slice-24 ORM/Alembic drift guard
+        # stays green.
+        index=True,
     )
     # --- slice 21 (claude_code mode) ---
     # Mirrors alembic/versions/a1b2c3d4e5f7_claude_code_mode_columns.py.

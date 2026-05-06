@@ -372,6 +372,12 @@ class ManualEscalationTriggersConfig(BaseModel):
     task_approval_threshold_usd: float = 5.0
     escalation_timeout_minutes: int = 60
     manual_iteration_limit: int = 3
+    # Slice 25 — bounds the persisted re-escalation chain produced by
+    # token-cap recovery (§10.6 row 1, §12 Q5). Distinct from
+    # ``manual_iteration_limit`` which bounds the inner-loop of a single
+    # manual handoff. Default 5 per spec §15.
+    max_re_escalation_depth: int = 5
+    re_escalation_estimate_multiplier: float = 2.0
 
 
 class BudgetExtensionConfig(BaseModel):

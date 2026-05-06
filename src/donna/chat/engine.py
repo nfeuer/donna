@@ -20,6 +20,7 @@ from donna.chat.context import (
     render_chat_prompt,
 )
 from donna.chat.types import ChatIntent, ChatResponse
+from donna.models.router import EscalationDecisionError
 
 if TYPE_CHECKING:
     from donna.models.router import ModelRouter
@@ -212,11 +213,53 @@ class ConversationEngine:
             session_context=session_ctx,
         )
 
-        response_data, metadata = await self._router.complete(
-            prompt=prompt,
-            task_type="chat_escalation",
-            user_id=user_id,
-        )
+        # Slice 25 / S20-FU2: forward an estimate so the over-budget
+        # gate can fire. Without ``estimate_usd`` the gate short-circuits
+        # to "no escalation needed" and chat_escalation calls bypass §4
+        # entirely. The estimate reads from the resolved model alias's
+        # cost rates so it tracks real pricing rather than the legacy
+        # Sonnet hard-code.
+        estimate_usd = self._estimate_chat_escalation_cost_from_router()
+
+        try:
+            response_data, metadata = await self._router.complete(
+                prompt=prompt,
+                task_type="chat_escalation",
+                user_id=user_id,
+                estimate_usd=estimate_usd,
+            )
+        except EscalationDecisionError as exc:
+            # Slice 25 / S20-FU2: the gate replaced the autonomous call.
+            # For chat / claude_code the user is doing the work manually
+            # via the dashboard / Discord workflow — return a response
+            # that points the user at that surface rather than letting
+            # an unhandled exception bubble out of the chat surface.
+            log_extra = {
+                "session_id": session_id,
+                "mode": exc.mode,
+                "escalation_request_id": exc.escalation_request_id,
+            }
+            logger.info("chat_engine_escalation_resolved", **log_extra)
+            if exc.mode == "chat":
+                deflection_text = (
+                    "I've sent this to your Discord — answer there or in "
+                    "the dashboard escalation workspace."
+                )
+            elif exc.mode == "claude_code":
+                deflection_text = (
+                    "I've parked this for the Claude Code workflow — "
+                    "see the dashboard escalation workspace for the "
+                    "rendered spec."
+                )
+            else:
+                deflection_text = (
+                    "I've paused this — try again tomorrow or adjust "
+                    "the budget settings on the dashboard."
+                )
+            return ChatResponse(
+                text=deflection_text,
+                session_pinned_task_id=getattr(session, "pinned_task_id", None),
+            )
 
         response_text = response_data.get("response_text", "")
         result = ChatResponse(
@@ -362,7 +405,49 @@ class ConversationEngine:
         return str(result.get("summary", "Session ended."))
 
     def _estimate_escalation_cost(self) -> float:
-        """Rough cost estimate for a Claude escalation call."""
-        # ~4k tokens context + ~1k response, at Claude Sonnet pricing
-        # $3/MTok input + $15/MTok output (approximate)
+        """Rough cost estimate for a Claude escalation call.
+
+        Used as a UI hint inside the user-facing "Estimated cost: ..."
+        prompt. Slice 25 grounds this in the resolved model alias's
+        cost rates rather than the hardcoded Sonnet figure when the
+        router has them available.
+        """
+        from_router = self._estimate_chat_escalation_cost_from_router()
+        if from_router > 0.0:
+            return round(from_router, 3)
+        # Fallback for tests / unconfigured routers — keep the
+        # historical hard-code so existing snapshots don't shift.
         return round(4 * 0.003 + 1 * 0.015, 3)
+
+    def _estimate_chat_escalation_cost_from_router(self) -> float:
+        """Compute the chat_escalation pre-flight estimate from the router.
+
+        Reads the resolved model alias's cost rates off the
+        :class:`ModelsConfig` carried by the router. Returns 0.0 when
+        the alias / rates are unconfigured (test fixtures with empty
+        config) so the caller can decide whether to skip the gate.
+
+        Slice 25 / S20-FU2 — without this, ``handle_escalation`` called
+        ``router.complete(estimate_usd=None)`` and the over-budget gate
+        short-circuited every chat escalation past §4.
+        """
+        try:
+            models_config = self._router._models_config
+            routing_entry = models_config.routing.get("chat_escalation")
+            if routing_entry is None:
+                return 0.0
+            alias = routing_entry.model
+            model_config = models_config.models.get(alias)
+            if model_config is None:
+                return 0.0
+            input_cost = float(getattr(model_config, "input_cost_per_token_usd", 0) or 0)
+            output_cost = float(getattr(model_config, "output_cost_per_token_usd", 0) or 0)
+            if input_cost <= 0 and output_cost <= 0:
+                logger.info("chat_escalation_estimate_unavailable", alias=alias)
+                return 0.0
+            # ~4k tokens context + ~1k response — the historical heuristic.
+            estimate = (4_000 * input_cost) + (1_000 * output_cost)
+            return float(estimate)
+        except Exception:
+            logger.exception("chat_escalation_estimate_router_read_failed")
+            return 0.0

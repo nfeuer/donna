@@ -109,3 +109,35 @@ class TestORMMatchesAlembicSchema:
         present = set(sa.inspect(orm_engine).get_table_names())
         missing = _TABLES_REQUIRED_IN_ORM - present
         assert not missing, f"ORM missing tables: {sorted(missing)}"
+
+    def test_parent_escalation_id_index_present(
+        self,
+        alembic_engine: sa.Engine,
+        orm_engine: sa.Engine,
+    ) -> None:
+        """Slice 25 — recursive-CTE chain walk needs the parent index.
+
+        Both ``alembic upgrade head`` (via revision
+        ``f0a1b2c3d4e5_re_escalation_parent_index``) and the ORM
+        (via ``mapped_column(..., index=True)``) must produce the
+        ``ix_escalation_request_parent_escalation_id`` index. Drift
+        here would silently regress
+        :meth:`EscalationRepository.find_chain_depth` to a full-scan.
+        """
+        index_name = "ix_escalation_request_parent_escalation_id"
+        alembic_indexes = {
+            ix["name"]
+            for ix in sa.inspect(alembic_engine).get_indexes("escalation_request")
+        }
+        orm_indexes = {
+            ix["name"]
+            for ix in sa.inspect(orm_engine).get_indexes("escalation_request")
+        }
+        assert index_name in alembic_indexes, (
+            f"alembic head missing {index_name} on escalation_request: "
+            f"{sorted(alembic_indexes)}"
+        )
+        assert index_name in orm_indexes, (
+            f"ORM missing {index_name} on escalation_request: "
+            f"{sorted(orm_indexes)}"
+        )
