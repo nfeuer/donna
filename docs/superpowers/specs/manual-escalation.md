@@ -217,68 +217,149 @@ flips the escalation row to ``status='validated'``, and writes an
 
 ### 5.3 `claude_code` mode (file artifact)
 
-Used for `task_types` whose output is code or files: `skill_draft`,
-`skill_evolution`, `tool_request_fulfillment`.
+Used for `task_types` whose output is code or files. Slice 21 ships
+the **skill** path (`skill_auto_draft`, `skill_evolution`); slice 22
+adds `tool_request_fulfillment` using the same protocol with extra
+lint gates. (Note: the literal task type names match
+`config/task_types.yaml`: `skill_auto_draft` and `skill_evolution` —
+the brief earlier referred to `skill_draft`, which is the same task
+under its old name.)
 
 **Surface split:** same as §5.2 — dashboard is canonical workspace,
 Discord is alert. Spec file is also written to disk because the user
 needs filesystem access to do the work anyway.
 
+**Preconditions for the `claude_code` button to render:**
+1. `manual_escalation.modes.claude_code.enabled` (dashboard → YAML).
+2. The host repo is mounted read-only at the path named by
+   `manual_escalation.modes.claude_code.host_repo_path_env` (default
+   `DONNA_HOST_REPO_PATH`). If unset / not a git repo: button is not
+   offered (logged once at boot, fail-soft).
+3. The per-task-type `manual_escalation.mode == "claude_code"` block
+   is set in `config/task_types.yaml` (with `target_paths` +
+   `reference_module`).
+
+When the gate fires, it captures `base_sha = git rev-parse refs/heads/main`
+and the rendered (un-substituted) `target_paths` onto the row so a
+mid-flight config change can't widen scope retroactively (§10.7 row 2).
+
+**De-dup:** before creating a new `claude_code` escalation row, the
+gate looks for an existing row with the same
+`(originating_entity_type, originating_entity_id)` whose status is in
+`{open, resolved, submitted, failed}`. If one exists, the gate
+re-delivers the existing notification and refuses to open a parallel
+race. Prevents two worktrees editing the same skill file.
+
 **Donna → user:**
 1. Write spec file to
-   `${DONNA_WORKSPACE_PATH}/escalations/<correlation_id>.md`. Contents:
+   `${DONNA_WORKSPACE_PATH}/escalations/<correlation_id>.md`. Contents
+   (rendered from `prompts/escalation/skill_draft.md`):
    - Task summary
-   - Acceptance criteria (test fixtures path, fixture IDs)
-   - Target file paths (templated from task_type config)
+   - Acceptance criteria
+   - Target file paths (`{name}`-substituted from
+     `originating_entity_id` → capability_name lookup)
    - Reference module path (existing skill/tool to mimic)
-   - Exact `git worktree add` and branch name commands
+   - Exact `git worktree add -b <branch> <worktree_path> <base_sha>`
+     command (pinned to a specific main SHA so subsequent merges
+     don't move the floor)
    - Forbidden patterns (e.g., "do not embed secret values; use
      `vault.read('<name>')`")
-2. Mirror the spec into `escalation_request.prompt_body`.
+2. Mirror the spec into `escalation_request.prompt_body`. Snapshot the
+   substituted `target_paths` and `base_sha` onto the row.
 3. Discord notification:
    - Short summary
    - Correlation ID + dashboard link
    - Optional MD attachment of the spec
-   - `[Approve $X / Manual / Pause / Cancel]` buttons (§4)
+   - `[Approve $X / Claude Code / Pause / Cancel]` buttons (§4) — the
+     Claude Code button replaces the legacy "Manual handoff" label
+     when claude_code is the offered manual mode.
 
 Dashboard escalation detail page for `claude_code` mode shows:
    - Full spec (rendered)
-   - **Copy spec** button — paste straight into Claude Code
-   - Pre-filled `git worktree add` command in a copy-on-click block
-   - Branch name, target paths, reference module — all copyable
-   - **Mark as built** button (replaces the chat-mode submit textarea)
-     — opens a modal asking for the local branch SHA or push
-     confirmation
+   - **Copy prompt** button — paste straight into Claude Code
+   - Pre-filled `git worktree add` command + branch + base SHA + each
+     target path glob in a copy-on-click grid
+   - **Mark as built** button — opens a modal accepting branch name
+     (required) and SHA (optional)
    - Validation result panel (populated post-submission with pass/fail
      per fixture, lint outcomes)
+   - **Ready to merge** panel after `status='validated'`: copyable
+     `git checkout main && git merge --no-ff <branch> && git push`
+     line and a **Mark as merged** button (pure tracking write — Donna
+     never auto-merges)
+   - **Needs human review** banner when iteration cap is reached and
+     `human_review=1`.
 
 **User → Donna:**
 1. User opens dashboard escalation page, copies the worktree command.
 2. User runs `git worktree add` per the spec.
 3. User opens Claude Code in the worktree, pastes spec into the
-   prompt. Claude Code reads the reference module, writes skill/tool
-   + tests, runs `pytest`.
-4. User commits on the branch (push optional — orchestrator can read
-   local git).
-5. User clicks **Mark as built** in the dashboard (or `/donna submit
-   <correlation_id> --branch <name>` from Discord as fallback).
+   prompt. Claude Code reads the reference module, writes skill files
+   under `skills/<name>/` (skill.yaml + steps + schemas) AND fixture
+   cases under `fixtures/<name>/case*.json`, runs `pytest`.
+4. User commits on the branch (push optional — orchestrator reads
+   the host repo via the read-only mount).
+5. User clicks **Mark as built** in the dashboard (or
+   `/donna submit <correlation_id> --branch <name> [--sha <sha>]` from
+   Discord as fallback). The slash command and the dashboard route
+   share `donna.cost.escalation_submit.submit_escalation_core` so
+   schema, mode-mismatch, iteration-cap and concurrent-submission
+   guards are identical across surfaces.
 
-**Donna ingestion (existing pattern, mirrors `manual_draft_poller`):**
-1. Polls `escalation_request` rows where `submitted_at IS NOT NULL
-   AND status = 'submitted'`.
-2. Verifies branch exists (local or remote).
-3. Diffs branch against base, validates touched paths match the spec's
-   declared targets (no rogue files, no edits outside scope).
-4. Routes through existing validation pipeline:
-   - Skills: `ValidationExecutor` against fixture set; sandbox →
-     shadow → trusted promotion ladder unchanged.
-   - Tools: lint check (must have mock entry, must have at least one
-     agent allowlist update, must be inert at import), then validation.
-5. On pass: existing skill/tool registry update path. On failure:
-   post failures back to Discord; user iterates in same worktree;
-   resubmit triggers same pipeline. Cap iterations at
-   `manual_iteration_limit` (default 3) before forced cancel +
-   `tool_request` entry for human review.
+**Donna ingestion (`ClaudeCodePoller`, mirrors `EscalationDeliveryLoop`):**
+1. Polls `escalation_request` rows where
+   `mode='claude_code' AND status='submitted'` every 60 s (configurable
+   via `manual_escalation.modes.claude_code.poll_tick_seconds`).
+2. Verifies branch exists (`git rev-parse`) in the host repo. If
+   absent: posts "branch not found, did you push?" feedback to
+   Discord; status stays `submitted` so a later push triggers
+   re-ingestion (no iteration burn).
+3. If a SHA was supplied at submit time, verifies it matches the
+   current branch tip (force-push protection, §10.3 row 4).
+4. Diffs `base_sha..tip` (committed only — working tree ignored,
+   §10.3 row 5) and rejects out-of-scope paths via `DiffValidator`.
+   Globs ending in `/**` are treated as recursive prefixes; dotfile
+   additions are always rejected.
+5. Hands off to `ManualValidationRouter`:
+   - Skills: read skill.yaml + steps + schemas + fixtures from the
+     branch via `git show` (read-only — never checks out into the
+     host repo). Persist as a fresh `skill_version` (claude_native).
+     Run `ValidationExecutor` against the committed fixtures via
+     `validate_against_fixtures` (same call shape AutoDrafter uses).
+     Threshold: `config.auto_draft_fixture_pass_rate`.
+   - Tools: slice 22 — currently raises `NotImplementedError`.
+6. On pass: lifecycle hops `claude_native → skill_candidate → draft
+   → sandbox`. The final hop carries `reason='human_approval'`,
+   `actor='user'`, `actor_id=<discord_id>` because the user's
+   "Mark as built" click + green fixtures *is* the human approval —
+   manual mode lands one hop deeper than AutoDrafter (which ends in
+   `draft` and needs a separate approval). Audit:
+   `escalation_validated`. Discord feedback names the skill_id and
+   pass rate, plus the merge-when-ready hint.
+7. On failure: status `submitted → failed`, Discord feedback (short
+   summary: skill_id, pass rate, ≤ 3 failing case names + dashboard
+   link — full per-fixture output stays in the row's
+   `validation_result` JSON for the dashboard panel). User iterates
+   in the same worktree, resubmits via dashboard or `/donna submit`.
+   Iteration counter increments only on the `failed → submitted`
+   resubmit path (a clean first submission stays at 1).
+8. Iteration cap sweep (separate routine inside the same poller
+   tick): rows with `status='failed' AND iteration >= manual_iteration_limit
+   AND human_review = 0` get promoted to `status='cancelled'` with
+   `human_review=1`. Audit: `iteration_limit_reached`. Dashboard
+   shows the **Needs human review** banner.
+
+**Boundaries (host repo / merging):**
+- Donna **never writes** to the host repo. The mount is read-only.
+  Donna's only writes for claude_code mode are the spec markdown file
+  under `${WORKSPACE}/escalations/` (off the source tree) and DB rows.
+- After validation, the user merges manually
+  (`git checkout main && git merge --no-ff <branch> && git push`).
+  The dashboard "Mark as merged" button is a tracking-only write that
+  flips `merged_at`; it does not invoke git.
+- Re-escalations against the same `originating_entity_id` while a
+  prior row is still in-flight are de-duped at the gate (see
+  Preconditions above).
 
 ---
 
@@ -297,6 +378,14 @@ modes:
     enabled: true
   claude_code:
     enabled: true
+    # Slice 21 — claude_code mode runtime configuration. Sibling-of-
+    # workspace path layout. The host repo is mounted via the env var
+    # named here; the orchestrator never writes to it.
+    worktree_root: "${DONNA_WORKSPACE_PATH}/worktrees"
+    host_repo_path_env: "DONNA_HOST_REPO_PATH"
+    base_ref: "main"
+    feedback_max_failing_cases: 3
+    poll_tick_seconds: 60
 
 budget_extension:
   enabled: true
@@ -337,23 +426,34 @@ Discord message body.
 ### 6.2 Per-task-type config (`config/task_types.yaml` extension)
 
 ```yaml
+# Slice 21 actual layout: skills are filesystem-rooted directories
+# under skills/<name>/ (skill.yaml + steps/*.md + schemas/*.json) per
+# src/donna/skills/loader.py — fixture cases live under
+# fixtures/<name>/case*.json. Globs ending in /** are recursive
+# prefix matches enforced by DiffValidator.
 task_types:
-  skill_draft:
+  skill_auto_draft:
     manual_escalation:
       mode: claude_code
       target_paths:
-        skill: "src/donna/skills/{name}.py"
-        test:  "tests/skills/test_{name}.py"
-      reference_module: "src/donna/skills/schema_inference.py"
+        skill:    "skills/{name}/**"
+        fixtures: "fixtures/{name}/**"
+      reference_module: "skills/parse_task/skill.yaml"
+      forbidden_patterns:
+        - "import anthropic"
+        - "DONNA_API_KEY"
   chat_escalation:
     manual_escalation:
       mode: chat
-  evolution:
+  skill_evolution:
     manual_escalation:
       mode: claude_code
       target_paths:
-        skill: "src/donna/skills/{name}.py"
-      reference_module: "src/donna/skills/{name}.py"      # in-place edit
+        skill:    "skills/{name}/**"
+        fixtures: "fixtures/{name}/**"
+      reference_module: "skills/{name}/skill.yaml"        # in-place edit
+      forbidden_patterns:
+        - "import anthropic"
 ```
 
 Task types without a `manual_escalation` block are **never** offered
@@ -486,6 +586,13 @@ CREATE TABLE escalation_request (
   delivery_attempts INTEGER DEFAULT 0,
   last_delivery_attempt_at TIMESTAMP,
   parent_escalation_id INTEGER,           -- for re-escalations
+  -- Slice 21 additions (migration a1b2c3d4e5f7) — see §5.3.
+  human_review BOOLEAN DEFAULT 0,         -- iteration cap reached
+  target_paths JSON,                      -- snapshot of rendered scope globs
+  originating_entity_type TEXT,           -- e.g. 'skill_candidate_report' or 'skill'
+  originating_entity_id TEXT,             -- FK pair pointing at the originating row
+  base_sha TEXT,                          -- pinned main SHA at gate-fire time
+  merged_at TIMESTAMP,                    -- user-driven Mark as merged tracking
   FOREIGN KEY (parent_escalation_id) REFERENCES escalation_request(id)
 );
 
@@ -589,7 +696,8 @@ Organized by failure category.
 | Failure | Mitigation |
 |---|---|
 | User submits empty / malformed answer in chat mode | Both the dashboard endpoint and the `/donna_submit` slash command run through `donna.cost.escalation_submit_service.apply_submission`, which enforces the JSON schema (``answer.minLength=50``). The slash command also enforces an upper bound (``prompt_delivery.slash_command_max_chars``, default 3000) and replies "use dashboard for long answers" when exceeded. Discord button click without text reply prompts "paste your answer first". |
-| User submits but never builds the branch in claude_code mode | Poller checks `branch_exists(branch_name)` before processing. If absent after 5 min: posts "branch not found, did you push? or run /donna submit-local if local-only" — local-only path uses git plumbing to read the branch from the host repo. |
+| User submits but never builds the branch in claude_code mode | Poller checks `branch_exists(branch_name)` against the read-only host-repo mount on every tick. If absent: posts a one-shot "branch not found, did you push?" feedback and leaves the row in `submitted` so a later push triggers re-ingestion (no iteration burn). The slice 21 implementation runs this check immediately on each poller tick rather than after a 5-min delay — branch resolution is cheap (`git rev-parse`) and the user benefits from the fastest possible feedback. Pushed and local-only branches are equivalent through the read-only mount, so a separate `/donna submit-local` command was not needed; the dashboard's "Mark as built" + the `/donna_submit_built` slash command both cover the case. |
+
 | User pushes a branch with wrong files (touched files outside spec scope) | Diff-validator rejects with specific list of out-of-scope files. User can edit and resubmit; iteration count increments. |
 | User force-pushes branch between submission and validation | Resolution is locked to the SHA at submission time. New SHA = new submission required. |
 | Branch contains uncommitted/staged changes mixed with the work | Diff is computed against `base..tip`, ignoring working tree. User's local mess is irrelevant. |
@@ -599,7 +707,7 @@ Organized by failure category.
 | Failure | Mitigation |
 |---|---|
 | Skill from manual handoff fails fixture validation | Failures posted to Discord; same correlation thread. User iterates in worktree, resubmits. Iteration cap `manual_iteration_limit` (3). |
-| At iteration cap, still failing | Auto-cancel the escalation; create a `tool_request`-shaped row in a new `human_review_request` queue (or just log with `human_review` flag). User reviews via dashboard. No infinite loop. |
+| At iteration cap, still failing | Auto-cancel the escalation: status becomes `cancelled` and `human_review = 1` is set on the same `escalation_request` row (slice 21 decision §15 — reuses the row, no separate queue table). The poller writes an `iteration_limit_reached` audit event and posts a Discord notice with the dashboard link. Dashboard list view filters / banners on `human_review = 1`. No infinite loop. |
 | Tool build missing mock entry | Pre-validation lint (§10.5). User cannot submit a tool without its mock — diff-validator rejects. |
 | Tool build passes validation but breaks an existing skill in shadow | Standard regression handling: skill enters `flagged_for_review`, escalation marked `validated_with_warnings`, dashboard shows banner. |
 
@@ -655,9 +763,12 @@ Every state transition writes to `invocation_log` with `task_type='escalation_li
 - `escalation_resolved` — chosen mode, resolved_by
 - `escalation_submitted` — branch, iteration
 - `escalation_validated` / `escalation_failed`
+- `escalation_branch_not_found` (slice 21) — branch missing on poller tick
 - `extension_granted` / `extension_voided`
 - `tool_gap_detected` / `tool_request_filed`
-- `iteration_limit_reached`
+- `iteration_limit_reached` (slice 21) — manual handoff reached
+  `manual_iteration_limit` resubmits without passing; row auto-cancels
+  with `human_review=1`
 
 Dashboard renders these as a timeline per escalation_request_id.
 
@@ -693,11 +804,11 @@ Dashboard renders these as a timeline per escalation_request_id.
 
 ## 12. Open questions (for follow-up before slice work begins)
 
-1. **Default `OWNER_DISCORD_ID` source** — env var, vault entry, or `auth.yaml`? (Spec assumes env var for now.)
-2. **Local-only branches** — does the orchestrator have read access to the host repo's `.git` directory? If not, we add a small mount to support `submit-local` (not pushed) workflows.
-3. **`human_review_request` table vs reusing `tool_request`** — do we want one queue for all manual interventions, or separate queues per kind?
-4. **Tier 2 SMS escalation on Discord delivery failure** — confirm we want this; SMS rate limits in slice 7 are tight (10/day).
-5. **Re-escalation parent chains** — current spec stores `parent_escalation_id`. Do we need a depth limit beyond `manual_iteration_limit`?
+1. **Default `OWNER_DISCORD_ID` source** — env var, vault entry, or `auth.yaml`? *Resolved (slice 17, §15): env var `DONNA_OWNER_DISCORD_ID`; fail-soft when unset.*
+2. **Local-only branches** — does the orchestrator have read access to the host repo's `.git` directory? *Resolved (slice 21, §15): env var `DONNA_HOST_REPO_PATH` points at a read-only mount; pushed and local branches are equivalent through it; fail-soft when unset.*
+3. **`human_review_request` table vs reusing `tool_request`** — do we want one queue for all manual interventions, or separate queues per kind? *Resolved (slice 21, §15): reuse `escalation_request` with a `human_review` BOOLEAN column; revisit when Phase 2 surfaces non-skill / non-tool human-review cases.*
+4. **Tier 2 SMS escalation on Discord delivery failure** — confirm we want this; SMS rate limits in slice 7 are tight (10/day). *Open — slice 24 (escalation hardening) owns the resolution.*
+5. **Re-escalation parent chains** — current spec stores `parent_escalation_id`. Do we need a depth limit beyond `manual_iteration_limit`? *Open — slice 24 (escalation hardening) owns the resolution.*
 
 ---
 
@@ -764,6 +875,37 @@ matching brief in `slices/`.
   `escalation_gate_disabled_no_owner` and continues with the gate
   inactive (rather than crashing the entire orchestrator) — over-budget
   paths fall back to `BudgetGuard.check_pre_call`.
+- **(2026-05-06, slice 21)** Host repo access: env var
+  `DONNA_HOST_REPO_PATH` points at a read-only mount. Donna never
+  writes to the host repo. If unset / not a git repo, the
+  `claude_code` button is not offered (logged once at boot,
+  fail-soft). Resolves §12 Q2.
+- **(2026-05-06, slice 21)** Iteration-cap routing: reuse
+  `escalation_request` with a new `human_review` BOOLEAN column rather
+  than introducing a separate `human_review_request` table. Resolves
+  §12 Q3.
+- **(2026-05-06, slice 21)** Originating-entity tracking: added
+  explicit `originating_entity_type` + `originating_entity_id` columns
+  on `escalation_request` and a parallel kwarg on `router.complete` /
+  `gate.fire_and_wait`. Required because `task_id` is NULL for every
+  claude_code path (auto_drafter / evolution call sites both pass
+  `task_id=None`). Diff-validator reads from these to render
+  `{name}`-substituted target_paths globs.
+- **(2026-05-06, slice 21)** Manual `claude_code` lifecycle landing
+  state: `sandbox` (not `draft`). The user's "Mark as built" + green
+  fixtures *is* the human approval; manual mode lands one hop deeper
+  than AutoDrafter for that reason. Existing automatic promotion gates
+  take over from `sandbox`.
+- **(2026-05-06, slice 21)** Donna does **not** auto-merge validated
+  branches. The user runs `git merge` manually; the dashboard
+  "Mark as merged" button is a tracking-only write that flips
+  `merged_at`. Preserves the §15 ToS principle ("human is always the
+  operator") for code-writing actions.
+- **(2026-05-06, slice 21)** Submit-flow extracted to
+  `donna.cost.escalation_submit.submit_escalation_core` — both the
+  HTTP route and the `/donna submit` slash command delegate to it,
+  so schema validation, mode mismatch, iteration cap, and concurrent-
+  submission guards are identical across surfaces.
 
 ---
 

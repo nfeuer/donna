@@ -711,17 +711,42 @@ class BudgetEscalationView(discord.ui.View):
                     mode="api_extended",
                 )
             )
-        # Slice 20: only one manual handoff button renders even when both
-        # chat and claude_code are eligible — the gate's per-task-type
-        # routing means at most one will be in offered_modes for any given
-        # row, so the resolved mode goes through unambiguously.
-        manual_mode = self._pick_manual_mode(offered_modes)
-        if manual_mode is not None:
+        # Slice 21: render mode-specific manual buttons.
+        # ``claude_code`` rendering routes through the gate's
+        # ``record_manual_handoff()`` so the spec file is written +
+        # the row is resolved as a single transaction. ``chat`` (slice
+        # 20) reuses the generic ``record_user_resolution`` path. The
+        # gate's per-task-type config typically narrows offered_modes
+        # to at most one of these per row, but we render whichever
+        # tokens are present so a future config could surface both.
+        if "claude_code" in offered_modes:
+            self.add_item(
+                _ClaudeCodeHandoffButton(label="Claude Code")
+            )
+        if "chat" in offered_modes:
+            self.add_item(
+                _ModeButton(
+                    label="Chat",
+                    style=ButtonStyle.blurple,
+                    mode="chat",
+                )
+            )
+        # Backwards-compatible "Manual handoff" path: only render when
+        # the gate sent the legacy ``manual`` token alone (no
+        # mode-specific token). Existing slice 17/18 deployments fall
+        # here. Slice 20's :meth:`_pick_manual_mode` reduces multi-mode
+        # views to a single label for that legacy path.
+        legacy_manual_mode = self._pick_manual_mode(offered_modes)
+        if (
+            legacy_manual_mode == "manual"
+            and "claude_code" not in offered_modes
+            and "chat" not in offered_modes
+        ):
             self.add_item(
                 _ModeButton(
                     label="Manual handoff",
                     style=ButtonStyle.blurple,
-                    mode=manual_mode,
+                    mode=legacy_manual_mode,
                 )
             )
         if "pause" in offered_modes:
@@ -870,6 +895,87 @@ class _ModeButton(discord.ui.Button[discord.ui.View]):
             "escalation_resolved_via_button",
             correlation_id=view.correlation_id,
             mode=self._mode,
+            user_id=interaction.user.id,
+        )
+        view.stop()
+
+
+class _ClaudeCodeHandoffButton(discord.ui.Button[discord.ui.View]):
+    """Slice 21 — render the spec file + resolve as ``claude_code``.
+
+    Distinct from :class:`_ModeButton` because the manual handoff path
+    requires an extra atomic step (rendering the spec to disk and
+    mirroring into ``escalation_request.prompt_body``) BEFORE the
+    resolution event fires. Implemented as a separate button class so
+    the resolution-specific code path stays linear and the audit log
+    captures ``mode='claude_code'`` with a stable spec_path payload.
+    """
+
+    def __init__(self, *, label: str = "Claude Code") -> None:
+        super().__init__(
+            label=label,
+            style=ButtonStyle.blurple,
+            custom_id="escalation_claude_code",
+        )
+
+    async def callback(self, interaction: Interaction) -> None:
+        view = self.view
+        if not isinstance(view, BudgetEscalationView):
+            return
+
+        if interaction.user.id != view.owner_discord_id:
+            logger.warning(
+                "escalation_owner_mismatch",
+                correlation_id=view.correlation_id,
+                actual_user_id=interaction.user.id,
+                expected_user_id=view.owner_discord_id,
+                mode="claude_code",
+            )
+            await interaction.response.send_message(
+                "Only the account owner can resolve this.", ephemeral=True
+            )
+            return
+
+        try:
+            rendered = await view.gate.record_manual_handoff(
+                correlation_id=view.correlation_id,
+                mode="claude_code",
+                actor_id=str(interaction.user.id),
+            )
+        except Exception:
+            logger.exception(
+                "claude_code_handoff_failed",
+                correlation_id=view.correlation_id,
+            )
+            await interaction.response.send_message(
+                "Couldn't prepare the Claude Code handoff — check the dashboard.",
+                ephemeral=True,
+            )
+            return
+
+        if rendered is None:
+            await interaction.response.send_message(
+                "This escalation can't be handed off to Claude Code "
+                "(missing config or already resolved).",
+                ephemeral=True,
+            )
+            view.stop()
+            return
+
+        await interaction.response.send_message(
+            (
+                f"Spec written to `{rendered.path}`.\n"
+                f"Branch: `{rendered.branch_name}`.\n"
+                f"Open the dashboard for the worktree command and "
+                f"target paths."
+            ),
+            ephemeral=True,
+        )
+        logger.info(
+            "claude_code_handoff_recorded",
+            correlation_id=view.correlation_id,
+            spec_path=str(rendered.path),
+            branch_name=rendered.branch_name,
             user_id=interaction.user.id,
         )
         view.stop()

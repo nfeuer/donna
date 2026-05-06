@@ -52,11 +52,15 @@ from donna.config import (
 )
 from donna.cost.budget import BudgetGuard
 from donna.cost.budget_extension import BudgetExtensionRepository
+from donna.cost.claude_code_poller import ClaudeCodePoller
+from donna.cost.claude_code_spec import ClaudeCodeSpecBuilder, expand_workspace_path
 from donna.cost.dashboard_setting import DashboardSettingResolver
 from donna.cost.escalation_audit import EVENT_EXTENSION_VOIDED, write_escalation_event
 from donna.cost.escalation_gate import EscalationGate
 from donna.cost.escalation_repository import EscalationRepository
+from donna.cost.manual_validation_router import ManualValidationRouter
 from donna.cost.tracker import CostTracker
+from donna.integrations.git_repo import GitRepo
 from donna.logging.invocation_logger import InvocationLogger
 from donna.models.router import ModelRouter
 from donna.notifications.escalation_delivery_loop import EscalationDeliveryLoop
@@ -832,6 +836,10 @@ class StartupContext:
     budget_extension_repo: BudgetExtensionRepository | None = None
     escalation_gate: EscalationGate | None = None
     escalation_delivery_loop: EscalationDeliveryLoop | None = None
+    # Slice 21: claude_code mode infrastructure. None when the host
+    # repo mount or spec builder couldn't be resolved at boot —
+    # claude_code button is not offered in that case.
+    claude_code_poller: ClaudeCodePoller | None = None
     owner_discord_id: int | None = None
     # Shared asyncio task list — every helper that spawns a background
     # loop appends to this. `_run_orchestrator` awaits it.
@@ -1018,6 +1026,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             reason="DONNA_OWNER_DISCORD_ID is unset; "
             "manual escalation buttons cannot be authorised",
         )
+    claude_code_poller: ClaudeCodePoller | None = None
     if bot is not None and owner_discord_id is not None:
         cost_tracker_for_gate = CostTracker(db.connection)
         deliver = _make_escalation_delivery_callback(
@@ -1037,6 +1046,52 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             project_root=project_root,
             config=manual_escalation_config.prompt_delivery,
         )
+
+        # Slice 21 — resolve the host repo + spec builder if claude_code
+        # mode is enabled. Fails soft: missing env / missing repo just
+        # disables claude_code button rendering (chat / api_extended /
+        # pause / cancel still work).
+        claude_code_cfg = manual_escalation_config.modes.claude_code
+        host_repo: GitRepo | None = None
+        spec_builder: ClaudeCodeSpecBuilder | None = None
+        if claude_code_cfg.enabled:
+            host_repo_path_env = claude_code_cfg.host_repo_path_env
+            host_repo_path_str = os.environ.get(host_repo_path_env)
+            if host_repo_path_str:
+                host_repo_path = Path(host_repo_path_str).expanduser()
+                if (host_repo_path / ".git").exists():
+                    host_repo = GitRepo(root=host_repo_path)
+                    workspace_path = expand_workspace_path(
+                        os.environ.get("DONNA_WORKSPACE_PATH", str(project_root))
+                    )
+                    worktree_root = expand_workspace_path(
+                        claude_code_cfg.worktree_root
+                    )
+                    spec_builder = ClaudeCodeSpecBuilder(
+                        prompt_dir=project_root / "prompts" / "escalation",
+                        workspace_path=workspace_path,
+                        host_repo_path=host_repo_path,
+                        worktree_root=worktree_root,
+                        dashboard_base_url=f"http://localhost:{port}",
+                        iteration_limit=manual_escalation_config.triggers.manual_iteration_limit,
+                    )
+                    log.info(
+                        "claude_code_mode_wired",
+                        host_repo_path=str(host_repo_path),
+                        worktree_root=str(worktree_root),
+                    )
+                else:
+                    log.warning(
+                        "claude_code_mode_disabled_invalid_host_repo",
+                        host_repo_path=str(host_repo_path),
+                        reason="path is not a git repo",
+                    )
+            else:
+                log.info(
+                    "claude_code_mode_disabled_no_host_repo_env",
+                    env_var=host_repo_path_env,
+                )
+
         escalation_gate = EscalationGate(
             repository=escalation_repository,
             tracker=cost_tracker_for_gate,
@@ -1047,6 +1102,8 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             extension_repo=budget_extension_repo,
             task_types_config=task_types_config,
             chat_prompt_builder=chat_prompt_builder,
+            spec_builder=spec_builder,
+            host_repo=host_repo,
         )
         escalation_delivery_loop = EscalationDeliveryLoop(
             db=db,
@@ -1078,6 +1135,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         budget_extension_repo=budget_extension_repo,
         escalation_gate=escalation_gate,
         escalation_delivery_loop=escalation_delivery_loop,
+        claude_code_poller=claude_code_poller,
         owner_discord_id=owner_discord_id,
         port=port,
         user_id=user_id,
@@ -1166,6 +1224,103 @@ async def _run_crash_recovery(
             )
 
 
+async def wire_claude_code_poller(
+    ctx: StartupContext,
+    skill_h: SkillSystemHandle,
+) -> ClaudeCodePoller | None:
+    """Slice 21 — construct and start the claude_code ingestion poller.
+
+    Runs after :func:`wire_skill_system` so the lifecycle manager and
+    validation executor are available. Idempotent: returns existing
+    poller if already wired (e.g. across reruns in tests).
+
+    Realizes docs/superpowers/specs/manual-escalation.md §5.3 ingestion
+    paragraph (Donna ingestion / poller).
+    """
+    log = ctx.log
+    if ctx.escalation_gate is None:
+        log.info("claude_code_poller_skip_no_gate")
+        return None
+    if ctx.manual_escalation_config is None or ctx.escalation_repository is None:
+        log.info("claude_code_poller_skip_no_config")
+        return None
+    bundle = skill_h.bundle
+    if bundle is None:
+        log.info("claude_code_poller_skip_no_skill_bundle")
+        return None
+    # The gate's host_repo / spec_builder are the ground truth for
+    # whether claude_code mode is enabled (see build_startup_context).
+    host_repo = ctx.escalation_gate._host_repo
+    if host_repo is None:
+        log.info("claude_code_poller_skip_no_host_repo")
+        return None
+
+    cc_cfg = ctx.manual_escalation_config.modes.claude_code
+    triggers = ctx.manual_escalation_config.triggers
+
+    def _executor_factory() -> Any:
+        from donna.skills.validation_executor import ValidationExecutor
+        return ValidationExecutor(
+            model_router=skill_h.subsystem_router,
+            config=ctx.skill_config,
+        )
+
+    router = ManualValidationRouter(
+        conn=ctx.db.connection,
+        host_repo=host_repo,
+        executor_factory=_executor_factory,
+        lifecycle=bundle.lifecycle_manager,
+        fixture_pass_rate=ctx.skill_config.auto_draft_fixture_pass_rate,
+    )
+
+    feedback = _make_claude_code_feedback_callback(
+        bot=ctx.bot,
+    ) if ctx.bot is not None else None
+
+    poller = ClaudeCodePoller(
+        repository=ctx.escalation_repository,
+        host_repo=host_repo,
+        validation_router=router,
+        base_ref=cc_cfg.base_ref,
+        feedback=feedback,
+        manual_iteration_limit=triggers.manual_iteration_limit,
+        feedback_max_failing_cases=cc_cfg.feedback_max_failing_cases,
+        dashboard_base_url=f"http://localhost:{ctx.port}",
+        tick_seconds=cc_cfg.poll_tick_seconds,
+    )
+    ctx.claude_code_poller = poller
+    ctx.tasks.append(
+        asyncio.create_task(poller.run(), name="claude_code_poller")
+    )
+    log.info(
+        "claude_code_poller_wired",
+        tick_seconds=cc_cfg.poll_tick_seconds,
+        base_ref=cc_cfg.base_ref,
+    )
+    return poller
+
+
+def _make_claude_code_feedback_callback(
+    *, bot: Any
+) -> Callable[[Any, str], Awaitable[None]]:
+    """Build a feedback callback bound to the tasks-channel.
+
+    Sent as plain text (no view) — these are status pings, not
+    decision points. Spec §10.4 row 1 (failures back to Discord).
+    """
+
+    async def feedback(row: Any, message: str) -> None:
+        try:
+            await bot.send_message("tasks", message)
+        except Exception:
+            logger.exception(
+                "claude_code_feedback_send_failed",
+                correlation_id=getattr(row, "correlation_id", None),
+            )
+
+    return feedback
+
+
 def _make_escalation_delivery_callback(
     *,
     bot: Any,
@@ -1252,16 +1407,32 @@ def _build_escalation_message_body(*, row: Any, host_base_url: str) -> str:
     if summary:
         parts.append(f"**Escalation** — {row.task_type}\n{summary}")
     else:
-        action_hint = (
-            "approve an extension, "
-            if "api_extended" in row.offered_modes
-            else ""
-        )
+        # Slice 21: enumerate exactly the buttons being rendered so the
+        # message matches what the user sees on the BudgetEscalationView.
+        # Order mirrors the view: extension → manual modes → pause/cancel.
+        button_labels: list[str] = []
+        if "api_extended" in row.offered_modes:
+            button_labels.append(f"approve a ${row.estimate_usd:.2f} extension")
+        if "claude_code" in row.offered_modes:
+            button_labels.append("hand off to Claude Code")
+        if "chat" in row.offered_modes:
+            button_labels.append("answer in chat")
+        if "manual" in row.offered_modes and not (
+            "claude_code" in row.offered_modes or "chat" in row.offered_modes
+        ):
+            button_labels.append("hand off manually")
+        button_labels.extend(["pause", "cancel"])
+        if len(button_labels) == 1:
+            choice_line = button_labels[0]
+        else:
+            choice_line = (
+                ", ".join(button_labels[:-1]) + ", or " + button_labels[-1]
+            )
         parts.append(
             f"**Over-budget decision** — {row.task_type}\n"
             f"Estimate: ${row.estimate_usd:.2f}  |  "
             f"Daily remaining: ${row.daily_remaining_usd:.2f}\n"
-            f"Choose: {action_hint}pause, or cancel."
+            f"Choose: {choice_line}."
         )
     parts.append(
         f"Estimate: ${row.estimate_usd:.2f}  |  "

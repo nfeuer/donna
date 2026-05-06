@@ -96,6 +96,38 @@ def register_submit_command(
             owner_discord_id=owner_discord_id,
         )
 
+    # Slice 21 — claude_code submission fallback. Separate command name
+    # because Discord slash command args have to be statically typed and
+    # mixing optional answer / optional branch makes both mutually-
+    # exclusive in a way Discord can't express. ``/donna_submit_built``
+    # always carries a branch + optional sha and routes to apply_submission
+    # with the claude_code payload shape.
+    @bot.tree.command(
+        name="donna_submit_built",
+        description="Mark a claude_code escalation as built (slice 21).",
+        guild=guild,
+    )
+    @app_commands.describe(
+        correlation_id="The correlation ID from the escalation Discord post.",
+        branch="Branch name carrying your build (e.g. escalation/abcd1234-foo).",
+        sha="Optional commit SHA at branch tip — locks validation to this SHA.",
+    )
+    async def submit_built_cmd(
+        interaction: Interaction,
+        correlation_id: str,
+        branch: str,
+        sha: str | None = None,
+    ) -> None:
+        await _handle_submit_built(
+            interaction=interaction,
+            correlation_id=correlation_id,
+            branch=branch,
+            sha=sha,
+            conn=conn,
+            iteration_limit=iteration_limit,
+            owner_discord_id=owner_discord_id,
+        )
+
 
 async def _handle_submit(
     *,
@@ -192,6 +224,94 @@ async def _handle_submit(
             f"Submitted ({result.iteration} of "
             f"{iteration_limit} iterations) — "
             "Donna will fold the answer into the originating task."
+        ),
+        ephemeral=True,
+    )
+
+
+async def _handle_submit_built(
+    *,
+    interaction: Interaction,
+    correlation_id: str,
+    branch: str,
+    sha: str | None,
+    conn: aiosqlite.Connection,
+    iteration_limit: int,
+    owner_discord_id: int | None,
+) -> None:
+    """Validate + dispatch a single ``/donna_submit_built`` invocation.
+
+    Slice 21 — claude_code escalation fallback. The claude_code mode's
+    primary surface is the dashboard's "Mark as built" modal; this slash
+    command exists for the on-the-go case where the user has the branch
+    name handy but no browser tab open.
+    """
+    user_id = interaction.user.id
+
+    if owner_discord_id is not None and user_id != owner_discord_id:
+        logger.warning(
+            "donna_submit_built_owner_mismatch",
+            actual_user_id=user_id,
+            expected_user_id=owner_discord_id,
+        )
+        await interaction.response.send_message(
+            "Only the account owner can submit escalation builds.",
+            ephemeral=True,
+        )
+        return
+
+    branch = branch.strip()
+    if not branch:
+        await interaction.response.send_message(
+            "Branch name is required.", ephemeral=True
+        )
+        return
+
+    payload: dict[str, str] = {"mode": "claude_code", "branch": branch}
+    if sha:
+        payload["sha"] = sha.strip()
+
+    try:
+        result = await apply_submission(
+            conn=conn,
+            correlation_id=correlation_id,
+            payload=payload,
+            iteration_limit=iteration_limit,
+        )
+    except SubmissionError as exc:
+        message = _humanize_submission_error(exc)
+        logger.info(
+            "donna_submit_built_rejected",
+            correlation_id=correlation_id,
+            code=exc.code,
+            user_id=user_id,
+        )
+        await interaction.response.send_message(message, ephemeral=True)
+        return
+    except Exception:
+        logger.exception(
+            "donna_submit_built_unexpected_failure",
+            correlation_id=correlation_id,
+            user_id=user_id,
+        )
+        await interaction.response.send_message(
+            "Couldn't submit your build — try again or use the dashboard.",
+            ephemeral=True,
+        )
+        return
+
+    logger.info(
+        "donna_submit_built_accepted",
+        correlation_id=correlation_id,
+        user_id=user_id,
+        iteration=result.iteration,
+        branch=branch,
+    )
+    await interaction.response.send_message(
+        (
+            f"Submitted `{branch}` for validation "
+            f"({result.iteration} of {iteration_limit} iterations). "
+            "The poller will pick it up within a minute."
         ),
         ephemeral=True,
     )

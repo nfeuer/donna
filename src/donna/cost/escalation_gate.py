@@ -26,13 +26,14 @@ import asyncio
 import dataclasses
 from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 import structlog
 import uuid6
 
 from donna.config import ManualEscalationConfig, TaskTypesConfig
 from donna.cost.budget_extension import BudgetExtensionRepository, DailyBudgetExtensionRow
+from donna.cost.claude_code_spec import ClaudeCodeSpecBuilder, RenderedSpec
 from donna.cost.dashboard_setting import DashboardSettingResolver
 from donna.cost.escalation_audit import (
     EVENT_EXTENSION_GRANTED,
@@ -40,6 +41,7 @@ from donna.cost.escalation_audit import (
     EVENT_RESOLVED,
     write_escalation_event,
 )
+from donna.cost.escalation_chat_prompt import ChatPromptBuilder
 from donna.cost.escalation_repository import (
     EscalationRepository,
     EscalationRequestRow,
@@ -47,7 +49,7 @@ from donna.cost.escalation_repository import (
 from donna.cost.tracker import CostTracker
 
 if TYPE_CHECKING:
-    from donna.cost.escalation_chat_prompt import ChatPromptBuilder
+    pass
 
 logger = structlog.get_logger()
 
@@ -103,6 +105,8 @@ class EscalationGate:
         extension_repo: BudgetExtensionRepository,
         task_types_config: TaskTypesConfig | None = None,
         chat_prompt_builder: ChatPromptBuilder | None = None,
+        spec_builder: ClaudeCodeSpecBuilder | None = None,
+        host_repo: Any = None,
     ) -> None:
         self._repo = repository
         self._tracker = tracker
@@ -117,6 +121,11 @@ class EscalationGate:
         # offers Pause / Cancel.
         self._task_types_config = task_types_config
         self._chat_prompt_builder = chat_prompt_builder
+        # Slice 21 wiring — claude_code spec rendering + host repo for
+        # base_sha capture. Optional; absence disables the claude_code
+        # button without crashing boot.
+        self._spec_builder = spec_builder
+        self._host_repo = host_repo
 
     # ------------------------------------------------------------------
     # Public API
@@ -130,6 +139,9 @@ class EscalationGate:
         task_type: str,
         estimate_usd: float,
         priority: int = 2,
+        originating_entity: tuple[str, str] | None = None,
+        target_paths: dict[str, str] | None = None,
+        base_sha: str | None = None,
         original_prompt: str | None = None,
     ) -> GateOutcome:
         """Decide whether to escalate; if so, post the view and await.
@@ -148,12 +160,28 @@ class EscalationGate:
             should treat the task as parked; the chat-mode ingestion
             poller transitions it to ``done`` once the user submits an
             answer through the dashboard or ``/donna submit``.
+          * ``fired=True, mode='claude_code'`` — slice 21 manual handoff.
+            Caller treats the task as parked; the ClaudeCodePoller
+            validates the user's branch and updates lifecycle state on
+            success.
 
         ``original_prompt`` is the fully-rendered prompt the caller would
         otherwise have sent to the API. Slice 20 uses it (with the chat
         prompt builder) to produce the prompt body the user pastes into
         Claude. Without it, chat mode cannot be offered for this call —
         the gate degrades to Pause / Cancel only.
+
+        ``originating_entity`` (slice 21) is the FK pair the
+        claude_code poller uses to render ``{name}``-substituted
+        target_paths globs. ``task_id`` is NULL for skill_auto_draft
+        and skill_evolution call sites, so this kwarg is the only way
+        the validator can identify the target.
+
+        ``target_paths`` and ``base_sha`` snapshot the manual_escalation
+        scope at gate-fire time. Both are persisted on the row so a
+        config edit mid-flight cannot widen scope retroactively
+        (spec §10.7 row 2) and the worktree command stays pinned to a
+        specific main SHA (spec §5.3 / drift mitigation).
         """
         if not await self._is_enabled():
             return GateOutcome(
@@ -163,6 +191,50 @@ class EscalationGate:
                 escalation_request_id=None,
                 correlation_id=None,
             )
+
+        # De-dup: if a previous claude_code escalation for this same
+        # entity is still in-flight, refuse to open a parallel race
+        # (spec §10.7 / brainstorm decision §21). We only RE-DELIVER
+        # the Discord notification when the prior row is still in
+        # ``open`` state; re-delivering for ``resolved`` (user clicked
+        # but hasn't built yet) / ``submitted`` (poller is validating)
+        # / ``failed`` (user is iterating) would just spam them about
+        # work they already know is in flight.
+        if originating_entity is not None:
+            existing = await self._repo.find_open_for_originating_entity(
+                entity_type=originating_entity[0],
+                entity_id=originating_entity[1],
+            )
+            if existing is not None and (
+                existing.mode == "claude_code"
+                or "claude_code" in existing.offered_modes
+            ):
+                logger.info(
+                    "escalation_dedup_existing_claude_code",
+                    correlation_id=existing.correlation_id,
+                    existing_status=existing.status,
+                    originating_entity=originating_entity,
+                )
+                if existing.status == "open":
+                    # User still hasn't seen / clicked the existing
+                    # ping — a fresh delivery may help.
+                    try:
+                        await self._deliver(existing)
+                    except Exception:
+                        logger.exception(
+                            "escalation_redeliver_failed",
+                            correlation_id=existing.correlation_id,
+                        )
+                # Don't await resolution — return as if not fired so
+                # the caller falls back to ``BudgetPausedError`` /
+                # paused state. Spawning a parallel awaiter would race.
+                return GateOutcome(
+                    fired=False,
+                    mode=None,
+                    resolved_by=None,
+                    escalation_request_id=None,
+                    correlation_id=None,
+                )
 
         daily_remaining = await self._daily_remaining(user_id)
         threshold = self._config.triggers.task_approval_threshold_usd
@@ -177,7 +249,8 @@ class EscalationGate:
 
         # Build offered_modes dynamically. Pause + Cancel are always present;
         # api_extended renders when the extension config allows it and there
-        # is enough daily / monthly headroom.
+        # is enough daily / monthly headroom; claude_code (slice 21) renders
+        # when the per-task-type config + host_repo + spec_builder line up.
         offered_modes: list[str] = []
         if await self._should_offer_extension(estimate_usd, user_id):
             offered_modes.append("api_extended")
@@ -186,12 +259,34 @@ class EscalationGate:
         #   2. Modes.chat is enabled (YAML, override-able via dashboard).
         #   3. The task type declares ``manual_escalation: {mode: chat}``.
         #   4. The caller passed an ``original_prompt`` for us to render.
-        # Same shape will be reused for ``claude_code`` in slice 21.
         chat_eligible = await self._chat_mode_eligible(
             task_type=task_type, original_prompt=original_prompt
         )
         if chat_eligible:
             offered_modes.append("chat")
+        # Slice 21 — claude_code mode. Only offer when:
+        #   1. The master kill-switch is on (already checked above).
+        #   2. Modes.claude_code is enabled (YAML, dashboard).
+        #   3. The task type declares ``manual_escalation: {mode: claude_code}``.
+        #   4. The host repo + spec builder are configured (cli_wiring).
+        if await self._should_offer_claude_code(task_type):
+            offered_modes.append("claude_code")
+            # If the gate caller didn't pre-render target_paths, do it
+            # now from the per-task-type config so the row carries the
+            # exact scope at fire time (spec §10.7 row 2 — config can
+            # change mid-flight).
+            if target_paths is None and self._task_types_config is not None:
+                target_paths = self._render_target_paths(task_type)
+            # Capture base_sha if we can; the gate's caller may also
+            # pre-supply one. Failing-soft: missing base_sha just means
+            # the spec will reference the symbolic ref instead.
+            if base_sha is None and self._host_repo is not None:
+                try:
+                    base_sha = await self._host_repo.rev_parse(
+                        f"refs/heads/{self._config.modes.claude_code.base_ref}"
+                    )
+                except Exception:
+                    base_sha = None
         offered_modes.extend(["pause", "cancel"])
 
         correlation_id = str(uuid6.uuid7())
@@ -204,6 +299,9 @@ class EscalationGate:
             daily_remaining_usd=daily_remaining,
             offered_modes=offered_modes,
             priority=priority,
+            originating_entity=originating_entity,
+            target_paths=target_paths,
+            base_sha=base_sha,
         )
 
         # Render the chat-mode prompt + summary BEFORE the delivery
@@ -422,6 +520,183 @@ class EscalationGate:
             "manual_escalation.enabled", self._config.enabled
         )
 
+    async def _should_offer_claude_code(self, task_type: str) -> bool:
+        """Slice 21: gate the claude_code button on full preconditions.
+
+        All four must hold:
+        1. ``modes.claude_code.enabled`` (dashboard → YAML).
+        2. The host repo is mounted (``self._host_repo`` is not None).
+        3. The spec builder was wired (cli_wiring passes it when paths
+           resolve at boot).
+        4. The task type declares ``manual_escalation.mode == "claude_code"``.
+        """
+        if self._spec_builder is None or self._host_repo is None:
+            return False
+        if self._task_types_config is None:
+            return False
+        cc_enabled: bool = await self._resolver.get(
+            "modes.claude_code.enabled", self._config.modes.claude_code.enabled
+        )
+        if not cc_enabled:
+            return False
+        entry = self._task_types_config.task_types.get(task_type)
+        if entry is None or entry.manual_escalation is None:
+            return False
+        return bool(entry.manual_escalation.mode == "claude_code")
+
+    async def _resolve_capability_name(
+        self, row: EscalationRequestRow
+    ) -> str | None:
+        """Look up capability name from originating_entity_*.
+
+        Mirrors the same logic in
+        :class:`donna.cost.manual_validation_router.ManualValidationRouter._resolve_capability_name`
+        so the gate-side spec render and the validator-side scope check
+        agree on the substituted name.
+        """
+        ent_type = row.originating_entity_type
+        ent_id = row.originating_entity_id
+        if ent_type is None or ent_id is None:
+            return None
+        if ent_type == "skill_candidate_report":
+            cursor = await self._repo._conn.execute(
+                "SELECT capability_name FROM skill_candidate_report WHERE id = ?",
+                (ent_id,),
+            )
+            r = await cursor.fetchone()
+            return str(r[0]) if r and r[0] else None
+        if ent_type == "skill":
+            cursor = await self._repo._conn.execute(
+                "SELECT capability_name FROM skill WHERE id = ?",
+                (ent_id,),
+            )
+            r = await cursor.fetchone()
+            return str(r[0]) if r and r[0] else None
+        return None
+
+    def _render_target_paths(self, task_type: str) -> dict[str, str] | None:
+        """Snapshot ``target_paths`` from per-task-type config (un-substituted).
+
+        ``{name}`` substitution happens later in the spec builder, when
+        the originating-entity name is resolved. The row stores the
+        substituted form once :meth:`record_manual_handoff` runs; until
+        then the row carries the un-substituted globs as a snapshot.
+        """
+        if self._task_types_config is None:
+            return None
+        entry = self._task_types_config.task_types.get(task_type)
+        if entry is None or entry.manual_escalation is None:
+            return None
+        return dict(entry.manual_escalation.target_paths or {})
+
+    async def record_manual_handoff(
+        self,
+        *,
+        correlation_id: str,
+        mode: str,
+        capability_name: str | None = None,
+        actor_id: str | None = None,
+        task_summary: str | None = None,
+        acceptance_criteria: list[str] | None = None,
+    ) -> RenderedSpec | None:
+        """Resolve an open escalation as a manual handoff (slice 21).
+
+        Mirrors the slice 18 ``grant_budget_extension`` precedent: an
+        idempotent helper that mutates the row BEFORE the resolution
+        event fires so the dashboard already has data when the user
+        follows the Discord link.
+
+        For ``mode='claude_code'``: renders the spec template, writes
+        it to disk, mirrors into ``escalation_request.prompt_body``,
+        marks ``status='resolved'`` with ``resolution='claude_code'``.
+
+        Returns the :class:`RenderedSpec` (so the caller can attach
+        the file in Discord) or ``None`` on failure.
+        """
+        if mode != "claude_code":
+            logger.warning(
+                "record_manual_handoff_unsupported_mode",
+                mode=mode,
+            )
+            return None
+        if self._spec_builder is None:
+            logger.warning(
+                "record_manual_handoff_no_spec_builder",
+                correlation_id=correlation_id,
+            )
+            return None
+
+        row = await self._repo.get_by_correlation(correlation_id)
+        if row is None:
+            return None
+        if self._task_types_config is None:
+            return None
+        entry = self._task_types_config.task_types.get(row.task_type)
+        if entry is None or entry.manual_escalation is None:
+            return None
+
+        if capability_name is None:
+            capability_name = await self._resolve_capability_name(row)
+            if capability_name is None:
+                logger.warning(
+                    "record_manual_handoff_no_capability",
+                    correlation_id=correlation_id,
+                    originating_entity_type=row.originating_entity_type,
+                    originating_entity_id=row.originating_entity_id,
+                )
+                return None
+
+        try:
+            rendered = self._spec_builder.render(
+                correlation_id=correlation_id,
+                task_type=row.task_type,
+                capability_name=capability_name,
+                manual=entry.manual_escalation,
+                base_sha=row.base_sha or "HEAD",
+                task_summary=task_summary or _default_summary(row),
+                acceptance_criteria=acceptance_criteria or _default_acceptance(),
+            )
+        except Exception:
+            logger.exception(
+                "record_manual_handoff_render_failed",
+                correlation_id=correlation_id,
+            )
+            return None
+
+        await self._repo.set_manual_handoff(
+            row.id,
+            mode="claude_code",
+            prompt_path=str(rendered.path),
+            prompt_body=rendered.body,
+        )
+        ok = await self._repo.resolve(
+            row.id, resolution="claude_code", resolved_by=actor_id or "user"
+        )
+        if not ok:
+            # Already resolved by another click / sweep — return the
+            # rendered spec anyway so the caller can still surface it.
+            logger.info(
+                "record_manual_handoff_already_resolved",
+                correlation_id=correlation_id,
+            )
+
+        await write_escalation_event(
+            self._repo._conn,
+            event=EVENT_RESOLVED,
+            escalation_request_id=row.id,
+            correlation_id=correlation_id,
+            user_id=row.user_id,
+            task_id=row.task_id,
+            payload={
+                "mode": "claude_code",
+                "resolved_by": "user",
+                "spec_path": str(rendered.path),
+                "branch_name": rendered.branch_name,
+            },
+        )
+        EscalationGate.signal_resolution(correlation_id)
+        return rendered
+
     async def _chat_mode_eligible(
         self,
         *,
@@ -449,10 +724,10 @@ class EscalationGate:
             return False
         if entry.manual_escalation.mode != "chat":
             return False
-        return await self._resolver.get(
+        return bool(await self._resolver.get(
             "manual_escalation.modes.chat.enabled",
             self._config.modes.chat.enabled,
-        )
+        ))
 
     async def _should_offer_extension(
         self, estimate_usd: float, user_id: str
@@ -519,3 +794,27 @@ def _coerce_resolved_by(raw: str | None) -> ResolvedBy:
     if raw == "timeout":
         return "timeout"
     return "user"
+
+
+def _default_summary(row: EscalationRequestRow) -> str:
+    """Fallback task summary when the gate's caller doesn't supply one.
+
+    Mirrors the deterministic summary slice 17 / 20 use when the local
+    Ollama summarizer is unavailable.
+    """
+    return (
+        f"{row.task_type} request — estimate ${row.estimate_usd:.2f}. "
+        "Build per the spec below; commit on the branch named in the "
+        "worktree command."
+    )
+
+
+def _default_acceptance() -> list[str]:
+    """Fallback acceptance criteria — assumes a skill build."""
+    return [
+        "skill.yaml + steps/* + schemas/* committed under skills/{name}/",
+        "fixtures committed under fixtures/{name}/<case>.json",
+        "ValidationExecutor pass rate >= configured threshold (default 0.8)",
+        "no files touched outside the declared target_paths",
+        "no forbidden patterns in any new commits",
+    ]

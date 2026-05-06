@@ -12,6 +12,13 @@ canonical place to view and submit escalations. Slice 19 ships:
   ``schemas/escalation_submission.json`` (discriminated by ``mode``).
   Slice 20 wires the chat-mode entry path; slice 21 wires claude_code.
 
+Slice 21 adds:
+- ``POST /admin/escalations/{correlation_id}/mark-merged`` — pure
+  tracking write the user clicks AFTER they've manually merged the
+  validated branch into ``main``. Donna never auto-merges (spec §15);
+  this endpoint just flips ``merged_at`` so the dashboard reflects the
+  state.
+
 The submit endpoint uses an optimistic lock on ``status`` so racing
 submissions (re-submit after validation failure, two browser tabs) get
 a 409 instead of silently overwriting each other. Slice 20 factored the
@@ -23,6 +30,7 @@ validation or audit logic.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, Query, Request
@@ -50,7 +58,6 @@ _LIST_STATUSES = (
 )
 
 
-
 def _row_to_summary(row: dict[str, Any]) -> dict[str, Any]:
     """Project an escalation_request row to the list/summary response shape."""
     offered_modes = row.get("offered_modes")
@@ -75,6 +82,8 @@ def _row_to_summary(row: dict[str, Any]) -> dict[str, Any]:
         "priority": row["priority"],
         "summary": row.get("summary"),
         "branch_name": row.get("branch_name"),
+        "human_review": bool(row.get("human_review", 0)),
+        "merged_at": row.get("merged_at"),
         "created_at": row["created_at"],
         "resolved_at": row["resolved_at"],
         "submitted_at": row["submitted_at"],
@@ -129,7 +138,7 @@ async def list_escalations(
         SELECT id, correlation_id, user_id, task_id, task_type,
                estimate_usd, daily_remaining_usd, offered_modes,
                resolution, mode, status, iteration, priority,
-               summary, branch_name,
+               summary, branch_name, human_review, merged_at,
                created_at, resolved_at, submitted_at, validated_at
           FROM escalation_request
          WHERE {where}
@@ -176,7 +185,9 @@ async def get_escalation(
                estimate_usd, daily_remaining_usd, offered_modes,
                resolution, mode, status, iteration, priority,
                prompt_path, prompt_body, summary, result, validation_result,
-               branch_name,
+               branch_name, human_review, merged_at,
+               target_paths, originating_entity_type, originating_entity_id,
+               base_sha,
                created_at, resolved_at, submitted_at, validated_at
           FROM escalation_request
          WHERE correlation_id = ?
@@ -197,12 +208,23 @@ async def get_escalation(
         except (TypeError, ValueError):
             validation_result = {"raw": validation_result}
 
+    target_paths = record.get("target_paths")
+    if isinstance(target_paths, str):
+        try:
+            target_paths = json.loads(target_paths)
+        except (TypeError, ValueError):
+            target_paths = None
+
     detail = {
         **summary,
         "prompt_path": record["prompt_path"],
         "prompt_body": record["prompt_body"],
         "result": record["result"],
         "validation_result": validation_result,
+        "target_paths": target_paths,
+        "originating_entity_type": record.get("originating_entity_type"),
+        "originating_entity_id": record.get("originating_entity_id"),
+        "base_sha": record.get("base_sha"),
     }
 
     cursor = await conn.execute(
@@ -241,10 +263,10 @@ async def submit_escalation(
     """Accept the user's submission for a manual-handoff escalation.
 
     Delegates to :func:`donna.cost.escalation_submit_service.apply_submission`
-    so the ``/donna submit`` Discord slash command (slice 20) and any
-    future surface share the exact validation, optimistic lock, and
-    audit-log path. Mode-specific affordances (chat textarea,
-    claude_code "Mark as built" modal) all POST the same payload here.
+    so the ``/donna submit`` Discord slash command (slice 20) and the
+    claude_code dashboard "Mark as built" modal (slice 21) share the
+    exact validation, optimistic lock, and audit-log path. Mode-specific
+    affordances all POST the same discriminated-union payload here.
     """
     try:
         payload = await request.json()
@@ -274,3 +296,52 @@ async def submit_escalation(
         "iteration": result.iteration,
         "mode": result.mode,
     }
+
+
+@router.post("/escalations/{correlation_id}/mark-merged")
+async def mark_escalation_merged(
+    request: Request,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """User clicks **Mark as merged** after merging the validated branch.
+
+    Pure tracking write. Donna does **not** auto-merge (spec §15 — human
+    is always the operator for code-writing actions). This endpoint just
+    flips ``merged_at`` so the dashboard reflects the user's manual
+    merge.
+
+    Returns 409 if the escalation is not in ``status='validated'`` (i.e.
+    nothing has actually been validated; merging makes no sense).
+    """
+    conn = request.app.state.db.connection
+    cursor = await conn.execute(
+        "SELECT status, merged_at FROM escalation_request WHERE correlation_id = ?",
+        (correlation_id,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail={"error": "not_found"})
+    status, merged_at = row[0], row[1]
+
+    if status != "validated":
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "not_validated", "status": status},
+        )
+    if merged_at is not None:
+        # Idempotent — already marked.
+        return {"correlation_id": correlation_id, "merged_at": merged_at}
+
+    now_iso = datetime.now(tz=UTC).isoformat()
+    await conn.execute(
+        """
+        UPDATE escalation_request
+           SET merged_at = ?
+         WHERE correlation_id = ?
+           AND status = 'validated'
+           AND merged_at IS NULL
+        """,
+        (now_iso, correlation_id),
+    )
+    await conn.commit()
+    return {"correlation_id": correlation_id, "merged_at": now_iso}

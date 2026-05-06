@@ -155,6 +155,27 @@ task_types:
     prompt_template: prompts/skill_auto_draft.md
     output_schema: schemas/skill_auto_draft_output.json
     tools: []
+    # Slice 21 — over-budget manual handoff routes to Claude Code on
+    # the user's host. Realizes docs/superpowers/specs/manual-escalation.md
+    # §5.3 / §6.2. {name} is substituted from the originating entity
+    # (skill_candidate_report.capability_name) at gate-fire time.
+    manual_escalation:
+      mode: claude_code
+      # Skills are filesystem-rooted directories under skills/<name>/
+      # (skill.yaml + steps/*.md + schemas/*.json) — see
+      # docs/domain/skill-system.md and src/donna/skills/loader.py.
+      # Fixtures live under fixtures/<name>/case*.json. The "/**"
+      # suffix is a recursive prefix match enforced by DiffValidator.
+      target_paths:
+        skill: "skills/{name}/**"
+        fixtures: "fixtures/{name}/**"
+      # Reference module the user is expected to mimic structurally —
+      # an existing simple capability seeded into the repo.
+      reference_module: "skills/parse_task/skill.yaml"
+      forbidden_patterns:
+        - "import anthropic"  # Skills must not bypass donna.llm
+        - "DONNA_API_KEY"      # No raw secret references
+        - "value=True"         # vault.read() must NOT request raw value
 
   skill_evolution:
     description: "Claude regenerates a degraded skill with divergence case studies + correction log"
@@ -162,6 +183,17 @@ task_types:
     prompt_template: prompts/skill_evolution.md
     output_schema: schemas/skill_evolution_output.json
     tools: []
+    # Slice 21 — manual handoff for evolution edits in-place under the
+    # existing skill directory. {name} resolves to the existing
+    # skill.capability_name from the originating_entity_id row.
+    manual_escalation:
+      mode: claude_code
+      target_paths:
+        skill: "skills/{name}/**"
+        fixtures: "fixtures/{name}/**"
+      reference_module: "skills/{name}/skill.yaml"
+      forbidden_patterns:
+        - "import anthropic"
 
   claude_novelty:
     description: "Claude judges no-capability-match messages and emits execution-ready intent + skill reuse verdict"

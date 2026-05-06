@@ -169,6 +169,68 @@
   border-radius: var(--radius-sm);
 }
 
+/* Slice 21 — claude_code build flow surfaces. */
+.markBuiltSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface-elevated, var(--color-surface));
+  border-radius: var(--radius-sm);
+}
+
+.worktreeCommand {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  word-break: break-all;
+}
+
+.targetPathsGrid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+}
+
+.humanReviewBanner {
+  background: var(--color-error-soft, #f8d7da);
+  color: var(--color-error, #842029);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  margin-bottom: var(--space-3);
+}
+
+.readyToMerge {
+  background: var(--color-success-soft, #d1e7dd);
+  color: var(--color-success, #0f5132);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.mergeCmd {
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  word-break: break-all;
+}
+
 .actionRow {
   display: flex;
   gap: var(--space-2);

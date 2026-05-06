@@ -21,9 +21,9 @@ from donna.api.auth.router_factory import _admin_dep
 from donna.api.routes import admin_escalations
 from donna.cost.escalation_audit import write_escalation_event
 
-# Self-contained schema: slice 17 columns + slice 19 additions.
-# Mirrors c7d8e9f0a1b2 + d8e9f0a1b2c3 without invoking Alembic so the
-# tests run fast in unit/integration modes alike.
+# Self-contained schema: slice 17 columns + slice 19 additions + slice 21 columns.
+# Mirrors c7d8e9f0a1b2 + d8e9f0a1b2c3 + a1b2c3d4e5f7 without invoking
+# Alembic so the tests run fast in unit/integration modes alike.
 _SCHEMA = """
 CREATE TABLE escalation_request (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +53,14 @@ CREATE TABLE escalation_request (
     delivery_status TEXT,
     delivery_attempts INTEGER NOT NULL DEFAULT 0,
     last_delivery_attempt_at TEXT,
-    parent_escalation_id INTEGER REFERENCES escalation_request(id)
+    parent_escalation_id INTEGER REFERENCES escalation_request(id),
+    -- slice 21 additions
+    human_review INTEGER NOT NULL DEFAULT 0,
+    target_paths TEXT,
+    originating_entity_type TEXT,
+    originating_entity_id TEXT,
+    base_sha TEXT,
+    merged_at TEXT
 );
 
 CREATE TABLE invocation_log (
@@ -499,3 +506,58 @@ class TestListPaginationAndFilters:
         body = r.json()
         assert r.status_code == 200
         assert [i["correlation_id"] for i in body["items"]] == ["u-nick"]
+
+
+# Slice 21 — mark-merged tracking endpoint. Donna does NOT auto-merge,
+# this endpoint just flips ``merged_at`` so the dashboard reflects the
+# user's manual ``git merge``.
+class TestMarkMerged:
+    async def test_404_when_missing(self, client: AsyncClient) -> None:
+        r = await client.post("/admin/escalations/missing/mark-merged")
+        assert r.status_code == 404
+
+    async def test_409_when_not_validated(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        await _make_row(
+            conn, correlation_id="not-yet", status="resolved", mode="claude_code"
+        )
+        r = await client.post("/admin/escalations/not-yet/mark-merged")
+        assert r.status_code == 409
+        assert r.json()["detail"]["error"] == "not_validated"
+
+    async def test_marks_validated_row_merged(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        await _make_row(
+            conn, correlation_id="ready", status="validated",
+            mode="claude_code",
+        )
+        r = await client.post("/admin/escalations/ready/mark-merged")
+        assert r.status_code == 200
+        assert r.json()["correlation_id"] == "ready"
+        assert r.json()["merged_at"]
+
+        # Verify column was actually written.
+        cur = await conn.execute(
+            "SELECT merged_at FROM escalation_request WHERE correlation_id = ?",
+            ("ready",),
+        )
+        merged_at = (await cur.fetchone())[0]
+        assert merged_at is not None
+
+    async def test_idempotent(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        await _make_row(
+            conn, correlation_id="dup", status="validated", mode="claude_code"
+        )
+        r1 = await client.post("/admin/escalations/dup/mark-merged")
+        first = r1.json()["merged_at"]
+        r2 = await client.post("/admin/escalations/dup/mark-merged")
+        assert r2.status_code == 200
+        # Same timestamp returned on the second call.
+        assert r2.json()["merged_at"] == first

@@ -84,14 +84,24 @@ class ManualEscalationTaskTypeConfig(BaseModel):
 
     ``mode`` selects whether this task type is a text-only chat handoff
     (slice 20) or a code-artifact ``claude_code`` handoff (slice 21).
-    The remaining fields are only meaningful for ``claude_code``; they
-    are accepted here so ``task_types.yaml`` can declare them today
-    even though slice 20 ships only the chat path.
+    The remaining fields are only meaningful for ``claude_code``.
+
+    ``target_paths`` keys are unconstrained (skill, test, fixtures, …).
+    Values are glob patterns with a single ``{name}`` placeholder
+    substituted from the originating entity at gate-fire time. Globs
+    ending in ``/**`` are treated as recursive prefixes by
+    :class:`donna.cost.diff_validator.DiffValidator`.
+
+    ``forbidden_patterns`` (slice 21) is a list of substrings the
+    diff-validator's source-text inspection rejects when found in any
+    new commit on the manual branch (e.g. ``import anthropic`` outside
+    ``src/donna/llm/``).
     """
 
     mode: Literal["chat", "claude_code"]
     target_paths: dict[str, str] | None = None
     reference_module: str | None = None
+    forbidden_patterns: list[str] = Field(default_factory=list)
 
 
 class TaskTypeEntry(BaseModel):
@@ -330,13 +340,30 @@ class ManualEscalationModeConfig(BaseModel):
     enabled: bool = True
 
 
+class ClaudeCodeModeConfig(ManualEscalationModeConfig):
+    """Settings for the ``claude_code`` manual-handoff mode (slice 21).
+
+    Realizes docs/superpowers/specs/manual-escalation.md §5.3 / §6.1.
+
+    ``host_repo_path_env`` names the environment variable that points at
+    the read-only host-repo mount the poller diffs against. If unset at
+    boot, claude_code mode is disabled (logged) and only ``chat`` /
+    ``pause`` / ``cancel`` buttons render — same fail-soft pattern slice
+    17 used for ``OWNER_DISCORD_ID``.
+    """
+
+    worktree_root: str = "${DONNA_WORKSPACE_PATH}/worktrees"
+    host_repo_path_env: str = "DONNA_HOST_REPO_PATH"
+    base_ref: str = "main"
+    feedback_max_failing_cases: int = 3
+    poll_tick_seconds: int = 60
+
+
 class ManualEscalationModesConfig(BaseModel):
     """Manual handoff modes."""
 
     chat: ManualEscalationModeConfig = Field(default_factory=ManualEscalationModeConfig)
-    claude_code: ManualEscalationModeConfig = Field(
-        default_factory=ManualEscalationModeConfig
-    )
+    claude_code: ClaudeCodeModeConfig = Field(default_factory=ClaudeCodeModeConfig)
 
 
 class ManualEscalationTriggersConfig(BaseModel):

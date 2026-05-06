@@ -19,6 +19,7 @@ import uuid6
 
 from donna.config import SkillSystemConfig
 from donna.cost.budget import BudgetPausedError
+from donna.models.router import EscalationDecisionError
 from donna.skills.evolution_gates import (
     EvolutionGates,
     GateResult,
@@ -108,15 +109,42 @@ class Evolver:
 
         # Call Claude.
         try:
+            # Slice 21: thread the skill identity so the claude_code
+            # escalation gate can populate
+            # ``escalation_request.originating_entity_*``. Manual
+            # evolution edits the skill in-place; the diff validator
+            # uses skill_id → capability_name to render target_paths.
             parsed, metadata = await self._router.complete(
                 prompt=self._build_prompt(package),
                 task_type=TASK_TYPE,
                 task_id=None,
                 user_id="system",
+                originating_entity=("skill", skill_id),
             )
         except BudgetPausedError:
             return EvolutionReport(
                 skill_id=skill_id, outcome="budget_exhausted",
+            )
+        except EscalationDecisionError as exc:
+            # Slice 17/21: gate replaced the autonomous call.
+            # claude_code / chat hand off to the user; the poller
+            # eventually transitions the existing skill from its
+            # current state when the manual build validates.
+            logger.info(
+                "skill_evolution_escalation_resolved",
+                skill_id=skill_id,
+                mode=exc.mode,
+                escalation_request_id=exc.escalation_request_id,
+            )
+            outcome_label = (
+                "manual_handoff_pending"
+                if exc.mode in ("claude_code", "chat")
+                else "budget_exhausted"
+            )
+            return EvolutionReport(
+                skill_id=skill_id,
+                outcome=outcome_label,
+                rationale=f"escalation_resolved={exc.mode!r}",
             )
         except Exception as exc:
             logger.warning(

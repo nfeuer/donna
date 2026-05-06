@@ -9,11 +9,13 @@ import { EmptyState } from "../../primitives/EmptyState";
 import { Skeleton } from "../../primitives/Skeleton";
 import {
   fetchEscalationDetail,
+  markEscalationMerged,
   type EscalationDetailResponse,
   type EscalationStatus,
   type EscalationTimelineEvent,
 } from "../../api/escalations";
 import RefreshButton from "../../components/RefreshButton";
+import MarkAsBuiltModal from "./MarkAsBuiltModal";
 import styles from "./Escalations.module.css";
 
 const STATUS_VARIANT: Record<EscalationStatus, PillVariant> = {
@@ -41,6 +43,28 @@ function MetaItem({ label, value }: { label: string; value: ReactNode }) {
       <span className={styles.metaLabel}>{label}</span>
       <span className={styles.metaValue}>{value}</span>
     </div>
+  );
+}
+
+function ContextRow({
+  label,
+  value,
+  onCopy,
+}: {
+  label: string;
+  value: string;
+  onCopy: () => void;
+}) {
+  return (
+    <>
+      <span className={styles.muted}>{label}</span>
+      <span className={styles.worktreeCommand}>
+        <code style={{ flex: 1 }}>{value}</code>
+        <Button variant="ghost" size="sm" onClick={onCopy}>
+          <Copy size={12} />
+        </Button>
+      </span>
+    </>
   );
 }
 
@@ -72,6 +96,8 @@ export default function EscalationDetail() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<string>("");
+  const [markBuiltOpen, setMarkBuiltOpen] = useState(false);
+  const [mergeBusy, setMergeBusy] = useState(false);
 
   const doFetch = useCallback(async () => {
     if (!correlationId) return;
@@ -103,6 +129,27 @@ export default function EscalationDetail() {
       setCopyState("Copy failed");
     }
   }, [detail]);
+
+  const handleCopyText = useCallback(async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyState(`${label} copied`);
+      setTimeout(() => setCopyState(""), 1500);
+    } catch {
+      setCopyState("Copy failed");
+    }
+  }, []);
+
+  const handleMarkMerged = useCallback(async () => {
+    if (!correlationId) return;
+    setMergeBusy(true);
+    try {
+      await markEscalationMerged(correlationId);
+      await doFetch();
+    } finally {
+      setMergeBusy(false);
+    }
+  }, [correlationId, doFetch]);
 
   if (!correlationId) {
     return (
@@ -196,6 +243,36 @@ export default function EscalationDetail() {
 
       <div className={styles.detailLayout}>
         <div className={styles.panel}>
+          {escalation.human_review && (
+            <div className={styles.humanReviewBanner}>
+              Needs human review — iteration cap was reached. Edit the
+              row in the database or open a follow-up escalation manually.
+            </div>
+          )}
+          {escalation.status === "validated" &&
+            !escalation.merged_at &&
+            escalation.branch_name && (
+              <div className={styles.readyToMerge}>
+                <div>
+                  <strong>Validated.</strong> Skill is in sandbox. Merge
+                  when ready:
+                </div>
+                <code className={styles.mergeCmd}>
+                  git checkout main && git merge --no-ff{" "}
+                  {escalation.branch_name} && git push
+                </code>
+                <div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleMarkMerged}
+                    disabled={mergeBusy}
+                  >
+                    {mergeBusy ? "Marking…" : "Mark as merged"}
+                  </Button>
+                </div>
+              </div>
+            )}
           <div className={styles.panelHeader}>
             <h2 className={styles.panelTitle}>Prompt</h2>
             <div className={styles.actionRow}>
@@ -220,16 +297,65 @@ export default function EscalationDetail() {
             </div>
           )}
 
-          {awaitingSubmission && (
+          {awaitingSubmission && escalation.mode === "claude_code" && (
+            <>
+              <div className={styles.panelSubheader}>
+                <h2 className={styles.panelTitle}>Build & submit</h2>
+              </div>
+              <div className={styles.markBuiltSection}>
+                {escalation.target_paths && (
+                  <div>
+                    <div className={styles.muted}>Target paths</div>
+                    <div className={styles.targetPathsGrid}>
+                      {Object.entries(escalation.target_paths).map(([k, v]) => (
+                        <ContextRow
+                          key={k}
+                          label={k}
+                          value={v}
+                          onCopy={() => handleCopyText(v, k)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {escalation.branch_name && (
+                  <ContextRow
+                    label="Branch"
+                    value={escalation.branch_name}
+                    onCopy={() =>
+                      handleCopyText(escalation.branch_name ?? "", "Branch")
+                    }
+                  />
+                )}
+                {escalation.base_sha && (
+                  <ContextRow
+                    label="Base SHA"
+                    value={escalation.base_sha}
+                    onCopy={() =>
+                      handleCopyText(escalation.base_sha ?? "", "Base SHA")
+                    }
+                  />
+                )}
+                <div>
+                  <Button
+                    variant="primary"
+                    onClick={() => setMarkBuiltOpen(true)}
+                  >
+                    Mark as built
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {awaitingSubmission && escalation.mode !== "claude_code" && (
             <>
               <div className={styles.panelSubheader}>
                 <h2 className={styles.panelTitle}>Submission</h2>
               </div>
               {/*
-                Empty submission slot. Slice 20 mounts the chat textarea here
-                when escalation.mode === "chat"; slice 21 mounts the
-                "Mark as built" modal trigger when escalation.mode ===
-                "claude_code". Both POST to /admin/escalations/{id}/submit.
+                Slot for slice 20 (chat textarea). Other modes still
+                fall through to this placeholder until their slice lands.
               */}
               <div className={styles.submissionLocked}>
                 Awaiting your submission. The submission UI for{" "}
@@ -312,6 +438,13 @@ export default function EscalationDetail() {
           )}
         </div>
       </div>
+      <MarkAsBuiltModal
+        correlationId={escalation.correlation_id}
+        defaultBranch={escalation.branch_name}
+        open={markBuiltOpen}
+        onOpenChange={setMarkBuiltOpen}
+        onSubmitted={doFetch}
+      />
     </div>
   );
 }

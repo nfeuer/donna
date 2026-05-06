@@ -34,11 +34,20 @@ logger = structlog.get_logger()
 
 
 class EscalationDecisionError(Exception):
-    """Raised by `complete()` when the over-budget gate resolves to a
-    terminal mode (pause / cancel) so the caller can transition the
-    task without spending. Carries the resolution mode + the
-    ``escalation_request_id`` so the caller can stamp follow-up audit
-    rows. See docs/superpowers/specs/manual-escalation.md §4."""
+    """Raised by ``complete()`` when the over-budget gate resolves to a
+    terminal mode that *replaces* the autonomous API call.
+
+    Modes that raise:
+    - ``pause`` / ``cancel`` — task should not run today (slice 17).
+    - ``claude_code`` / ``chat`` — user is doing the work manually
+      (slices 20 / 21); the result lands later via the dashboard
+      submit + poller path. The caller is expected to leave the
+      originating record (e.g. ``skill_candidate_report`` row) in a
+      state the poller can update on success.
+
+    Carries the resolution mode + the ``escalation_request_id`` so the
+    caller can stamp follow-up audit rows. See
+    docs/superpowers/specs/manual-escalation.md §4 / §5.2 / §5.3."""
 
     def __init__(
         self, *, mode: str, escalation_request_id: int, correlation_id: str
@@ -210,6 +219,9 @@ class ModelRouter:
         user_id: str = "system",
         estimate_usd: float | None = None,
         priority: int = 2,
+        originating_entity: tuple[str, str] | None = None,
+        target_paths: dict[str, str] | None = None,
+        base_sha: str | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Route a completion call through the configured provider.
 
@@ -225,6 +237,18 @@ class ModelRouter:
                 is unchanged.
             priority: Task priority (1–5). Forwarded to the gate for
                 tier-2 SMS fallback on timeout.
+            originating_entity: Slice 21. ``(entity_type, entity_id)``
+                tuple identifying the row that triggered the call (e.g.
+                ``('skill_candidate_report', candidate.id)``). Threaded
+                to the gate so the claude_code diff validator can render
+                ``{name}``-substituted target_paths globs without
+                inferring identity from a NULL ``task_id``.
+            target_paths: Slice 21. Optional pre-rendered glob dict to
+                snapshot on the escalation_request row. When omitted,
+                the gate may render from ``task_types.yaml`` itself.
+            base_sha: Slice 21. Pinned ``main`` SHA captured at the
+                caller side (or by the gate); persisted on the row so
+                the worktree command stays reproducible.
 
         Returns:
             Tuple of (parsed JSON dict, CompletionMetadata).
@@ -256,16 +280,24 @@ class ModelRouter:
                 task_type=task_type,
                 estimate_usd=estimate_usd,
                 priority=priority,
+                originating_entity=originating_entity,
+                target_paths=target_paths,
+                base_sha=base_sha,
                 # Slice 20 — pass the rendered prompt so the gate can
                 # offer chat mode and persist the prompt body for the
                 # dashboard / Discord attachment.
                 original_prompt=prompt,
             )
-            # ``pause``, ``cancel``, and ``chat`` (slice 20) all mean
-            # "no API call now"; the caller catches the exception and
-            # parks the task. For chat mode, the chat ingestion poller
-            # will mark the task done once the user submits an answer.
-            if outcome.fired and outcome.mode in ("pause", "cancel", "chat"):
+            # ``pause``, ``cancel``, ``chat`` (slice 20), and ``claude_code``
+            # (slice 21) all mean "no autonomous API call". The caller
+            # catches the exception and parks the task. For chat /
+            # claude_code, the relevant submit-poller path will land the
+            # result once the user submits manually — falling through
+            # here would charge the budget for a request the user is
+            # replacing.
+            if outcome.fired and outcome.mode in (
+                "pause", "cancel", "chat", "claude_code",
+            ):
                 assert outcome.escalation_request_id is not None
                 assert outcome.correlation_id is not None
                 raise EscalationDecisionError(

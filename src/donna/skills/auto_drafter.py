@@ -38,6 +38,7 @@ import structlog
 import uuid6
 
 from donna.cost.budget import BudgetPausedError
+from donna.models.router import EscalationDecisionError
 from donna.skills.candidate_report import (
     SkillCandidateReportRow,
     SkillCandidateRepository,
@@ -165,11 +166,17 @@ class AutoDrafter:
         try:
             if self._budget_guard is not None:
                 await self._budget_guard.check_pre_call(user_id="system")
+            # Slice 21: thread the candidate's identity so the
+            # claude_code escalation gate can populate
+            # ``escalation_request.originating_entity_*``. Capability
+            # name is the substitution source for {name} in target_paths
+            # globs (see config/task_types.yaml manual_escalation block).
             parsed, _metadata = await self._router.complete(
                 prompt=self._build_prompt(capability, samples),
                 task_type=TASK_TYPE,
                 task_id=None,
                 user_id="system",
+                originating_entity=("skill_candidate_report", candidate.id),
             )
         except BudgetPausedError:
             logger.info(
@@ -177,6 +184,29 @@ class AutoDrafter:
             )
             return AutoDraftReport(
                 candidate_id=candidate.id, outcome="budget_exhausted"
+            )
+        except EscalationDecisionError as exc:
+            # Slice 17/21: gate replaced the autonomous call. Pause /
+            # cancel are terminal for this candidate today (try again
+            # tomorrow via daily refresh). claude_code / chat mean the
+            # user is doing the work manually — leave the candidate in
+            # ``new`` so the manual_validation_router (slice 21) can
+            # mark it drafted when the poller validates the branch.
+            logger.info(
+                "skill_auto_draft_escalation_resolved",
+                candidate_id=candidate.id,
+                mode=exc.mode,
+                escalation_request_id=exc.escalation_request_id,
+            )
+            outcome_label = (
+                "manual_handoff_pending"
+                if exc.mode in ("claude_code", "chat")
+                else "budget_exhausted"
+            )
+            return AutoDraftReport(
+                candidate_id=candidate.id,
+                outcome=outcome_label,
+                rationale=f"escalation_resolved={exc.mode!r}",
             )
         except Exception as exc:
             logger.warning(
