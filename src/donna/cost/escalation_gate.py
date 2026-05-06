@@ -202,6 +202,7 @@ class EscalationGate:
         # work they already know is in flight.
         if originating_entity is not None:
             existing = await self._repo.find_open_for_originating_entity(
+                user_id=user_id,
                 entity_type=originating_entity[0],
                 entity_id=originating_entity[1],
             )
@@ -477,6 +478,7 @@ class EscalationGate:
         # for this tool_request, to mirror slice 21's skill de-dup
         # (manual-escalation.md §5.3 "De-dup").
         existing = await self._repo.find_open_for_originating_entity(
+            user_id=user_id,
             entity_type="tool_request",
             entity_id=str(tool_request_id),
         )

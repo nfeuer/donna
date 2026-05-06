@@ -19,6 +19,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -219,6 +220,18 @@ class InvocationLog(Base):
         ForeignKey("escalation_request.id"),
         nullable=True,
         index=True,
+    )
+    # LLM-gateway columns (alembic add_llm_gateway_columns).
+    queue_wait_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    interrupted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    chain_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    caller: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Context-budget columns (alembic add_context_budget_columns).
+    estimated_tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    overflow_escalated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
     )
 
 
@@ -744,6 +757,72 @@ class EscalationRequest(Base):
     parent_escalation_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("escalation_request.id"), nullable=True
     )
+    # --- slice 21 (claude_code mode) ---
+    # Mirrors alembic/versions/a1b2c3d4e5f7_claude_code_mode_columns.py.
+    # Slice 24 brought the ORM in sync with Alembic so test fixtures that
+    # use ``Base.metadata.create_all`` match the canonical schema —
+    # otherwise SQLAlchemy-only schema creation drops these columns and
+    # every chat / claude_code path that writes them blows up at runtime.
+    human_review: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
+    target_paths: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    originating_entity_type: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    originating_entity_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    base_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    merged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ToolRequest(Base):
+    """Speculative or hard-blocking tool gap detected by capability checks.
+
+    Slice 22 ships the table via Alembic; slice 24 adds the ORM so test
+    fixtures that lean on ``Base.metadata.create_all`` (chat / claude_code
+    E2E) see the same schema the migrations install. Mirrors
+    ``alembic/versions/b2c3d4e5f6a8_tool_request.py``. Spec §7 / §8 of
+    docs/superpowers/specs/manual-escalation.md.
+    """
+
+    __tablename__ = "tool_request"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    proposed_signature: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    blocking_capability_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True
+    )
+    priority: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=3, server_default="3"
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="open", server_default="'open'"
+    )
+    severity: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="speculative",
+        server_default="'speculative'",
+    )
+    detection_point: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resolved_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    escalation_request_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("escalation_request.id"), nullable=True
+    )
+    last_pinged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class DailyBudgetExtension(Base):
@@ -765,6 +844,19 @@ class DailyBudgetExtension(Base):
         Integer, ForeignKey("escalation_request.id"), nullable=True
     )
     voided: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Slice 18 idempotency index: Discord button retries against the
+    # same ``(escalation_request_id, granted_by)`` pair go through
+    # ``ON CONFLICT DO NOTHING`` instead of double-granting.
+    # ``alembic/versions/e2f3a4b5c6d7_budget_extension_mode.py``.
+    __table_args__ = (
+        Index(
+            "ux_daily_budget_extension_idempotency",
+            "escalation_request_id",
+            "granted_by",
+            unique=True,
+        ),
+    )
 
 
 class DashboardSetting(Base):

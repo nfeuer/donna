@@ -116,6 +116,40 @@ Nightly cron prunes expired logs. Weekly VACUUM reclaims disk space.
 - Escalation events
 - User response times (feeds preference learning)
 
+### Manual Escalation (slices 17–24)
+
+Sourced from ``invocation_log`` rows whose ``task_type`` is
+``escalation_lifecycle`` (slice 17) or ``tool_gap_lifecycle``
+(slice 22). Slice 24 adds these panels — the Loki / Promtail
+plumbing already streams the rows via the standard ``donna_logs``
+write path.
+
+- **Open escalations by mode** — bar chart, count where
+  ``status IN ('open','resolved','submitted','failed')``,
+  grouped by ``mode``. Highlights the active resolution mix
+  (chat vs claude_code vs api_extended).
+- **Time-to-resolution histogram** — ``resolved_at - created_at``
+  for the last 7 days, faceted by ``mode``. Surfaces UX
+  regressions (someone-keeps-not-clicking).
+- **Iteration distribution** — histogram of the
+  ``escalation_request.iteration`` column at terminal status.
+  Mode = claude_code only. Bucket 1/2/3 — bucket 3 is the cap;
+  growth in bucket 3 means the spec is unclear or the validator
+  is too strict.
+- **Validation pass rate** — ratio of ``escalation_validated``
+  to (``escalation_validated`` + ``escalation_failed``) per day.
+- **Daily extension grant rate + amount** — from the
+  ``extension_granted`` event payload. Surfaces "operator is
+  always extending" cost drift.
+- **Tool gaps per day** — ``tool_gap_detected`` counts faceted
+  by ``severity`` and ``detection_point``. Speculative gaps can
+  ramp without operator attention; the panel makes that visible.
+- **Per-row timeline drill-down** — link from any panel to
+  ``/admin/escalations/{correlation_id}`` which renders the
+  slice-19 detail timeline (slice 24 unifies escalation_lifecycle
+  + tool_gap_lifecycle on that view via the
+  ``GET /admin/escalations/{id}/timeline`` endpoint).
+
 ### Error Exploration
 - Filterable table by service, component, event type, time, severity
 - Error frequency timeline

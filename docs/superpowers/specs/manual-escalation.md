@@ -836,7 +836,7 @@ iteration cap then governs).
 
 | Failure | Mitigation |
 |---|---|
-| Tool needs new dependency, image not rebuilt | `tool_lint/metadata.py` — module-level `requires_rebuild: bool` is required. `True` is accepted but emits a `requires_rebuild_warning` (surfaced on the dashboard panel). The hourly Discord nag is deferred to slice 24 (escalation hardening). |
+| Tool needs new dependency, image not rebuilt | `tool_lint/metadata.py` — module-level `requires_rebuild: bool` is required. `True` is accepted but emits a `requires_rebuild_warning` (surfaced on the dashboard panel). Slice 24 ships the hourly Discord nag in `donna.cost.requires_rebuild_nag.RequiresRebuildNagger`: an orchestrator-tick scanner that diffs `tool_request WHERE status='completed' AND resolved_at < now-grace` against `ToolRegistry.list_tool_names()`, posts a "tool built but unrebuilt" reminder for any unregistered tool, respects a per-row cooldown via `tool_request.last_pinged_at`, and stops once the rebuild lands. |
 | Tool hardcodes a credential value | `tool_lint/secrets.py` — curated regex list (`sk-ant-…`, `sk-…`, `xoxb-…`, `xapp-…`, `ghp_…`, `AKIA…`, PEM private-key headers, Google `AIza…`) plus a vault-key naming heuristic that flags `*_API_KEY = "…"` assignments unless the value goes through `vault.read(…)` / `os.environ` / `getenv`. The opt-in `detect-secrets` shim runs only when `tool_gap.lint.detect_secrets_enabled = true` AND the package is importable. |
 | Tool calls Anthropic API directly (bypassing gateway) | `tool_lint/anthropic_import.py` — AST walk; `import anthropic` / `from anthropic[…] import …` outside `src/donna/llm/` is a hard fail. |
 | Tool not added to any agent allowlist | `tool_lint/allowlist.py` — diff must include at least one of `config/agents.yaml`, `config/skills.yaml`, `config/task_types.yaml` AND the modified file's text must contain the `tool_name` near a `tools:` / `tools_json` key. OR the tool source declares module-level `unallowlisted = True` (intentional defined-but-unusable). |
@@ -875,8 +875,8 @@ iteration cap then governs).
 
 | Failure | Mitigation |
 |---|---|
-| Phase 2 multi-user enabled, escalations from one user trigger another's Discord | Every table has `user_id`; Discord routing uses each user's configured channel. Tested via integration fixture even in Phase 1. |
-| Cross-user budget mixing | Budget is per-user from day one; no global pool. Existing `donna_models.yaml` budget keys would need to move into a per-user config table — call out as a follow-up but enforce schema today. |
+| Phase 2 multi-user enabled, escalations from one user trigger another's Discord | Every table has `user_id`; Discord routing uses each user's configured channel. Slice 24 added :func:`EscalationRepository.find_open_for_originating_entity` `user_id` argument (was previously cross-tenant) and pinned the contract via the parametrised `tests/integration/test_multi_user_isolation.py` fixture so two users running the same skill_draft never collide on dedup. |
+| Cross-user budget mixing | Budget is per-user from day one; no global pool. Existing `donna_models.yaml` budget keys would need to move into a per-user config table — call out as a follow-up but enforce schema today. Slice 24 pinned :meth:`BudgetExtensionRepository.get_daily_total` per-user isolation in `tests/integration/test_multi_user_isolation.py::TestBudgetExtensionIsolation`. |
 
 ### 10.10 Audit & observability
 
@@ -909,6 +909,18 @@ queries stay clean) and store `input_hash='toolreq:<id>'` so the row
 is queryable by tool_request id without a JSON scan.
 
 Dashboard renders these as a timeline per escalation_request_id.
+
+Slice 24 ships the dedicated :http:get:`/admin/escalations/{correlation_id}/timeline`
+endpoint (separate from the slice-19 detail-blob timeline) so the
+detail page can poll for newly-landed audit rows on its 30-second
+tick without re-fetching the entire detail payload. The endpoint
+joins `escalation_lifecycle` and `tool_gap_lifecycle` rows for the
+same `escalation_request_id` so a `tool_request_fulfillment`
+escalation surfaces both its lifecycle envelope (offered, resolved,
+submitted) and the slice-22 tool-gap audit chain
+(`tool_request_filled`, `tool_request_filed`, etc.) on one
+timeline. The response carries `next_after_id` for cursor-style
+append-only polling.
 
 ---
 
@@ -1117,6 +1129,40 @@ matching brief in `slices/`.
   without bolting on a second source. `escalation_request_id` stays
   NULL because these are subsystem-level events, not tied to one
   escalation row.
+- **(2026-05-06, slice 24)** Per-row timeline merges
+  ``tool_gap_lifecycle`` events. Slice 22's tool-build audit rows
+  share an ``escalation_request_id`` when a tool gap drives a
+  ``tool_request_fulfillment`` escalation; slice 24's
+  :http:get:`/admin/escalations/{correlation_id}/timeline`
+  surfaces both task_types under one chronological feed so the
+  detail UI no longer hides the lint outcome. Cursor-style
+  ``next_after_id`` enables append-only polling on the existing 30 s
+  dashboard refresh cadence.
+- **(2026-05-06, slice 24)** ``find_open_for_originating_entity``
+  now requires ``user_id``. Multi-user §10.9 row 1 bug: the slice-21
+  helper was cross-tenant, so user B's open tool_request would
+  shadow user A's dedup lookup once Phase 2 lands. Both call sites
+  in :class:`EscalationGate` already had the owner in scope; the
+  signature change is enforced by ``tests/integration/test_multi_user_isolation.py``
+  parametrised over two distinct user_ids.
+- **(2026-05-06, slice 24)** Schema-source of truth pinned by
+  ``tests/unit/test_orm_alembic_consistency.py``. Slice 21's
+  Alembic migration added six columns to ``escalation_request``
+  (``human_review``, ``target_paths``, ``originating_entity_*``,
+  ``base_sha``, ``merged_at``) without updating the SQLAlchemy
+  ORM, so any test fixture that built schema from
+  ``Base.metadata.create_all`` raised ``OperationalError`` on the
+  first write. Slice 24 added the columns + a regression test that
+  diffs ORM column-set vs. ``alembic upgrade head`` for every
+  manually-managed table. Future ORM/Alembic drift fails the test
+  suite within seconds.
+- **(2026-05-06, slice 24)** ``requires_rebuild=True`` Discord nag
+  (§10.5 row 1) shipped as
+  :class:`donna.cost.requires_rebuild_nag.RequiresRebuildNagger` —
+  hourly tick scans completed tool_requests, diffs against
+  ``ToolRegistry.list_tool_names()``, posts a reminder per
+  unregistered tool with a per-row cooldown via
+  ``tool_request.last_pinged_at``. Closes the deferral S22 logged.
 
 ---
 

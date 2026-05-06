@@ -386,6 +386,7 @@ class EscalationRepository:
     async def find_open_for_originating_entity(
         self,
         *,
+        user_id: str,
         entity_type: str,
         entity_id: str,
     ) -> EscalationRequestRow | None:
@@ -397,18 +398,24 @@ class EscalationRepository:
         the gate re-delivers the existing notification instead of
         opening a parallel branch race.
 
+        Slice 24 (spec §10.9 row 1) made ``user_id`` required:
+        without it the dedup query was cross-tenant and a tool gap on
+        user B's branch would mask user A's open escalation. Both call
+        sites in :class:`EscalationGate` already had the owner in scope.
+
         Returns the most-recent matching row if any.
         """
         cursor = await self._conn.execute(
             """
             SELECT * FROM escalation_request
-             WHERE originating_entity_type = ?
+             WHERE user_id = ?
+               AND originating_entity_type = ?
                AND originating_entity_id = ?
                AND status IN ('open', 'resolved', 'submitted', 'failed')
              ORDER BY created_at DESC
              LIMIT 1
             """,
-            (entity_type, entity_id),
+            (user_id, entity_type, entity_id),
         )
         row = await cursor.fetchone()
         if row is None:

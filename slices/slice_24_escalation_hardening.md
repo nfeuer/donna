@@ -62,15 +62,100 @@ This slice audits each row, ensures a regression test exists, and fills any gaps
 
 ## What to Build
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+Cross-slice hardening — no new product features, but the audit, drift,
+and regression work the prior slices each touched but never finished.
+
+1. **§10.10 audit-timeline endpoint + UI poll.** A dedicated
+   ``GET /admin/escalations/{correlation_id}/timeline`` that merges
+   ``escalation_lifecycle`` (slice 17) and ``tool_gap_lifecycle``
+   (slice 22) rows under the same ``escalation_request_id`` and
+   carries a ``next_after_id`` cursor for append-only polling. The
+   detail page consumes it on its 30 s tick so new audit events show
+   up without re-fetching the entire detail blob. Resolves the
+   slice-22 gap where ``tool_request_fulfillment`` rows hid their
+   lint outcome.
+2. **§10.9 multi-user isolation fixtures + a real bug fix.** A
+   parametrised ``two_user_ids`` fixture in ``tests/conftest.py``
+   plus ``tests/integration/test_multi_user_isolation.py`` runs
+   every escalation read path under two distinct users. Caught and
+   fixed a slice-21 cross-tenant gap in
+   :func:`EscalationRepository.find_open_for_originating_entity`
+   (now requires ``user_id``).
+3. **ORM ↔ Alembic schema-drift guard.** Added every Alembic-only
+   column to ``src/donna/tasks/db_models.py`` (slice-21 columns,
+   slice-22 ``tool_request`` table, pre-existing
+   ``invocation_log`` drift) and shipped
+   ``tests/unit/test_orm_alembic_consistency.py`` to fail fast on
+   any future drift between ``Base.metadata.create_all`` and
+   ``alembic upgrade head``. This unblocked the existing chat-mode
+   E2E that had been silently broken on main.
+4. **§11 E2E coverage.** ``test_chat_mode_e2e.py`` already existed
+   (now green again). Added ``test_api_extended_e2e.py`` (gate fires
+   → grant → resolution → daily_remaining bumped → audit chain
+   linked) and ``test_tool_gap_e2e.py`` (capability_tool_check →
+   surfacer → tool_request → file_request → fulfillment audit
+   chain on the unified per-row timeline).
+5. **§10 residual regression coverage** for the rows the audit
+   flagged: §10.1 row 5 (BudgetEscalationView owner-mismatch),
+   §10.6 row 5 (hard monthly ceiling refuses grant), §10.8 row 1
+   (deterministic-summary privacy guard), §10.10 row 6
+   (``extension_granted`` audit row).
+6. **§10.5 row 1** — closed the slice-22 deferral with
+   :class:`donna.cost.requires_rebuild_nag.RequiresRebuildNagger`,
+   an orchestrator-tick scanner that nags hourly until a
+   ``requires_rebuild=True`` tool actually appears in
+   ``ToolRegistry.list_tool_names()`` after the user restarts.
+   Per-row cooldown via ``tool_request.last_pinged_at``; failed
+   posts deliberately leave the column NULL so the next tick
+   retries.
 
 ## Implementation Notes
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+- **Timeline merge:** see ``_TIMELINE_TASK_TYPES`` in
+  ``src/donna/api/routes/admin_escalations.py``. Both endpoints use
+  the same ``_fetch_timeline`` helper so the embedded detail
+  timeline and the new dedicated endpoint stay in lock-step.
+- **Multi-user fixture:** ``two_user_ids`` parametrises both
+  orderings (``("nick","alex")`` and ``("alex","nick")``) so a
+  spec-violating ``ORDER BY`` tie-break can't pass by accident.
+- **Schema-drift test:** the test fixture rebuilds via
+  ``alembic upgrade head`` per test (cheap; in-memory SQLite) and
+  diffs the column-set produced by ``Base.metadata.create_all``.
+  Server defaults must match — that's why the ORM grew explicit
+  ``server_default="0"`` markers on slice-22 status / priority
+  columns.
+- **Nagger contract:** the ``RequiresRebuildNagPoster`` Protocol
+  mirrors slice-22's ``ToolGapPingPoster`` so the bot wiring layer
+  in ``cli_wiring.py`` (followup) can construct both with the same
+  closure pattern (bot, owner_discord_id, channel name).
+- **No worktree-style claude_code E2E.** The slice-21 poller test
+  battery already covers every transition; running a full
+  gate→worktree→poller flow needs real disk I/O. Logged as a
+  followup so the slice that introduces an integration harness
+  picks it up.
 
 ## Test Plan
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+- ``pytest tests/unit/test_orm_alembic_consistency.py`` — drift
+  guard. Eight assertions (one per manually-managed table + two
+  presence checks).
+- ``pytest tests/integration/test_admin_escalations.py`` —
+  expanded with seven additional test methods covering the new
+  ``/timeline`` endpoint and the merged detail-blob timeline.
+- ``pytest tests/integration/test_multi_user_isolation.py`` —
+  ten parametrised assertions covering escalation, budget,
+  audit, and delivery isolation.
+- ``pytest tests/integration/test_chat_mode_e2e.py`` — restored
+  green; covered by the schema-drift test going forward.
+- ``pytest tests/integration/test_api_extended_e2e.py`` — two
+  scenarios (happy path + crash-recovery void).
+- ``pytest tests/integration/test_tool_gap_e2e.py`` — two
+  scenarios (high → fulfillment chain, speculative → silent).
+- ``pytest tests/integration/test_section_10_residual_gaps.py`` —
+  four scenarios pinning the §10 rows the audit flagged.
+- ``pytest tests/cost/test_requires_rebuild_nag.py`` — seven
+  scenarios pinning grace, cooldown, registry hit, async
+  provider, and post-failure semantics.
 
 ## Open Questions
 

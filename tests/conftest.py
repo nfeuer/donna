@@ -195,6 +195,33 @@ def state_machine(state_machine_config: StateMachineConfig) -> StateMachine:
 
 
 # ---------------------------------------------------------------------------
+# Multi-user fixtures (slice 24, spec §10.9)
+# ---------------------------------------------------------------------------
+#
+# Single-user Phase 1 testing is the default, but the canonical spec
+# requires us to *exercise* the multi-user path even before
+# Phase 2 flips ``auth.yaml``. Tests opt in by parametrising with these
+# fixtures — escalation rows, budget extensions, and Discord routing
+# are then checked under two distinct ``user_id`` values to catch
+# cross-tenant leakage early.
+
+
+@pytest.fixture
+def primary_user_id() -> str:
+    """Default owner user_id for single-user tests (matches Phase 1)."""
+    return "nick"
+
+
+@pytest.fixture(params=[("nick", "alex"), ("alex", "nick")], ids=["A=nick", "A=alex"])
+def two_user_ids(request) -> tuple[str, str]:
+    """Yield ``(user_a, user_b)`` swapped both ways so tests catch the
+    case where the wrong user happens to win an ORDER BY tie. Slice 24
+    multi-user readiness — see ``tests/integration/test_multi_user_isolation.py``.
+    """
+    return request.param
+
+
+# ---------------------------------------------------------------------------
 # Admin API fixtures
 # ---------------------------------------------------------------------------
 
