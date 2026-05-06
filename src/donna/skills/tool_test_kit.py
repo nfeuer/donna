@@ -33,7 +33,7 @@ class _RecordingMock(mock.MagicMock):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.__call_paths: list[str] = []  # type: ignore[attr-defined]
+        self.__call_paths: list[str] = []
 
 
 def is_inert_at_import(module_name: str) -> None:
@@ -99,7 +99,7 @@ def is_inert_at_import(module_name: str) -> None:
         ]
         if offending:
             details = ", ".join(
-                f"{rec._extract_mock_name() or 'mock'}={count}"  # type: ignore[attr-defined]
+                f"{rec._extract_mock_name() or 'mock'}={count}"
                 for rec, count in offending
             )
             raise AssertionError(

@@ -75,7 +75,9 @@ def _parse_dt(value: str | None) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
-def _row_to_request(cols: list[str], row: tuple[Any, ...]) -> ToolRequestRow:
+def _row_to_request(
+    cols: list[str], row: aiosqlite.Row | tuple[Any, ...]
+) -> ToolRequestRow:
     data = dict(zip(cols, row, strict=False))
     proposed_raw = data.get("proposed_signature")
     proposed: dict[str, Any] | None = None

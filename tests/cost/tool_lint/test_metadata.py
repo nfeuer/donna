@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from donna.cost.tool_lint.metadata import check_tool_metadata
 
-
 _GOOD = (
     "requires_rebuild = False\n"
     "default_timeout_seconds = 5\n"

@@ -18,7 +18,6 @@ from donna.cost.tool_gap import (
 from donna.cost.tool_request_repository import ToolRequestRepository
 from donna.notifications.digest import MorningDigest
 
-
 _SCHEMA = """
 CREATE TABLE tool_request (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

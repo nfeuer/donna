@@ -17,13 +17,13 @@ from typing import Any, Literal
 # Severity
 # ----------------------------------------------------------------------
 
-SEVERITY_HIGH = "high"
+Severity = Literal["high", "speculative"]
+
+SEVERITY_HIGH: Severity = "high"
 """Real-time Discord ping. Capability is active and cannot run."""
 
-SEVERITY_SPECULATIVE = "speculative"
+SEVERITY_SPECULATIVE: Severity = "speculative"
 """Filed silently; surfaces in morning digest only."""
-
-Severity = Literal["high", "speculative"]
 
 
 # ----------------------------------------------------------------------

@@ -11,7 +11,6 @@ import pytest
 from donna.cost.escalation_repository import EscalationRequestRow
 from donna.cost.manual_validation_router import (
     ManualValidationRouter,
-    ValidationOutcome,
 )
 from donna.cost.tool_lint import ToolLintConfig
 from donna.cost.tool_request_repository import ToolRequestRepository

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from donna.cost.tool_lint import ToolLintConfig, lint_tool_branch
-
+from donna.cost.tool_lint import lint_tool_branch
 
 _TOOL_SRC_GOOD = (
     "from typing import Any\n"

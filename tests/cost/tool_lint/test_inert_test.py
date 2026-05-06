@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from donna.cost.tool_lint.inert_test import check_inert_at_import_test
 
-
 _GOOD_TEST = (
     "from donna.skills.tool_test_kit import is_inert_at_import\n"
     "\n"

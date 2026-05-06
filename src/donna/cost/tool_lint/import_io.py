@@ -149,9 +149,9 @@ def _walk_top_level(node: ast.AST) -> Iterable[ast.Call]:
             yield from _walk_top_level(child)
         return
     # Other statement types: walk Calls embedded in their direct expressions.
-    for child in ast.iter_child_nodes(node):
-        if isinstance(child, ast.Call):
-            yield child
+    for descendant in ast.iter_child_nodes(node):
+        if isinstance(descendant, ast.Call):
+            yield descendant
 
 
 def check_import_time_io(tree: ast.AST, path: str) -> list[LintFailure]:

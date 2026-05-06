@@ -242,7 +242,7 @@ async def _seed_tool_request(repo, *, tool_name="fooz") -> int:
 
 @pytest.mark.asyncio
 async def test_open_tool_build_creates_row_and_renders_spec(gate_with_repo):
-    gate, esc_repo, tool_repo, spec_builder = gate_with_repo
+    gate, _esc_repo, tool_repo, spec_builder = gate_with_repo
     request_id = await _seed_tool_request(tool_repo)
 
     esc_row, rendered = await gate.open_tool_build_escalation(
@@ -269,10 +269,10 @@ async def test_open_tool_build_creates_row_and_renders_spec(gate_with_repo):
 
 @pytest.mark.asyncio
 async def test_open_tool_build_dedups_existing_open_escalation(gate_with_repo):
-    gate, esc_repo, tool_repo, spec_builder = gate_with_repo
+    gate, _esc_repo, tool_repo, spec_builder = gate_with_repo
     request_id = await _seed_tool_request(tool_repo)
 
-    first_row, first_rendered = await gate.open_tool_build_escalation(
+    first_row, _first_rendered = await gate.open_tool_build_escalation(
         tool_request_id=request_id,
         tool_name="fooz",
         user_id="nick",
