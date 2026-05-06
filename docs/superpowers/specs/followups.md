@@ -293,6 +293,87 @@ visible.
 
 ---
 
+## S20-FU1 — `EscalationRequestRow` missing slice 19 columns
+
+- **Surfaced by:** slice 20 self-review (`slices/slice_20_chat_mode.md`).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.2`,
+  `#§8`.
+- **Status:** resolved-in-slice-20-followup
+- **Decision / Reasoning:** Slice 19 added the workspace columns
+  (`prompt_body`, `summary`, `mode`, `prompt_path`, `result`,
+  `validation_result`, `branch_name`) to the `escalation_request`
+  table but the `EscalationRequestRow` dataclass in
+  `donna.cost.escalation_repository` was never extended. The cli_wiring
+  delivery callback used `getattr(row, "summary", None)` and
+  `getattr(row, "prompt_path", None)`, both of which silently returned
+  `None` in production — meaning chat-mode notifications shipped the
+  legacy "Over-budget decision" body without the Ollama summary or the
+  `.md` attachment, defeating slice 20's whole user-facing surface. The
+  follow-up fixes the dataclass + `_row_to_request` to populate these
+  fields and the integration test now exercises the full pipeline so a
+  similar drift cannot reach production again.
+- **Follow-up:** None.
+
+## S20-FU2 — Conversation engine doesn't pass `estimate_usd` or catch `EscalationDecisionError(mode='chat')`
+
+- **Surfaced by:** slice 20 self-review.
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.2`
+  (chat mode protocol — currently only reachable for callers that pass
+  `estimate_usd`).
+- **Status:** open (upstream wiring; out of slice 20 scope)
+- **Decision / Reasoning:** `donna.chat.engine.handle_escalation` calls
+  `router.complete(task_type="chat_escalation")` without
+  `estimate_usd`, so the over-budget gate never fires for the most
+  natural production path that would trigger chat mode. Even if the
+  estimate were threaded through, the conversation engine doesn't
+  catch `EscalationDecisionError(mode='chat')` — the exception would
+  surface to the user as the generic "Something went wrong" branch
+  rather than a "Donna is asking you to answer this externally — see
+  #donna-tasks" message. Both fixes belong in a conversation-engine
+  PR with proper estimate plumbing and chat-state UX, not in slice 20.
+- **Follow-up:** Schedule a small upstream PR that (a) plumbs an
+  estimator into `ConversationEngine.handle_escalation`, and
+  (b) catches `EscalationDecisionError` with mode-aware messaging.
+  Probably best paired with the slice 24 hardening pass.
+
+## S20-FU3 — Workspace path fallback when `DONNA_WORKSPACE_PATH` is unset
+
+- **Surfaced by:** slice 20 self-review.
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.2`,
+  `#§6.1`.
+- **Status:** open (low priority)
+- **Decision / Reasoning:** `ChatPromptBuilder._resolve_workspace_root`
+  falls back to `<project_root>/var/workspace` when
+  `DONNA_WORKSPACE_PATH` is unset, which keeps tests + dev boots
+  functional but contradicts the spec's "always under
+  `${DONNA_WORKSPACE_PATH}`" wording. In production the env var is
+  always set (see `donna.setup.validators`). Either document the
+  fallback in §5.2 / §6.1 or fail fast at boot when the env var is
+  absent.
+- **Follow-up:** Pick one of: (a) add a single-sentence note to §5.2
+  describing the dev fallback, or (b) drop the fallback and require
+  the env var at builder construction. (a) is lower-risk; (b) is
+  cleaner but breaks the existing tests that don't set the env.
+
+## S20-FU4 — Summarizer template not loaded through the router cache
+
+- **Surfaced by:** slice 20 self-review.
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.2`,
+  `#§9`.
+- **Status:** open (cosmetic)
+- **Decision / Reasoning:** `ChatPromptBuilder._render_summary_prompt`
+  uses a transient `jinja2.Environment` to render the summarizer
+  template instead of going through `router.get_prompt_template`'s
+  cache + Jinja machinery the way `_render_prompt_body` does for
+  `chat_question.md`. Functionally identical; aesthetically
+  inconsistent. Refactor to either go through the router for both, or
+  cache the summary template the same way the chat-question template
+  is cached locally.
+- **Follow-up:** Small refactor; bundle into the next slice that
+  touches `ChatPromptBuilder`.
+
+---
+
 ## How to add an entry (template)
 
 Copy this when you finish a slice:

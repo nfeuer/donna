@@ -553,8 +553,10 @@ original `CREATE TABLE` listing.
 | `config/dashboard.yaml` | **Modify.** Add `escalation_card` section listing the runtime keys this dashboard exposes. |
 | `prompts/escalation/skill_draft.md` | **New.** Jinja template for `claude_code` mode skill builds. |
 | `prompts/escalation/tool_build.md` | **New.** Jinja template for tool builds (extra security clauses). |
-| `prompts/escalation/chat_question.md` | **New.** Jinja for `chat` mode. |
+| `prompts/escalation/chat_question.md` | **New.** Jinja for `chat` mode (slice 20). |
+| `prompts/escalation/summarize.md` | **New.** Local-Ollama summarizer prompt invoked from `ChatPromptBuilder` (slice 20). |
 | `schemas/escalation_submission.json` | **New.** For `/donna submit` endpoint payload. |
+| `schemas/escalation_summary_output.json` | **New.** Strict shape for the local-Ollama summarizer output (slice 20). Validated in `ChatPromptBuilder._generate_summary`; malformed responses fall through to the deterministic fallback per §10.2 row 3. |
 
 ---
 
