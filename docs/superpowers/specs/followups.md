@@ -181,6 +181,34 @@ visible.
 
 ---
 
+## S19 — `mode` column duplicates `resolution`
+
+- **Surfaced by:** `slices/slice_19_dashboard_escalation_workspace.md`
+  (self-review of the submit endpoint and the new column set).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§8`
+- **Status:** open
+- **Decision / Reasoning:** Slice 19 added `escalation_request.mode` as
+  a discriminator the dashboard and submit endpoint can match on
+  (`chat` | `claude_code` | NULL). But §8 already has `resolution` whose
+  value covers the same space — when a Discord button picks "Manual
+  handoff" the orchestrator writes `resolution = chat | claude_code`.
+  These are two sources of truth: a future writer that updates one and
+  not the other will produce silent drift, and the submit endpoint's
+  mode-match logic could disagree with the row's `resolution`. Slice 19
+  shipped both columns to unblock the dashboard, but the cleaner model
+  is one of:
+    1. Drop `mode`; derive at read time as
+       `mode = resolution if resolution in ('chat','claude_code') else NULL`.
+    2. Keep `mode` and add a CHECK / trigger that asserts
+       `mode IS NULL OR mode = resolution`.
+- **Follow-up:** Resolve in slice 20 or slice 21 — those slices add the
+  first writers that set `resolution` and `mode` together, so the
+  divergence cost is concrete then. Until then, slice 17/18 callers do
+  not write `mode`, and slice 19's submit endpoint backfills `mode` from
+  the payload only when NULL — so today the columns can't disagree.
+
+---
+
 ## S19 — Submission endpoint URL contract
 
 - **Surfaced by:** `slices/slice_19_dashboard_escalation_workspace.md`

@@ -370,3 +370,132 @@ class TestSubmit:
             json={"mode": "chat", "answer": "x" * 60},
         )
         assert r.status_code == 404
+
+    async def test_first_submit_does_not_increment_iteration(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        await _make_row(
+            conn,
+            correlation_id="iter-1",
+            status="resolved",
+            mode="chat",
+            iteration=1,
+        )
+
+        r = await client.post(
+            "/admin/escalations/iter-1/submit",
+            json={"mode": "chat", "answer": "x" * 60},
+        )
+        assert r.status_code == 200
+        assert r.json()["iteration"] == 1
+
+    async def test_iteration_cap_blocks_further_submits(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        # Cap is 3 — a row that has already failed three times must
+        # refuse a fourth submission.
+        await _make_row(
+            conn,
+            correlation_id="cap",
+            status="failed",
+            mode="claude_code",
+            iteration=3,
+        )
+
+        r = await client.post(
+            "/admin/escalations/cap/submit",
+            json={"mode": "claude_code", "branch": "fourth-attempt"},
+        )
+        assert r.status_code == 409
+        body = r.json()
+        assert body["detail"]["error"] == "iteration_cap_reached"
+        assert body["detail"]["limit"] == 3
+
+    async def test_writes_escalation_submitted_audit_row(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        await _make_row(
+            conn,
+            correlation_id="audit",
+            status="resolved",
+            mode="chat",
+            task_type="chat_escalation",
+        )
+
+        r = await client.post(
+            "/admin/escalations/audit/submit",
+            json={"mode": "chat", "answer": "x" * 60},
+        )
+        assert r.status_code == 200
+
+        cur = await conn.execute(
+            """
+            SELECT output FROM invocation_log
+             WHERE task_type = 'escalation_lifecycle'
+               AND escalation_request_id = (
+                   SELECT id FROM escalation_request WHERE correlation_id = ?
+               )
+            """,
+            ("audit",),
+        )
+        rows = await cur.fetchall()
+        events = [json.loads(r[0])["event"] for r in rows]
+        assert "escalation_submitted" in events
+
+    async def test_invalid_json_body_400(self, client: AsyncClient) -> None:
+        r = await client.post(
+            "/admin/escalations/whatever/submit",
+            content=b"not json",
+            headers={"content-type": "application/json"},
+        )
+        assert r.status_code == 400
+        assert r.json()["detail"]["error"] == "invalid_json"
+
+
+class TestListPaginationAndFilters:
+    async def test_pagination_offset_limit(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        for i in range(5):
+            await _make_row(
+                conn,
+                correlation_id=f"pg-{i}",
+                status="submitted",
+                mode="chat",
+            )
+
+        r = await client.get("/admin/escalations", params={"limit": 2, "offset": 0})
+        first = r.json()
+        assert r.status_code == 200
+        assert len(first["items"]) == 2
+        assert first["total"] == 5
+
+        r = await client.get("/admin/escalations", params={"limit": 2, "offset": 2})
+        second = r.json()
+        assert len(second["items"]) == 2
+        # Pages don't overlap.
+        first_ids = {i["correlation_id"] for i in first["items"]}
+        second_ids = {i["correlation_id"] for i in second["items"]}
+        assert first_ids.isdisjoint(second_ids)
+
+    async def test_user_id_filter(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        _app, conn = app_and_conn
+        await _make_row(
+            conn, correlation_id="u-nick", user_id="nick",
+            status="resolved", mode="chat",
+        )
+        await _make_row(
+            conn, correlation_id="u-other", user_id="other",
+            status="resolved", mode="chat",
+        )
+
+        r = await client.get("/admin/escalations", params={"user_id": "nick"})
+        body = r.json()
+        assert r.status_code == 200
+        assert [i["correlation_id"] for i in body["items"]] == ["u-nick"]

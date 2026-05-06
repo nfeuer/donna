@@ -49,6 +49,11 @@ _LIST_STATUSES = (
     "cancelled",
 )
 
+# Spec §6.1 manual_iteration_limit default. The full config-driven
+# resolution lands with the dashboard runtime overrides in slice 23;
+# this constant is the floor every endpoint must respect today.
+_MANUAL_ITERATION_LIMIT = 3
+
 
 _SCHEMA_PATH = (
     Path(__file__).resolve().parents[3].parent
@@ -310,11 +315,29 @@ async def submit_escalation(
                 "submitted_mode": payload["mode"],
             },
         )
+    # Iteration cap (spec §6.1, §10.4 row 2). Refusing the next submit
+    # keeps `iteration` bounded; cancel-on-cap-and-route-to-human is
+    # slice 21 scope.
+    if record["status"] == "failed" and int(record["iteration"]) >= _MANUAL_ITERATION_LIMIT:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "iteration_cap_reached",
+                "iteration": int(record["iteration"]),
+                "limit": _MANUAL_ITERATION_LIMIT,
+            },
+        )
 
     now = datetime.now(tz=UTC)
     ts = now.isoformat()
     branch = payload["branch"] if payload["mode"] == "claude_code" else None
 
+    # The mode discriminator is folded into the WHERE so a concurrent
+    # writer can't slip a wrong-mode update through between the SELECT
+    # above and this UPDATE. The CASE on the iteration column reads
+    # `status` BEFORE the SET (SQLite evaluates the right-hand side of
+    # all SET expressions against the row's pre-update values), so this
+    # increments only on the failed → submitted transition.
     update_cursor = await conn.execute(
         """
         UPDATE escalation_request
@@ -324,7 +347,9 @@ async def submit_escalation(
                branch_name = COALESCE(?, branch_name),
                iteration = iteration + CASE WHEN status = 'failed' THEN 1 ELSE 0 END,
                mode = COALESCE(mode, ?)
-         WHERE correlation_id = ? AND status IN ('resolved', 'failed')
+         WHERE correlation_id = ?
+           AND status IN ('resolved', 'failed')
+           AND (mode IS NULL OR mode = ?)
         """,
         (
             ts,
@@ -332,10 +357,11 @@ async def submit_escalation(
             branch,
             payload["mode"],
             correlation_id,
+            payload["mode"],
         ),
     )
     if update_cursor.rowcount == 0:
-        # Lost the race — another submission won.
+        # Lost the race — another submission or status change won.
         raise HTTPException(
             status_code=409,
             detail={"error": "concurrent_submission"},

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "../../primitives/PageHeader";
 import { Select, SelectItem } from "../../primitives/Select";
@@ -44,7 +44,7 @@ export default function EscalationsPage() {
     doFetch();
   }, [doFetch]);
 
-  const items = useMemo(() => resp?.items ?? [], [resp]);
+  const items = resp?.items ?? [];
   const counts = resp?.status_counts ?? {};
 
   const handleRowClick = useCallback(

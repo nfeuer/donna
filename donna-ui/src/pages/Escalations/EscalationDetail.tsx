@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { ArrowLeft, Copy } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../primitives/PageHeader";
@@ -24,12 +25,17 @@ const STATUS_VARIANT: Record<EscalationStatus, PillVariant> = {
   cancelled: "muted",
 };
 
+// Spec §6.3(b) + §6.1: re-submit affordance lives "within iteration cap".
+// Mirrors the backend constant; slice 23 will source this from
+// dashboard_setting / config.
+const MANUAL_ITERATION_LIMIT = 3;
+
 function formatTs(ts: string | null): string {
   if (!ts) return "—";
   return ts.replace("T", " ").substring(0, 19);
 }
 
-function MetaItem({ label, value }: { label: string; value: React.ReactNode }) {
+function MetaItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className={styles.metaItem}>
       <span className={styles.metaLabel}>{label}</span>
@@ -119,7 +125,10 @@ export default function EscalationDetail() {
             </Button>
           }
         />
-        <Skeleton width="100%" height={420} />
+        <div className={styles.detailLoadingPanels}>
+          <Skeleton width="100%" height={420} />
+          <Skeleton width="100%" height={420} />
+        </div>
       </div>
     );
   }
@@ -147,6 +156,20 @@ export default function EscalationDetail() {
   const { escalation, timeline } = detail;
   const statusVariant = STATUS_VARIANT[escalation.status] ?? "muted";
 
+  // The submission section is the slot where slices 20 (chat textarea)
+  // and 21 (claude_code "Mark as built" modal) attach their controls.
+  // Slice 19 only renders this section when the row is actually awaiting
+  // input — so users on a submitted/validated/cancelled row don't see
+  // a placeholder for tools that wouldn't help them.
+  const awaitingSubmission =
+    escalation.status === "resolved" ||
+    (escalation.status === "failed" && escalation.iteration < MANUAL_ITERATION_LIMIT);
+  const iterationCapped =
+    escalation.status === "failed" && escalation.iteration >= MANUAL_ITERATION_LIMIT;
+
+  const hasValidationContext =
+    escalation.status !== "open" && escalation.status !== "resolved";
+
   return (
     <div>
       <PageHeader
@@ -166,7 +189,7 @@ export default function EscalationDetail() {
             <Button variant="ghost" onClick={() => navigate("/escalations")}>
               <ArrowLeft size={14} /> Back
             </Button>
-            <RefreshButton onRefresh={doFetch} />
+            <RefreshButton onRefresh={doFetch} autoRefreshMs={30_000} />
           </div>
         }
       />
@@ -197,35 +220,52 @@ export default function EscalationDetail() {
             </div>
           )}
 
-          {/*
-            Submission UI is mode-agnostic in slice 19 — slices 20 (chat textarea)
-            and 21 (claude_code "Mark as built" modal) attach the actual controls
-            to this panel using the /admin/escalations/{id}/submit endpoint.
-          */}
-          <div className={styles.panelHeader} style={{ marginTop: "var(--space-4)" }}>
-            <h2 className={styles.panelTitle}>Submission</h2>
-          </div>
-          <div className={styles.submissionLocked}>
-            Mode-specific submission UI lands in slice 20 (chat textarea) and slice
-            21 ("Mark as built" modal). The submit endpoint already accepts the
-            payload defined in <code>schemas/escalation_submission.json</code>.
-          </div>
+          {awaitingSubmission && (
+            <>
+              <div className={styles.panelSubheader}>
+                <h2 className={styles.panelTitle}>Submission</h2>
+              </div>
+              {/*
+                Empty submission slot. Slice 20 mounts the chat textarea here
+                when escalation.mode === "chat"; slice 21 mounts the
+                "Mark as built" modal trigger when escalation.mode ===
+                "claude_code". Both POST to /admin/escalations/{id}/submit.
+              */}
+              <div className={styles.submissionLocked}>
+                Awaiting your submission. The submission UI for{" "}
+                <code>{escalation.mode ?? "this mode"}</code> ships in the
+                next slice.
+              </div>
+            </>
+          )}
 
-          <div className={styles.panelHeader} style={{ marginTop: "var(--space-4)" }}>
-            <h2 className={styles.panelTitle}>Validation</h2>
-          </div>
-          {escalation.status === "open" || escalation.status === "resolved" ? (
-            <div className={styles.detailEmpty}>
-              Validation runs after submission.
-            </div>
-          ) : escalation.validation_result ? (
-            <pre className={styles.promptBlock}>
-              {JSON.stringify(escalation.validation_result, null, 2)}
-            </pre>
-          ) : (
-            <div className={styles.detailEmpty}>
-              No validation result recorded yet.
-            </div>
+          {iterationCapped && (
+            <>
+              <div className={styles.panelSubheader}>
+                <h2 className={styles.panelTitle}>Submission</h2>
+              </div>
+              <div className={styles.submissionLocked}>
+                Iteration cap of {MANUAL_ITERATION_LIMIT} reached. Cancel
+                this escalation or escalate to human review.
+              </div>
+            </>
+          )}
+
+          {hasValidationContext && (
+            <>
+              <div className={styles.panelSubheader}>
+                <h2 className={styles.panelTitle}>Validation</h2>
+              </div>
+              {escalation.validation_result ? (
+                <pre className={styles.promptBlock}>
+                  {JSON.stringify(escalation.validation_result, null, 2)}
+                </pre>
+              ) : (
+                <div className={styles.detailEmpty}>
+                  No validation result recorded yet.
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -255,7 +295,7 @@ export default function EscalationDetail() {
             <MetaItem label="Validated" value={formatTs(escalation.validated_at)} />
           </div>
 
-          <div className={styles.panelHeader} style={{ marginTop: "var(--space-4)" }}>
+          <div className={styles.panelSubheader}>
             <h2 className={styles.panelTitle}>Timeline</h2>
             <span className={styles.muted}>{timeline.length} event(s)</span>
           </div>
