@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EscalationSubmission",
+  "description": "Payload accepted by POST /admin/escalations/{correlation_id}/submit. Mode-discriminated union: chat-mode submissions carry the user's text answer; claude_code-mode submissions carry the branch identifier and optional SHA. Realizes docs/superpowers/specs/manual-escalation.md §5.2/§5.3 + §9.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["mode", "answer"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"const": "chat"},
+        "answer": {
+          "type": "string",
+          "minLength": 50,
+          "description": "The user's pasted-back answer to the chat-mode prompt. Min length 50 chars per spec §10.3."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["mode", "branch"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {"const": "claude_code"},
+        "branch": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Local or remote branch name carrying the manual build. The diff-validator (slice 21) verifies it exists and matches the spec's target paths."
+        },
+        "sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$",
+          "description": "Optional commit SHA at submission time. Spec §10.3: resolution is locked to the submission-time SHA; new SHA = new submission."
+        }
+      }
+    }
+  ]
+}

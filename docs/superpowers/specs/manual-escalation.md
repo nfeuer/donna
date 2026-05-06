@@ -358,7 +358,9 @@ spend.
 
 **(b) Escalation workspace**
 
-New dashboard area at `/admin/escalations`:
+New dashboard area at `/escalations` (SPA route — see slice 19 follow-up
+for why the path differs from the original `/admin/escalations` wording;
+the backend API endpoints remain under `/admin/escalations*`):
 
 - **List view**: all escalation_requests with status filter
   (`open | submitted | validated | failed | cancelled`), sort by
@@ -438,6 +440,11 @@ CREATE TABLE escalation_request (
   resolved_by TEXT,                       -- 'user' | 'timeout'
   resolved_at TIMESTAMP,
   prompt_path TEXT,                       -- workspace path for claude_code mode
+  prompt_body TEXT,                       -- slice 19: full prompt rendered by dashboard
+  summary TEXT,                           -- slice 19: short summary used in Discord + list view
+  mode TEXT,                              -- slice 19: chosen manual mode (chat|claude_code)
+  result TEXT,                            -- slice 19: submission payload JSON (post-submit)
+  validation_result JSON,                 -- slice 19: post-validation panel content
   branch_name TEXT,                       -- for claude_code mode
   iteration INTEGER DEFAULT 1,
   status TEXT DEFAULT 'open',             -- open|resolved|submitted|validated|failed|cancelled
@@ -501,6 +508,12 @@ ships all three new tables (`escalation_request`,
 ALTER in a single revision (`c7d8e9f0a1b2`). Splitting an FK target
 across revisions adds no value when the slice is already an atomic
 shipping unit. No manual ALTERs.
+
+Slice 19 backfills the dashboard-required columns
+(`prompt_body`, `summary`, `mode`, `result`, `validation_result`) in a
+follow-up revision (`d8e9f0a1b2c3_escalation_workspace_columns.py`)
+because they were named inline in §5.2 / §5.3 but missed by §8's
+original `CREATE TABLE` listing.
 
 ---
 

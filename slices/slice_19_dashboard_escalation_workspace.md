@@ -52,15 +52,118 @@ New dashboard area at `/admin/escalations`:
 
 ## What to Build
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+1. **Schema additions** — Alembic revision
+   `d8e9f0a1b2c3_escalation_workspace_columns.py` adding to
+   `escalation_request`:
+   - `prompt_body TEXT` — full prompt rendered by the dashboard
+   - `summary TEXT` — short summary used by the Discord notification
+     (slice 20) and the list view's inline cell
+   - `mode TEXT` — chosen manual mode (`chat` | `claude_code`); kept
+     alongside `resolution` so list-view filters and submit validation
+     don't have to special-case `resolution` values
+   - `result TEXT` — JSON-stringified submission payload (post-submit)
+   - `validation_result JSON` — post-validation panel content
+   The SQLAlchemy `EscalationRequest` model gains the same five fields.
+
+2. **JSON schema** — `schemas/escalation_submission.json`. A
+   discriminated `oneOf` on `mode`:
+   - `{ "mode": "chat", "answer": string ≥ 50 }`
+   - `{ "mode": "claude_code", "branch": string, "sha"?: string }`
+
+3. **Backend endpoints** in `src/donna/api/routes/admin_escalations.py`
+   (registered at `/admin` prefix, `admin_router()` auth):
+   - `GET /admin/escalations` — list view; filters by `status`/`user_id`,
+     paginates, returns `status_counts` for the filter chips. Open rows
+     sort to the top by age, then everything else by `created_at` desc.
+   - `GET /admin/escalations/{correlation_id}` — detail; returns the
+     full row (including `prompt_body`, `result`, `validation_result`)
+     plus the `escalation_lifecycle` audit trail joined from
+     `invocation_log`.
+   - `POST /admin/escalations/{correlation_id}/submit` — mode-agnostic
+     submit. Validates payload against `schemas/escalation_submission.json`,
+     enforces the row's `mode` matches the payload's, and uses an
+     optimistic `WHERE status IN ('resolved','failed')` lock to avoid
+     racing submissions. Re-submit after `failed` increments
+     `iteration`. Writes an `escalation_submitted` audit row.
+
+4. **Frontend** in `donna-ui/`:
+   - `src/api/escalations.ts` — typed fetcher (list, detail, submit).
+   - `src/pages/Escalations/index.tsx` — list page with status filter,
+     30s auto-refresh, status-count strip, click-through to detail.
+   - `src/pages/Escalations/EscalationsTable.tsx` — TanStack table
+     showing task type, status pill, mode pill, estimate, daily-left,
+     iteration, summary, age.
+   - `src/pages/Escalations/EscalationDetail.tsx` — two-pane layout:
+     left = prompt + Copy button + submission placeholder + validation
+     panel; right = metadata grid + lifecycle timeline. Slices 20/21
+     replace the submission placeholder with their mode-specific UI.
+   - Routes added to `src/App.tsx`; `Escalations` entry added to
+     `src/layout/Sidebar.tsx` with the `AlertOctagon` lucide icon.
 
 ## Implementation Notes
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+- **Auth (open question resolved):** `admin_router()` gives the same
+  admin auth as the rest of the dashboard. `docs/domain/management-gui.md`'s
+  "no auth" line refers to the `/admin/*` API in single-user homelab
+  deployments where the `_admin_dep` resolves trivially; the spec's
+  "same auth as the rest of admin dashboard" wording is honoured by
+  using the same factory.
+- **Submit endpoint URL (open question resolved):** kept under
+  `/admin/escalations/<id>/submit` per spec §5.2. The
+  `donna-ui` SPA route is `/escalations[/<correlation_id>]` because that
+  matches the existing UI convention (no `/admin` prefix); see slice 19
+  follow-up entry in `docs/superpowers/specs/followups.md`.
+- **Status timeline (gap resolved):** read directly from
+  `invocation_log` rows where `task_type = 'escalation_lifecycle' AND
+  escalation_request_id = <id>` ordered by timestamp. Each row's
+  `output` JSON carries the event name and payload (already the format
+  written by `donna.cost.escalation_audit.write_escalation_event`).
+  No derived `escalation_event` table is needed.
+- **Markdown renderer (gap deferred):** the prompt is rendered as
+  preformatted text in slice 19. Adding `react-markdown` + syntax
+  highlighting is deferred to slice 20 (chat mode) where prompt
+  authoring decisions are made.
+- **Optimistic lock (gap resolved):** the submit endpoint's UPDATE
+  matches `WHERE status IN ('resolved','failed')`. A second concurrent
+  POST sees `rowcount = 0` and gets a 409 `concurrent_submission`. The
+  detail GET is read-only; if the row advances mid-view, the next
+  refresh shows the new state.
+- **Re-submit affordance (gap resolved):** same `correlation_id`,
+  `iteration` increments. `parent_escalation_id` chains are reserved
+  for the case where a `tool_request` spawns from a failed iteration —
+  not yet wired here. The submit endpoint increments `iteration` only
+  when the prior status was `failed`.
+- **Mobile responsiveness (gap):** desktop-first like the rest of the
+  admin dashboard; the detail layout collapses to a single column at
+  ≤1024px so it's readable on a phone, but no mobile-specific tooling.
+- **Validation panel placeholder (gap resolved):** when
+  `status ∈ {open, resolved}` the panel says "Validation runs after
+  submission"; when `validation_result` is null but the status is
+  `submitted` it says "No validation result recorded yet".
 
 ## Test Plan
 
-> *Resolve the brainstorm gaps below before filling in this section.*
+- **Backend integration tests** in
+  `tests/integration/test_admin_escalations.py` (real aiosqlite, FastAPI
+  with the admin dep stubbed):
+  - List endpoint: empty state, status counts, status filter, invalid
+    status returns 400.
+  - Detail endpoint: returns prompt_body + timeline events ordered by
+    timestamp; 404 when correlation_id missing.
+  - Submit endpoint: chat happy path (answer ≥ 50 chars), claude_code
+    happy path (branch + sha), short answer rejected with
+    `schema_validation_failed`, mode mismatch returns 409, submit
+    against an `open` row returns 409, re-submit after `failed`
+    increments iteration.
+- **Frontend:** TypeScript strict-build via `npx tsc --noEmit` and
+  `npx vite build` in `donna-ui/` confirm the page + API typings
+  compile.
+- **Migration round-trip:** existing
+  `tests/integration/test_slice_17_migration.py` exercises the full
+  Alembic head with the new revision included
+  (`d8e9f0a1b2c3_escalation_workspace_columns`).
+- **Out of scope here** (lands in slices 20/21): chat textarea
+  submission flow, "Mark as built" modal, validation result population.
 
 ## Open Questions
 
