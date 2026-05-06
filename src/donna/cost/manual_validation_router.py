@@ -246,39 +246,28 @@ class ManualValidationRouter:
                 ),
             )
 
-        # 5. Lifecycle promotion: claude_native → skill_candidate →
-        # draft → sandbox. The final hop is the human_approval reason
-        # — the user's "Mark as built" click + green fixtures *is* the
-        # human gate. Manual mode goes one hop deeper than AutoDrafter
-        # because it has a real human in the loop.
+        # 5. Lifecycle promotion. The final hop ALWAYS lands in
+        # ``sandbox`` with ``reason='human_approval'`` because the
+        # user's "Mark as built" click + green fixtures is the
+        # explicit human gate. The intermediate hops depend on the
+        # skill's current state:
+        #
+        # - claude_native (skill_auto_draft): full chain
+        #   claude_native → skill_candidate → draft → sandbox.
+        # - degraded (skill_evolution after a degradation): use the
+        #   spec §6.2 transition degraded → draft (gate_passed),
+        #   then draft → sandbox (human_approval).
+        # - flagged_for_review (skill_evolution after a regression):
+        #   flagged_for_review → trusted is the existing automatic
+        #   path; manual mode short-circuits via
+        #   flagged_for_review → degraded (manual_override) →
+        #   draft → sandbox.
+        # - draft: just draft → sandbox.
         try:
-            await self._lifecycle.transition(
+            await self._promote_to_sandbox(
                 skill_id=skill_id,
-                to_state=SkillState.SKILL_CANDIDATE,
-                reason="gate_passed",
-                actor="system",
-                notes="manual claude_code handoff: detector-equivalent gate",
-            )
-            await self._lifecycle.transition(
-                skill_id=skill_id,
-                to_state=SkillState.DRAFT,
-                reason="gate_passed",
-                actor="system",
-                notes=(
-                    f"manual claude_code handoff for {row.correlation_id}: "
-                    "fixtures passed, awaiting human gate"
-                ),
-            )
-            await self._lifecycle.transition(
-                skill_id=skill_id,
-                to_state=SkillState.SANDBOX,
-                reason="human_approval",
-                actor="user",
+                row=row,
                 actor_id=actor_id,
-                notes=(
-                    f"manual claude_code handoff approved by user "
-                    f"({row.correlation_id})"
-                ),
             )
         except IllegalTransitionError as exc:
             logger.exception(
@@ -312,6 +301,106 @@ class ManualValidationRouter:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    async def _promote_to_sandbox(
+        self,
+        *,
+        skill_id: str,
+        row: EscalationRequestRow,
+        actor_id: str | None,
+    ) -> None:
+        """Hop the skill from its current state to ``sandbox``.
+
+        Branches on the current ``skill.state`` because a manual
+        ``skill_auto_draft`` lands in ``claude_native`` (fresh skill)
+        but a ``skill_evolution`` is editing a skill that's already in
+        ``degraded`` / ``flagged_for_review`` / ``draft``. Reuses the
+        valid-transition table from
+        :class:`donna.skills.lifecycle.SkillLifecycleManager` —
+        ``IllegalTransitionError`` is the loud-fail signal.
+        """
+        cursor = await self._conn.execute(
+            "SELECT state FROM skill WHERE id = ?", (skill_id,)
+        )
+        row_state = await cursor.fetchone()
+        if row_state is None:
+            raise IllegalTransitionError(
+                f"skill {skill_id!r} disappeared during promotion"
+            )
+        current = SkillState(row_state[0])
+
+        notes_prefix = (
+            f"manual claude_code handoff for {row.correlation_id}"
+        )
+
+        # Pre-sandbox path. Each step uses ``gate_passed`` (system) so
+        # the reason chain is auditable. Final ``draft → sandbox`` always
+        # carries ``human_approval`` (user) per spec §5.3.
+        if current == SkillState.CLAUDE_NATIVE:
+            await self._lifecycle.transition(
+                skill_id=skill_id,
+                to_state=SkillState.SKILL_CANDIDATE,
+                reason="gate_passed",
+                actor="system",
+                notes=f"{notes_prefix}: detector-equivalent gate",
+            )
+            await self._lifecycle.transition(
+                skill_id=skill_id,
+                to_state=SkillState.DRAFT,
+                reason="gate_passed",
+                actor="system",
+                notes=f"{notes_prefix}: fixtures passed, awaiting human gate",
+            )
+        elif current == SkillState.DEGRADED:
+            await self._lifecycle.transition(
+                skill_id=skill_id,
+                to_state=SkillState.DRAFT,
+                reason="gate_passed",
+                actor="system",
+                notes=f"{notes_prefix}: re-drafted from degraded",
+            )
+        elif current == SkillState.FLAGGED_FOR_REVIEW:
+            # Hop down via manual_override → DEGRADED then back up.
+            # The lifecycle table only allows flagged_for_review →
+            # {trusted, degraded} so we go through degraded first.
+            await self._lifecycle.transition(
+                skill_id=skill_id,
+                to_state=SkillState.DEGRADED,
+                reason="manual_override",
+                actor="user",
+                actor_id=actor_id,
+                notes=f"{notes_prefix}: manual handoff replaces flagged version",
+            )
+            await self._lifecycle.transition(
+                skill_id=skill_id,
+                to_state=SkillState.DRAFT,
+                reason="gate_passed",
+                actor="system",
+                notes=f"{notes_prefix}: re-drafted from flagged → degraded",
+            )
+        elif current == SkillState.DRAFT:
+            # Already at draft (e.g. an auto_draft that ended at draft
+            # and is now being escalated to manual sandbox). Skip
+            # straight to the human-approval hop.
+            pass
+        else:
+            # ``sandbox`` / ``shadow_primary`` / ``trusted`` / etc. —
+            # these aren't expected for a manual claude_code handoff;
+            # the gate's de-dup already prevents new escalations
+            # against active skills, so this is a defensive fail.
+            raise IllegalTransitionError(
+                f"manual claude_code cannot promote skill in state "
+                f"{current.value!r} → sandbox"
+            )
+
+        await self._lifecycle.transition(
+            skill_id=skill_id,
+            to_state=SkillState.SANDBOX,
+            reason="human_approval",
+            actor="user",
+            actor_id=actor_id,
+            notes=f"{notes_prefix}: approved via Mark as built + green fixtures",
+        )
 
     async def _resolve_capability_name(
         self, row: EscalationRequestRow

@@ -171,27 +171,38 @@ class EscalationGate:
             )
 
         # De-dup: if a previous claude_code escalation for this same
-        # entity is still in-flight, re-deliver it instead of opening
-        # a parallel race (spec §10.7 / brainstorm decision §21).
+        # entity is still in-flight, refuse to open a parallel race
+        # (spec §10.7 / brainstorm decision §21). We only RE-DELIVER
+        # the Discord notification when the prior row is still in
+        # ``open`` state; re-delivering for ``resolved`` (user clicked
+        # but hasn't built yet) / ``submitted`` (poller is validating)
+        # / ``failed`` (user is iterating) would just spam them about
+        # work they already know is in flight.
         if originating_entity is not None:
             existing = await self._repo.find_open_for_originating_entity(
                 entity_type=originating_entity[0],
                 entity_id=originating_entity[1],
             )
-            if existing is not None and existing.mode == "claude_code":
+            if existing is not None and (
+                existing.mode == "claude_code"
+                or "claude_code" in existing.offered_modes
+            ):
                 logger.info(
                     "escalation_dedup_existing_claude_code",
                     correlation_id=existing.correlation_id,
+                    existing_status=existing.status,
                     originating_entity=originating_entity,
                 )
-                # Re-attempt delivery so the user gets a fresh ping.
-                try:
-                    await self._deliver(existing)
-                except Exception:
-                    logger.exception(
-                        "escalation_redeliver_failed",
-                        correlation_id=existing.correlation_id,
-                    )
+                if existing.status == "open":
+                    # User still hasn't seen / clicked the existing
+                    # ping — a fresh delivery may help.
+                    try:
+                        await self._deliver(existing)
+                    except Exception:
+                        logger.exception(
+                            "escalation_redeliver_failed",
+                            correlation_id=existing.correlation_id,
+                        )
                 # Don't await resolution — return as if not fired so
                 # the caller falls back to ``BudgetPausedError`` /
                 # paused state. Spawning a parallel awaiter would race.

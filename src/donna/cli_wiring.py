@@ -1315,14 +1315,28 @@ def _make_escalation_delivery_callback(
             task_id=row.task_id,
             estimate_usd=row.estimate_usd,
         )
-        action_hint = (
-            "approve an extension, " if "api_extended" in row.offered_modes else ""
-        )
+        # Slice 21: enumerate exactly the buttons being rendered so the
+        # text matches the view. Order mirrors BudgetEscalationView's
+        # spec order: extension, manual modes, pause, cancel.
+        button_labels: list[str] = []
+        if "api_extended" in row.offered_modes:
+            button_labels.append(f"approve a ${row.estimate_usd:.2f} extension")
+        if "claude_code" in row.offered_modes:
+            button_labels.append("hand off to Claude Code")
+        if "chat" in row.offered_modes:
+            button_labels.append("answer in chat")
+        if "manual" in row.offered_modes and not (
+            "claude_code" in row.offered_modes or "chat" in row.offered_modes
+        ):
+            button_labels.append("hand off manually")
+        button_labels.append("pause")
+        button_labels.append("cancel")
+        choice_line = ", ".join(button_labels[:-1]) + ", or " + button_labels[-1]
         text = (
             f"**Over-budget decision** — {row.task_type}\n"
             f"Estimate: ${row.estimate_usd:.2f}  |  "
             f"Daily remaining: ${row.daily_remaining_usd:.2f}\n"
-            f"Choose: {action_hint}pause, or cancel."
+            f"Choose: {choice_line}."
         )
         try:
             sent = await bot.send_message_with_view("tasks", text, view)

@@ -34,11 +34,20 @@ logger = structlog.get_logger()
 
 
 class EscalationDecisionError(Exception):
-    """Raised by `complete()` when the over-budget gate resolves to a
-    terminal mode (pause / cancel) so the caller can transition the
-    task without spending. Carries the resolution mode + the
-    ``escalation_request_id`` so the caller can stamp follow-up audit
-    rows. See docs/superpowers/specs/manual-escalation.md §4."""
+    """Raised by ``complete()`` when the over-budget gate resolves to a
+    terminal mode that *replaces* the autonomous API call.
+
+    Modes that raise:
+    - ``pause`` / ``cancel`` — task should not run today (slice 17).
+    - ``claude_code`` / ``chat`` — user is doing the work manually
+      (slices 20 / 21); the result lands later via the dashboard
+      submit + poller path. The caller is expected to leave the
+      originating record (e.g. ``skill_candidate_report`` row) in a
+      state the poller can update on success.
+
+    Carries the resolution mode + the ``escalation_request_id`` so the
+    caller can stamp follow-up audit rows. See
+    docs/superpowers/specs/manual-escalation.md §4 / §5.2 / §5.3."""
 
     def __init__(
         self, *, mode: str, escalation_request_id: int, correlation_id: str
@@ -276,6 +285,21 @@ class ModelRouter:
                 base_sha=base_sha,
             )
             if outcome.fired and outcome.mode in ("pause", "cancel"):
+                assert outcome.escalation_request_id is not None
+                assert outcome.correlation_id is not None
+                raise EscalationDecisionError(
+                    mode=outcome.mode,
+                    escalation_request_id=outcome.escalation_request_id,
+                    correlation_id=outcome.correlation_id,
+                )
+            # Slice 21: ``claude_code`` (and slice 20's ``chat``) mean the
+            # user is doing the work themselves. The autonomous API call
+            # MUST NOT happen — falling through here would charge the
+            # budget for a request that's about to be replaced by a
+            # manual artifact. Raise so the caller can defer the task
+            # until the poller (claude_code) or chat-submit path lands
+            # the result.
+            if outcome.fired and outcome.mode in ("claude_code", "chat"):
                 assert outcome.escalation_request_id is not None
                 assert outcome.correlation_id is not None
                 raise EscalationDecisionError(

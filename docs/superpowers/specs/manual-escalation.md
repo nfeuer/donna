@@ -667,7 +667,7 @@ Organized by failure category.
 | Failure | Mitigation |
 |---|---|
 | User submits empty / malformed answer in chat mode | `/donna submit` validates non-empty + min length (50 chars default). Discord button click without text reply prompts "paste your answer first". |
-| User submits but never builds the branch in claude_code mode | Poller checks `branch_exists(branch_name)` before processing. If absent after 5 min: posts "branch not found, did you push? or run /donna submit-local if local-only" — local-only path uses git plumbing to read the branch from the host repo. |
+| User submits but never builds the branch in claude_code mode | Poller checks `branch_exists(branch_name)` against the read-only host-repo mount on every tick. If absent: posts a one-shot "branch not found, did you push?" feedback and leaves the row in `submitted` so a later push triggers re-ingestion (no iteration burn). The slice 21 implementation runs this check immediately on each poller tick rather than after a 5-min delay — branch resolution is cheap (`git rev-parse`) and the user benefits from the fastest possible feedback. Pushed and local-only branches are equivalent through the read-only mount, so a separate `/donna submit-local` command was not needed; the single `/donna submit` covers both. |
 | User pushes a branch with wrong files (touched files outside spec scope) | Diff-validator rejects with specific list of out-of-scope files. User can edit and resubmit; iteration count increments. |
 | User force-pushes branch between submission and validation | Resolution is locked to the SHA at submission time. New SHA = new submission required. |
 | Branch contains uncommitted/staged changes mixed with the work | Diff is computed against `base..tip`, ignoring working tree. User's local mess is irrelevant. |
@@ -677,7 +677,7 @@ Organized by failure category.
 | Failure | Mitigation |
 |---|---|
 | Skill from manual handoff fails fixture validation | Failures posted to Discord; same correlation thread. User iterates in worktree, resubmits. Iteration cap `manual_iteration_limit` (3). |
-| At iteration cap, still failing | Auto-cancel the escalation; create a `tool_request`-shaped row in a new `human_review_request` queue (or just log with `human_review` flag). User reviews via dashboard. No infinite loop. |
+| At iteration cap, still failing | Auto-cancel the escalation: status becomes `cancelled` and `human_review = 1` is set on the same `escalation_request` row (slice 21 decision §15 — reuses the row, no separate queue table). The poller writes an `iteration_limit_reached` audit event and posts a Discord notice with the dashboard link. Dashboard list view filters / banners on `human_review = 1`. No infinite loop. |
 | Tool build missing mock entry | Pre-validation lint (§10.5). User cannot submit a tool without its mock — diff-validator rejects. |
 | Tool build passes validation but breaks an existing skill in shadow | Standard regression handling: skill enters `flagged_for_review`, escalation marked `validated_with_warnings`, dashboard shows banner. |
 
@@ -774,11 +774,11 @@ Dashboard renders these as a timeline per escalation_request_id.
 
 ## 12. Open questions (for follow-up before slice work begins)
 
-1. **Default `OWNER_DISCORD_ID` source** — env var, vault entry, or `auth.yaml`? (Spec assumes env var for now.)
-2. **Local-only branches** — does the orchestrator have read access to the host repo's `.git` directory? If not, we add a small mount to support `submit-local` (not pushed) workflows.
-3. **`human_review_request` table vs reusing `tool_request`** — do we want one queue for all manual interventions, or separate queues per kind?
-4. **Tier 2 SMS escalation on Discord delivery failure** — confirm we want this; SMS rate limits in slice 7 are tight (10/day).
-5. **Re-escalation parent chains** — current spec stores `parent_escalation_id`. Do we need a depth limit beyond `manual_iteration_limit`?
+1. **Default `OWNER_DISCORD_ID` source** — env var, vault entry, or `auth.yaml`? *Resolved (slice 17, §15): env var `DONNA_OWNER_DISCORD_ID`; fail-soft when unset.*
+2. **Local-only branches** — does the orchestrator have read access to the host repo's `.git` directory? *Resolved (slice 21, §15): env var `DONNA_HOST_REPO_PATH` points at a read-only mount; pushed and local branches are equivalent through it; fail-soft when unset.*
+3. **`human_review_request` table vs reusing `tool_request`** — do we want one queue for all manual interventions, or separate queues per kind? *Resolved (slice 21, §15): reuse `escalation_request` with a `human_review` BOOLEAN column; revisit when Phase 2 surfaces non-skill / non-tool human-review cases.*
+4. **Tier 2 SMS escalation on Discord delivery failure** — confirm we want this; SMS rate limits in slice 7 are tight (10/day). *Open — slice 24 (escalation hardening) owns the resolution.*
+5. **Re-escalation parent chains** — current spec stores `parent_escalation_id`. Do we need a depth limit beyond `manual_iteration_limit`? *Open — slice 24 (escalation hardening) owns the resolution.*
 
 ---
 

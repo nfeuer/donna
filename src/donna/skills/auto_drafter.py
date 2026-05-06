@@ -38,6 +38,7 @@ import structlog
 import uuid6
 
 from donna.cost.budget import BudgetPausedError
+from donna.models.router import EscalationDecisionError
 from donna.skills.candidate_report import (
     SkillCandidateReportRow,
     SkillCandidateRepository,
@@ -183,6 +184,29 @@ class AutoDrafter:
             )
             return AutoDraftReport(
                 candidate_id=candidate.id, outcome="budget_exhausted"
+            )
+        except EscalationDecisionError as exc:
+            # Slice 17/21: gate replaced the autonomous call. Pause /
+            # cancel are terminal for this candidate today (try again
+            # tomorrow via daily refresh). claude_code / chat mean the
+            # user is doing the work manually — leave the candidate in
+            # ``new`` so the manual_validation_router (slice 21) can
+            # mark it drafted when the poller validates the branch.
+            logger.info(
+                "skill_auto_draft_escalation_resolved",
+                candidate_id=candidate.id,
+                mode=exc.mode,
+                escalation_request_id=exc.escalation_request_id,
+            )
+            outcome_label = (
+                "manual_handoff_pending"
+                if exc.mode in ("claude_code", "chat")
+                else "budget_exhausted"
+            )
+            return AutoDraftReport(
+                candidate_id=candidate.id,
+                outcome=outcome_label,
+                rationale=f"escalation_resolved={exc.mode!r}",
             )
         except Exception as exc:
             logger.warning(
