@@ -280,9 +280,9 @@ src/donna/api/routes/
 - [x] Anomaly notifications (daily cost, parse accuracy, overdue tasks)
 - [x] Backend: `admin_shadow.py` (3 endpoints), `admin_preferences.py` (4 endpoints)
 
-## Manual Escalation Surfaces (planned, slices 19 + 23)
+## Manual Escalation Surfaces (slices 19 + 22 + 23)
 
-Two new dashboard surfaces are defined by
+Three dashboard surfaces are defined by
 [`docs/superpowers/specs/manual-escalation.md`](../superpowers/specs/manual-escalation.md):
 
 1. **Escalation workspace** at `/admin/escalations` — list view of all
@@ -291,12 +291,24 @@ Two new dashboard surfaces are defined by
    the claude_code "Mark as built" modal, and shows a status timeline +
    validation result panel. This is the canonical surface for full
    prompts and answer submission; Discord is the alert layer only.
-   Lands in `slice_19_dashboard_escalation_workspace.md`.
+   Slice 22 added `task_type='tool_request_fulfillment'` rows: the same
+   detail view, but the spec body comes from
+   `prompts/escalation/tool_build.md` and the validation panel renders
+   tool-lint failures (`(lint:anthropic_import)`,
+   `(lint:secrets:…)`, etc.) plus the optional
+   `requires_rebuild_warning`. Lands in
+   `slice_19_dashboard_escalation_workspace.md`; tool-build row support
+   lands in `slice_22_tool_gap_surfacing.md`.
 2. **Escalation toggle card** — master kill switch, per-mode toggles
    (chat / claude_code), budget-extension allow + max-daily slider, and
    a per-task-type override grid. Backed by the `dashboard_setting`
    table; resolution order `dashboard_setting → YAML default`.
    `hard_monthly_ceiling_usd` is YAML-only (defense in depth). Lands in
    `slice_23_dashboard_runtime_overrides.md`.
+3. **Tool gap queue** (planned, slice 23) — list view of `tool_request`
+   rows that surfaces speculative gaps from the morning digest in a
+   queryable form, plus snooze / file-request / reject controls. Slice
+   22 ships the data model and Discord ping; slice 23 will surface the
+   same rows on the dashboard alongside the toggle card.
 
-Both follow the existing dashboard conventions described above.
+All three follow the existing dashboard conventions described above.
