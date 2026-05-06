@@ -457,7 +457,9 @@ task_types:
 ```
 
 Task types without a `manual_escalation` block are **never** offered
-manual mode — only `Approve / Pause / Cancel`.
+manual mode — only `Approve / Pause / Cancel`. Slice 23 adds a
+**dashboard runtime override** per task type — see §6.3(a) — that filters
+which buttons render at gate-fire time without editing the YAML.
 
 ### 6.3 Dashboard runtime overrides + escalation workspace
 
@@ -468,20 +470,84 @@ to view/submit chat answers and mark claude_code work as built).
 **(a) Toggle control panel**
 
 New table `dashboard_setting (key TEXT PK, value JSON, updated_at,
-updated_by)`. Resolution order: dashboard_setting → YAML default.
+updated_by)`. Resolution order: dashboard_setting → YAML default. Slice
+23 ships the write side (slice 17 only had read), with optimistic
+locking on `updated_at` (§10.7 row 1).
+
+The page lives at SPA route `/escalation-settings` and calls
+`/admin/escalation-settings*` on the API. Both routes are gated by the
+existing admin auth dependency.
+
+**Canonical key namespace.** Every dashboard-mutable setting lives at a
+dot-path under `manual_escalation.*` matching the YAML structure so the
+resolver, write API, and YAML parser share one shape:
+
+| Key | Type | YAML default source | UI control |
+|---|---|---|---|
+| `manual_escalation.enabled` | bool | `manual_escalation.enabled` | Master kill switch |
+| `manual_escalation.modes.chat.enabled` | bool | `manual_escalation.modes.chat.enabled` | Per-mode toggle |
+| `manual_escalation.modes.claude_code.enabled` | bool | `manual_escalation.modes.claude_code.enabled` | Per-mode toggle |
+| `manual_escalation.budget_extension.enabled` | bool | `manual_escalation.budget_extension.enabled` | Allow extensions |
+| `manual_escalation.budget_extension.max_daily_extension_usd` | float | `manual_escalation.budget_extension.max_daily_extension_usd` | Max daily extension slider |
+| `manual_escalation.task_types.<task_type>.override` | string | n/a (default `auto`) | Per-task-type override grid |
+
+The `dashboard_settings_catalog` module (`src/donna/cost/dashboard_settings_catalog.py`)
+is the single source of truth: it defines the catalog, type coercion,
+and **legacy aliases**. Two keys (`modes.claude_code.enabled` and
+`budget_extension.enabled`) shipped in slice 17/18/21 without the
+`manual_escalation.` prefix; the resolver consults the canonical key
+first and falls back to the legacy alias so existing rows do not lose
+their override on upgrade. New writes always go to the canonical key.
 
 Dashboard surfaces (admin section, gated by existing auth):
 - Master kill switch: **Manual escalation**: On / Off
 - Per-mode toggles: **Chat**, **Claude Code**
 - Budget extension: **Allow extensions**: On / Off
 - Slider: **Max daily extension** (capped at `hard_monthly_ceiling_usd
-  / days_left_in_month`)
-- Per-task-type override grid: each task type with a manual mode shows
-  a row with `Auto / Force-API / Force-Manual / Disabled`.
+  / days_left_in_month`, computed and enforced server-side; the GET
+  response carries the cap so the slider's max matches the PUT
+  acceptance window)
+- Per-task-type override grid: each task type with a `manual_escalation`
+  block shows a row with `Auto / Force-API / Force-Manual / Disabled`.
+  - **Auto** — default; offered_modes follow global toggles.
+  - **Force-API** — only the `api_extended` button renders; manual
+    handoff is hidden for this task type.
+  - **Force-Manual** — only the manual handoff button renders;
+    `api_extended` is hidden.
+  - **Disabled** — neither manual nor API extension; the gate falls
+    straight through to Pause / Cancel.
+
+The override is applied AFTER the underlying preconditions (chat
+prompt builder wired, claude_code host repo mounted, budget headroom
+available), so toggling `force_manual` for a task type that has no
+chat or claude_code config does not invent a button.
 
 `hard_monthly_ceiling_usd` is **not** dashboard-mutable — only YAML.
 Prevents a compromised dashboard session from authorizing unlimited
-spend.
+spend (§10.7 row 4).
+
+**Audit.** Every successful write also inserts an
+`escalation_lifecycle` row in `invocation_log` with
+`event='dashboard_setting_changed'` and a payload of `{key, value,
+previous_value, had_lock_token}`. `escalation_request_id` is NULL —
+these are subsystem-level events, not tied to one row. The slice 19
+per-row timeline only surfaces row-scoped events (it filters on
+`escalation_request_id`); these subsystem-level rows are picked up by
+the existing log viewer at `/admin/logs`.
+
+**API contract.**
+
+- `GET /admin/escalation-settings` — returns the catalog rows (resolved
+  value + YAML default + `updated_at` / `updated_by`), the per-task-type
+  override grid, and a `constraints` block with the slider cap.
+- `PUT /admin/escalation-settings/{key:path}` — body
+  `{"value": ..., "expected_updated_at": "<iso8601>"|null}`. Writes the
+  value if `expected_updated_at` matches the stored row (or no row
+  exists when `null`). Returns 409 with the live state on mismatch,
+  422 on type/range violation, 404 on unknown key.
+- `PUT /admin/escalation-settings/task-types/{task_type}` — same
+  contract for the per-task-type override grid. Rejects task types
+  that do not declare a `manual_escalation` block (404).
 
 **(b) Escalation workspace**
 
@@ -792,9 +858,9 @@ iteration cap then governs).
 
 | Failure | Mitigation |
 |---|---|
-| Dashboard toggle race (two browser tabs flip same setting) | `dashboard_setting` writes use `updated_at` optimistic lock; second write returns 409 with current value. |
+| Dashboard toggle race (two browser tabs flip same setting) | `dashboard_setting` writes use `updated_at` optimistic lock via :meth:`EscalationRepository.set_dashboard_setting_with_lock` (slice 23). The PUT body carries `expected_updated_at` from the GET response; a mismatch returns 409 with `{current_value, current_updated_at, current_updated_by}` so the client can surface the live state. The transaction is wrapped in `BEGIN IMMEDIATE` so two parallel writers see consistent ordering. |
 | Config reload during in-flight escalation | Resolution semantics: an open escalation uses the offered_modes snapshotted in its row, NOT live config. Disabling claude_code mid-flight does not retroactively cancel an open claude_code escalation. |
-| Task type has `manual_escalation: claude_code` but no reference_module configured | Validation at config load: any task type declaring claude_code mode MUST have target_paths + reference_module. Hard fail at boot. |
+| Task type has `manual_escalation: claude_code` but no reference_module configured | Validation at config load via :func:`donna.config.validate_manual_escalation_config` (slice 23): any task type declaring claude_code mode MUST have non-empty ``target_paths`` AND ``reference_module``. Raises :class:`ManualEscalationConfigError` on boot listing every offender at once. Wired into `cli_wiring.build_startup_context` and the API's lifespan startup. |
 | Dashboard authentication compromised | `hard_monthly_ceiling_usd` is YAML-only (§6.3). Worst case attacker can run today's daily extension cap — bounded blast. |
 
 ### 10.8 Privacy / data exposure failures
@@ -1021,6 +1087,36 @@ matching brief in `slices/`.
   on the next reboot. New `surfacer` and `boot_owner_user_id`
   constructor kwargs default to `None` / `"boot"` for backward
   compatibility.
+- **(2026-05-06, slice 23)** Canonical dashboard_setting key namespace.
+  Every dashboard-mutable key follows the dot-path of the YAML
+  structure under ``manual_escalation.*``. Slice 17/18/21 had drifted
+  to two short names (``modes.claude_code.enabled``,
+  ``budget_extension.enabled``); the resolver now consults the
+  canonical key first and falls back to legacy aliases registered in
+  ``donna.cost.dashboard_settings_catalog`` so existing rows do not
+  silently lose their override on upgrade. New writes always go to
+  the canonical key.
+- **(2026-05-06, slice 23)** Optimistic-lock UI behaviour on 409.
+  Brainstorm gap (silent retry vs visible toast): we surface a
+  `Setting changed in another tab. Showing latest.` toast and replace
+  the stale value with the live state from the conflict response,
+  rather than silently retrying. Silent retry would race with another
+  intentional change and confuse the operator about which value is
+  authoritative.
+- **(2026-05-06, slice 23)** Per-task-type override grid lives on a
+  dedicated page (`/escalation-settings`) rather than as a section on
+  the existing `/escalations` workspace. The escalation workspace is
+  per-row; the settings page is per-subsystem. Mixing the two would
+  bloat the row detail view that slice 19 already designed for the
+  escalation lifecycle.
+- **(2026-05-06, slice 23)** Audit log target. Toggle changes write
+  an `escalation_lifecycle` row to `invocation_log` with
+  `event='dashboard_setting_changed'`. Brainstorm gap weighed adding a
+  dedicated audit table; reusing `invocation_log` lets the slice 19
+  timeline view surface toggle changes alongside actual escalations
+  without bolting on a second source. `escalation_request_id` stays
+  NULL because these are subsystem-level events, not tied to one
+  escalation row.
 
 ---
 

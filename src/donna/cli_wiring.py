@@ -925,6 +925,13 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     state_machine_config = load_state_machine_config(config_dir)
     skill_config = load_skill_system_config(config_dir)
     manual_escalation_config = load_manual_escalation_config(config_dir)
+    # Slice 23 — fail boot if any task type declares
+    # ``manual_escalation.mode='claude_code'`` without a target_paths or
+    # reference_module (spec §10.7 row 3). Catches drift from config
+    # edits that would otherwise produce un-actionable specs.
+    from donna.config import validate_manual_escalation_config
+
+    validate_manual_escalation_config(task_types=task_types_config)
 
     # Initialise state machine and database
     state_machine = StateMachine(state_machine_config)
