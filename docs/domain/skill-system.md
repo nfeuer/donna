@@ -662,3 +662,85 @@ automatic promotion gates take over.
 See [`docs/superpowers/specs/manual-escalation.md`](../superpowers/specs/manual-escalation.md)
 (canonical) for the full protocol, data model, and failure modes. The
 work lands in `slice_21_claude_code_mode.md`.
+
+## Tool Gap Surfacing (slice 22)
+
+When a capability requires a tool that isn't registered, Donna **does
+not auto-draft it** (tools touch credentials, dependencies, image
+rebuilds — security boundary too sharp for autonomy). Instead, slice
+22 makes tool gaps a first-class object with two surfacing tiers and
+a manual-build path that reuses the slice-21 `claude_code` protocol.
+
+### Detection
+
+Five sites route through `donna.cost.tool_gap_surfacer.ToolGapSurfacer`:
+
+| Site | Severity | Trigger |
+|---|---|---|
+| `CapabilityToolRegistryCheck` (boot) | speculative | `pending_review` capability or `trigger_type='on_manual'` declares an unregistered tool. The active+scheduled subset is still **fail-loud** — boot raises `CapabilityToolConfigError`. |
+| `AutomationDispatcher.dispatch()` | high | Skill path is about to run; required tool missing. Run is short-circuited with `outcome='blocked_missing_tool'`. |
+| Discord automation creation (`MissingToolError`) | high | User tried to create a Discord automation backed by a capability that needs an unregistered tool. |
+| `AutoDrafter._surface_speculative_tool_gaps` (pre-flight) | speculative | LLM-drafted skill YAML references a step `tools:` name not in the registry. AutoDrafter still proceeds; the existing `UnmockedToolError` will dismiss the candidate at fixture validation. |
+| `SkillExecutor._run_tool_invocations` (runtime trip-wire) | high | Mid-run dispatch attempted against an unregistered name. Surfaces a gap before the normal `ToolNotFoundError` propagates. |
+
+### Surfacing
+
+- **High** — Discord ping to the configured channel (default `agents`)
+  with a `[File request] [Snooze 24h]` view. Owner-ID + stale-click
+  guards mirror `BudgetEscalationView`. Re-pings on dedup hits are
+  rate-limited to `tool_gap.reping_cooldown_seconds` (default 4h) via
+  `last_pinged_at`.
+- **Speculative** — silent. Filed to `tool_request` and aggregated by
+  `MorningDigest._assemble_data` under a "Tool Gaps (speculative)"
+  section, excluding snoozed and resolved rows.
+
+### Storage + dedup
+
+`tool_request` (migration `b2c3d4e5f6a8`) — partial-unique index
+`(user_id, tool_name) WHERE status='open'`. Re-emission while open
+upserts: bumps `priority`, refreshes `rationale`, can promote
+speculative → high. Resolved/rejected rows allow new emissions so
+historical pattern isn't lost. `snoozed_until` is a column on the row
+(not a separate table).
+
+### Build path
+
+The `[File request]` button calls `EscalationGate.open_tool_build_escalation`
+(no cost gate — the click *is* the resolution), which creates an
+`escalation_request` row with `task_type='tool_request_fulfillment'`
+and `originating_entity=('tool_request', <id>)`, then renders
+`prompts/escalation/tool_build.md` (extends `skill_draft.md` with the
+proposed signature, required metadata, allowlist + inert-test
+clauses). The user runs `git worktree add` per the spec, builds in
+Claude Code, commits, and clicks **Mark as built**.
+
+### Validation (`ManualValidationRouter._validate_tool`)
+
+Tools have **no** lifecycle table — activation is manual merge +
+orchestrator restart. `_validate_tool` runs:
+
+1. Six AST/regex lint rules in `donna.cost.tool_lint/`:
+   - `anthropic_import` — reject `import anthropic` outside `src/donna/llm/`
+   - `import_io` — reject module-level network/disk I/O
+   - `secrets` — curated regex for `sk-…`, `xoxb-…`, `ghp_…`, `AKIA…`,
+     PEM headers, vault-key naming (opt-in `detect-secrets` shim)
+   - `metadata` — require `requires_rebuild: bool` + `default_timeout_seconds: int`
+   - `allowlist` — diff must touch a config allowlist file with the
+     tool name near a `tools:` key, OR module declares `unallowlisted = True`
+   - `inert_test` — branch must include
+     `tests/skills/tools/test_<name>.py` calling
+     `is_inert_at_import('donna.skills.tools.<name>')`
+2. Subprocess import smoke against the worktree:
+   `python -c "import donna.skills.tools.<name>"`.
+
+Pass → `tool_request.status='completed'`, `tool_request_filled` audit.
+The user merges and restarts manually. Lint failures keep the row
+`open` for iteration (slice-21 iteration cap then governs).
+
+Dependent-skill regression (re-running fixtures of every skill that
+references the new tool) is **deferred to slice 24** per spec
+§10.4 row 4.
+
+See [`docs/superpowers/specs/manual-escalation.md`](../superpowers/specs/manual-escalation.md)
+§7, §8, §10.5, §10.10 for the canonical protocol. The work lands in
+`slice_22_tool_gap_surfacing.md`.

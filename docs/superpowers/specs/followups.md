@@ -453,6 +453,209 @@ visible.
 
 ---
 
+## S22 — Validation depth: lint + import-smoke only, no dependent-skill regression
+
+- **Surfaced by:** `slices/slice_22_tool_gap_surfacing.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§10.4`
+  row 4, `#§10.5`.
+- **Status:** open (deferred to slice 24)
+- **Decision / Reasoning:** `ManualValidationRouter._validate_tool` runs
+  the six §10.5 lint rules plus the subprocess import smoke
+  (`python -c "import donna.skills.tools.<name>"`). It does **not**
+  re-run dependent-skill fixtures (every skill whose YAML mentions the
+  new tool) against the branch, even though §10.4 row 4 calls that out
+  as the regression-protection step ("tool build passes validation but
+  breaks an existing skill in shadow"). Slice 22 user direction was
+  "lint + import-smoke only" — keeps the slice scope clean and mirrors
+  the existing §10.4 row 4 deferral language.
+- **Follow-up:** Slice 24 (escalation hardening) adds the regression
+  step. It wraps `MockToolRegistry` around the new tool's mock fixture,
+  runs the full skill-fixture suite, and only marks the `tool_request`
+  completed if pass-rate ≥ threshold. Until then, regressions land at
+  next orchestrator restart and surface through the existing skill
+  shadow / divergence pipeline.
+
+---
+
+## S22 — `requires_rebuild=True` Discord nag deferred
+
+- **Surfaced by:** `slices/slice_22_tool_gap_surfacing.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§10.5`
+  row 1.
+- **Status:** open (deferred to slice 24)
+- **Decision / Reasoning:** §10.5 row 1 says *"if `requires_rebuild=true`
+  after merge: registry refuses to mark tool active until orchestrator
+  restart with new build SHA. Discord nag posted hourly until rebuild."*
+  Slice 22's `tool_lint/metadata.py` enforces the metadata declaration
+  and emits a `requires_rebuild_warning` lint result that the dashboard
+  panel renders, but the **hourly Discord nag** isn't wired. The
+  registry-refusal half also isn't implemented because there is no tool
+  lifecycle table — activation is manual merge + restart, period.
+- **Follow-up:** Slice 24 — add an hourly job that scans
+  `tool_request WHERE status='completed' AND resolved_at < now-1h` and
+  posts a "Tool `X` is built but the orchestrator hasn't been restarted
+  yet" reminder until the tool name appears in
+  `ToolRegistry.list_tool_names()` after boot.
+
+---
+
+## S22 — No tool lifecycle table
+
+- **Surfaced by:** `slices/slice_22_tool_gap_surfacing.md`
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§7`,
+  `#§10.5`, `spec_v3.md#§23.3`.
+- **Status:** resolved-in-slice-22
+- **Decision / Reasoning:** Skills have a multi-state lifecycle
+  (`claude_native → skill_candidate → draft → sandbox → shadow_primary
+  → trusted`); tools don't. Tools live in source code, get registered
+  by name at orchestrator boot via `register_default_tools`, and are
+  either present or absent in the registry. Slice 22 considered adding
+  a `tool` / `tool_version` parallel table but decided against it: it
+  would duplicate `pyproject.toml` + the source tree + the registry as
+  yet another source of truth, and the deployment cycle (manual merge
+  + restart, plus rebuild when `requires_rebuild=True`) is the
+  activation. `_validate_tool` only marks the `tool_request` row
+  completed; the user runs `git merge` and restarts manually.
+- **Follow-up:** None unless Phase 2 introduces hot-loadable tools or
+  per-user tool catalogs. Logged here so future readers don't propose
+  the table independently.
+
+---
+
+## S22 — Iteration cap on tool builds doesn't auto-reject linked tool_request
+
+- **Surfaced by:** `slices/slice_22_tool_gap_surfacing.md` (self-review).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§7`,
+  `#§10.4` row 2.
+- **Status:** open (low priority — non-blocking)
+- **Decision / Reasoning:** When the slice-21 iteration cap fires on a
+  `tool_request_fulfillment` escalation (`escalation_request.status
+  → cancelled`, `human_review=1`), the linked `tool_request` row stays
+  in `status='in_progress'`. This is non-blocking because the dedup
+  index is `WHERE status='open'` — re-emission of the same gap creates
+  a fresh `open` row alongside the orphaned `in_progress` one. The
+  orphan never blocks anything; it just lingers in the dashboard list
+  view as "stuck in progress" until manually rejected.
+- **Follow-up:** Slice 24 — extend the iteration-cap sweep in
+  `claude_code_poller._cancel_at_cap` so when the row's
+  `originating_entity_type='tool_request'`, the linked
+  `tool_request` row is also flipped to `status='rejected'` with a
+  `tool_request_rejected` audit event.
+
+---
+
+## S22 — `_validate_tool` packs warnings into `failures` field
+
+- **Surfaced by:** `slices/slice_22_tool_gap_surfacing.md` (self-review).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§10.5`
+  row 1.
+- **Status:** open (cosmetic)
+- **Decision / Reasoning:** `ValidationOutcome` (slice-21 dataclass) has
+  `passed: bool` and `failures: list[dict]` but no `warnings` field. To
+  surface `requires_rebuild_warning` on the dashboard validation-result
+  panel without adding a slice-21 schema change, `_validate_tool`
+  packs warnings into `failures` while keeping `passed=True`. Functional
+  but misleading at the type level; the dashboard panel labels them
+  `(warn:…)` so the user sees them as warnings.
+- **Follow-up:** Add `warnings: list[dict]` to `ValidationOutcome` and
+  `escalation_request.validation_result` schema in slice 24, then
+  unpack into the cleaner location.
+
+---
+
+## S22 — MorningDigest production wiring depends on entrypoint that doesn't exist
+
+- **Surfaced by:** `slices/slice_22_tool_gap_surfacing.md` (self-review).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§7`
+  (digest aggregation).
+- **Status:** open (pre-existing, not introduced by slice 22)
+- **Decision / Reasoning:** `MorningDigest.__init__` accepts a
+  `tool_request_repo` kwarg (slice 22 addition) and `_assemble_data`
+  queries it correctly when wired. But there is **no production
+  construction site for `MorningDigest` anywhere in the repo** — neither
+  `cli.py`, `cli_wiring.py`, nor `server.py` builds a `NotificationTasks`
+  bundle. The digest is dead code in production today. Slice 22's
+  plumbing is correct; it activates as soon as someone wires
+  `NotificationTasks(... morning_digest=MorningDigest(...,
+  tool_request_repo=ctx.tool_request_repository))` in the orchestrator
+  boot path.
+- **Follow-up:** Out of slice 22 scope. Whichever future slice adds the
+  reminder/digest scheduling wiring needs to pass
+  `ctx.tool_request_repository` through. Logged so the wiring is
+  noticed when it lands.
+
+---
+
+## S22 — `escalation_request.originating_entity_type='tool_request'` not in skill router resolver
+
+- **Surfaced by:** `slices/slice_22_tool_gap_surfacing.md` (self-review).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.3`,
+  `#§7`.
+- **Status:** resolved-in-slice-22 (intentional asymmetry)
+- **Decision / Reasoning:** `EscalationGate._resolve_capability_name`
+  added a `tool_request` branch (returns `tool_request.tool_name` for
+  `{name}` substitution). `ManualValidationRouter._resolve_capability_name`
+  did **not** add the same branch — `_validate_tool` resolves through
+  `tool_request_repo.get(id)` instead. Asymmetric but intentional:
+  `_resolve_capability_name` is only called by `_validate_skill`, which
+  doesn't run for tool builds. Adding a no-op branch would suggest a
+  contract that doesn't exist.
+- **Follow-up:** None.
+
+---
+
+## S22 — `BudgetGuard` cost-aggregation exclusions extended
+
+- **Surfaced by:** `slices/slice_22_tool_gap_surfacing.md` (self-review).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§10.10`.
+- **Status:** resolved-in-slice-22-followup (commit `84c2a5e`)
+- **Decision / Reasoning:** Slice 17 added
+  `task_type='escalation_lifecycle'` to `BudgetGuard.check_pre_call`'s
+  `exclude_task_types` list so audit rows don't pollute cost
+  breakdowns. Slice 22's audit rows use a parallel
+  `task_type='tool_gap_lifecycle'` (kept separate so per-subsystem
+  queries stay clean). The exclusion list now includes both. Cost math
+  was already correct (rows have `cost_usd=0.0`); this just keeps
+  per-task-type breakdown counts honest.
+- **Follow-up:** None.
+
+---
+
+## S22 — `find_open_for_originating_entity` keyword-only signature
+
+- **Surfaced by:** `slices/slice_22_tool_gap_surfacing.md` (self-review,
+  caught by `tests/cost/test_escalation_gate_tool_build.py`).
+- **Spec section(s):** N/A (implementation contract).
+- **Status:** resolved-in-slice-22-followup (commit `84c2a5e`)
+- **Decision / Reasoning:** The slice-21 helper takes
+  `*, entity_type, entity_id` (keyword-only). My initial slice-22 dedup
+  call site in `EscalationGate.open_tool_build_escalation` passed
+  positional args, which would `TypeError` the first time the
+  `[File request]` button was clicked. Caught by the integration test
+  that exercises `open_tool_build_escalation` end-to-end.
+- **Follow-up:** None. Logged as a reminder that future call sites
+  must use keyword args.
+
+---
+
+## S22 — `tool_gap.lint` config knobs wired through `extra_context`
+
+- **Surfaced by:** `slices/slice_22_tool_gap_surfacing.md` (self-review).
+- **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§6.1`
+  (config block), `#§9` (template).
+- **Status:** resolved-in-slice-22-followup (commit `84c2a5e`)
+- **Decision / Reasoning:** `EscalationGate.open_tool_build_escalation`
+  initially hardcoded `requires_rebuild_default=False` and
+  `default_timeout_seconds=5` in the `extra_context` passed to
+  `record_manual_handoff`. A deployment that flipped
+  `tool_gap.lint.requires_rebuild_default: true` in
+  `config/manual_escalation.yaml` (or set a different timeout) would
+  silently render the wrong defaults into the spec template. Now reads
+  from `self._config.tool_gap.lint`.
+- **Follow-up:** None.
+
+---
+
 ## How to add an entry (template)
 
 Copy this when you finish a slice:
