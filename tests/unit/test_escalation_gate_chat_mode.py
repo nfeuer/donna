@@ -15,6 +15,7 @@ import aiosqlite
 import pytest
 
 from donna.config import (
+    ClaudeCodeModeConfig,
     ManualEscalationConfig,
     ManualEscalationModeConfig,
     ManualEscalationModesConfig,
@@ -58,7 +59,13 @@ CREATE TABLE escalation_request (
     delivery_status TEXT,
     delivery_attempts INTEGER NOT NULL DEFAULT 0,
     last_delivery_attempt_at TEXT,
-    parent_escalation_id INTEGER REFERENCES escalation_request(id)
+    parent_escalation_id INTEGER REFERENCES escalation_request(id),
+    human_review INTEGER NOT NULL DEFAULT 0,
+    target_paths TEXT,
+    originating_entity_type TEXT,
+    originating_entity_id TEXT,
+    base_sha TEXT,
+    merged_at TEXT
 );
 CREATE TABLE dashboard_setting (
     key TEXT PRIMARY KEY,
@@ -95,7 +102,7 @@ def _config(*, chat_enabled: bool = True) -> ManualEscalationConfig:
         enabled=True,
         modes=ManualEscalationModesConfig(
             chat=ManualEscalationModeConfig(enabled=chat_enabled),
-            claude_code=ManualEscalationModeConfig(enabled=True),
+            claude_code=ClaudeCodeModeConfig(enabled=True),
         ),
         triggers=ManualEscalationTriggersConfig(task_approval_threshold_usd=5.0),
     )
