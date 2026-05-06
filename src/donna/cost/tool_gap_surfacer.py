@@ -69,6 +69,15 @@ class ToolGapSurfacer:
         self._ping_poster = ping_poster
         self._reping_cooldown_seconds = reping_cooldown_seconds
 
+    def set_ping_poster(self, poster: ToolGapPingPoster | None) -> None:
+        """Late-binding setter for cli_wiring.
+
+        The surfacer is constructed early (before the bot exists) so
+        boot-time speculative gaps can be filed; the bot-aware ping
+        poster is bolted on after the bot is alive.
+        """
+        self._ping_poster = poster
+
     async def surface(
         self,
         gap: ToolGap,

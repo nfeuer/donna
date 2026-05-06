@@ -455,7 +455,8 @@ class EscalationGate:
         # for this tool_request, to mirror slice 21's skill de-dup
         # (manual-escalation.md §5.3 "De-dup").
         existing = await self._repo.find_open_for_originating_entity(
-            "tool_request", str(tool_request_id)
+            entity_type="tool_request",
+            entity_id=str(tool_request_id),
         )
         if existing is not None:
             logger.info(
@@ -521,8 +522,12 @@ class EscalationGate:
             ),
             extra_context={
                 "proposed_signature": proposed_signature,
-                "requires_rebuild_default": False,
-                "default_timeout_seconds": 5,
+                "requires_rebuild_default": (
+                    self._config.tool_gap.lint.requires_rebuild_default
+                ),
+                "default_timeout_seconds": (
+                    self._config.tool_gap.lint.default_timeout_seconds
+                ),
             },
         )
         # Re-fetch so the caller sees the post-handoff status.

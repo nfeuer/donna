@@ -76,10 +76,15 @@ class BudgetGuard:
         a Discord notification is sent (if notifier is configured) and
         BudgetPausedError is raised.
         """
-        # Escalation audit rows (slice 17) carry zero spend by construction;
-        # excluding them is defensive against schema drift.
+        # Escalation audit rows (slice 17) and tool-gap audit rows
+        # (slice 22) carry zero spend by construction; excluding them is
+        # defensive against schema drift.
         daily_summary = await self._tracker.get_daily_cost(
-            exclude_task_types=["external_llm_call", "escalation_lifecycle"]
+            exclude_task_types=[
+                "external_llm_call",
+                "escalation_lifecycle",
+                "tool_gap_lifecycle",
+            ]
         )
         spent = daily_summary.total_usd
         limit = self._cost_config.daily_pause_threshold_usd

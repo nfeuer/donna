@@ -2014,7 +2014,7 @@ async def wire_discord(
                 msg = await _bot.send_message_with_view(_channel, text, view)
                 return msg is not None
 
-            ctx.tool_gap_surfacer._ping_poster = _post_tool_gap_ping
+            ctx.tool_gap_surfacer.set_ping_poster(_post_tool_gap_ping)
             ctx.bot._tool_gap_surfacer = ctx.tool_gap_surfacer
             log.info("tool_gap_ping_poster_wired", channel=_channel)
         except Exception:
