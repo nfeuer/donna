@@ -529,9 +529,11 @@ spend (§10.7 row 4).
 **Audit.** Every successful write also inserts an
 `escalation_lifecycle` row in `invocation_log` with
 `event='dashboard_setting_changed'` and a payload of `{key, value,
-previous_value, had_lock_token}`. The dashboard timeline view (slice
-19) renders these alongside escalation-row events so toggle changes
-are part of the same audit timeline.
+previous_value, had_lock_token}`. `escalation_request_id` is NULL —
+these are subsystem-level events, not tied to one row. The slice 19
+per-row timeline only surfaces row-scoped events (it filters on
+`escalation_request_id`); these subsystem-level rows are picked up by
+the existing log viewer at `/admin/logs`.
 
 **API contract.**
 

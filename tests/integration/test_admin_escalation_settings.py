@@ -353,3 +353,102 @@ class TestPutTaskType:
         )
         assert r.status_code == 409
         assert r.json()["detail"]["current_value"] == "force_api"
+
+
+# ---------------------------------------------------------------------------
+# Degraded-config behaviour and legacy-alias surfacing
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def degraded_app_and_conn(tmp_path: Path):
+    """App with manual_escalation_config=None (YAML failed to load)."""
+    db_path = tmp_path / "esc_settings_degraded.db"
+    conn = await aiosqlite.connect(str(db_path))
+    await conn.executescript(_SCHEMA)
+    await conn.commit()
+
+    app = FastAPI()
+    app.state.db = type("DB", (), {"connection": conn})()
+    app.state.manual_escalation_config = None
+    app.state.task_types_config = None
+    app.include_router(admin_escalation_settings.router, prefix="/admin")
+    app.dependency_overrides[_admin_dep] = lambda: "admin"
+
+    yield app, conn
+
+    await conn.close()
+
+
+@pytest.fixture
+async def degraded_client(degraded_app_and_conn):
+    app, _conn = degraded_app_and_conn
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+
+class TestDegradedConfig:
+    async def test_get_returns_503_when_config_missing(
+        self, degraded_client: AsyncClient
+    ) -> None:
+        r = await degraded_client.get("/admin/escalation-settings")
+        assert r.status_code == 503
+        assert (
+            r.json()["detail"]["error"] == "manual_escalation_config_unavailable"
+        )
+
+    async def test_put_slider_503_when_config_missing(
+        self, degraded_client: AsyncClient
+    ) -> None:
+        r = await degraded_client.put(
+            "/admin/escalation-settings/manual_escalation.budget_extension.max_daily_extension_usd",
+            json={"value": 5.0, "expected_updated_at": None},
+        )
+        assert r.status_code == 503
+        assert (
+            r.json()["detail"]["error"] == "manual_escalation_config_unavailable"
+        )
+
+    async def test_put_task_type_503_when_config_missing(
+        self, degraded_client: AsyncClient
+    ) -> None:
+        r = await degraded_client.put(
+            "/admin/escalation-settings/task-types/chat_escalation",
+            json={"value": "force_api", "expected_updated_at": None},
+        )
+        assert r.status_code == 503
+        assert (
+            r.json()["detail"]["error"] == "task_types_config_unavailable"
+        )
+
+
+class TestLegacyAliasSurfacing:
+    async def test_legacy_row_appears_in_get_response(
+        self, app_and_conn, client: AsyncClient
+    ) -> None:
+        """Slice 17/18/21 wrote two keys without the ``manual_escalation.``
+        prefix. The GET response must surface those rows under the
+        canonical key so an upgraded deployment does not appear to have
+        lost its overrides.
+        """
+        _app, conn = app_and_conn
+        # Insert directly under the legacy alias.
+        await conn.execute(
+            """
+            INSERT INTO dashboard_setting (key, value, updated_at, updated_by)
+            VALUES ('modes.claude_code.enabled', 'false',
+                    '2026-04-01T00:00:00+00:00', 'legacy_boot')
+            """
+        )
+        await conn.commit()
+
+        body = (await client.get("/admin/escalation-settings")).json()
+        cc = next(
+            s
+            for s in body["settings"]
+            if s["key"] == "manual_escalation.modes.claude_code.enabled"
+        )
+        assert cc["value"] is False
+        assert cc["updated_by"] == "legacy_boot"
+        assert cc["updated_at"] == "2026-04-01T00:00:00+00:00"

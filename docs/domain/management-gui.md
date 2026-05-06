@@ -315,7 +315,11 @@ Two new dashboard surfaces are defined by
      session cannot raise it (spec §10.7 row 4).
    - **Audit:** every successful write inserts an
      `escalation_lifecycle` row in `invocation_log` with
-     `event='dashboard_setting_changed'`, so toggle changes surface in
-     the existing timeline view alongside actual escalations.
+     `event='dashboard_setting_changed'` and a payload of `{key, value,
+     previous_value, had_lock_token}`. `escalation_request_id` stays
+     NULL because these are subsystem-level events; the slice 19
+     per-row timeline filters on that FK and so only surfaces
+     row-scoped events. Dashboard-setting changes are visible in the
+     log viewer at `/admin/logs`.
 
 Both follow the existing dashboard conventions described above.

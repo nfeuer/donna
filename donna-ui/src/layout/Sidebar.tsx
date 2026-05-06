@@ -43,7 +43,7 @@ const NAV_ITEMS: NavEntry[] = [
   { path: "/escalations", label: "Escalations", icon: <AlertOctagon size={18} /> },
   {
     path: "/escalation-settings",
-    label: "Esc. Settings",
+    label: "Escalation Settings",
     icon: <SlidersHorizontal size={18} />,
   },
 ];

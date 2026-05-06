@@ -15,7 +15,6 @@ double-resolving.
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import json
 from collections.abc import Sequence
@@ -572,77 +571,67 @@ class EscalationRepository:
 
         Semantics:
         - ``expected_updated_at is None`` means "the client believed the
-          row did not exist". The write succeeds only if no row exists.
-        - Otherwise the write succeeds only if the stored ``updated_at``
-          equals the value the client last read.
+          row did not exist". The write succeeds via ``INSERT``; an
+          existing row makes ``INSERT`` raise ``IntegrityError`` which
+          we translate to a conflict.
+        - Otherwise the write is a conditional ``UPDATE ... WHERE
+          updated_at = ?``. SQLite's UPDATE is atomic, so this single
+          statement IS the lock — no explicit BEGIN required (the
+          codebase keeps sqlite3's default deferred isolation, where
+          ``BEGIN IMMEDIATE`` would error with "cannot start a
+          transaction within a transaction" any time a prior implicit
+          tx is in flight).
         - On conflict, returns ``(False, current_value, current_updated_at,
           current_updated_by)`` so the caller can surface the live state
-          in a 409 response.
+          in a 409 response. If the row vanished entirely, returns
+          ``(False, None, "", "")``.
         - On success, returns ``(True, value, new_updated_at, updated_by)``.
-
-        The write is wrapped in a transaction so two parallel callers
-        racing for the same key see a consistent ordering.
         """
-        ts = (now or datetime.now(tz=UTC)).isoformat()
-        # SQLite's aiosqlite default is autocommit; an explicit BEGIN
-        # serialises this against any concurrent writer.
-        await self._conn.execute("BEGIN IMMEDIATE")
-        try:
-            cursor = await self._conn.execute(
-                "SELECT value, updated_at, updated_by FROM dashboard_setting "
-                "WHERE key = ?",
-                (key,),
-            )
-            current = await cursor.fetchone()
+        import sqlite3 as _sqlite3
 
-            if current is None:
-                if expected_updated_at is not None:
-                    # Client thought there was a row; there isn't (could
-                    # have been deleted out from under them). Treat as
-                    # conflict so they re-read fresh state.
-                    await self._conn.rollback()
-                    return False, None, "", ""
+        ts = (now or datetime.now(tz=UTC)).isoformat()
+
+        if expected_updated_at is None:
+            # First-write contract. PRIMARY KEY collision = conflict.
+            try:
                 await self._conn.execute(
                     """
-                    INSERT INTO dashboard_setting (key, value, updated_at, updated_by)
+                    INSERT INTO dashboard_setting
+                        (key, value, updated_at, updated_by)
                     VALUES (?, ?, ?, ?)
                     """,
                     (key, json.dumps(value), ts, updated_by),
                 )
                 await self._conn.commit()
                 return True, value, ts, updated_by
+            except _sqlite3.IntegrityError:
+                # Row already exists; surface its state so the client
+                # can re-render with the live value.
+                current = await self.get_dashboard_setting_row(key)
+                if current is None:
+                    return False, None, "", ""
+                return False, current[0], current[1], current[2]
 
-            current_value_raw, current_updated_at, current_updated_by = current
-            if expected_updated_at is None or str(
-                current_updated_at
-            ) != expected_updated_at:
-                await self._conn.rollback()
-                current_value: Any = (
-                    json.loads(current_value_raw)
-                    if isinstance(current_value_raw, str)
-                    else current_value_raw
-                )
-                return (
-                    False,
-                    current_value,
-                    str(current_updated_at),
-                    str(current_updated_by),
-                )
-
-            await self._conn.execute(
-                """
-                UPDATE dashboard_setting
-                   SET value = ?, updated_at = ?, updated_by = ?
-                 WHERE key = ?
-                """,
-                (json.dumps(value), ts, updated_by, key),
-            )
-            await self._conn.commit()
+        # Conditional UPDATE — the WHERE is the optimistic lock.
+        cursor = await self._conn.execute(
+            """
+            UPDATE dashboard_setting
+               SET value = ?, updated_at = ?, updated_by = ?
+             WHERE key = ?
+               AND updated_at = ?
+            """,
+            (json.dumps(value), ts, updated_by, key, expected_updated_at),
+        )
+        await self._conn.commit()
+        if cursor.rowcount > 0:
             return True, value, ts, updated_by
-        except Exception:
-            with contextlib.suppress(Exception):
-                await self._conn.rollback()
-            raise
+
+        # The UPDATE matched zero rows: either the row vanished or the
+        # token was stale. Read the live state for the conflict body.
+        current = await self.get_dashboard_setting_row(key)
+        if current is None:
+            return False, None, "", ""
+        return False, current[0], current[1], current[2]
 
 
 # ---------------------------------------------------------------------------

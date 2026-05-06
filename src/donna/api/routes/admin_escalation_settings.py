@@ -152,6 +152,19 @@ async def list_escalation_settings(request: Request) -> dict[str, Any]:
         key: (value, updated_at, updated_by)
         for key, value, updated_at, updated_by in raw_rows
     }
+    # Slice 23 — also load any legacy-alias rows (slice 17/18/21 wrote
+    # them without the ``manual_escalation.`` prefix, so the prefix
+    # query above misses them). The resolver still honours these on the
+    # gate side; the dashboard would otherwise show "no override" even
+    # though one exists, which would be a confusing first impression on
+    # an upgraded deployment.
+    for spec in SETTINGS:
+        for alias in spec.legacy_aliases:
+            if alias in overrides:
+                continue
+            row = await repo.get_dashboard_setting_row(alias)
+            if row is not None:
+                overrides[alias] = row
 
     settings_payload: list[dict[str, Any]] = []
     for spec in SETTINGS:
@@ -217,10 +230,14 @@ async def _write_audit_event(
     """Append an ``escalation_lifecycle`` row for the toggle change.
 
     The brainstorm gap weighed adding a dedicated audit table vs. reusing
-    ``invocation_log``; we reuse so the dashboard timeline view (slice 19)
-    surfaces toggle changes alongside actual escalations without bolting
-    on a second source. ``escalation_request_id`` stays NULL — these are
-    subsystem-level audit rows, not tied to one escalation row.
+    ``invocation_log``; we reuse so the existing log viewer
+    (``/admin/logs``) and any future timeline view filtering on
+    ``task_type='escalation_lifecycle'`` picks toggle changes up
+    automatically. ``escalation_request_id`` stays NULL — these are
+    subsystem-level audit rows, not tied to one escalation row, and the
+    slice 19 per-row timeline at
+    ``/admin/escalations/{correlation_id}`` filters by
+    ``escalation_request_id`` so it only sees row-scoped events.
     """
     import uuid6  # local import: keeps cost.escalation_audit's exact pattern
 
@@ -287,7 +304,21 @@ def _validate_top_level_value(
     coerced = coerce_value(spec, value)
 
     if key == "manual_escalation.budget_extension.max_daily_extension_usd":
-        config = request.app.state.manual_escalation_config
+        config = getattr(request.app.state, "manual_escalation_config", None)
+        if config is None:
+            # Mirror the GET handler's 503 — the slider cap is meaningless
+            # without the YAML-side ceiling, so refuse rather than risk
+            # writing an unbounded value.
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "manual_escalation_config_unavailable",
+                    "message": (
+                        "manual_escalation.yaml failed to load at startup; "
+                        "the slider cap cannot be validated."
+                    ),
+                },
+            )
         # Negative slider value is a UX bug; reject explicitly.
         if coerced < 0:
             raise HTTPException(

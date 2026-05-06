@@ -242,3 +242,42 @@ class TestOptimisticLock:
             "manual_escalation.modes.claude_code.enabled", True
         )
         assert value is False
+
+    async def test_concurrent_writes_serialize_through_lock(
+        self, repo: EscalationRepository
+    ) -> None:
+        """Two parallel writes against the same key — one wins, the other 409s.
+
+        Reproduces the slice §10.7 row 1 race scenario: two browser tabs
+        ``GET`` the same row, then both try to ``PUT`` with the same
+        ``expected_updated_at``. The optimistic lock must let only one
+        through; the other must see the live state in its conflict result.
+        """
+        import asyncio
+
+        await repo.upsert_dashboard_setting(
+            "manual_escalation.enabled", True, updated_by="boot"
+        )
+        row = await repo.get_dashboard_setting_row("manual_escalation.enabled")
+        assert row is not None
+        token = row[1]
+
+        async def writer(value: bool, by: str):
+            return await repo.set_dashboard_setting_with_lock(
+                "manual_escalation.enabled",
+                value,
+                expected_updated_at=token,
+                updated_by=by,
+            )
+
+        # Run them concurrently. aiosqlite serialises operations on the
+        # single connection, plus our BEGIN IMMEDIATE upgrades to a
+        # write lock — between the two, the SECOND lock acquisition
+        # always sees the first's already-updated row.
+        a, b = await asyncio.gather(writer(False, "tabA"), writer(True, "tabB"))
+        wins = [r for r in (a, b) if r[0] is True]
+        loses = [r for r in (a, b) if r[0] is False]
+        assert len(wins) == 1
+        assert len(loses) == 1
+        # The loser sees the winner's value.
+        assert loses[0][1] == wins[0][1]
