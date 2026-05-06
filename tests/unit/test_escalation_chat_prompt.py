@@ -181,12 +181,17 @@ class TestRendering:
     async def test_summary_truncated_to_max_chars(
         self, conn: aiosqlite.Connection, tmp_path: Path
     ) -> None:
-        # Force a giant summary so the truncate path runs.
-        big = "A" * 5000
+        # Force a long-but-schema-valid summary so the truncate path
+        # runs without tripping ``schemas/escalation_summary_output.json``'s
+        # maxLength=800. Configure ``discord_summary_max_chars`` low so the
+        # truncation kicks in well below schema bounds.
+        long_summary = "A" * 600
         complete = AsyncMock(
-            return_value=({"title": "Big", "summary": big}, MagicMock())
+            return_value=({"title": "Big", "summary": long_summary}, MagicMock())
         )
         builder, _ = _builder_with_router_mock(tmp_path=tmp_path, complete=complete)
+        # Override the discord cap to force truncation.
+        builder._config = PromptDeliveryConfig(discord_summary_max_chars=120)
         row = _row()
         new_id = await _insert_minimal_row(conn, row)
         row = _row(id=new_id)
@@ -196,7 +201,7 @@ class TestRendering:
             row=row,
             original_prompt="Question",
         )
-        assert len(summary) <= builder._config.discord_summary_max_chars
+        assert len(summary) <= 120
         assert summary.endswith("…")
 
     async def test_falls_back_to_deterministic_summary_on_router_error(
@@ -232,6 +237,26 @@ class TestRendering:
             original_prompt="Q?",
         )
         # Falls back to the deterministic templated summary.
+        assert "Click for full prompt." in summary
+
+    async def test_falls_back_on_schema_violation(
+        self, conn: aiosqlite.Connection, tmp_path: Path
+    ) -> None:
+        """Required ``title`` missing → ``jsonschema.validate`` raises →
+        deterministic fallback (§10.2 row 3)."""
+        complete = AsyncMock(
+            return_value=({"summary": "no title here"}, MagicMock())
+        )
+        builder, _ = _builder_with_router_mock(tmp_path=tmp_path, complete=complete)
+        row = _row()
+        new_id = await _insert_minimal_row(conn, row)
+        row = _row(id=new_id)
+
+        _body, summary, _path = await builder.build_and_persist(
+            conn=conn,
+            row=row,
+            original_prompt="Q?",
+        )
         assert "Click for full prompt." in summary
 
     async def test_workspace_write_failure_returns_none_path(

@@ -26,13 +26,14 @@ summary, no attachment if the file write itself failed).
 from __future__ import annotations
 
 import asyncio
+import json
 import os
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiosqlite
 import jinja2
+import jsonschema
 import structlog
 
 from donna.config import PromptDeliveryConfig
@@ -48,6 +49,11 @@ ESCALATION_SUMMARY_TASK_TYPE = "escalation_summary"
 
 CHAT_QUESTION_TEMPLATE_PATH = "prompts/escalation/chat_question.md"
 """Relative path under ``project_root`` to the Jinja prompt template."""
+
+SUMMARY_SCHEMA_RELATIVE_PATH = "schemas/escalation_summary_output.json"
+"""Relative path (under ``project_root``) to the JSON schema enforcing the
+local-LLM summarizer's output shape. A schema-violating response triggers
+the deterministic fallback per spec §10.2 row 3."""
 
 
 class ChatPromptBuilder:
@@ -85,6 +91,7 @@ class ChatPromptBuilder:
             project_root
         )
         self._template: jinja2.Template | None = None
+        self._summary_schema: dict[str, Any] | None = None
 
     @staticmethod
     def _resolve_workspace_root(project_root: Path) -> Path:
@@ -198,10 +205,9 @@ class ChatPromptBuilder:
                 task_type=ESCALATION_SUMMARY_TASK_TYPE,
                 user_id=row.user_id,
             )
+            self._validate_summary_payload(result)
             title = str(result.get("title") or "").strip()
             summary = str(result.get("summary") or "").strip()
-            if not summary:
-                raise ValueError("escalation_summary_empty")
             stitched = f"{title} — {summary}" if title else summary
         except Exception:
             logger.warning(
@@ -260,11 +266,30 @@ class ChatPromptBuilder:
             return None
         return str(target)
 
-    # Mostly here so tests can introspect what timestamp the row was
-    # rendered at without monkey-patching datetime.
-    @staticmethod
-    def _now() -> datetime:
-        return datetime.now(tz=UTC)
+    def _load_summary_schema(self) -> dict[str, Any]:
+        """Load + cache the summarizer JSON schema.
+
+        Schema lives under the project root rather than alongside this
+        module so it stays colocated with the other request/response
+        schemas the orchestrator already manages.
+        """
+        if self._summary_schema is not None:
+            return self._summary_schema
+        path = self._project_root / SUMMARY_SCHEMA_RELATIVE_PATH
+        with open(path) as f:
+            self._summary_schema = json.load(f)
+        return self._summary_schema
+
+    def _validate_summary_payload(self, payload: Any) -> None:
+        """Validate a summarizer response against the JSON schema.
+
+        Raises ``jsonschema.ValidationError`` (or ``OSError`` /
+        ``json.JSONDecodeError`` if the schema itself is unreadable) so
+        :meth:`_generate_summary`'s broad except clause surfaces the
+        deterministic-fallback path in either case.
+        """
+        schema = self._load_summary_schema()
+        jsonschema.validate(payload, schema)
 
 
 def _write_file_sync(target: Path, body: str) -> None:

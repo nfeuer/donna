@@ -37,7 +37,18 @@ DELIVERY_FAILED = "failed"
 
 @dataclasses.dataclass(frozen=True)
 class EscalationRequestRow:
-    """In-memory projection of an ``escalation_request`` row."""
+    """In-memory projection of an ``escalation_request`` row.
+
+    Slice 19 added the workspace columns (``prompt_body``, ``summary``,
+    ``mode``, ``prompt_path``, ``result``, ``validation_result``,
+    ``branch_name``) to the table; slice 20 follow-up surfaces them on
+    the dataclass so the delivery callback can read them through normal
+    attribute access. Without these fields, ``getattr(row, "summary",
+    None)`` in the cli_wiring delivery callback silently degraded to
+    ``None``, which meant chat-mode notifications never shipped the
+    Ollama-rendered summary or the workspace ``.md`` attachment in
+    production.
+    """
 
     id: int
     user_id: str
@@ -57,6 +68,16 @@ class EscalationRequestRow:
     delivery_status: str | None
     delivery_attempts: int
     last_delivery_attempt_at: datetime | None
+    # Slice 19 / 20 — workspace columns. Optional everywhere because
+    # rows created before chat-mode landed (or non-chat rows) leave them
+    # NULL.
+    prompt_body: str | None = None
+    summary: str | None = None
+    mode: str | None = None
+    prompt_path: str | None = None
+    result: str | None = None
+    validation_result: Any | None = None
+    branch_name: str | None = None
 
 
 class EscalationRepository:
@@ -282,6 +303,16 @@ def _row_to_request(
         offered_modes = list(json.loads(offered_modes_raw))
     else:
         offered_modes = list(offered_modes_raw or [])
+    validation_result_raw = record.get("validation_result")
+    validation_result: Any | None = None
+    if validation_result_raw is not None:
+        if isinstance(validation_result_raw, str):
+            try:
+                validation_result = json.loads(validation_result_raw)
+            except (TypeError, ValueError):
+                validation_result = {"raw": validation_result_raw}
+        else:
+            validation_result = validation_result_raw
     return EscalationRequestRow(
         id=int(record["id"]),
         user_id=str(record["user_id"]),
@@ -301,6 +332,13 @@ def _row_to_request(
         delivery_status=record["delivery_status"],
         delivery_attempts=int(record["delivery_attempts"]),
         last_delivery_attempt_at=_parse_dt(record["last_delivery_attempt_at"]),
+        prompt_body=record.get("prompt_body"),
+        summary=record.get("summary"),
+        mode=record.get("mode"),
+        prompt_path=record.get("prompt_path"),
+        result=record.get("result"),
+        validation_result=validation_result,
+        branch_name=record.get("branch_name"),
     )
 
 
