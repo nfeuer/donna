@@ -51,6 +51,8 @@ class AutomationDispatcher:
         cron: Any,
         notifier: Any,
         config: SkillSystemConfig,
+        runtime_tool_check: Any | None = None,
+        tool_gap_surfacer: Any | None = None,
     ) -> None:
         self._conn = connection
         self._repo = repository
@@ -61,6 +63,12 @@ class AutomationDispatcher:
         self._cron = cron
         self._notifier = notifier
         self._config = config
+        # Slice 22 — optional injection so tests can omit. When present,
+        # the dispatcher pre-checks tool availability before launching a
+        # skill run; missing tools surface high-severity ToolGap rows
+        # and short-circuit the run with outcome='blocked_missing_tool'.
+        self._runtime_tool_check = runtime_tool_check
+        self._tool_gap_surfacer = tool_gap_surfacer
 
     async def dispatch(self, automation: AutomationRow) -> DispatchReport:
         now = datetime.now(UTC)
@@ -82,6 +90,78 @@ class AutomationDispatcher:
             )
 
         path = await self._decide_path(automation.capability_name)
+
+        # Slice 22 — pre-execution tool-gap check for skill paths.
+        # When wired, surface a high-severity ToolGap per missing tool
+        # and skip this run rather than let it fail mid-execution.
+        if (
+            path == "skill"
+            and self._runtime_tool_check is not None
+            and self._tool_gap_surfacer is not None
+        ):
+            try:
+                missing = await self._runtime_tool_check.check(
+                    automation.capability_name
+                )
+            except Exception:
+                logger.exception(
+                    "automation_runtime_tool_check_failed",
+                    automation_id=automation.id,
+                    capability_name=automation.capability_name,
+                )
+                missing = []
+            if missing:
+                from donna.cost.tool_gap import (
+                    DETECTION_SCHEDULER,
+                    SEVERITY_HIGH,
+                    ToolGap,
+                )
+                for tool_name in missing:
+                    try:
+                        await self._tool_gap_surfacer.surface(
+                            ToolGap(
+                                tool_name=tool_name,
+                                user_id=automation.user_id,
+                                severity=SEVERITY_HIGH,
+                                blocking_capability_id=automation.capability_name,
+                                rationale=(
+                                    f"Automation '{automation.name}' due to "
+                                    f"run; capability "
+                                    f"'{automation.capability_name}' "
+                                    f"requires '{tool_name}' which is "
+                                    "unregistered."
+                                ),
+                                proposed_signature=None,
+                                detection_point=DETECTION_SCHEDULER,
+                            )
+                        )
+                    except Exception:
+                        logger.exception(
+                            "automation_tool_gap_surface_failed",
+                            tool_name=tool_name,
+                            capability_name=automation.capability_name,
+                        )
+                next_run_at = self._compute_next_run(automation, now)
+                await self._repo.advance_schedule(
+                    automation_id=automation.id,
+                    last_run_at=now,
+                    next_run_at=next_run_at,
+                    increment_run_count=False,
+                    increment_failure_count=True,
+                )
+                logger.info(
+                    "automation_blocked_missing_tool",
+                    automation_id=automation.id,
+                    missing_tools=missing,
+                )
+                return DispatchReport(
+                    automation_id=automation.id,
+                    run_id=None,
+                    outcome="blocked_missing_tool",
+                    alert_sent=False,
+                    error=f"missing tools: {','.join(missing)}",
+                )
+
         run_id = await self._repo.insert_run(
             automation_id=automation.id, started_at=now,
             execution_path=path,

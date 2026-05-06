@@ -60,6 +60,7 @@ class MorningDigest:
         gmail: GmailClient | None = None,
         user_email: str = "",
         self_diagnostic: SelfDiagnostic | None = None,
+        tool_request_repo: Any | None = None,
     ) -> None:
         self._db = db
         self._service = service
@@ -71,6 +72,10 @@ class MorningDigest:
         self._gmail = gmail
         self._user_email = user_email
         self._self_diagnostic = self_diagnostic
+        # Slice 22 — when wired, _assemble_data adds an open speculative
+        # tool-gap aggregation under ``tool_gaps`` so the digest surfaces
+        # them. High-severity gaps are excluded — they already pinged.
+        self._tool_request_repo = tool_request_repo
 
     async def run(self) -> None:
         """Sleep until the next 6:30 AM, fire digest, repeat."""
@@ -245,6 +250,28 @@ class MorningDigest:
         with contextlib.suppress(Exception):
             monthly_budget = self._router._models_config.cost.monthly_budget_usd
 
+        # Slice 22 — open speculative tool-gap aggregation (high-severity
+        # rows already pinged in real time).
+        tool_gap_lines: list[str] = []
+        if self._tool_request_repo is not None:
+            try:
+                rows = await self._tool_request_repo.list_open_speculative(
+                    exclude_snoozed=True, now=now,
+                )
+                for row in rows:
+                    blocking = (
+                        f"capability `{row.blocking_capability_id}`"
+                        if row.blocking_capability_id
+                        else "skill draft"
+                    )
+                    tool_gap_lines.append(
+                        f"- `{row.tool_name}` (priority {row.priority}, from "
+                        f"{blocking}, first seen "
+                        f"{row.first_seen_at.strftime('%Y-%m-%d')})"
+                    )
+            except Exception:
+                logger.exception("morning_digest_tool_gaps_query_failed")
+
         return {
             "current_date": today_start.strftime("%Y-%m-%d"),
             "day_of_week": today_start.strftime("%A"),
@@ -258,6 +285,7 @@ class MorningDigest:
             "yesterday_cost": f"{yesterday_cost:.4f}",
             "mtd_cost": f"{mtd_cost:.4f}",
             "monthly_budget": f"{monthly_budget:.2f}",
+            "tool_gaps": "\n".join(tool_gap_lines) or "None.",
         }
 
     def _render_degraded(self, data: dict[str, Any]) -> str:
@@ -282,6 +310,9 @@ class MorningDigest:
                 f"Yesterday: ${data['yesterday_cost']} | "
                 f"Month-to-date: ${data['mtd_cost']} / ${data['monthly_budget']}"
             ),
+            "",
+            "**Tool Gaps (speculative)**",
+            data.get("tool_gaps", "None."),
         ]
         text = "\n".join(lines)
         # Discord message limit.

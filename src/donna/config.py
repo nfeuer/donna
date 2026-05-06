@@ -405,6 +405,23 @@ class PromptDeliveryConfig(BaseModel):
     chat_min_answer_chars: int = 50
 
 
+class ToolGapLintConfigModel(BaseModel):
+    """Slice 22 — tool-build lint defaults exposed in YAML."""
+
+    requires_rebuild_default: bool = False
+    default_timeout_seconds: int = 5
+    detect_secrets_enabled: bool = False
+
+
+class ToolGapConfig(BaseModel):
+    """Slice 22 — tool gap surfacing configuration."""
+
+    realtime_channel: str = "agents"
+    snooze_seconds: int = 86400
+    reping_cooldown_seconds: int = 14400
+    lint: ToolGapLintConfigModel = Field(default_factory=ToolGapLintConfigModel)
+
+
 class ManualEscalationConfig(BaseModel):
     """Top-level manual escalation configuration (bootstrap defaults)."""
 
@@ -421,6 +438,7 @@ class ManualEscalationConfig(BaseModel):
     prompt_delivery: PromptDeliveryConfig = Field(
         default_factory=PromptDeliveryConfig
     )
+    tool_gap: ToolGapConfig = Field(default_factory=ToolGapConfig)
 
 
 def load_manual_escalation_config(config_dir: Path) -> ManualEscalationConfig:

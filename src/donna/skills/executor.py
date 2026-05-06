@@ -123,6 +123,7 @@ class SkillExecutor:
         shadow_sampler: ShadowSampler | None = None,
         config: Any | None = None,               # Wave 2: SkillSystemConfig for validation timeouts
         task_type_prefix: str | None = None,     # Wave 2: override "skill_step" default
+        tool_gap_surfacer: Any | None = None,    # Slice 22: emit high gap on missing tool
     ) -> None:
         self._router = model_router
         if tool_registry is not None:
@@ -148,6 +149,12 @@ class SkillExecutor:
             autoescape=False,
             undefined=jinja2.StrictUndefined,
         )
+        # Slice 22 — optional defensive trip-wire. When wired, the
+        # executor surfaces a high-severity ToolGap on any tool dispatch
+        # against a name not in the registry before the normal
+        # ToolNotFoundError path runs. Catches the case where boot-check
+        # + scheduler-pre-run both missed (mid-run config edit, etc.).
+        self._tool_gap_surfacer = tool_gap_surfacer
 
     async def execute(
         self,
@@ -204,6 +211,8 @@ class SkillExecutor:
                         step.get("tool_invocations", []),
                         state=state, inputs=inputs,
                         allowed_tools=allowed_tools,
+                        user_id=user_id,
+                        capability_name=skill.capability_name,
                     )
                     state[step_name] = collected
                     record.output = collected
@@ -214,6 +223,8 @@ class SkillExecutor:
                         step.get("tool_invocations", []),
                         state=state, inputs=inputs,
                         allowed_tools=allowed_tools,
+                        user_id=user_id,
+                        capability_name=skill.capability_name,
                     )
                     state[step_name + "_tool_results"] = collected
                     record.tool_calls = list(collected.keys())
@@ -579,10 +590,22 @@ class SkillExecutor:
     async def _run_tool_invocations(
         self, invocations: list[dict[str, Any]], state: StateObject,
         inputs: dict[str, Any], allowed_tools: list[str],
+        user_id: str | None = None,
+        capability_name: str | None = None,
     ) -> dict[str, Any]:
-        """Resolve DSL (for_each) and run all tool invocations for a step."""
+        """Resolve DSL (for_each) and run all tool invocations for a step.
+
+        Slice 22 — defensive trip-wire: when ``self._tool_gap_surfacer``
+        is wired, dispatching to a name not in the registry surfaces a
+        high-severity ToolGap before the normal ToolNotFoundError path
+        runs. Catches mid-run config edits / dynamic capability
+        registration that boot-check + scheduler-pre-run both missed.
+        """
         collected: dict[str, Any] = {}
         state_dict = state.to_dict()
+        registered_names: set[str] | None = None
+        if self._tool_gap_surfacer is not None:
+            registered_names = set(self._tool_registry.list_tool_names())
 
         for raw_spec in invocations:
             if "for_each" in raw_spec:
@@ -597,6 +620,15 @@ class SkillExecutor:
                 )]
 
             for spec in specs:
+                if (
+                    registered_names is not None
+                    and spec.tool not in registered_names
+                ):
+                    await self._surface_runtime_tool_gap(
+                        tool_name=spec.tool,
+                        user_id=user_id or "system",
+                        capability_name=capability_name,
+                    )
                 result = await self._tool_dispatcher.run_invocation(
                     spec=spec, state=state_dict, inputs=inputs,
                     allowed_tools=allowed_tools,
@@ -604,6 +636,52 @@ class SkillExecutor:
                 collected.update(result)
 
         return collected
+
+    async def _surface_runtime_tool_gap(
+        self,
+        *,
+        tool_name: str,
+        user_id: str,
+        capability_name: str | None,
+    ) -> None:
+        """Slice 22 — file a high-severity ToolGap from runtime dispatch.
+
+        Best-effort; never raises. The downstream ToolNotFoundError /
+        ToolInvocationError still propagates as-is.
+        """
+        if self._tool_gap_surfacer is None:
+            return
+        try:
+            from donna.cost.tool_gap import (
+                DETECTION_RUNTIME_DISPATCH,
+                SEVERITY_HIGH,
+                ToolGap,
+            )
+            await self._tool_gap_surfacer.surface(
+                ToolGap(
+                    tool_name=tool_name,
+                    user_id=user_id,
+                    severity=SEVERITY_HIGH,
+                    blocking_capability_id=capability_name,
+                    rationale=(
+                        f"Skill execution dispatch attempted to call tool "
+                        f"'{tool_name}' but it is not registered "
+                        + (
+                            f"(capability '{capability_name}')."
+                            if capability_name
+                            else "(unknown capability)."
+                        )
+                    ),
+                    proposed_signature=None,
+                    detection_point=DETECTION_RUNTIME_DISPATCH,
+                )
+            )
+        except Exception:  # pragma: no cover - defensive
+            logger.exception(
+                "runtime_tool_gap_surface_failed",
+                tool_name=tool_name,
+                capability_name=capability_name,
+            )
 
     async def _consult_triage(
         self, skill: SkillRow, step_name: str, exc: Exception,

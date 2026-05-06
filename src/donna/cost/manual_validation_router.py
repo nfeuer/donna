@@ -40,6 +40,12 @@ import uuid6
 import yaml
 
 from donna.cost.escalation_repository import EscalationRequestRow
+from donna.cost.tool_lint import (
+    ToolLintConfig,
+    lint_tool_branch,
+)
+from donna.cost.tool_lint.import_smoke import run_import_smoke
+from donna.cost.tool_request_repository import ToolRequestRepository
 from donna.integrations.git_repo import GitRepo, GitRepoError
 from donna.skills.fixtures import (
     Fixture,
@@ -104,12 +110,23 @@ class ManualValidationRouter:
         executor_factory: ExecutorFactory,
         lifecycle: SkillLifecycleManager,
         fixture_pass_rate: float = DEFAULT_FIXTURE_PASS_RATE,
+        tool_request_repo: ToolRequestRepository | None = None,
+        tool_lint_config: ToolLintConfig | None = None,
+        host_repo_path: Any = None,
+        run_tool_import_smoke: bool = True,
     ) -> None:
         self._conn = conn
         self._host_repo = host_repo
         self._executor_factory = executor_factory
         self._lifecycle = lifecycle
         self._fixture_pass_rate = fixture_pass_rate
+        # Slice 22 — optional so existing constructors don't break;
+        # tool builds raise if these are absent and a tool_request_fulfillment
+        # row arrives.
+        self._tool_request_repo = tool_request_repo
+        self._tool_lint_config = tool_lint_config or ToolLintConfig()
+        self._host_repo_path = host_repo_path
+        self._run_tool_import_smoke = run_tool_import_smoke
 
     async def validate(
         self,
@@ -135,12 +152,13 @@ class ManualValidationRouter:
             ``reason`` is set).
         """
         # The task_type → entity_type mapping is hard-coded for slice
-        # 21; slice 22 (tools) extends this dispatch.
+        # 21 (skills); slice 22 adds the tool_request_fulfillment branch.
         if row.task_type in ("skill_auto_draft", "skill_evolution"):
             return await self._validate_skill(row, branch, diff_paths, actor_id)
+        if row.task_type == "tool_request_fulfillment":
+            return await self._validate_tool(row, branch, diff_paths, actor_id)
         raise NotImplementedError(
-            f"manual validation for task_type={row.task_type!r} is not implemented "
-            "(slice 22 covers tool builds)"
+            f"manual validation for task_type={row.task_type!r} is not implemented"
         )
 
     # ------------------------------------------------------------------
@@ -686,6 +704,185 @@ class ManualValidationRouter:
             executor=executor,
             fixtures=fixtures,
             version=temp_version,
+        )
+
+
+    # ------------------------------------------------------------------
+    # Tool path (slice 22)
+    # ------------------------------------------------------------------
+
+    async def _validate_tool(
+        self,
+        row: EscalationRequestRow,
+        branch: str,
+        diff_paths: list[str],
+        actor_id: str | None,
+    ) -> ValidationOutcome:
+        """Validate a tool_request_fulfillment branch.
+
+        Steps:
+            1. Resolve the originating ``tool_request`` row.
+            2. Read every diff path's source via ``git show``.
+            3. Run :func:`donna.cost.tool_lint.lint_tool_branch` —
+               §10.5 rows 2-6.
+            4. Run :func:`donna.cost.tool_lint.import_smoke.run_import_smoke`
+               in a subprocess — catches ImportError for missing deps
+               (§10.5 row 1 trailing case).
+            5. On pass: mark the tool_request completed; return passed.
+            6. On fail: leave the tool_request open so the user can
+               iterate in the same worktree (slice 21 iteration cap
+               then governs).
+
+        Tools have **no** lifecycle table. The merged branch becomes
+        active when the user manually merges + restarts the orchestrator
+        (§10.5 row 1 ``requires_rebuild`` semantics).
+        """
+        if self._tool_request_repo is None:
+            return ValidationOutcome(
+                passed=False, skill_id=None, pass_rate=None,
+                matched_files=list(diff_paths),
+                failures=[{
+                    "case_name": "(config)",
+                    "reason": "tool_request_repo not wired",
+                }],
+                reason="tool_request_repo not wired",
+            )
+
+        # 1. Resolve originating tool_request.
+        ent_type = row.originating_entity_type
+        ent_id = row.originating_entity_id
+        if ent_type != "tool_request" or ent_id is None:
+            return ValidationOutcome(
+                passed=False, skill_id=None, pass_rate=None,
+                matched_files=list(diff_paths),
+                failures=[],
+                reason=(
+                    f"originating_entity must be ('tool_request', <id>); "
+                    f"got ({ent_type!r}, {ent_id!r})"
+                ),
+            )
+        try:
+            request_id = int(ent_id)
+        except (TypeError, ValueError):
+            return ValidationOutcome(
+                passed=False, skill_id=None, pass_rate=None,
+                matched_files=list(diff_paths),
+                failures=[],
+                reason=f"originating_entity_id {ent_id!r} is not an integer",
+            )
+        tool_req = await self._tool_request_repo.get(request_id)
+        if tool_req is None:
+            return ValidationOutcome(
+                passed=False, skill_id=None, pass_rate=None,
+                matched_files=list(diff_paths),
+                failures=[],
+                reason=f"tool_request {request_id} not found",
+            )
+        tool_name = tool_req.tool_name
+
+        # 2. Read each diff path's committed source.
+        source_text_by_path: dict[str, str] = {}
+        for path in diff_paths:
+            try:
+                source_text_by_path[path] = await self._host_repo.show_file(
+                    branch, path
+                )
+            except GitRepoError as exc:
+                return ValidationOutcome(
+                    passed=False, skill_id=None, pass_rate=None,
+                    matched_files=list(diff_paths),
+                    failures=[{
+                        "case_name": f"(read:{path})",
+                        "reason": str(exc),
+                    }],
+                    reason=f"could not read {path} on branch",
+                )
+
+        # 3. Run lint.
+        lint_result = await lint_tool_branch(
+            branch=branch,
+            diff_paths=list(diff_paths),
+            tool_name=tool_name,
+            source_text_by_path=source_text_by_path,
+            config=self._tool_lint_config,
+        )
+        if not lint_result.passed:
+            return ValidationOutcome(
+                passed=False,
+                skill_id=None,
+                pass_rate=None,
+                matched_files=list(diff_paths),
+                failures=[
+                    {
+                        "case_name": f"(lint:{f.rule})",
+                        "reason": (
+                            f"{f.path}"
+                            + (f":{f.line}" if f.line else "")
+                            + f" — {f.message}"
+                        ),
+                    }
+                    for f in lint_result.failures
+                ],
+                reason=(
+                    f"{len(lint_result.failures)} lint failure(s); "
+                    "iterate in worktree and resubmit"
+                ),
+            )
+
+        # 4. Import-smoke (subprocess) — opt-out for tests.
+        if self._run_tool_import_smoke and self._host_repo_path is not None:
+            smoke = await run_import_smoke(
+                host_repo_path=self._host_repo_path,
+                tool_name=tool_name,
+            )
+            if not smoke.passed:
+                return ValidationOutcome(
+                    passed=False,
+                    skill_id=None,
+                    pass_rate=None,
+                    matched_files=list(diff_paths),
+                    failures=[{
+                        "case_name": "(import_smoke)",
+                        "reason": (
+                            f"`python -c 'import donna.skills.tools."
+                            f"{tool_name}'` exited {smoke.returncode}: "
+                            f"{(smoke.stderr or smoke.stdout or '').strip()[:500]}"
+                        ),
+                    }],
+                    reason="tool module import failed",
+                )
+
+        # 5. Mark the tool_request completed.
+        await self._tool_request_repo.mark_completed(
+            request_id, branch_name=branch,
+        )
+        logger.info(
+            "tool_request_validated",
+            tool_request_id=request_id,
+            tool_name=tool_name,
+            branch=branch,
+        )
+
+        # Surface the requires_rebuild warning as a "matched" note via
+        # the validation_result panel — `failures=[]` keeps passed=True.
+        warnings_payload: list[dict[str, str]] = [
+            {
+                "case_name": f"(warn:{w.rule})",
+                "reason": (
+                    f"{w.path}"
+                    + (f":{w.line}" if w.line else "")
+                    + f" — {w.message}"
+                ),
+            }
+            for w in lint_result.warnings
+        ]
+        return ValidationOutcome(
+            passed=True,
+            skill_id=None,
+            pass_rate=None,
+            matched_files=list(diff_paths),
+            failures=warnings_payload,  # surfaced for dashboard, ignored by gate
+            reason=None,
         )
 
 

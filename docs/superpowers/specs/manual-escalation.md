@@ -512,41 +512,71 @@ paste-back issues from §5.2/§5.3.
 ## 7. Tool gap protocol
 
 Tools cannot be auto-drafted (security, dependencies, credentials,
-image rebuild). When `capability_tool_check` finds a missing tool,
-Donna takes one of two paths based on **blocking severity**:
+image rebuild). When a missing tool is detected, Donna takes one of
+two paths based on **blocking severity**.
 
-| Blocking severity | Trigger | Surfacing |
+### Severity enum
+
+| Value | Trigger | Surfacing |
 |---|---|---|
-| **High** | Capability is active (scheduled or user-invoked) and cannot run | Real-time Discord ping with `[File request] [Snooze 24h]` |
-| **Speculative** | Capability is registered but not yet scheduled, OR a skill draft proposed using a not-yet-existing tool | Filed silently to `tool_request` table; surfaces in morning digest |
+| **`high`** | Capability is active *and* about to run (scheduler pre-run, automation creation, runtime dispatch trip-wire) | Real-time Discord ping with `[File request] [Snooze 24h]` to the configured channel (default `agents`) |
+| **`speculative`** | Boot-time mismatch on `pending_review` / `on_manual` capability, OR a skill draft (AutoDrafter pre-flight) proposed using a not-yet-existing tool | Filed silently to `tool_request`; surfaces in the morning digest under **Tool Gaps (speculative)** |
 
-Both paths write a `tool_request` row:
+### Detection points (slice 22)
 
-```sql
-CREATE TABLE tool_request (
-  id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL,
-  tool_name TEXT NOT NULL,
-  proposed_signature JSON,
-  rationale TEXT,
-  blocking_capability_id INTEGER,    -- NULL = speculative
-  priority INTEGER DEFAULT 3,        -- 1-5 like tasks
-  status TEXT DEFAULT 'open',        -- open|in_progress|completed|rejected
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  resolved_at TIMESTAMP,
-  resolved_branch TEXT
-);
-```
+| `detection_point` literal | Site | Severity emitted |
+|---|---|---|
+| `capability_tool_check` | `CapabilityToolRegistryCheck` boot pass; for `pending_review` / `on_manual` capabilities only | speculative |
+| `scheduler_pre_run` | `AutomationDispatcher.dispatch()` before launching a skill run; one gap per missing tool, dispatch returns `outcome='blocked_missing_tool'` | high |
+| `automation_creation` | `MissingToolError` thrown by `AutomationCreationPath.approve` when a Discord automation flow needs an unregistered tool | high |
+| `skill_draft` | `AutoDrafter` pre-flight: every `step.tools` name not in registry | speculative |
+| `runtime_dispatch` | `SkillExecutor._run_tool_invocations` defensive trip-wire — catches mid-run dispatch attempts that boot-check + scheduler-pre-run both missed | high |
 
-Tool builds use the same `claude_code` protocol as §5.3 but with
-extra checks (§10 tool-build-specific failures): mock entry required,
-`pyproject.toml` change requires `requires_rebuild=true`, secret
-references must be by name not value.
+`CapabilityToolRegistryCheck` keeps its **fail-loud** boot guarantee
+for the dangerous subset (capability `status='active'` AND
+`trigger_type IN ('on_schedule', 'on_message')`) — those mismatches
+still raise `CapabilityToolConfigError`. Speculative rows are
+surfaced *before* the raise so they're still in the table when the
+operator reboots after fixing the fatal subset.
+
+### Storage
+
+Both paths upsert a `tool_request` row (full schema in §8). The
+partial-unique index `ix_tool_request_open_user_tool` on
+`(user_id, tool_name) WHERE status='open'` deduplicates re-emission
+while a row is open: the repository bumps `priority = max(existing,
+new)`, refreshes `rationale` / `severity` (promoting speculative →
+high if the new gap is more urgent), updates `last_seen_at`. Once
+the row is `completed` / `rejected`, a fresh emission creates a new
+row so historical pattern isn't lost.
+
+### Snooze + re-ping
+
+- `[Snooze 24h]` sets `tool_request.snoozed_until = now + 86400s`
+  (default; configurable). Snoozed rows are excluded from the
+  morning digest until the deadline passes; they remain `open` so
+  re-emission still upserts onto the same row.
+- The surfacer rate-limits high-severity Discord re-pings via
+  `last_pinged_at`; default cooldown is 4h
+  (`tool_gap.reping_cooldown_seconds`). Inside the cooldown,
+  re-emission updates the row but doesn't post a fresh message.
+
+### Tool builds
+
+The `[File request]` button kicks off a `tool_request_fulfillment`
+escalation that reuses the slice-21 `claude_code` protocol via the
+gate's new `open_tool_build_escalation()` method. The escalation row
+carries `originating_entity_type='tool_request'` and
+`originating_entity_id=<tool_request.id>` so
+`ManualValidationRouter._validate_tool` can resolve back. Tool
+builds use a separate Jinja template
+(`prompts/escalation/tool_build.md`) and an extra lint pipeline
+(§10.5).
 
 Crucially: the **decision to start a tool build is always the user's**.
-A real-time ping is a notification, not an escalation request — there
-are no `[Approve $X extension]` buttons because no API spend will
-fix the gap.
+A real-time ping is a notification, not an estimate-driven escalation —
+there are no `[Approve $X extension]` buttons because no API spend
+will fix the gap.
 
 ---
 
@@ -616,20 +646,38 @@ CREATE TABLE dashboard_setting (
   updated_by TEXT NOT NULL
 );
 
--- §7 — tool gaps
+-- §7 — tool gaps. Slice 22 actual layout (migration b2c3d4e5f6a8).
+-- Original §8 spec listed only id / user_id / tool_name /
+-- proposed_signature / rationale / blocking_capability_id / priority /
+-- status / created_at / resolved_at / resolved_branch; the columns
+-- below add what surfacing + dedup + snooze need.
 CREATE TABLE tool_request (
-  id INTEGER PRIMARY KEY,
-  user_id INTEGER NOT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,                     -- TEXT for parity with escalation_request.user_id
   tool_name TEXT NOT NULL,
-  proposed_signature JSON,
+  proposed_signature JSON,                   -- loose Python-type-hint shape, see §7
   rationale TEXT,
-  blocking_capability_id INTEGER,
-  priority INTEGER DEFAULT 3,
-  status TEXT DEFAULT 'open',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  resolved_at TIMESTAMP,
-  resolved_branch TEXT
+  blocking_capability_id TEXT,               -- NULL ⇔ severity='speculative' from skill draft
+  priority INTEGER NOT NULL DEFAULT 3,
+  status TEXT NOT NULL DEFAULT 'open',       -- open|in_progress|completed|rejected
+  -- Slice 22 additions ---------------------
+  severity TEXT NOT NULL DEFAULT 'speculative',  -- 'high' | 'speculative'
+  detection_point TEXT,                      -- capability_tool_check|scheduler_pre_run|automation_creation|skill_draft|runtime_dispatch
+  snoozed_until TIMESTAMP,                   -- set by [Snooze 24h]
+  first_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  resolved_at   TIMESTAMP,
+  resolved_branch TEXT,
+  escalation_request_id INTEGER REFERENCES escalation_request(id),  -- set by [File request]
+  last_pinged_at TIMESTAMP                   -- rate-limits Discord re-pings on dedup hits
 );
+-- Dedup: only one open row per (user, tool). Resolved/rejected rows
+-- allow new emissions so historical pattern isn't lost.
+CREATE UNIQUE INDEX ix_tool_request_open_user_tool
+  ON tool_request(user_id, tool_name) WHERE status = 'open';
+CREATE INDEX ix_tool_request_status_severity ON tool_request(status, severity);
+CREATE INDEX ix_tool_request_blocking_capability ON tool_request(blocking_capability_id);
 
 -- Existing invocation_log gains:
 ALTER TABLE invocation_log ADD COLUMN escalation_request_id INTEGER
@@ -713,14 +761,22 @@ Organized by failure category.
 
 ### 10.5 Tool-build-specific failures (extends §10.4)
 
+Slice 22 implements every row below as a discrete check in
+`src/donna/cost/tool_lint/`. `ManualValidationRouter._validate_tool`
+runs the full pipeline against the diff scope before promoting the
+`tool_request` row to `completed`. Lint failures keep the row in
+`open` so the user can iterate in the same worktree (slice 21
+iteration cap then governs).
+
 | Failure | Mitigation |
 |---|---|
-| Tool needs new dependency, image not rebuilt | Tool-build template requires `requires_rebuild: bool` field in tool metadata. If `true` after merge: registry refuses to mark tool active until orchestrator restart with new build SHA. Discord nag posted hourly until rebuild. |
-| Tool hardcodes a credential value | Pre-commit secret scanner runs on the branch before validation. Common patterns (long entropy strings, `sk_`, `xoxb-`, etc.) blocked. Plus diff inspection: any string matching the vault key naming convention is flagged. |
-| Tool calls Anthropic API directly (bypassing gateway) | Lint check: `import anthropic` outside `src/donna/llm/` is a hard fail. |
-| Tool not added to any agent allowlist | Lint check. Submission requires at least one allowlist update or an explicit `unallowlisted=true` flag (which keeps the tool defined-but-unusable). |
-| Tool does I/O at import time (would break ValidationExecutor) | Lint check: tool module's top-level scope must not invoke network/disk APIs. Heuristic + explicit `is_inert_at_import` test fixture. |
-| Tool unbounded latency | Per-tool `default_timeout_seconds` declared in metadata; dispatcher enforces. Default 5s; tool builds set explicitly. |
+| Tool needs new dependency, image not rebuilt | `tool_lint/metadata.py` — module-level `requires_rebuild: bool` is required. `True` is accepted but emits a `requires_rebuild_warning` (surfaced on the dashboard panel). The hourly Discord nag is deferred to slice 24 (escalation hardening). |
+| Tool hardcodes a credential value | `tool_lint/secrets.py` — curated regex list (`sk-ant-…`, `sk-…`, `xoxb-…`, `xapp-…`, `ghp_…`, `AKIA…`, PEM private-key headers, Google `AIza…`) plus a vault-key naming heuristic that flags `*_API_KEY = "…"` assignments unless the value goes through `vault.read(…)` / `os.environ` / `getenv`. The opt-in `detect-secrets` shim runs only when `tool_gap.lint.detect_secrets_enabled = true` AND the package is importable. |
+| Tool calls Anthropic API directly (bypassing gateway) | `tool_lint/anthropic_import.py` — AST walk; `import anthropic` / `from anthropic[…] import …` outside `src/donna/llm/` is a hard fail. |
+| Tool not added to any agent allowlist | `tool_lint/allowlist.py` — diff must include at least one of `config/agents.yaml`, `config/skills.yaml`, `config/task_types.yaml` AND the modified file's text must contain the `tool_name` near a `tools:` / `tools_json` key. OR the tool source declares module-level `unallowlisted = True` (intentional defined-but-unusable). |
+| Tool does I/O at import time (would break ValidationExecutor) | Two layers. (a) `tool_lint/import_io.py` — AST walk over the **module body** only; rejects top-level Calls whose target chain starts with `open`, `requests`, `urllib`, `aiohttp`, `httpx`, `socket`, `subprocess`, `os.system`, `pathlib.Path(...).read_text/write_text`, etc. Descends into `If`/`Try`/`With` at module scope. (b) `tool_lint/inert_test.py` — branch must include `tests/skills/tools/test_<tool_name>.py` containing a Call to `is_inert_at_import('donna.skills.tools.<tool_name>')` (see `donna.skills.tool_test_kit`). |
+| Tool unbounded latency | `tool_lint/metadata.py` — module-level `default_timeout_seconds: int > 0` is required. The dispatcher's enforcement is out of scope for slice 22; the lint guarantees the metadata exists for slice 24's enforcement step. Default rendered into the spec template is `5`. |
+| Tool module fails to import after lint passes | `tool_lint/import_smoke.py` — subprocess `python -c "import donna.skills.tools.<tool_name>"` against the host-repo worktree at the branch tip. Catches `ImportError` for missing optional deps that AST inspection can't see. 10s timeout. |
 
 ### 10.6 Budget-extension-specific failures
 
@@ -765,10 +821,26 @@ Every state transition writes to `invocation_log` with `task_type='escalation_li
 - `escalation_validated` / `escalation_failed`
 - `escalation_branch_not_found` (slice 21) — branch missing on poller tick
 - `extension_granted` / `extension_voided`
-- `tool_gap_detected` / `tool_request_filed`
 - `iteration_limit_reached` (slice 21) — manual handoff reached
   `manual_iteration_limit` resubmits without passing; row auto-cancels
   with `human_review=1`
+- `tool_gap_detected` (slice 22) — written every time
+  `ToolGapSurfacer.surface(gap)` upserts a `tool_request` row,
+  regardless of severity. Payload includes `tool_name`, `severity`,
+  `blocking_capability_id`, `detection_point`, `rationale`, `is_new`.
+- `tool_request_filed` (slice 22) — written when a high-severity ping
+  is successfully posted to Discord (or re-posted after the cooldown).
+  Distinguishes a fresh ping from a noop.
+- `tool_request_filled` (slice 22) — written by
+  `ManualValidationRouter._validate_tool` after lint + import-smoke
+  pass and the row is marked `completed`.
+- `tool_gap_snoozed` / `tool_gap_owner_mismatch` (slice 22) — view
+  button hooks; mirror the `escalation_owner_mismatch` precedent.
+
+Slice 22 audit rows use `task_type='tool_gap_lifecycle'` (separate
+from `escalation_lifecycle` so cost aggregations and per-subsystem
+queries stay clean) and store `input_hash='toolreq:<id>'` so the row
+is queryable by tool_request id without a JSON scan.
 
 Dashboard renders these as a timeline per escalation_request_id.
 
@@ -906,6 +978,49 @@ matching brief in `slices/`.
   HTTP route and the `/donna submit` slash command delegate to it,
   so schema validation, mode mismatch, iteration cap, and concurrent-
   submission guards are identical across surfaces.
+- **(2026-05-06, slice 22)** Tool-gap dedup key is
+  `(user_id, tool_name)` enforced via partial-unique index on
+  `status='open'`. Re-emission while open bumps `priority`, refreshes
+  `rationale`, can promote `severity` speculative→high; once
+  resolved/rejected, fresh emissions create new rows so historical
+  pattern isn't lost.
+- **(2026-05-06, slice 22)** Snooze is a column on `tool_request`
+  (`snoozed_until`), not a separate table. The repository's
+  `snooze()` is idempotent against terminal rows (returns False).
+- **(2026-05-06, slice 22)** **No tool lifecycle table.** Tools live
+  in source code; the deployment cycle (manual merge + orchestrator
+  restart, plus rebuild when `requires_rebuild=True`) is the
+  activation path. `_validate_tool`'s success only marks the
+  `tool_request` row `completed` and fires the `tool_request_filled`
+  audit; the user runs `git merge` + restart manually. This preserves
+  the §15 ToS principle ("human is always the operator").
+- **(2026-05-06, slice 22)** Tool validation in slice 22 = **lint +
+  import-smoke**. Dependent-skill regression (re-running fixtures of
+  every skill that references the new tool) is deferred to slice 24
+  (escalation hardening) per spec §10.4 row 4.
+- **(2026-05-06, slice 22)** Secret scanner is a curated regex list
+  by default; the `detect-secrets` shim is opt-in via
+  `tool_gap.lint.detect_secrets_enabled`. Slice 24 may flip the flag
+  without code changes.
+- **(2026-05-06, slice 22)** `EscalationGate.open_tool_build_escalation`
+  bypasses `fire_and_wait` because tool builds have no API spend to
+  gate — the user already chose to fulfill the request by clicking
+  `[File request]`. The gate creates the `escalation_request` row
+  with `offered_modes=['claude_code']` and immediately calls
+  `record_manual_handoff` to render the spec from `tool_build.md`.
+- **(2026-05-06, slice 22)** Tool-build prompt selection is driven by
+  `task_type` via `_TASK_TYPE_TO_TEMPLATE` in
+  `donna.cost.claude_code_spec`; `record_manual_handoff` accepts an
+  `extra_context` kwarg so the gate can plumb tool-specific Jinja
+  variables (`proposed_signature`, `requires_rebuild_default`,
+  `default_timeout_seconds`) without forking the spec builder.
+- **(2026-05-06, slice 22)** `CapabilityToolRegistryCheck` keeps
+  fail-loud on the dangerous subset (active + scheduled/messaged
+  capabilities) but surfaces speculative gaps for `pending_review` /
+  `on_manual` capabilities **before** any raise so the rows exist
+  on the next reboot. New `surfacer` and `boot_owner_user_id`
+  constructor kwargs default to `None` / `"boot"` for backward
+  compatibility.
 
 ---
 

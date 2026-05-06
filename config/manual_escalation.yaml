@@ -44,3 +44,17 @@ prompt_delivery:
   workspace_subdir: escalations         # under ${DONNA_WORKSPACE_PATH}
   slash_command_max_chars: 3000         # /donna submit hard cap; longer → "use dashboard"
   chat_min_answer_chars: 50             # mirror schemas/escalation_submission.json minLength
+
+# Slice 22 — tool-gap surfacing (canonical spec §7, §10.5).
+# High-blocking gaps post a [File request] [Snooze 24h] view to the
+# `realtime_channel`; speculative gaps file silently and surface via
+# the morning digest. Tool builds use the same claude_code protocol as
+# §5.3 with the extra lint gates declared here.
+tool_gap:
+  realtime_channel: agents              # Discord channel for high-severity pings
+  snooze_seconds: 86400                 # 24h (matches button label)
+  reping_cooldown_seconds: 14400        # 4h floor between dedup-hit re-pings
+  lint:
+    requires_rebuild_default: false     # default rendered into tool_build.md
+    default_timeout_seconds: 5          # default rendered into tool_build.md
+    detect_secrets_enabled: false       # opt-in shim — false = curated regex only

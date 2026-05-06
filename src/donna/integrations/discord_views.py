@@ -9,6 +9,7 @@ See docs/notifications.md and the discord interaction expansion plan.
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC
 from typing import TYPE_CHECKING, Any
 
@@ -977,5 +978,236 @@ class _ClaudeCodeHandoffButton(discord.ui.Button[discord.ui.View]):
             spec_path=str(rendered.path),
             branch_name=rendered.branch_name,
             user_id=interaction.user.id,
+        )
+        view.stop()
+
+
+# ---------------------------------------------------------------------------
+# Slice 22 — tool gap ping view
+# ---------------------------------------------------------------------------
+
+
+class ToolGapPingView(discord.ui.View):
+    """High-blocking tool-gap ping with ``[File request] [Snooze 24h]``.
+
+    Posted by :class:`donna.cost.tool_gap_surfacer.ToolGapSurfacer`
+    when a high-severity gap is detected. Owner-ID check, stale-click
+    guard, and audit writes mirror :class:`BudgetEscalationView`.
+
+    See docs/superpowers/specs/manual-escalation.md §7.
+    """
+
+    def __init__(
+        self,
+        *,
+        tool_request_id: int,
+        tool_name: str,
+        owner_discord_id: int,
+        gate: Any,
+        tool_request_repo: Any,
+        snooze_seconds: int = 86400,
+        timeout_seconds: float = 3600,
+    ) -> None:
+        super().__init__(timeout=timeout_seconds)
+        self._tool_request_id = tool_request_id
+        self._tool_name = tool_name
+        self._owner_discord_id = owner_discord_id
+        self._gate = gate
+        self._tool_request_repo = tool_request_repo
+        self._snooze_seconds = snooze_seconds
+        self.add_item(
+            _ToolGapFileRequestButton(tool_request_id=tool_request_id)
+        )
+        self.add_item(
+            _ToolGapSnoozeButton(
+                tool_request_id=tool_request_id,
+                snooze_seconds=snooze_seconds,
+            )
+        )
+
+    @property
+    def tool_request_id(self) -> int:
+        return self._tool_request_id
+
+    @property
+    def tool_name(self) -> str:
+        return self._tool_name
+
+    @property
+    def owner_discord_id(self) -> int:
+        return self._owner_discord_id
+
+    @property
+    def gate(self) -> Any:
+        return self._gate
+
+    @property
+    def tool_request_repo(self) -> Any:
+        return self._tool_request_repo
+
+    @property
+    def snooze_seconds(self) -> int:
+        return self._snooze_seconds
+
+
+def _disable_all(view: discord.ui.View) -> None:
+    for child in view.children:
+        if isinstance(child, discord.ui.Button):
+            child.disabled = True
+
+
+class _ToolGapFileRequestButton(discord.ui.Button[discord.ui.View]):
+    """[File request] — open a tool_request_fulfillment escalation."""
+
+    def __init__(self, *, tool_request_id: int) -> None:
+        super().__init__(
+            label="File request",
+            style=ButtonStyle.green,
+            custom_id=f"tool_gap_file_{tool_request_id}",
+        )
+
+    async def callback(self, interaction: Interaction) -> None:
+        view = self.view
+        if not isinstance(view, ToolGapPingView):
+            return
+        if interaction.user.id != view.owner_discord_id:
+            logger.warning(
+                "tool_gap_owner_mismatch",
+                tool_request_id=view.tool_request_id,
+                actual_user_id=interaction.user.id,
+                expected_user_id=view.owner_discord_id,
+                button="file_request",
+            )
+            await interaction.response.send_message(
+                "Only the account owner can resolve this.", ephemeral=True
+            )
+            return
+
+        # Stale-click guard.
+        row = await view.tool_request_repo.get(view.tool_request_id)
+        if row is None:
+            await interaction.response.send_message(
+                "Tool request not found.", ephemeral=True
+            )
+            view.stop()
+            return
+        if row.status != "open":
+            await interaction.response.send_message(
+                f"Tool request already {row.status}.", ephemeral=True
+            )
+            _disable_all(view)
+            with contextlib.suppress(Exception):
+                await interaction.message.edit(view=view)  # type: ignore[union-attr]
+            view.stop()
+            return
+
+        try:
+            esc_row, _rendered = await view.gate.open_tool_build_escalation(
+                tool_request_id=view.tool_request_id,
+                tool_name=view.tool_name,
+                user_id=row.user_id,
+                priority=row.priority,
+                actor_id=str(interaction.user.id),
+                proposed_signature=row.proposed_signature,
+            )
+        except Exception:
+            logger.exception(
+                "tool_gap_file_request_failed",
+                tool_request_id=view.tool_request_id,
+            )
+            await interaction.response.send_message(
+                "Couldn't file the request — check the dashboard.",
+                ephemeral=True,
+            )
+            return
+
+        await view.tool_request_repo.mark_in_progress(
+            view.tool_request_id,
+            escalation_request_id=esc_row.id,
+        )
+        _disable_all(view)
+        with contextlib.suppress(Exception):
+            await interaction.message.edit(view=view)  # type: ignore[union-attr]
+
+        await interaction.response.send_message(
+            (
+                f"Filed tool build request for `{view.tool_name}` — "
+                f"escalation `{esc_row.correlation_id}`. "
+                "Open the dashboard for the worktree command."
+            ),
+            ephemeral=True,
+        )
+        logger.info(
+            "tool_gap_filed_via_button",
+            tool_request_id=view.tool_request_id,
+            tool_name=view.tool_name,
+            escalation_request_id=esc_row.id,
+            user_id=interaction.user.id,
+        )
+        view.stop()
+
+
+class _ToolGapSnoozeButton(discord.ui.Button[discord.ui.View]):
+    """[Snooze 24h] — set ``snoozed_until`` on the row."""
+
+    def __init__(self, *, tool_request_id: int, snooze_seconds: int) -> None:
+        super().__init__(
+            label="Snooze 24h",
+            style=ButtonStyle.gray,
+            custom_id=f"tool_gap_snooze_{tool_request_id}",
+        )
+        self._snooze_seconds = snooze_seconds
+
+    async def callback(self, interaction: Interaction) -> None:
+        view = self.view
+        if not isinstance(view, ToolGapPingView):
+            return
+        if interaction.user.id != view.owner_discord_id:
+            logger.warning(
+                "tool_gap_owner_mismatch",
+                tool_request_id=view.tool_request_id,
+                actual_user_id=interaction.user.id,
+                expected_user_id=view.owner_discord_id,
+                button="snooze",
+            )
+            await interaction.response.send_message(
+                "Only the account owner can resolve this.", ephemeral=True
+            )
+            return
+        try:
+            ok = await view.tool_request_repo.snooze(
+                view.tool_request_id, seconds=self._snooze_seconds
+            )
+        except Exception:
+            logger.exception(
+                "tool_gap_snooze_failed",
+                tool_request_id=view.tool_request_id,
+            )
+            await interaction.response.send_message(
+                "Couldn't snooze — try again.", ephemeral=True
+            )
+            return
+        if not ok:
+            await interaction.response.send_message(
+                "Tool request is no longer open.", ephemeral=True
+            )
+            _disable_all(view)
+            with contextlib.suppress(Exception):
+                await interaction.message.edit(view=view)  # type: ignore[union-attr]
+            view.stop()
+            return
+        _disable_all(view)
+        with contextlib.suppress(Exception):
+            await interaction.message.edit(view=view)  # type: ignore[union-attr]
+        hours = self._snooze_seconds // 3600
+        await interaction.response.send_message(
+            f"Snoozed `{view.tool_name}` for {hours}h.", ephemeral=True
+        )
+        logger.info(
+            "tool_gap_snoozed_via_button",
+            tool_request_id=view.tool_request_id,
+            tool_name=view.tool_name,
+            user_id=interaction.user.id,
+            snooze_seconds=self._snooze_seconds,
         )
         view.stop()

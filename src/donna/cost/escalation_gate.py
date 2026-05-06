@@ -394,6 +394,175 @@ class EscalationGate:
             EscalationGate._events.pop(correlation_id, None)
 
     # ------------------------------------------------------------------
+    # Slice 22 — tool build escalation entry (no cost gate)
+    # ------------------------------------------------------------------
+
+    async def open_tool_build_escalation(
+        self,
+        *,
+        tool_request_id: int,
+        tool_name: str,
+        user_id: str,
+        priority: int = 3,
+        actor_id: str | None = None,
+        proposed_signature: dict[str, Any] | None = None,
+    ) -> tuple[EscalationRequestRow, RenderedSpec | None]:
+        """Open a ``tool_request_fulfillment`` escalation directly.
+
+        Bypasses :meth:`fire_and_wait` because tool builds have no API
+        spend to gate — the user already chose to fulfill the request
+        by clicking ``[File request]`` on a
+        :class:`donna.integrations.discord_views.ToolGapPingView`.
+
+        Creates the ``escalation_request`` row with
+        ``originating_entity=('tool_request', <id>)`` and
+        ``offered_modes=['claude_code']``, then immediately renders the
+        spec via :meth:`record_manual_handoff` (status flips to
+        ``resolved``). Returns the row plus the rendered spec.
+
+        Args:
+            tool_request_id: FK back to the ``tool_request`` row.
+            tool_name: Used as the ``{name}`` substitution into
+                ``target_paths`` globs.
+            user_id: Owner.
+            priority: Inherited from the tool_request.
+            actor_id: Discord ID of the clicker (logged on resolution).
+            proposed_signature: Optional sketch passed through the
+                spec renderer's Jinja context.
+        """
+        if not await self._is_enabled():
+            logger.info(
+                "tool_build_escalation_master_disabled",
+                tool_request_id=tool_request_id,
+            )
+            return await self._abort_disabled(
+                user_id=user_id,
+                tool_request_id=tool_request_id,
+                tool_name=tool_name,
+            )
+        if not await self._should_offer_claude_code("tool_request_fulfillment"):
+            logger.warning(
+                "tool_build_escalation_claude_code_unavailable",
+                tool_request_id=tool_request_id,
+            )
+            return await self._abort_disabled(
+                user_id=user_id,
+                tool_request_id=tool_request_id,
+                tool_name=tool_name,
+            )
+
+        # De-dup: refuse if an open/in-flight escalation already exists
+        # for this tool_request, to mirror slice 21's skill de-dup
+        # (manual-escalation.md §5.3 "De-dup").
+        existing = await self._repo.find_open_for_originating_entity(
+            "tool_request", str(tool_request_id)
+        )
+        if existing is not None:
+            logger.info(
+                "tool_build_escalation_dedup_hit",
+                tool_request_id=tool_request_id,
+                existing_id=existing.id,
+                status=existing.status,
+            )
+            return existing, None
+
+        # Snapshot scope + base SHA up-front (mirrors fire_and_wait's
+        # claude_code branch).
+        target_paths = self._render_target_paths("tool_request_fulfillment")
+        base_sha: str | None = None
+        if self._host_repo is not None:
+            try:
+                base_sha = await self._host_repo.rev_parse(
+                    f"refs/heads/{self._config.modes.claude_code.base_ref}"
+                )
+            except Exception:
+                base_sha = None
+
+        correlation_id = str(uuid6.uuid7())
+        row = await self._repo.create(
+            user_id=user_id,
+            correlation_id=correlation_id,
+            task_id=None,
+            task_type="tool_request_fulfillment",
+            estimate_usd=0.0,
+            daily_remaining_usd=await self._daily_remaining(user_id),
+            offered_modes=["claude_code"],
+            priority=priority,
+            originating_entity=("tool_request", str(tool_request_id)),
+            target_paths=target_paths,
+            base_sha=base_sha,
+        )
+        await write_escalation_event(
+            self._repo._conn,
+            event=EVENT_OFFERED,
+            escalation_request_id=row.id,
+            correlation_id=correlation_id,
+            user_id=user_id,
+            task_id=None,
+            payload={
+                "task_type": "tool_request_fulfillment",
+                "offered_modes": ["claude_code"],
+                "tool_request_id": tool_request_id,
+                "tool_name": tool_name,
+                "estimate_usd": 0.0,
+            },
+        )
+
+        rendered = await self.record_manual_handoff(
+            correlation_id=correlation_id,
+            mode="claude_code",
+            capability_name=tool_name,
+            actor_id=actor_id,
+            task_summary=(
+                f"Build new tool '{tool_name}' to unblock pending capabilities."
+            ),
+            acceptance_criteria=_tool_build_acceptance_criteria(
+                tool_name, proposed_signature
+            ),
+            extra_context={
+                "proposed_signature": proposed_signature,
+                "requires_rebuild_default": False,
+                "default_timeout_seconds": 5,
+            },
+        )
+        # Re-fetch so the caller sees the post-handoff status.
+        refreshed = await self._repo.get(row.id)
+        return refreshed or row, rendered
+
+    async def _abort_disabled(
+        self,
+        *,
+        user_id: str,
+        tool_request_id: int,
+        tool_name: str,
+    ) -> tuple[EscalationRequestRow, RenderedSpec | None]:
+        """Internal: return a synthetic 'cancelled' row when disabled.
+
+        Used when the master kill-switch is off or claude_code mode is
+        unavailable. We still create the row so the audit trail captures
+        the click; the caller should surface a Discord message saying
+        "tool builds are disabled — flip the toggle and try again".
+        """
+        correlation_id = str(uuid6.uuid7())
+        row = await self._repo.create(
+            user_id=user_id,
+            correlation_id=correlation_id,
+            task_id=None,
+            task_type="tool_request_fulfillment",
+            estimate_usd=0.0,
+            daily_remaining_usd=0.0,
+            offered_modes=[],
+            priority=1,
+            originating_entity=("tool_request", str(tool_request_id)),
+            target_paths=None,
+            base_sha=None,
+        )
+        await self._repo.resolve(
+            row.id, resolution="cancel", resolved_by="system"
+        )
+        return row, None
+
+    # ------------------------------------------------------------------
     # Hooks for the Discord view + delivery loop
     # ------------------------------------------------------------------
 
@@ -572,6 +741,16 @@ class EscalationGate:
             )
             r = await cursor.fetchone()
             return str(r[0]) if r and r[0] else None
+        if ent_type == "tool_request":
+            # Slice 22: the "name" substituted into target_paths globs
+            # for tool builds is the tool name itself (used as
+            # ``src/donna/skills/tools/{name}.py``).
+            cursor = await self._repo._conn.execute(
+                "SELECT tool_name FROM tool_request WHERE id = ?",
+                (ent_id,),
+            )
+            r = await cursor.fetchone()
+            return str(r[0]) if r and r[0] else None
         return None
 
     def _render_target_paths(self, task_type: str) -> dict[str, str] | None:
@@ -598,6 +777,7 @@ class EscalationGate:
         actor_id: str | None = None,
         task_summary: str | None = None,
         acceptance_criteria: list[str] | None = None,
+        extra_context: dict[str, Any] | None = None,
     ) -> RenderedSpec | None:
         """Resolve an open escalation as a manual handoff (slice 21).
 
@@ -655,6 +835,7 @@ class EscalationGate:
                 base_sha=row.base_sha or "HEAD",
                 task_summary=task_summary or _default_summary(row),
                 acceptance_criteria=acceptance_criteria or _default_acceptance(),
+                extra_context=extra_context,
             )
         except Exception:
             logger.exception(
@@ -817,4 +998,31 @@ def _default_acceptance() -> list[str]:
         "ValidationExecutor pass rate >= configured threshold (default 0.8)",
         "no files touched outside the declared target_paths",
         "no forbidden patterns in any new commits",
+    ]
+
+
+def _tool_build_acceptance_criteria(
+    tool_name: str,
+    proposed_signature: dict[str, Any] | None,
+) -> list[str]:
+    """Slice 22 — tool build acceptance criteria (template hints).
+
+    The spec template (``prompts/escalation/tool_build.md``) renders
+    these as a checklist for the user. They mirror the §10.5 lint rules
+    so the user knows what validation will assert.
+    """
+    sig_hint = ""
+    if proposed_signature and proposed_signature.get("summary"):
+        sig_hint = f" (summary: {proposed_signature['summary']})"
+    return [
+        f"src/donna/skills/tools/{tool_name}.py present and importable{sig_hint}",
+        "module-level `requires_rebuild = <bool>` and `default_timeout_seconds = <int>` declared",
+        f"tests/skills/tools/test_{tool_name}.py present, calls "
+        f"is_inert_at_import('donna.skills.tools.{tool_name}')",
+        "tool added to at least one allowlist (config/agents.yaml | "
+        "skills.yaml | task_types.yaml) OR module declares unallowlisted = True",
+        "no `import anthropic` outside src/donna/llm/",
+        "no module-level network/disk I/O",
+        "no hardcoded credentials — use vault.read('<name>')",
+        "no files touched outside the declared target_paths",
     ]

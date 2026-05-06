@@ -89,6 +89,8 @@ class AutoDrafter:
         config: Any,
         executor_factory: ExecutorFactory,
         estimated_draft_cost_usd: float = 0.50,
+        tool_registry: Any = None,
+        tool_gap_surfacer: Any = None,
     ) -> None:
         self._conn = connection
         self._router = model_router
@@ -98,6 +100,13 @@ class AutoDrafter:
         self._config = config
         self._executor_factory = executor_factory
         self._estimated_cost = estimated_draft_cost_usd
+        # Slice 22 — pre-flight tool-gap detection. Each missing tool
+        # becomes a *speculative* tool_request row so the morning digest
+        # surfaces it. AutoDrafter still proceeds; the existing
+        # UnmockedToolError path will dismiss the candidate during
+        # fixture validation if applicable.
+        self._tool_registry = tool_registry
+        self._tool_gap_surfacer = tool_gap_surfacer
 
     # ------------------------------------------------------------------
     # Public API
@@ -246,6 +255,18 @@ class AutoDrafter:
         assert output_schemas is not None
         assert fixtures_data is not None
         assert candidate.capability_name is not None
+
+        # Slice 22 — pre-flight tool-gap detection. Skill drafts that
+        # reference tools not in the registry surface a speculative
+        # tool_request row each. Non-fatal — the existing
+        # UnmockedToolError path dismisses the candidate downstream.
+        await self._surface_speculative_tool_gaps(
+            skill_yaml=skill_yaml,
+            user_id="system",
+            capability_name=candidate.capability_name,
+            candidate_id=candidate.id,
+        )
+
         pass_rate = await self._validate_fixtures(
             skill_yaml=skill_yaml,
             step_prompts=step_prompts,
@@ -322,6 +343,82 @@ class AutoDrafter:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+
+    async def _surface_speculative_tool_gaps(
+        self,
+        *,
+        skill_yaml: str,
+        user_id: str,
+        capability_name: str,
+        candidate_id: str,
+    ) -> None:
+        """Slice 22 — file a speculative tool_request per missing tool.
+
+        Walks the proposed skill_yaml's ``steps[*].tools`` arrays;
+        diffs against ``tool_registry.list_tool_names()``. Each unknown
+        tool name produces one
+        :class:`donna.cost.tool_gap.ToolGap`. The dedup index ensures
+        repeated drafts of similar capabilities don't pile up rows.
+        """
+        if self._tool_registry is None or self._tool_gap_surfacer is None:
+            return
+        try:
+            import yaml as _yaml
+        except ImportError:  # pragma: no cover - yaml is a hard dep
+            return
+        try:
+            data = _yaml.safe_load(skill_yaml) or {}
+        except Exception:
+            logger.exception(
+                "skill_auto_draft_yaml_parse_for_tools_failed",
+                candidate_id=candidate_id,
+            )
+            return
+        steps = data.get("steps") if isinstance(data, dict) else None
+        if not isinstance(steps, list):
+            return
+        proposed: set[str] = set()
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            tools = step.get("tools")
+            if isinstance(tools, list):
+                proposed.update(str(t) for t in tools if isinstance(t, str))
+        if not proposed:
+            return
+        registered = set(self._tool_registry.list_tool_names())
+        missing = sorted(proposed - registered)
+        if not missing:
+            return
+
+        from donna.cost.tool_gap import (
+            DETECTION_SKILL_DRAFT,
+            SEVERITY_SPECULATIVE,
+            ToolGap,
+        )
+        for tool_name in missing:
+            try:
+                await self._tool_gap_surfacer.surface(
+                    ToolGap(
+                        tool_name=tool_name,
+                        user_id=user_id,
+                        severity=SEVERITY_SPECULATIVE,
+                        blocking_capability_id=None,
+                        rationale=(
+                            f"AutoDraft for capability '{capability_name}' "
+                            f"(candidate {candidate_id}) proposed tool "
+                            f"'{tool_name}' which doesn't exist."
+                        ),
+                        proposed_signature=None,
+                        detection_point=DETECTION_SKILL_DRAFT,
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "skill_auto_draft_tool_gap_surface_failed",
+                    tool_name=tool_name,
+                    candidate_id=candidate_id,
+                )
 
     async def _lookup_capability(
         self, capability_name: str | None

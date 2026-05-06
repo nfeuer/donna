@@ -195,6 +195,29 @@ task_types:
       forbidden_patterns:
         - "import anthropic"
 
+  # Slice 22 — tool builds. Reuses the slice-21 claude_code protocol
+  # with the extra §10.5 lint gates enforced by ManualValidationRouter._validate_tool.
+  # {name} substitution resolves to the tool name from the originating
+  # tool_request row (originating_entity_type='tool_request').
+  tool_request_fulfillment:
+    description: "Manual tool build initiated from a tool_request gap (slice 22)"
+    model: reasoner
+    prompt_template: prompts/escalation/tool_build.md
+    output_schema: schemas/escalation_submission.json
+    tools: []
+    manual_escalation:
+      mode: claude_code
+      target_paths:
+        tool: "src/donna/skills/tools/{name}.py"
+        tool_test: "tests/skills/tools/test_{name}.py"
+        agents_config: "config/agents.yaml"
+        skills_config: "config/skills.yaml"
+        task_types_config: "config/task_types.yaml"
+      reference_module: "src/donna/skills/tools/{name}.py"
+      forbidden_patterns:
+        - "import anthropic"
+        - "DONNA_API_KEY"
+
   claude_novelty:
     description: "Claude judges no-capability-match messages and emits execution-ready intent + skill reuse verdict"
     model: reasoner
