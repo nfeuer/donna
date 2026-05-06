@@ -21,3 +21,14 @@ triggers:
   task_approval_threshold_usd: 5.0     # estimate above this always offers escalation
   escalation_timeout_minutes: 60       # auto-pause after this many minutes if no click
   manual_iteration_limit: 3            # used by slices 20/21
+
+# Slice 20 — chat mode delivery (canonical spec §6.1). The full prompt
+# always lives on disk + DB; Discord only carries summary + optional
+# attachment, which removes the 2000-char Discord problem entirely.
+prompt_delivery:
+  attach_full_prompt_to_discord: true   # post the full prompt as <correlation_id>.md
+  discord_summary_max_chars: 1500       # safety margin under Discord's 2000-char limit
+  attachment_size_limit_mb: 25          # Discord free-tier ceiling; MD never approaches this
+  workspace_subdir: escalations         # under ${DONNA_WORKSPACE_PATH}
+  slash_command_max_chars: 3000         # /donna submit hard cap; longer → "use dashboard"
+  chat_min_answer_chars: 50             # mirror schemas/escalation_submission.json minLength

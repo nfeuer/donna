@@ -256,8 +256,16 @@ class ModelRouter:
                 task_type=task_type,
                 estimate_usd=estimate_usd,
                 priority=priority,
+                # Slice 20 — pass the rendered prompt so the gate can
+                # offer chat mode and persist the prompt body for the
+                # dashboard / Discord attachment.
+                original_prompt=prompt,
             )
-            if outcome.fired and outcome.mode in ("pause", "cancel"):
+            # ``pause``, ``cancel``, and ``chat`` (slice 20) all mean
+            # "no API call now"; the caller catches the exception and
+            # parks the task. For chat mode, the chat ingestion poller
+            # will mark the task done once the user submits an answer.
+            if outcome.fired and outcome.mode in ("pause", "cancel", "chat"):
                 assert outcome.escalation_request_id is not None
                 assert outcome.correlation_id is not None
                 raise EscalationDecisionError(
