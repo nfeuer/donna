@@ -281,8 +281,8 @@ export default function LLMGateway() {
   ];
 
   const allNextItems = [
-    ...(liveData?.internal_queue.next_items ?? []),
-    ...(liveData?.external_queue.next_items ?? []),
+    ...(liveData?.internal_queue?.next_items ?? []),
+    ...(liveData?.external_queue?.next_items ?? []),
   ];
 
   return (
@@ -323,8 +323,8 @@ export default function LLMGateway() {
               sub={
                 liveData && (
                   <span style={{ fontSize: "var(--text-label)", color: "var(--color-text-muted)" }}>
-                    Internal {liveData.internal_queue.pending} · External{" "}
-                    {liveData.external_queue.pending}
+                    Internal {liveData.internal_queue?.pending ?? 0} · External{" "}
+                    {liveData.external_queue?.pending ?? 0}
                   </span>
                 )
               }

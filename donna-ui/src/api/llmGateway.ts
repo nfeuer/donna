@@ -102,7 +102,7 @@ export interface QueueItemDetail {
 // --- Fetch functions ---
 
 export async function fetchLLMQueueStatus(): Promise<LLMQueueStatusData> {
-  const { data } = await client.get("/llm/queue/status");
+  const { data } = await client.get("/admin/llm/queue/status");
   return data;
 }
 
@@ -124,5 +124,5 @@ export async function fetchQueueItemPrompt(
 
 export function createQueueSSEUrl(): string {
   const base = import.meta.env.VITE_API_BASE_URL || "";
-  return `${base}/llm/queue/stream`;
+  return `${base}/admin/llm/queue/stream`;
 }

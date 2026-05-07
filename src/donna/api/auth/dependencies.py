@@ -6,6 +6,7 @@ These are the ONLY functions routes should import from `donna.api.auth`
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -66,7 +67,10 @@ async def _resolve_user_id(
             return str(row["user_id"])
 
     ip = trusted_proxies_module_client_ip(request, trusted_proxies)
-    result = await ip_gate.check_ip_access(ctx.conn, ip, service="donna")
+    result = await ip_gate.check_ip_access(
+        ctx.conn, ip, service="donna",
+        internal_cidrs=ctx.auth_config.internal_cidrs,
+    )
     if result["action"] != "allow":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -109,12 +113,22 @@ async def _resolve_admin_user_id(
     trusted_proxies: list[Any],
 ) -> str:
     ip = trusted_proxies_module_client_ip(request, trusted_proxies)
-    result = await ip_gate.check_ip_access(ctx.conn, ip, service="admin")
+    result = await ip_gate.check_ip_access(
+        ctx.conn, ip, service="admin",
+        internal_cidrs=ctx.auth_config.internal_cidrs,
+    )
     if result["action"] != "allow":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "ip_not_trusted_admin", "step": "request_access"},
         )
+    # Internal network requests (e.g. management UI proxy) are trusted by
+    # network position — skip Immich bearer check and resolve to the
+    # default admin user.
+    if result.get("reason") == "internal_cidr":
+        default_uid = os.environ.get("DONNA_DEFAULT_USER_ID", "nick")
+        return default_uid
+
     bearer = _immich_bearer_from_request(request)
     if not bearer:
         raise HTTPException(

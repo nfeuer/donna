@@ -214,7 +214,7 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
 
     # Server task is launched first so clients can probe /healthz even if
     # downstream wiring is still in flight. Matches the pre-refactor order.
-    ctx.tasks.append(asyncio.create_task(run_server(port=ctx.port)))
+    ctx.tasks.append(asyncio.create_task(run_server(port=ctx.port, discord_bot=ctx.bot)))
 
     # Wave 5 F-W4-I: attempt to build a GmailClient at boot so Gmail skill
     # tools register for capabilities like email_triage. Non-fatal on failure.

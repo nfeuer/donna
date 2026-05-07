@@ -319,7 +319,10 @@ def _start_memory_tasks(
     ctx.tasks.append(asyncio.create_task(queue.run_forever()))
     if source is not None:
         ctx.tasks.append(asyncio.create_task(source.watch()))
-        ctx.tasks.append(asyncio.create_task(source.backfill(ctx.user_id)))
+        # Backfill is one-shot — run it in the background rather than
+        # adding to ctx.tasks, where FIRST_COMPLETED would shut down
+        # the orchestrator as soon as it finishes.
+        asyncio.create_task(source.backfill(ctx.user_id))
 
 
 async def _try_build_vault_writer(

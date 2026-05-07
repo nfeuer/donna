@@ -6,6 +6,9 @@ services:
     image: ollama/ollama:latest
     container_name: donna-ollama
     restart: unless-stopped
+    environment:
+      - OLLAMA_NUM_CTX=8192
+      - OLLAMA_FLASH_ATTENTION=1
     volumes:
       - ${DONNA_DATA_PATH}/models:/root/.ollama
     ports:

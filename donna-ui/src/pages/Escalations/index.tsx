@@ -12,8 +12,8 @@ import {
 } from "../../api/escalations";
 import styles from "./Escalations.module.css";
 
-const STATUS_OPTIONS: { value: "" | EscalationStatus; label: string }[] = [
-  { value: "", label: "All statuses" },
+const STATUS_OPTIONS: { value: "all" | EscalationStatus; label: string }[] = [
+  { value: "all", label: "All statuses" },
   { value: "open", label: "Open" },
   { value: "resolved", label: "Resolved" },
   { value: "submitted", label: "Submitted" },
@@ -24,14 +24,14 @@ const STATUS_OPTIONS: { value: "" | EscalationStatus; label: string }[] = [
 
 export default function EscalationsPage() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<"" | EscalationStatus>("");
+  const [status, setStatus] = useState<"all" | EscalationStatus>("all");
   const [resp, setResp] = useState<EscalationListResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
   const doFetch = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchEscalations({ status: status || undefined });
+      const data = await fetchEscalations({ status: status === "all" ? undefined : status });
       setResp(data);
     } catch {
       setResp(null);
@@ -64,11 +64,11 @@ export default function EscalationsPage() {
           <div className={styles.filters}>
             <Select
               value={status}
-              onValueChange={(v) => setStatus(v as "" | EscalationStatus)}
+              onValueChange={(v) => setStatus(v as "all" | EscalationStatus)}
               aria-label="Filter by status"
             >
               {STATUS_OPTIONS.map((o) => (
-                <SelectItem key={o.value || "all"} value={o.value}>
+                <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>
               ))}

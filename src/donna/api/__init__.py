@@ -32,6 +32,7 @@ from donna.api.routes import (
     admin_escalations,
     admin_health,
     admin_invocations,
+    admin_llm,
     admin_logs,
     admin_preferences,
     admin_shadow,
@@ -374,6 +375,9 @@ def create_app() -> FastAPI:
     app.include_router(skill_candidates_routes.router, prefix="/admin", tags=["skill-candidates"])
     app.include_router(skill_drafts_routes.router, prefix="/admin", tags=["skill-drafts"])
     app.include_router(automations_routes.router, prefix="/admin", tags=["automations"])
+
+    # Admin-facing LLM queue (read-only, dashboard)
+    app.include_router(admin_llm.router, prefix="/admin", tags=["admin"])
 
     # LLM gateway for homelab services
     app.include_router(llm.router, prefix="/llm", tags=["llm"])

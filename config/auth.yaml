@@ -6,13 +6,13 @@ ip_gate:
     verify:         { max: 10, window_seconds: 600 }
 
 trusted_proxies:
-  - 172.18.0.0/16   # homelab Docker network, where Caddy lives
+  - 172.20.0.0/16   # homelab Docker network, where Caddy lives
 
 internal_cidrs:
-  - 172.18.0.0/16
+  - 172.20.0.0/16
 
 immich:
-  internal_url: http://immich_server:2283
+  internal_url: http://immich-server:2283
   external_url: https://immich.houseoffeuer.com
   admin_api_key_env: IMMICH_ADMIN_API_KEY
   user_cache_ttl_seconds: 60

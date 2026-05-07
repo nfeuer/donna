@@ -76,8 +76,8 @@ function RateLimitBar({ count, limit }: { count: number; limit: number }) {
 
 export default function LLMQueueCard({ data, loading }: Props) {
   const stats: ChartCardStat[] = [
-    { label: "Internal Queue", value: data?.internal_queue.pending ?? 0 },
-    { label: "External Queue", value: data?.external_queue.pending ?? 0 },
+    { label: "Internal Queue", value: data?.internal_queue?.pending ?? 0 },
+    { label: "External Queue", value: data?.external_queue?.pending ?? 0 },
     {
       label: "Completed (24h)",
       value: data
