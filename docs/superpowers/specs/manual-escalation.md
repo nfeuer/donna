@@ -849,10 +849,10 @@ iteration cap then governs).
 | Failure | Mitigation |
 |---|---|
 | User approves extension; then estimate was wrong; actual cost overshoots | API call's `complete()` enforces a hard token limit derived from `extension_amount × token_rate`. Truncated output triggers a re-estimate + re-escalation rather than silent overspend. |
-| Multiple extensions in one day stack to absurd amounts | `max_daily_extension_usd` enforced at button render time (button disabled if remaining headroom < estimate). |
+| Multiple extensions in one day stack to absurd amounts | `max_daily_extension_usd` enforced at gate fire-time: `api_extended` is omitted from `offered_modes` when remaining headroom < estimate, so the button never renders. |
 | Approver clicks but interaction fails (Discord 5xx) | Idempotency: granting an extension is keyed on `(escalation_request_id, granted_by)`. Retry-safe. |
-| Extension granted, task never runs (orchestrator crash) | On orchestrator boot, scan `escalation_request WHERE resolution='api_extended' AND task_status NOT IN ('completed','failed')`; resume or rollback the extension. Rolled-back extensions get a `voided=true` flag, never charged. |
-| Hard monthly ceiling reached | All extension buttons disabled. Discord message reads "Monthly cap. Pause / Cancel only." |
+| Extension granted, task never runs (orchestrator crash) | On orchestrator boot, scan extensions whose `escalation_request.resolution='api_extended'` row has no non-`escalation_lifecycle` `invocation_log` entry — i.e. the extension was granted but the actual API call never landed an audit row. Implemented by :meth:`donna.cost.budget_extension.BudgetExtensionRepository.find_stale_grants` (SQLite `LEFT JOIN invocation_log ... WHERE il.id IS NULL`). Stale grants are voided (`extension_voided` audit event); resume is deferred (see `docs/superpowers/specs/followups.md#S18`). Voided extensions are never charged. |
+| Hard monthly ceiling reached | `api_extended` is omitted from `offered_modes` so no extension button renders, and the Discord summary reads "Monthly cap. Pause / Cancel only." in place of the usual "Choose: …" line. Implemented in :meth:`donna.cost.escalation_gate.EscalationGate.extension_filter_reason` (returns `"over_ceiling"`) and rendered by ``donna.cli_wiring._build_escalation_message_body``. |
 
 ### 10.7 Routing & toggle failures
 

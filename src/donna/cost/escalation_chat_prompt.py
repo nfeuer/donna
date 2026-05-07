@@ -68,10 +68,13 @@ class ChatPromptBuilder:
             spends API budget — the *user* answers the question).
         project_root: Filesystem root used to resolve the Jinja
             template path.
-        workspace_root: Resolved at construction time from
-            ``DONNA_WORKSPACE_PATH`` (env). When unset, falls back to
-            ``project_root / "var" / "workspace"`` so tests / dev boots
-            still produce a real path.
+        workspace_root: Resolved at construction time from the
+            ``DONNA_WORKSPACE_PATH`` env var (per spec §5.2 / §6.1).
+            Tests / callers may pass an explicit ``workspace_root`` to
+            override the env. If neither is provided, construction
+            raises :class:`RuntimeError` — production boot validates
+            ``DONNA_WORKSPACE_PATH`` in :mod:`donna.setup.validators`,
+            so this branch only fires from a misconfigured caller.
         config: ``PromptDeliveryConfig`` controlling truncation,
             attachment toggle, and the workspace subdirectory.
     """
@@ -87,18 +90,20 @@ class ChatPromptBuilder:
         self._router = router
         self._project_root = project_root
         self._config = config
-        self._workspace_root = workspace_root or self._resolve_workspace_root(
-            project_root
-        )
+        self._workspace_root = workspace_root or self._resolve_workspace_root()
         self._template: jinja2.Template | None = None
         self._summary_schema: dict[str, Any] | None = None
 
     @staticmethod
-    def _resolve_workspace_root(project_root: Path) -> Path:
+    def _resolve_workspace_root() -> Path:
         env_path = os.environ.get("DONNA_WORKSPACE_PATH")
-        if env_path:
-            return Path(env_path)
-        return project_root / "var" / "workspace"
+        if not env_path:
+            raise RuntimeError(
+                "ChatPromptBuilder requires DONNA_WORKSPACE_PATH to be set "
+                "(or workspace_root passed explicitly). See "
+                "docs/superpowers/specs/manual-escalation.md §5.2 / §6.1."
+            )
+        return Path(env_path)
 
     # ------------------------------------------------------------------
     # Public API

@@ -959,7 +959,26 @@ class EscalationGate:
     async def _should_offer_extension(
         self, estimate_usd: float, user_id: str
     ) -> bool:
-        """Return True if the api_extended button should be rendered.
+        """Return True if the api_extended button should be rendered."""
+        return (
+            await self._extension_filter_reason(estimate_usd, user_id)
+        ) is None
+
+    async def extension_filter_reason(
+        self, *, user_id: str, estimate_usd: float
+    ) -> Literal["disabled", "over_headroom", "over_ceiling"] | None:
+        """Public renderer-facing accessor. See :meth:`_extension_filter_reason`."""
+        return await self._extension_filter_reason(estimate_usd, user_id)
+
+    async def _extension_filter_reason(
+        self, estimate_usd: float, user_id: str
+    ) -> Literal["disabled", "over_headroom", "over_ceiling"] | None:
+        """Why ``api_extended`` would not be offered, or ``None`` if it would.
+
+        The Discord renderer uses this to surface the spec §10.6 row 5
+        "Monthly cap. Pause / Cancel only." string when the omission is
+        ceiling-driven (``over_ceiling``) rather than toggle-driven or
+        slider-driven.
 
         Checks (in order):
         1. Budget extension enabled (dashboard → YAML).
@@ -972,7 +991,7 @@ class EscalationGate:
             "manual_escalation.budget_extension.enabled", ext_cfg.enabled
         )
         if not enabled:
-            return False
+            return "disabled"
 
         today = date.today()
         existing_total = await self._extension_repo.get_daily_total(user_id, today)
@@ -986,9 +1005,11 @@ class EscalationGate:
         )
         headroom = float(max_daily) - existing_total
         if headroom < estimate_usd:
-            return False
+            return "over_headroom"
 
-        return await self._monthly_headroom_ok(user_id, today, estimate_usd)
+        if not await self._monthly_headroom_ok(user_id, today, estimate_usd):
+            return "over_ceiling"
+        return None
 
     async def _monthly_headroom_ok(
         self, user_id: str, today: date, estimate_usd: float

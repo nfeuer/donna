@@ -344,6 +344,85 @@ async def test_should_offer_extension_monthly_ceiling_not_yet_reached(
 
 
 # ---------------------------------------------------------------------------
+# extension_filter_reason — public renderer accessor (spec §10.6 row 5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_extension_filter_reason_offered(conn: aiosqlite.Connection) -> None:
+    """When the button would render, the reason is None."""
+    gate, _, _ = await _make_gate(
+        conn, max_daily_extension_usd=10.0, hard_monthly_ceiling_usd=150.0
+    )
+    reason = await gate.extension_filter_reason(user_id="nick", estimate_usd=2.50)
+    assert reason is None
+
+
+@pytest.mark.asyncio
+async def test_extension_filter_reason_disabled(conn: aiosqlite.Connection) -> None:
+    """Resolver disables extension → reason='disabled'."""
+    _, daily_pause = _make_config()
+    config = ManualEscalationConfig(
+        enabled=True,
+        modes=ManualEscalationModesConfig(),
+        budget_extension=BudgetExtensionConfig(enabled=True),
+        triggers=ManualEscalationTriggersConfig(
+            task_approval_threshold_usd=5.0,
+        ),
+    )
+    resolver = MagicMock()
+    resolver.get = AsyncMock(return_value=False)
+    gate = EscalationGate(
+        repository=EscalationRepository(conn),
+        tracker=_make_tracker(),
+        config=config,
+        daily_pause_threshold_usd=daily_pause,
+        resolver=resolver,
+        deliver=AsyncMock(return_value=True),
+        extension_repo=BudgetExtensionRepository(conn),
+    )
+    reason = await gate.extension_filter_reason(user_id="nick", estimate_usd=2.50)
+    assert reason == "disabled"
+
+
+@pytest.mark.asyncio
+async def test_extension_filter_reason_over_headroom(conn: aiosqlite.Connection) -> None:
+    """Estimate exceeds slider headroom → reason='over_headroom'."""
+    gate, _, _ = await _make_gate(conn, max_daily_extension_usd=2.0)
+    reason = await gate.extension_filter_reason(user_id="nick", estimate_usd=2.50)
+    assert reason == "over_headroom"
+
+
+@pytest.mark.asyncio
+async def test_extension_filter_reason_over_ceiling(conn: aiosqlite.Connection) -> None:
+    """Adding the estimate would exceed monthly ceiling → reason='over_ceiling'.
+
+    Inserts a prior-day extension so today's headroom is still clean
+    (otherwise headroom check would fire first and we'd see
+    ``over_headroom`` instead).
+    """
+    now = datetime.now(tz=UTC).isoformat()
+    today = date.today()
+    earlier = (
+        date(today.year, today.month, 1)
+        if today.day > 1
+        else date(today.year, today.month, 2)
+    )
+    await conn.execute(
+        """
+        INSERT INTO daily_budget_extension
+            (user_id, date, amount_usd, granted_at, granted_by, escalation_request_id, voided)
+        VALUES ('nick', ?, 149.0, ?, 'u1', NULL, 0)
+        """,
+        (earlier.isoformat(), now),
+    )
+    await conn.commit()
+    gate, _, _ = await _make_gate(conn, hard_monthly_ceiling_usd=150.0)
+    reason = await gate.extension_filter_reason(user_id="nick", estimate_usd=2.50)
+    assert reason == "over_ceiling"
+
+
+# ---------------------------------------------------------------------------
 # grant_budget_extension
 # ---------------------------------------------------------------------------
 

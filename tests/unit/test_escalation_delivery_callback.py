@@ -73,6 +73,32 @@ class TestMessageBody:
         )
         assert "/admin/escalations" not in body
 
+    def test_renders_monthly_cap_text_when_over_ceiling(self) -> None:
+        """Spec §10.6 row 5: explicit "Monthly cap" text replaces the
+        usual "Choose: …" line when ``api_extended`` is filtered out
+        because the hard monthly ceiling is reached."""
+        body = _build_escalation_message_body(
+            row=_row(summary=None, offered_modes=["pause", "cancel"]),
+            host_base_url="",
+            extension_reason="over_ceiling",
+        )
+        assert "Monthly cap. Pause / Cancel only." in body
+        assert "Choose:" not in body
+
+    def test_skips_monthly_cap_text_for_other_filter_reasons(self) -> None:
+        """Spec §10.6 row 5 only fires for ``over_ceiling`` — disabled
+        toggle and over-headroom states should fall through to the
+        normal Choose-line so the user isn't told there is a monthly
+        cap when there isn't."""
+        for reason in ("disabled", "over_headroom"):
+            body = _build_escalation_message_body(
+                row=_row(summary=None, offered_modes=["pause", "cancel"]),
+                host_base_url="",
+                extension_reason=reason,
+            )
+            assert "Monthly cap" not in body, reason
+            assert "Choose:" in body, reason
+
 
 # ---------------------------------------------------------------------
 # _build_attachment

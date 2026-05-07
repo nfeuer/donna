@@ -289,3 +289,51 @@ class TestRendering:
         record = await cur.fetchone()
         assert record is not None
         assert record[0] is None
+
+
+# ---------------------------------------------------------------------
+# DONNA_WORKSPACE_PATH plumbing (S20-FU3 — fallback removed)
+# ---------------------------------------------------------------------
+
+
+class TestWorkspaceRootResolution:
+    def test_uses_env_var_when_workspace_root_kwarg_absent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Production boot path: env var resolves the workspace."""
+        monkeypatch.setenv("DONNA_WORKSPACE_PATH", str(tmp_path / "envspace"))
+        builder = ChatPromptBuilder(
+            router=MagicMock(),
+            project_root=_REPO_ROOT,
+            config=PromptDeliveryConfig(),
+        )
+        assert builder._workspace_root == tmp_path / "envspace"
+
+    def test_explicit_kwarg_overrides_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Tests pass workspace_root explicitly; env should be ignored."""
+        monkeypatch.setenv("DONNA_WORKSPACE_PATH", str(tmp_path / "envspace"))
+        explicit = tmp_path / "explicit"
+        builder = ChatPromptBuilder(
+            router=MagicMock(),
+            project_root=_REPO_ROOT,
+            config=PromptDeliveryConfig(),
+            workspace_root=explicit,
+        )
+        assert builder._workspace_root == explicit
+
+    def test_raises_when_neither_env_nor_kwarg_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Spec §5.2 / §6.1: workspace path is mandatory. The slice-20
+        ``var/workspace`` fallback was removed in the bucket-1 follow-up
+        because production boot validates the env var anyway and every
+        existing test passes ``workspace_root`` explicitly."""
+        monkeypatch.delenv("DONNA_WORKSPACE_PATH", raising=False)
+        with pytest.raises(RuntimeError, match="DONNA_WORKSPACE_PATH"):
+            ChatPromptBuilder(
+                router=MagicMock(),
+                project_root=_REPO_ROOT,
+                config=PromptDeliveryConfig(),
+            )

@@ -42,21 +42,21 @@ visible.
 - **Surfaced by:** `slices/slice_18_budget_extension.md`
 - **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.1`,
   `#§10.6` (rows 2 and 5).
-- **Status:** spec-update-pending
-- **Decision / Reasoning:** Spec wording says *"button disabled if remaining
-  headroom < estimate"* and *"All extension buttons disabled. Discord message
-  reads 'Monthly cap. Pause / Cancel only.'"*. The implementation in
-  `EscalationGate._should_offer_extension()` instead **omits** the
-  `api_extended` mode from `offered_modes`, so the button is never rendered.
-  Functionally identical from the user's perspective — they cannot approve
-  an extension over ceiling — but the explanatory "Monthly cap" text is
-  missing from the Discord message.
-- **Follow-up:** Either (a) update §10.6 to describe the rendered
-  `offered_modes` mechanism, or (b) add an explicit "Monthly cap. Pause /
-  Cancel only." string to the Discord summary when extensions are filtered
-  out at render time. Preferred: (b), small UX win and keeps the spec
-  literal. Schedule for Slice 19 (dashboard escalation detail) or earlier
-  if a UX fix is requested.
+- **Status:** resolved-in-bucket-1
+- **Decision / Reasoning:** Picked option (b) per the original
+  preference: ``EscalationGate._should_offer_extension`` now delegates
+  to a new ``_extension_filter_reason`` that returns one of
+  ``'disabled' | 'over_headroom' | 'over_ceiling' | None``. The public
+  ``EscalationGate.extension_filter_reason`` accessor is consumed by
+  ``donna.cli_wiring._make_escalation_delivery_callback``: when
+  ``api_extended`` is missing from ``offered_modes`` and the reason is
+  ``over_ceiling``, ``_build_escalation_message_body`` swaps the usual
+  "Choose: …" line for the spec-literal "Monthly cap. Pause / Cancel
+  only." string. Other reasons (``disabled``, ``over_headroom``) keep
+  the normal Choose-line so the user isn't told there is a monthly cap
+  when there isn't. §10.6 rows 2 and 5 rewritten to describe the
+  ``offered_modes``-omission mechanism alongside the literal text.
+- **Follow-up:** None.
 
 ---
 
@@ -65,19 +65,20 @@ visible.
 - **Surfaced by:** `slices/slice_18_budget_extension.md`
 - **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§10.6`
   (row 4).
-- **Status:** spec-update-pending
-- **Decision / Reasoning:** Spec says *"scan `escalation_request WHERE
+- **Status:** resolved-in-bucket-1
+- **Decision / Reasoning:** Spec said *"scan `escalation_request WHERE
   resolution='api_extended' AND task_status NOT IN ('completed','failed')`"*.
   No `task_status` column exists on `escalation_request`; that column lives
   on `tasks`, but a granted extension is not always tied to a `task` row
-  (e.g. drafting paths). My `BudgetExtensionRepository.find_stale_grants()`
+  (e.g. drafting paths). `BudgetExtensionRepository.find_stale_grants()`
   uses `LEFT JOIN invocation_log ... WHERE il.id IS NULL` (excluding
   `escalation_lifecycle` rows) as a proxy: "the extension was granted but
   the actual API call never landed an invocation_log row." This works for
   the actual recovery objective (don't leave phantom headroom across
-  restarts) and is uniform across drafting and task-bound paths.
-- **Follow-up:** Update §10.6 row 4 to describe the `invocation_log`
-  presence check rather than `task_status`. No code change needed.
+  restarts) and is uniform across drafting and task-bound paths. §10.6
+  row 4 was rewritten to describe the actual `invocation_log`-presence
+  check and links to the implementing repo method.
+- **Follow-up:** None.
 
 ---
 
@@ -341,19 +342,22 @@ visible.
 - **Surfaced by:** slice 20 self-review.
 - **Spec section(s):** `docs/superpowers/specs/manual-escalation.md#§5.2`,
   `#§6.1`.
-- **Status:** open (low priority)
-- **Decision / Reasoning:** `ChatPromptBuilder._resolve_workspace_root`
-  falls back to `<project_root>/var/workspace` when
-  `DONNA_WORKSPACE_PATH` is unset, which keeps tests + dev boots
-  functional but contradicts the spec's "always under
-  `${DONNA_WORKSPACE_PATH}`" wording. In production the env var is
-  always set (see `donna.setup.validators`). Either document the
-  fallback in §5.2 / §6.1 or fail fast at boot when the env var is
-  absent.
-- **Follow-up:** Pick one of: (a) add a single-sentence note to §5.2
-  describing the dev fallback, or (b) drop the fallback and require
-  the env var at builder construction. (a) is lower-risk; (b) is
-  cleaner but breaks the existing tests that don't set the env.
+- **Status:** resolved-in-bucket-1
+- **Decision / Reasoning:** Picked option (b): the
+  ``<project_root>/var/workspace`` fallback was dropped from
+  ``ChatPromptBuilder._resolve_workspace_root``. Construction now
+  raises :class:`RuntimeError` when neither ``DONNA_WORKSPACE_PATH``
+  nor an explicit ``workspace_root`` kwarg is provided. The original
+  followup feared "(b) breaks existing tests that don't set the env"
+  but every current test (``test_escalation_chat_prompt.py``,
+  ``test_chat_mode_e2e.py``, ``test_section_10_residual_gaps.py``)
+  passes ``workspace_root=tmp_path / "workspace"`` explicitly, and
+  ``donna.setup.validators`` requires the env var at production boot
+  — so the fallback was unreachable in both environments. Spec
+  language in §5.2 / §6.1 stays literal; no doc change required. New
+  unit-test class ``TestWorkspaceRootResolution`` pins the env-var,
+  kwarg-override, and missing-env error paths.
+- **Follow-up:** None.
 
 ## S20-FU4 — Summarizer template not loaded through the router cache
 

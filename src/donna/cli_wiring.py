@@ -1416,9 +1416,25 @@ def _make_escalation_delivery_callback(
             task_id=row.task_id,
             estimate_usd=row.estimate_usd,
         )
+        # Spec §10.6 row 5 — when api_extended is filtered specifically
+        # because the hard monthly ceiling is reached, surface "Monthly
+        # cap. Pause / Cancel only." in the Discord summary so the user
+        # sees the *why*, not just a thinner button row.
+        extension_reason: str | None = None
+        if "api_extended" not in row.offered_modes:
+            try:
+                extension_reason = await gate.extension_filter_reason(
+                    user_id=row.user_id, estimate_usd=row.estimate_usd
+                )
+            except Exception:
+                logger.exception(
+                    "extension_filter_reason_raised",
+                    correlation_id=row.correlation_id,
+                )
         text = _build_escalation_message_body(
             row=row,
             host_base_url=host_base_url,
+            extension_reason=extension_reason,
         )
         attachment = _build_attachment(
             row=row, prompt_delivery=prompt_delivery
@@ -1461,8 +1477,20 @@ def _make_escalation_delivery_callback(
     return deliver
 
 
-def _build_escalation_message_body(*, row: Any, host_base_url: str) -> str:
-    """Compose the inline text for the escalation Discord notification."""
+def _build_escalation_message_body(
+    *,
+    row: Any,
+    host_base_url: str,
+    extension_reason: str | None = None,
+) -> str:
+    """Compose the inline text for the escalation Discord notification.
+
+    ``extension_reason`` (spec §10.6 row 5) is set when ``api_extended``
+    is missing from ``offered_modes``: ``"over_ceiling"`` triggers the
+    "Monthly cap. Pause / Cancel only." line; other values are not
+    surfaced to the user (they describe normal toggle / headroom states
+    that the button-row already implies).
+    """
     summary = getattr(row, "summary", None)
     parts: list[str] = []
     if summary:
@@ -1489,12 +1517,16 @@ def _build_escalation_message_body(*, row: Any, host_base_url: str) -> str:
             choice_line = (
                 ", ".join(button_labels[:-1]) + ", or " + button_labels[-1]
             )
-        parts.append(
+        body = (
             f"**Over-budget decision** — {row.task_type}\n"
             f"Estimate: ${row.estimate_usd:.2f}  |  "
             f"Daily remaining: ${row.daily_remaining_usd:.2f}\n"
-            f"Choose: {choice_line}."
         )
+        if extension_reason == "over_ceiling":
+            body += "Monthly cap. Pause / Cancel only."
+        else:
+            body += f"Choose: {choice_line}."
+        parts.append(body)
     parts.append(
         f"Estimate: ${row.estimate_usd:.2f}  |  "
         f"Daily remaining: ${row.daily_remaining_usd:.2f}  |  "
