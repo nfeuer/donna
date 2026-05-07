@@ -3,10 +3,21 @@
 from __future__ import annotations
 
 import ipaddress
+import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+_ENV_RE = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)(?::-(.*?))?\}")
+
+
+def _resolve_env_vars(text: str) -> str:
+    """Replace ${VAR:-default} placeholders with environment values."""
+    def _sub(m: re.Match[str]) -> str:
+        return os.environ.get(m.group(1), m.group(2) or "")
+    return _ENV_RE.sub(_sub, text)
 
 
 @dataclass(frozen=True)
@@ -71,7 +82,7 @@ def _parse_cidrs(raw: list[str]) -> list[ipaddress.IPv4Network | ipaddress.IPv6N
 
 
 def load(path: Path) -> AuthConfig:
-    data = yaml.safe_load(path.read_text())
+    data = yaml.safe_load(_resolve_env_vars(path.read_text()))
     if not data:
         raise ValueError("auth.yaml is empty")
 

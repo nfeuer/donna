@@ -27,7 +27,7 @@ def test_load_parses_yaml_and_casts_cidrs(tmp_path):
                 "internal_cidrs": ["172.18.0.0/16"],
                 "immich": {
                     "internal_url": "http://immich:2283",
-                    "external_url": "https://immich.houseoffeuer.com",
+                    "external_url": "https://immich.example.com",
                     "admin_api_key_env": "IMMICH_ADMIN_API_KEY",
                     "user_cache_ttl_seconds": 60,
                     "allowlist_sync_interval_seconds": 900,
@@ -39,9 +39,9 @@ def test_load_parses_yaml_and_casts_cidrs(tmp_path):
                     "max_per_user": 10,
                 },
                 "email": {
-                    "from": "donna@houseoffeuer.com",
+                    "from": "donna@example.com",
                     "subject": "Donna access verification",
-                    "verify_base_url": "https://donna.houseoffeuer.com/auth/verify",
+                    "verify_base_url": "https://donna.example.com/auth/verify",
                     "token_expiry_minutes": 15,
                 },
                 "bootstrap": {"admin_email_env": "DONNA_BOOTSTRAP_ADMIN_EMAIL"},

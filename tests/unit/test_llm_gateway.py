@@ -255,7 +255,7 @@ async def test_llm_completions_rejected_when_caddy_proxied(llm_auth_app):
             json={"prompt": "hi"},
             headers={
                 "x-donna-service-key": raw_key,
-                "x-forwarded-host": "donna.houseoffeuer.com",
+                "x-forwarded-host": "donna.example.com",
             },
         )
     assert resp.status_code == 401

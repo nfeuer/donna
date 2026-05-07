@@ -19,14 +19,14 @@ async def test_send_magic_link_creates_and_sends_draft():
         gmail,
         to="nick@example.com",
         token="opaque-token",
-        verify_base_url="https://donna.houseoffeuer.com/auth/verify",
+        verify_base_url="https://donna.example.com/auth/verify",
         from_name="Donna",
     )
     gmail.create_draft.assert_awaited_once()
     gmail.send_draft.assert_awaited_once_with("draft123")
     kwargs = gmail.create_draft.await_args.kwargs
     assert kwargs["to"] == "nick@example.com"
-    assert "https://donna.houseoffeuer.com/auth/verify?token=opaque-token" in kwargs["body"]
+    assert "https://donna.example.com/auth/verify?token=opaque-token" in kwargs["body"]
     assert "Donna" in kwargs["subject"]
 
 
@@ -40,6 +40,6 @@ async def test_send_magic_link_bubbles_send_failure():
             gmail,
             to="nick@example.com",
             token="opaque",
-            verify_base_url="https://donna.houseoffeuer.com/auth/verify",
+            verify_base_url="https://donna.example.com/auth/verify",
             from_name="Donna",
         )
