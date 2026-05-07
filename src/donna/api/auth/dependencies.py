@@ -126,7 +126,7 @@ async def _resolve_admin_user_id(
     # network position — skip Immich bearer check and resolve to the
     # default admin user.
     if result.get("reason") == "internal_cidr":
-        default_uid = os.environ.get("DONNA_DEFAULT_USER_ID", "nick")
+        default_uid = os.environ.get("DONNA_DEFAULT_USER_ID", "admin")
         return default_uid
 
     bearer = _immich_bearer_from_request(request)

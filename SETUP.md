@@ -1161,7 +1161,7 @@ By default Docker stores images, containers, and build cache at `/var/lib/docker
 sudo scripts/move-docker-root.sh
 ```
 
-This script stops Docker, rsyncs data to `/mnt/donna/docker`, updates `/etc/docker/daemon.json`, and restarts. Verify with `docker info --format '{{.DockerRootDir}}'`. After confirming containers work, remove the old data: `sudo rm -rf /var/lib/docker`.
+This script stops Docker, rsyncs data to `$DONNA_DATA_PATH/docker` (or pass a custom destination as the first argument), updates `/etc/docker/daemon.json`, and restarts. Verify with `docker info --format '{{.DockerRootDir}}'`. After confirming containers work, remove the old data: `sudo rm -rf /var/lib/docker`.
 
 **Important:** `/var/lib/containerd/` is separate from Docker's data-root. If disk usage is still high after moving Docker, check `sudo du -sh /var/lib/containerd/` — it can hold 100+ GB of image snapshots. On homelab setups where containerd is only used through Docker (not standalone k8s), it is safe to remove after Docker is stopped and restarted with the new data-root.
 
