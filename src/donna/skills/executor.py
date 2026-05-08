@@ -236,7 +236,8 @@ class SkillExecutor:
                         prompt_additions=prompt_additions,
                     )
                     total_cost += cost
-                    invocation_ids.append(inv_id)
+                    if inv_id is not None:
+                        invocation_ids.append(inv_id)
                     record.invocation_id = inv_id
 
                     if self._has_escalate(llm_output):
@@ -270,7 +271,8 @@ class SkillExecutor:
                         prompt_additions=prompt_additions,
                     )
                     total_cost += cost
-                    invocation_ids.append(inv_id)
+                    if inv_id is not None:
+                        invocation_ids.append(inv_id)
                     record.invocation_id = inv_id
 
                     if self._has_escalate(llm_output):
