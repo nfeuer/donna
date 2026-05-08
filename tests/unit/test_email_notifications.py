@@ -27,6 +27,7 @@ def _make_calendar_config() -> CalendarConfig:
         calendars={"primary": CalendarEntryConfig(calendar_id="primary", access="read_write")},
         sync=SyncConfig(),
         scheduling=SchedulingConfig(),
+        timezone="UTC",
         time_windows=TimeWindowsConfig(
             blackout=TimeWindowConfig(start_hour=0, end_hour=6),
             quiet_hours=TimeWindowConfig(start_hour=20, end_hour=24),

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import aiosqlite
 import pytest
@@ -72,21 +73,25 @@ class TestCheckSqlite:
 
 
 class TestCheckDiscord:
-    def test_returns_ok_when_flag_set(self) -> None:
+    def test_returns_ok_when_bot_ready(self) -> None:
         app = web.Application()
-        app["discord_ready"] = True
+        bot = MagicMock()
+        bot.is_ready.return_value = True
+        app["discord_bot"] = bot
         assert _check_discord(app)["ok"] is True
 
-    def test_returns_not_ok_when_flag_false(self) -> None:
+    def test_returns_not_ok_when_bot_not_ready(self) -> None:
         app = web.Application()
-        app["discord_ready"] = False
+        bot = MagicMock()
+        bot.is_ready.return_value = False
+        app["discord_bot"] = bot
         result = _check_discord(app)
         assert result["ok"] is False
 
-    def test_returns_not_ok_when_flag_absent(self) -> None:
+    def test_returns_ok_when_no_bot(self) -> None:
         app = web.Application()
         result = _check_discord(app)
-        assert result["ok"] is False
+        assert result["ok"] is True
 
 
 class TestCheckScheduler:
@@ -126,12 +131,18 @@ class TestCheckApiFreshness:
 # ---------------------------------------------------------------------------
 
 class TestHealthEndpoint:
+    @staticmethod
+    def _mock_bot(ready: bool = True) -> MagicMock:
+        bot = MagicMock()
+        bot.is_ready.return_value = ready
+        return bot
+
     @pytest.mark.asyncio
     async def test_health_returns_200_when_all_ok(self, tmp_path: Path) -> None:
         """Returns 200 and status=healthy when all components pass."""
         _, client = await _make_client(
             tmp_path,
-            discord_ready=True,
+            discord_bot=self._mock_bot(True),
             scheduler_last_heartbeat=datetime.now(UTC),
             last_api_ts=datetime.now(UTC),
         )
@@ -146,7 +157,7 @@ class TestHealthEndpoint:
         """Returns 503 and status=degraded when Discord is not ready."""
         _, client = await _make_client(
             tmp_path,
-            discord_ready=False,
+            discord_bot=self._mock_bot(False),
             last_api_ts=datetime.now(UTC),
         )
         async with client:
@@ -159,7 +170,7 @@ class TestHealthEndpoint:
     @pytest.mark.asyncio
     async def test_health_checks_all_components_present(self, tmp_path: Path) -> None:
         """Response includes all 4 check keys."""
-        _, client = await _make_client(tmp_path, discord_ready=True)
+        _, client = await _make_client(tmp_path, discord_bot=self._mock_bot(True))
         async with client:
             resp = await client.get("/health")
             data = await resp.json()

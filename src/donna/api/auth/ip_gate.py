@@ -105,7 +105,7 @@ async def get_trusted_ip(
     row = await cursor.fetchone()
     columns = [d[0] for d in cursor.description] if cursor.description else []
     await cursor.close()
-    return dict(zip(columns, row)) if row else None
+    return dict(zip(columns, row, strict=False)) if row else None
 
 
 async def record_ip_connection(

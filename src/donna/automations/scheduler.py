@@ -41,8 +41,8 @@ class AutomationScheduler:
             logger.exception("automation_scheduler_list_due_failed")
             return
         for row in due:
-            aid = getattr(row, "id", None)
-            if aid in self._dispatching:
+            aid: str | None = getattr(row, "id", None)
+            if aid is None or aid in self._dispatching:
                 continue
             self._dispatching.add(aid)
             try:

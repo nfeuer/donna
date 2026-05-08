@@ -557,7 +557,7 @@ class SkillExecutor:
         self, step: dict[str, Any], step_name: str, version: SkillVersionRow,
         state: StateObject, inputs: dict[str, Any], user_id: str, skill: SkillRow,
         prompt_additions: str | None = None,
-    ) -> tuple[Any, str, float]:
+    ) -> tuple[Any, str | None, float]:
         prompt_template = version.step_content.get(step_name, "")
         rendered = self._jinja.from_string(prompt_template).render(
             inputs=inputs, state=state.to_dict(),

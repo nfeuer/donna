@@ -54,7 +54,7 @@ class MorningDigest:
         db: Database,
         service: NotificationService,
         router: ModelRouter,
-        calendar_client: GoogleCalendarClient,
+        calendar_client: GoogleCalendarClient | None,
         calendar_id: str,
         user_id: str,
         project_root: Path,
@@ -178,16 +178,17 @@ class MorningDigest:
 
         # Calendar events for today.
         calendar_events_list: list[str] = []
-        try:
-            events = await self._calendar_client.list_events(
-                self._calendar_id, today_start, today_end
-            )
-            calendar_events_list = [
-                f"- {ev.summary} ({ev.start.strftime('%H:%M')}–{ev.end.strftime('%H:%M')})"
-                for ev in events
-            ]
-        except Exception:
-            logger.exception("morning_digest_calendar_failed")
+        if self._calendar_client is not None:
+            try:
+                events = await self._calendar_client.list_events(
+                    self._calendar_id, today_start, today_end
+                )
+                calendar_events_list = [
+                    f"- {ev.summary} ({ev.start.strftime('%H:%M')}–{ev.end.strftime('%H:%M')})"
+                    for ev in events
+                ]
+            except Exception:
+                logger.exception("morning_digest_calendar_failed")
 
         all_tasks = await self._db.list_tasks(user_id=self._user_id)
 

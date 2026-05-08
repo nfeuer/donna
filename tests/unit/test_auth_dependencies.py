@@ -19,11 +19,15 @@ def _request(host: str, headers: dict | None = None) -> SimpleNamespace:
     )
 
 
+def _auth_config() -> SimpleNamespace:
+    return SimpleNamespace(internal_cidrs=[])
+
+
 @pytest.mark.asyncio
 async def test_resolve_user_device_token_short_circuits(monkeypatch):
     ctx = dep.AuthContext(
         conn=AsyncMock(),
-        auth_config=None,
+        auth_config=_auth_config(),
         immich_client=AsyncMock(),
     )
 
@@ -42,7 +46,7 @@ async def test_resolve_user_device_token_short_circuits(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_resolve_user_untrusted_ip_raises_403(monkeypatch):
-    ctx = dep.AuthContext(conn=AsyncMock(), auth_config=None, immich_client=AsyncMock())
+    ctx = dep.AuthContext(conn=AsyncMock(), auth_config=_auth_config(), immich_client=AsyncMock())
 
     async def fake_device_validate(*args, **kwargs):
         return None
@@ -63,7 +67,7 @@ async def test_resolve_user_untrusted_ip_raises_403(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_resolve_user_missing_immich_raises_401(monkeypatch):
-    ctx = dep.AuthContext(conn=AsyncMock(), auth_config=None, immich_client=AsyncMock())
+    ctx = dep.AuthContext(conn=AsyncMock(), auth_config=_auth_config(), immich_client=AsyncMock())
 
     async def fake_device_validate(*args, **kwargs):
         return None
@@ -84,7 +88,7 @@ async def test_resolve_user_missing_immich_raises_401(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_admin_rejects_device_token_path(monkeypatch):
-    ctx = dep.AuthContext(conn=AsyncMock(), auth_config=None, immich_client=AsyncMock())
+    ctx = dep.AuthContext(conn=AsyncMock(), auth_config=_auth_config(), immich_client=AsyncMock())
 
     async def fake_device_validate(*args, **kwargs):
         return {"user_id": "nick"}

@@ -323,7 +323,9 @@ def _start_memory_tasks(
         # Backfill is one-shot — run it in the background rather than
         # adding to ctx.tasks, where FIRST_COMPLETED would shut down
         # the orchestrator as soon as it finishes.
-        asyncio.create_task(source.backfill(ctx.user_id))
+        backfill = asyncio.create_task(  # noqa: RUF006, F841
+            source.backfill(ctx.user_id),
+        )
 
 
 async def _try_build_vault_writer(
