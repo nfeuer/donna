@@ -7,17 +7,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e ".[dev]" 2>/dev/null || pip install --no-cache-dir .
-
 # Copy application
+COPY pyproject.toml .
 COPY src/ src/
 COPY config/ config/
 COPY prompts/ prompts/
 COPY schemas/ schemas/
 COPY alembic/ alembic/
 COPY alembic.ini .
+
+# Install Python deps
+RUN pip install --no-cache-dir .
 
 # Create non-root user
 RUN useradd -m donna && chown -R donna:donna /app

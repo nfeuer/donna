@@ -62,7 +62,7 @@ land in the same on-disk git repo, so history reflects both.
 Recommended: the official **Remotely Save** or **Remotely Sync**
 community plugin, configured for "WebDAV (HTTP)" with:
 
-- Server: `https://vault.houseoffeuer.com/` (or the direct
+- Server: `https://vault.<your-domain>/` (or the direct
   `http://<homelab-host>:8500/` inside the LAN).
 - Username: value of `CADDY_VAULT_USER`.
 - Password: the plaintext you hashed in step 2.

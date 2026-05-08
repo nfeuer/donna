@@ -28,6 +28,7 @@ class AutomationScheduler:
         self._now_fn = now_fn or (lambda: datetime.now(UTC))
         self._sleep_fn = sleep_fn or asyncio.sleep
         self._stop = False
+        self._dispatching: set[str] = set()
 
     def stop(self) -> None:
         self._stop = True
@@ -40,13 +41,19 @@ class AutomationScheduler:
             logger.exception("automation_scheduler_list_due_failed")
             return
         for row in due:
+            aid: str | None = getattr(row, "id", None)
+            if aid is None or aid in self._dispatching:
+                continue
+            self._dispatching.add(aid)
             try:
                 await self._dispatcher.dispatch(row)
             except Exception:
                 logger.exception(
                     "automation_scheduler_dispatch_failed",
-                    automation_id=getattr(row, "id", None),
+                    automation_id=aid,
                 )
+            finally:
+                self._dispatching.discard(aid)
 
     async def run_forever(self) -> None:
         while not self._stop:

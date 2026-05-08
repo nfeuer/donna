@@ -236,7 +236,8 @@ class SkillExecutor:
                         prompt_additions=prompt_additions,
                     )
                     total_cost += cost
-                    invocation_ids.append(inv_id)
+                    if inv_id is not None:
+                        invocation_ids.append(inv_id)
                     record.invocation_id = inv_id
 
                     if self._has_escalate(llm_output):
@@ -270,7 +271,8 @@ class SkillExecutor:
                         prompt_additions=prompt_additions,
                     )
                     total_cost += cost
-                    invocation_ids.append(inv_id)
+                    if inv_id is not None:
+                        invocation_ids.append(inv_id)
                     record.invocation_id = inv_id
 
                     if self._has_escalate(llm_output):
@@ -557,7 +559,7 @@ class SkillExecutor:
         self, step: dict[str, Any], step_name: str, version: SkillVersionRow,
         state: StateObject, inputs: dict[str, Any], user_id: str, skill: SkillRow,
         prompt_additions: str | None = None,
-    ) -> tuple[Any, str, float]:
+    ) -> tuple[Any, str | None, float]:
         prompt_template = version.step_content.get(step_name, "")
         rendered = self._jinja.from_string(prompt_template).render(
             inputs=inputs, state=state.to_dict(),
@@ -585,7 +587,7 @@ class SkillExecutor:
                 user_id=user_id,
             )
 
-        return output, meta.invocation_id, getattr(meta, "cost_usd", 0.0)
+        return output, getattr(meta, "invocation_id", None), getattr(meta, "cost_usd", 0.0)
 
     async def _run_tool_invocations(
         self, invocations: list[dict[str, Any]], state: StateObject,

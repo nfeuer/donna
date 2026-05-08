@@ -9,8 +9,10 @@ services:
     container_name: donna-api
     restart: unless-stopped
     env_file: .env
+    environment:
+      - DONNA_DB_PATH=/donna/db/donna_tasks.db
     volumes:
-      - ${DONNA_DB_PATH}:/donna/db:ro
+      - ${DONNA_DB_PATH}:/donna/db
     ports:
       - "8200:8200"
     healthcheck:

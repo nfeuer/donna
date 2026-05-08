@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import UTC, datetime
+import zoneinfo
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -160,20 +161,29 @@ class BackupManager:
         _prune(weekly, weekly_keep)
         _prune(monthly, monthly_keep)
 
-    async def run_scheduled_backup(self) -> None:
-        """Long-running loop: daily backup at 3:00 AM UTC.
+    async def run_scheduled_backup(
+        self, tz: zoneinfo.ZoneInfo | None = None,
+    ) -> None:
+        """Long-running loop: daily backup at 3:00 AM local time.
 
+        When *tz* is provided, 3 AM is interpreted in that timezone.
         Call via asyncio.create_task(). Runs indefinitely until cancelled.
         """
         while True:
             now = datetime.now(UTC)
-            # Seconds until next 03:00 UTC
-            next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
-            if next_run <= now:
-                next_run = next_run.replace(day=next_run.day + 1)
-            delay = (next_run - now).total_seconds()
+            if tz is not None:
+                local_now = now.astimezone(tz)
+                next_run = local_now.replace(hour=3, minute=0, second=0, microsecond=0)
+                if next_run <= local_now:
+                    next_run += timedelta(days=1)
+                next_run_utc = next_run.astimezone(UTC)
+            else:
+                next_run_utc = now.replace(hour=3, minute=0, second=0, microsecond=0)
+                if next_run_utc <= now:
+                    next_run_utc += timedelta(days=1)
+            delay = (next_run_utc - now).total_seconds()
 
-            logger.info("backup_scheduled", next_run_utc=next_run.isoformat(), delay_s=delay)
+            logger.info("backup_scheduled", next_run=next_run_utc.isoformat(), delay_s=delay)
             await asyncio.sleep(delay)
 
             try:

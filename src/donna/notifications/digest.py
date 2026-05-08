@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import zoneinfo
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -53,7 +54,7 @@ class MorningDigest:
         db: Database,
         service: NotificationService,
         router: ModelRouter,
-        calendar_client: GoogleCalendarClient,
+        calendar_client: GoogleCalendarClient | None,
         calendar_id: str,
         user_id: str,
         project_root: Path,
@@ -61,6 +62,7 @@ class MorningDigest:
         user_email: str = "",
         self_diagnostic: SelfDiagnostic | None = None,
         tool_request_repo: Any | None = None,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
         self._service = service
@@ -72,6 +74,7 @@ class MorningDigest:
         self._gmail = gmail
         self._user_email = user_email
         self._self_diagnostic = self_diagnostic
+        self._tz = tz
         # Slice 22 — when wired, _assemble_data adds an open speculative
         # tool-gap aggregation under ``tool_gaps`` so the digest surfaces
         # them. High-severity gaps are excluded — they already pinged.
@@ -87,7 +90,7 @@ class MorningDigest:
 
         while True:
             now = datetime.now(tz=UTC)
-            next_fire = _next_fire_time(now, DIGEST_HOUR, DIGEST_MINUTE)
+            next_fire = _next_fire_time(now, DIGEST_HOUR, DIGEST_MINUTE, tz=self._tz)
             wait_seconds = (next_fire - now).total_seconds()
 
             logger.info(
@@ -175,16 +178,17 @@ class MorningDigest:
 
         # Calendar events for today.
         calendar_events_list: list[str] = []
-        try:
-            events = await self._calendar_client.list_events(
-                self._calendar_id, today_start, today_end
-            )
-            calendar_events_list = [
-                f"- {ev.summary} ({ev.start.strftime('%H:%M')}–{ev.end.strftime('%H:%M')})"
-                for ev in events
-            ]
-        except Exception:
-            logger.exception("morning_digest_calendar_failed")
+        if self._calendar_client is not None:
+            try:
+                events = await self._calendar_client.list_events(
+                    self._calendar_id, today_start, today_end
+                )
+                calendar_events_list = [
+                    f"- {ev.summary} ({ev.start.strftime('%H:%M')}–{ev.end.strftime('%H:%M')})"
+                    for ev in events
+                ]
+            except Exception:
+                logger.exception("morning_digest_calendar_failed")
 
         all_tasks = await self._db.list_tasks(user_id=self._user_id)
 
@@ -319,8 +323,23 @@ class MorningDigest:
         return text[:2000]
 
 
-def _next_fire_time(now: datetime, hour: int, minute: int) -> datetime:
-    """Return the next datetime at hour:minute (UTC), at least 1 second away."""
+def _next_fire_time(
+    now: datetime,
+    hour: int,
+    minute: int,
+    tz: zoneinfo.ZoneInfo | None = None,
+) -> datetime:
+    """Return the next datetime at hour:minute, at least 1 second away.
+
+    When *tz* is provided, *hour* and *minute* are interpreted in that
+    timezone and the returned datetime is UTC.
+    """
+    if tz is not None:
+        local_now = now.astimezone(tz)
+        candidate = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= local_now:
+            candidate += timedelta(days=1)
+        return candidate.astimezone(UTC)
     candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if candidate <= now:
         candidate += timedelta(days=1)

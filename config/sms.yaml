@@ -21,8 +21,8 @@ escalation:
   tier4_max_per_day: 1                # max 1 phone call per day
 
 blackout:
-  start_hour: 0              # 12:00 AM — SMS blocked during blackout
-  end_hour: 6                # 6:00 AM
+  start_hour: 0              # 12:00 AM Eastern — SMS blocked during blackout
+  end_hour: 6                # 6:00 AM Eastern
 
 conversation_context:
   sliding_ttl_hours: 24      # expires_at slides on every activity update

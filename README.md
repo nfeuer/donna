@@ -21,23 +21,23 @@ See `docs/architecture.md` for the full component map.
 ## Quick Start
 
 ```bash
-# Clone and set up
+# Clone
 git clone <repo-url> donna
 cd donna
-cp docker/.env.example docker/.env
-# Edit docker/.env with your API keys and config
 
-# Install Python dependencies
-pip install -e ".[dev]"
+# Bootstrap (checks prereqs, creates venv, installs deps, launches setup wizard)
+./scripts/bootstrap.sh
 
-# Run database migrations
-alembic upgrade head
+# Or step by step:
+./scripts/bootstrap.sh --no-setup   # prereqs + venv only
+source .venv/bin/activate
+donna setup --phase 1               # interactive credential wizard
 
 # Start in dev mode
 donna run --dev
 
 # Or start with Docker
-docker compose -f docker/donna-core.yml up --build
+./scripts/donna-up.sh --with-monitoring
 ```
 
 ## Project Structure

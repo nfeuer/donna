@@ -19,6 +19,7 @@ async def send_magic_link(
     respects the existing `email.yaml` `send_enabled` config gate.
     """
     verify_url = f"{verify_base_url}?token={token}"
+    base_origin = verify_base_url.rsplit("/auth/verify", 1)[0] or verify_base_url
     subject = f"{from_name} — access verification"
     body = (
         f"You requested access to Donna from a new device or network.\n\n"
@@ -26,7 +27,7 @@ async def send_magic_link(
         f"    {verify_url}\n\n"
         f"If you did not request this, ignore this email. The link will "
         f"expire automatically, and you can revoke any trusted IP at "
-        f"https://donna.houseoffeuer.com/admin/access.\n"
+        f"{base_origin}/admin/access.\n"
     )
     draft_id = await gmail.create_draft(to=to, subject=subject, body=body)
     await gmail.send_draft(draft_id)

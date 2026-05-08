@@ -95,9 +95,11 @@ skills:
       open_tasks: 5
 
   # --- slice 16: cadence-driven template writes ---
+  # NOTE: hour_utc / minute_utc are now interpreted in local time
+  # (America/New_York via calendar.yaml timezone), despite the field names.
   daily_reflection:
     enabled: true
-    hour_utc: 21
+    hour_utc: 21              # 9 PM Eastern
     minute_utc: 0
     autonomy_level: medium
     context_limits:
@@ -107,7 +109,7 @@ skills:
 
   commitment_log:
     enabled: true
-    hour_utc: 20
+    hour_utc: 20              # 8:30 PM Eastern
     minute_utc: 30
     autonomy_level: medium
     context_limits:
@@ -116,7 +118,7 @@ skills:
 
   weekly_review:
     enabled: true
-    hour_utc: 21
+    hour_utc: 21              # 9 PM Eastern
     minute_utc: 0
     day_of_week: 6            # Sunday (Mon=0..Sun=6)
     autonomy_level: medium
@@ -128,7 +130,7 @@ skills:
 
   person_profile:
     enabled: true
-    hour_utc: 22
+    hour_utc: 22              # 10 PM Eastern
     minute_utc: 0
     day_of_week: 6            # Sunday
     trigger_mentions_threshold: 3

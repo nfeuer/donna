@@ -6,14 +6,14 @@ ip_gate:
     verify:         { max: 10, window_seconds: 600 }
 
 trusted_proxies:
-  - 172.18.0.0/16   # homelab Docker network, where Caddy lives
+  - 172.20.0.0/16   # homelab Docker network, where Caddy lives
 
 internal_cidrs:
-  - 172.18.0.0/16
+  - 172.20.0.0/16
 
 immich:
-  internal_url: http://immich_server:2283
-  external_url: https://immich.houseoffeuer.com
+  internal_url: http://immich-server:2283
+  external_url: ${DONNA_IMMICH_EXTERNAL_URL:-https://immich.example.com}
   admin_api_key_env: IMMICH_ADMIN_API_KEY
   user_cache_ttl_seconds: 60
   allowlist_sync_interval_seconds: 900
@@ -25,9 +25,9 @@ device_tokens:
   max_per_user: 10
 
 email:
-  from: "donna@houseoffeuer.com"
+  from: ${DONNA_EMAIL_FROM:-donna@example.com}
   subject: "Donna access verification"
-  verify_base_url: "https://donna.houseoffeuer.com/auth/verify"
+  verify_base_url: ${DONNA_EXTERNAL_URL:-https://donna.example.com}/auth/verify
   token_expiry_minutes: 15
 
 bootstrap:

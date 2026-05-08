@@ -19,13 +19,13 @@ models:
     output_cost_per_token_usd: 0.000015
   local_parser:
     provider: ollama
-    model: qwen2.5:32b-instruct-q6_K
+    model: qwen2.5:32b-instruct-q4_K_M
     estimated_cost_per_1k_tokens: 0.0001  # hardware amortization
     num_ctx: 8192
 
 # Ollama local LLM connection settings (RTX 3090)
 ollama:
-  base_url: http://localhost:11434
+  base_url: http://donna-ollama:11434
   timeout_s: 120
   keepalive: 5m
   default_num_ctx: 8192
@@ -118,6 +118,7 @@ routing:
   # Wave 2: prefix-routing for dynamic skill + validation task_types.
   skill_step:
     model: parser
+    shadow: local_parser
     fallback: reasoner
     confidence_threshold: 0.7
   skill_validation:

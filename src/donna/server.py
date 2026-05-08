@@ -93,9 +93,12 @@ async def _check_sqlite(db_path: str | None) -> dict[str, Any]:
 
 
 def _check_discord(app: web.Application) -> dict[str, Any]:
-    """Check that the Discord bot has marked itself ready."""
-    ready: bool = app.get("discord_ready", False)
-    return {"ok": ready, "detail": None if ready else "discord_ready flag not set"}
+    """Check that the Discord bot is connected and ready."""
+    bot = app.get("discord_bot")
+    if bot is None:
+        return {"ok": True, "detail": "discord bot not configured"}
+    ready: bool = bot.is_ready()
+    return {"ok": ready, "detail": None if ready else "discord bot not yet connected"}
 
 
 def _check_scheduler(app: web.Application) -> dict[str, Any]:
@@ -228,6 +231,7 @@ async def run_server(
     twilio_sms: TwilioSMS | None = None,
     sms_router: SmsRouter | None = None,
     db_path: str | Path | None = None,
+    discord_bot: Any | None = None,
 ) -> None:
     """Start the aiohttp server and block until shutdown signal received.
 
@@ -237,6 +241,8 @@ async def run_server(
     logger = structlog.get_logger()
 
     app = create_app(twilio_sms=twilio_sms, sms_router=sms_router, db_path=db_path)
+    if discord_bot is not None:
+        app["discord_bot"] = discord_bot
     runner = web.AppRunner(app)
     await runner.setup()
 

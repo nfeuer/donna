@@ -1,21 +1,16 @@
-"""AsyncCronScheduler — fires an async task daily or weekly at a UTC time.
+"""AsyncCronScheduler — fires an async task daily or weekly.
 
 Designed to run as ``asyncio.create_task`` inside the FastAPI lifespan.
 
-Slice 16 extended the original daily-only shape with two optional
-kwargs:
-
-- ``minute_utc`` — fire at ``HH:MM`` UTC rather than ``HH:00`` only.
-- ``day_of_week`` — if provided (Mon=0..Sun=6), fire weekly on that
-  weekday; otherwise daily.
-
-The existing positional signature ``AsyncCronScheduler(hour_utc, task)``
-is preserved. See ``slices/slice_16_*.md`` Piece 7.
+When *tz* is provided, *hour_utc* and *minute_utc* are interpreted in
+that timezone (despite the parameter names, kept for backwards compat).
+Otherwise they are interpreted as UTC.
 """
 
 from __future__ import annotations
 
 import asyncio
+import zoneinfo
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 
@@ -34,6 +29,7 @@ class AsyncCronScheduler:
         *,
         minute_utc: int = 0,
         day_of_week: int | None = None,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         if not 0 <= hour_utc <= 23:
             raise ValueError(f"hour_utc must be 0..23, got {hour_utc}")
@@ -50,6 +46,7 @@ class AsyncCronScheduler:
         self._now_fn = now_fn or (lambda: datetime.now(UTC))
         self._sleep_fn = sleep_fn or asyncio.sleep
         self._stop = False
+        self._tz = tz
 
     def stop(self) -> None:
         self._stop = True
@@ -71,7 +68,7 @@ class AsyncCronScheduler:
         while not self._stop:
             now = self._now_fn()
             next_fire = _next_fire(
-                now, self._hour, self._minute, self._day_of_week
+                now, self._hour, self._minute, self._day_of_week, self._tz
             )
             wait_seconds = max(0.0, (next_fire - now).total_seconds())
             logger.info(
@@ -93,17 +90,33 @@ def _next_fire(
     hour_utc: int,
     minute_utc: int = 0,
     day_of_week: int | None = None,
+    tz: zoneinfo.ZoneInfo | None = None,
 ) -> datetime:
-    candidate = now.replace(
-        hour=hour_utc, minute=minute_utc, second=0, microsecond=0
-    )
+    """Calculate the next fire time.
+
+    When *tz* is provided, *hour_utc* and *minute_utc* are interpreted in
+    that timezone and the returned datetime is UTC.
+    """
+    if tz is not None:
+        local_now = now.astimezone(tz)
+        candidate = local_now.replace(
+            hour=hour_utc, minute=minute_utc, second=0, microsecond=0
+        )
+    else:
+        candidate = now.replace(
+            hour=hour_utc, minute=minute_utc, second=0, microsecond=0
+        )
+        local_now = now
+
     if day_of_week is None:
-        if candidate > now:
-            return candidate
-        return candidate + timedelta(days=1)
+        if candidate > local_now:
+            return candidate.astimezone(UTC) if tz else candidate
+        result = candidate + timedelta(days=1)
+        return result.astimezone(UTC) if tz else result
 
     # Weekly: bump forward to the next occurrence of day_of_week.
     days_ahead = (day_of_week - candidate.weekday()) % 7
-    if days_ahead == 0 and candidate <= now:
+    if days_ahead == 0 and candidate <= local_now:
         days_ahead = 7
-    return candidate + timedelta(days=days_ahead)
+    result = candidate + timedelta(days=days_ahead)
+    return result.astimezone(UTC) if tz else result

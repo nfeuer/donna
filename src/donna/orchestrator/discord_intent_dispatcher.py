@@ -258,7 +258,7 @@ class DiscordIntentDispatcher:
         self, result: ChallengerMatchResult, msg: _HasContent
     ) -> DispatchResult:
         schedule = result.schedule or {}
-        target_cron = schedule.get("cron") or "0 12 * * *"
+        target_cron = schedule.get("cron") or "0 9 * * *"
         capability_name = result.capability.name if result.capability else None
         active_cron = await self._resolve_active_cadence(target_cron, capability_name)
         draft = DraftAutomation(
@@ -279,7 +279,7 @@ class DiscordIntentDispatcher:
         target_cron = (
             verdict.polling_interval_suggestion
             or (verdict.schedule or {}).get("cron")
-            or "0 12 * * *"
+            or "0 9 * * *"
         )
         active_cron = await self._resolve_active_cadence(target_cron, capability_name=None)
         draft = DraftAutomation(

@@ -63,7 +63,7 @@ async def test_caddy_proxied_request_rejected(db):
     raw = await sk.seed_or_rotate(db, caller_id="curator", monthly_budget_usd=5.0)
     result = await sk.validate(
         db, presented_key=raw, source_ip="172.18.0.5",
-        internal_cidrs=_INTERNAL, forwarded_host="donna.houseoffeuer.com",
+        internal_cidrs=_INTERNAL, forwarded_host="donna.example.com",
     )
     assert result is None
 

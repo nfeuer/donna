@@ -33,6 +33,18 @@ This guide covers everything needed to get Donna running, from a fresh machine t
 
 ---
 
+## Quick Path
+
+If you just want to get running, the bootstrap script checks all prerequisites, creates the Python environment, and launches the setup wizard:
+
+```bash
+./scripts/bootstrap.sh
+```
+
+The sections below document each step in detail if you prefer to do it manually or need to troubleshoot.
+
+---
+
 ## 1. Prerequisites
 
 ### Hardware
@@ -383,7 +395,7 @@ Complete these steps when you have the RTX 3090 installed and dedicated to Donna
 nvidia-smi
 ```
 
-Expected: a table listing both GPUs with their VRAM, driver version, and CUDA version. If this command fails, install the NVIDIA driver:
+Expected: a table listing your GPU(s) with VRAM, driver version, and CUDA version. If this command fails, install the NVIDIA driver:
 
 ```bash
 sudo apt update
@@ -422,11 +434,15 @@ Expected: same output as Step 1. If this fails, verify the toolkit install compl
 **Step 4 — Set the GPU assignment env vars:**
 
 ```env
-IMMICH_ML_GPU_ID=0     # GTX 1080 — dedicated to Immich/media (if applicable)
-DONNA_OLLAMA_GPU_ID=1  # RTX 3090 — dedicated to Donna local LLM
+# Single-GPU setup (most common):
+DONNA_OLLAMA_GPU_ID=0  # RTX 3090 — the only GPU
+
+# Multi-GPU setup (e.g. separate GPUs for Immich and Donna):
+# IMMICH_ML_GPU_ID=0     # GTX 1080 — dedicated to Immich/media
+# DONNA_OLLAMA_GPU_ID=1  # RTX 3090 — dedicated to Donna local LLM
 ```
 
-GPU assignment prevents VRAM contention between workloads. The `donna-ollama.yml` compose file pins the Ollama container to device index `DONNA_OLLAMA_GPU_ID`.
+GPU assignment prevents VRAM contention between workloads. The `donna-ollama.yml` compose file pins the Ollama container to device index `DONNA_OLLAMA_GPU_ID`. Run `nvidia-smi` on the host to see your device indices — most single-GPU setups use `0`.
 
 After completing these steps, continue to [Section 11 — Local LLM Stack](#11-local-llm-stack-phase-3) to start Ollama and pull the model.
 
@@ -708,7 +724,7 @@ The `qwen2.5:32b` model is the right choice for Donna's workload (task parsing, 
 docker compose -f docker/donna-ollama.yml --env-file docker/.env up -d
 ```
 
-This starts `donna-ollama` on the `homelab` network with GPU device index `DONNA_OLLAMA_GPU_ID` (set to `1` in your `.env`).
+This starts `donna-ollama` on the `homelab` network with GPU device index `DONNA_OLLAMA_GPU_ID` from your `.env`.
 
 **Verify the container started and can see the GPU:**
 
@@ -767,6 +783,21 @@ docker exec donna-ollama nvidia-smi --query-gpu=memory.used,memory.free --format
 ```
 
 For `qwen2.5:32b-instruct-q4_K_M` you should see roughly 19–20 GB used and 4–5 GB free. The free headroom is used for the KV cache during inference.
+
+### Context Length and VRAM Fitting
+
+Ollama's default context window is 32768 tokens, which creates an ~8 GB KV cache. Combined with the model weights (~20 GB), this exceeds the RTX 3090's 24 GB VRAM and causes layers to be offloaded to CPU — dropping inference from ~40 tok/s to ~4 tok/s.
+
+Donna's `OllamaProvider` already passes `num_ctx=8192` on every request (configured in `config/donna_models.yaml` under `ollama.default_num_ctx`), which keeps the KV cache at ~2 GB and total VRAM at ~22 GB. You don't need to change anything — but if you see slow responses, check for this:
+
+```bash
+docker logs donna-ollama 2>&1 | grep "graph splits"
+```
+
+- **2 splits** = fully on GPU (expected, ~38 tok/s)
+- **200+ splits** = heavy CPU offload (something is requesting a large context window)
+
+The `OLLAMA_NUM_CTX` environment variable in `donna-ollama.yml` is a hint but does **not** override per-request `num_ctx`. The per-request value in `OllamaProvider` is what matters.
 
 ---
 
@@ -1091,13 +1122,18 @@ The 32B Q4_K_M model requires approximately 20 GB free.
 
 ### Ollama model loads but responses are slow
 
-Slow responses (> 10 s for short prompts) indicate layers are being offloaded to RAM rather than staying in VRAM. Check VRAM usage:
+Slow responses (> 10 s for short prompts) indicate layers are being offloaded to CPU. Check graph splits:
 
 ```bash
-docker exec donna-ollama nvidia-smi --query-gpu=memory.used,memory.free --format=csv
+docker logs donna-ollama 2>&1 | grep "graph splits"
 ```
 
-If VRAM is near capacity and another process is competing (e.g. Immich ML on the same GPU), confirm `IMMICH_ML_GPU_ID` and `DONNA_OLLAMA_GPU_ID` are set to different device indices.
+**2 splits** = fully on GPU (~38 tok/s). **200+ splits** = heavy CPU offload (~4 tok/s).
+
+Common causes:
+- **Context window too large.** Ollama defaults to 32768 tokens, creating an ~8 GB KV cache that pushes total VRAM past 24 GB. Donna's `OllamaProvider` passes `num_ctx=8192` per-request to prevent this. If something is bypassing the provider (e.g. a direct `ollama run` from the CLI), it will use the default and trigger CPU offload.
+- **Another process using the GPU.** If Immich ML is on the same GPU, confirm `IMMICH_ML_GPU_ID` and `DONNA_OLLAMA_GPU_ID` are set to different device indices.
+- **VRAM near capacity.** Check with `docker exec donna-ollama nvidia-smi --query-gpu=memory.used,memory.free --format=csv`
 
 ### Eval harness fails Tier 1
 
@@ -1116,3 +1152,26 @@ If spot-check scores drop below the `flag_threshold` after switching to hybrid r
 2. Restart the orchestrator
 3. Investigate the flagged outputs in `invocation_log` to identify the failure pattern
 4. Re-run the eval harness before attempting migration again
+
+### OS disk filling up (Docker data-root)
+
+By default Docker stores images, containers, and build cache at `/var/lib/docker`, which can consume 100+ GB. To move Docker's data-root to the NVMe:
+
+```bash
+sudo scripts/move-docker-root.sh
+```
+
+This script stops Docker, rsyncs data to `$DONNA_DATA_PATH/docker` (or pass a custom destination as the first argument), updates `/etc/docker/daemon.json`, and restarts. Verify with `docker info --format '{{.DockerRootDir}}'`. After confirming containers work, remove the old data: `sudo rm -rf /var/lib/docker`.
+
+**Important:** `/var/lib/containerd/` is separate from Docker's data-root. If disk usage is still high after moving Docker, check `sudo du -sh /var/lib/containerd/` — it can hold 100+ GB of image snapshots. On homelab setups where containerd is only used through Docker (not standalone k8s), it is safe to remove after Docker is stopped and restarted with the new data-root.
+
+### Docker: container running old code after rebuild
+
+If you edit source files but the container still runs old code, Docker's build cache may have cached the `COPY` layer. Force a clean rebuild:
+
+```bash
+COMPOSE_PROJECT_NAME=donna docker compose -f docker/donna-core.yml --env-file docker/.env build --no-cache
+COMPOSE_PROJECT_NAME=donna docker compose -f docker/donna-core.yml --env-file docker/.env up -d --force-recreate
+```
+
+The `--no-cache` flag forces all layers to rebuild. `--force-recreate` ensures the container is replaced even if Docker thinks it's already running the latest image.

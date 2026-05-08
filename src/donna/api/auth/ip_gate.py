@@ -6,6 +6,7 @@ schema, same return contracts.
 
 from __future__ import annotations
 
+import ipaddress
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -102,8 +103,9 @@ async def get_trusted_ip(
         "SELECT * FROM trusted_ips WHERE ip_address=?", (ip_address,)
     )
     row = await cursor.fetchone()
+    columns = [d[0] for d in cursor.description] if cursor.description else []
     await cursor.close()
-    return dict(row) if row else None
+    return dict(zip(columns, row, strict=False)) if row else None
 
 
 async def record_ip_connection(
@@ -127,11 +129,20 @@ async def check_ip_access(
     ip_address: str,
     *,
     service: str = "donna",
+    internal_cidrs: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Core check. Returns {action, reason, ip_record}.
 
     action ∈ {"allow", "challenge", "block"}
     """
+    if internal_cidrs:
+        try:
+            addr = ipaddress.ip_address(ip_address)
+            if any(addr in cidr for cidr in internal_cidrs):
+                return {"action": "allow", "reason": "internal_cidr", "ip_record": None}
+        except ValueError:
+            pass
+
     row = await get_trusted_ip(conn, ip_address)
     if row is None:
         return {"action": "challenge", "reason": "unknown_ip", "ip_record": None}
