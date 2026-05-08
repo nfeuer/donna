@@ -118,6 +118,7 @@ routing:
   # Wave 2: prefix-routing for dynamic skill + validation task_types.
   skill_step:
     model: parser
+    shadow: local_parser
     fallback: reasoner
     confidence_threshold: 0.7
   skill_validation:

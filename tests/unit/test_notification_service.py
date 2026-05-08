@@ -41,6 +41,7 @@ def _make_time_windows(
 def _make_calendar_config(tw: TimeWindowsConfig) -> MagicMock:
     cfg = MagicMock()
     cfg.time_windows = tw
+    cfg.timezone = "UTC"
     return cfg
 
 

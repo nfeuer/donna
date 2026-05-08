@@ -5,7 +5,7 @@ discord:
   proactive_prompts:
     evening_checkin:
       enabled: true
-      hour: 19
+      hour: 19        # 7 PM Eastern (interpreted via calendar.yaml timezone)
       minute: 0
     stale_detection:
       enabled: true
@@ -16,5 +16,5 @@ discord:
       delay_minutes: 5
     afternoon_inactivity:
       enabled: true
-      hour: 14
+      hour: 14        # 2 PM Eastern (interpreted via calendar.yaml timezone)
       minute: 0

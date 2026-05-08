@@ -248,6 +248,7 @@ class CalendarConfig(BaseModel):
     time_windows: TimeWindowsConfig
     credentials: CredentialsConfig
     priority: PriorityConfig = Field(default_factory=PriorityConfig)
+    timezone: str = "America/New_York"
 
 
 class PreferenceScheduleConfig(BaseModel):

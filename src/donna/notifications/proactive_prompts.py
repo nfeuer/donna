@@ -15,6 +15,7 @@ See docs/notifications.md and the discord interaction expansion plan.
 from __future__ import annotations
 
 import asyncio
+import zoneinfo
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -33,8 +34,23 @@ logger = structlog.get_logger()
 EMBED_COLOUR = 0x5865F2
 
 
-def _next_fire_time(now: datetime, hour: int, minute: int) -> datetime:
-    """Calculate the next fire time for a daily prompt."""
+def _next_fire_time(
+    now: datetime,
+    hour: int,
+    minute: int,
+    tz: zoneinfo.ZoneInfo | None = None,
+) -> datetime:
+    """Calculate the next fire time for a daily prompt.
+
+    When *tz* is provided, *hour* and *minute* are interpreted in that
+    timezone and the returned datetime is UTC.
+    """
+    if tz is not None:
+        local_now = now.astimezone(tz)
+        target = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if target <= local_now:
+            target += timedelta(days=1)
+        return target.astimezone(UTC)
     target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if target <= now:
         target += timedelta(days=1)
@@ -128,7 +144,7 @@ class PostMeetingCapture:
 
 
 class EveningCheckin:
-    """Fires at a configurable time (default 7pm) for end-of-day capture."""
+    """Fires at a configurable time (default 7pm local) for end-of-day capture."""
 
     def __init__(
         self,
@@ -137,12 +153,14 @@ class EveningCheckin:
         user_id: str,
         hour: int = 19,
         minute: int = 0,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
         self._service = service
         self._user_id = user_id
         self._hour = hour
         self._minute = minute
+        self._tz = tz
 
     async def run(self) -> None:
         """Sleep until fire time, post check-in, repeat."""
@@ -154,7 +172,7 @@ class EveningCheckin:
 
         while True:
             now = datetime.now(tz=UTC)
-            next_fire = _next_fire_time(now, self._hour, self._minute)
+            next_fire = _next_fire_time(now, self._hour, self._minute, tz=self._tz)
             wait_seconds = (next_fire - now).total_seconds()
 
             logger.info(
@@ -293,10 +311,7 @@ class StaleTaskDetector:
 
 
 class AfternoonInactivityCheck:
-    """Fires at 2pm (configurable) if no tasks were started, added, or completed today.
-
-    Helps catch days when the user is busy and forgets to update Donna.
-    """
+    """Fires at 2pm local (configurable) if no tasks were started, added, or completed today."""
 
     def __init__(
         self,
@@ -305,12 +320,14 @@ class AfternoonInactivityCheck:
         user_id: str,
         hour: int = 14,
         minute: int = 0,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
         self._service = service
         self._user_id = user_id
         self._hour = hour
         self._minute = minute
+        self._tz = tz
 
     async def run(self) -> None:
         """Sleep until fire time, check activity, repeat."""
@@ -322,7 +339,7 @@ class AfternoonInactivityCheck:
 
         while True:
             now = datetime.now(tz=UTC)
-            next_fire = _next_fire_time(now, self._hour, self._minute)
+            next_fire = _next_fire_time(now, self._hour, self._minute, tz=self._tz)
             wait_seconds = (next_fire - now).total_seconds()
 
             logger.info(

@@ -27,7 +27,7 @@ capabilities:
       properties:
         ok: {type: boolean}
         price_usd: {type: ["number", "null"]}
-        currency: {type: string}
+        currency: {type: ["string", "null"]}
         in_stock: {type: boolean}
         size_available: {type: boolean}
         triggers_alert: {type: boolean}

@@ -225,6 +225,7 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         _start_daily_reflection_cron,
         _start_meeting_end_poller,
         _start_memory_tasks,
+        _start_morning_digest,
         _start_person_profile_cron,
         _start_weekly_review_cron,
         _try_build_calendar_client,
@@ -243,6 +244,9 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
 
     gmail_client = _try_build_gmail_client(ctx.config_dir)
     calendar_client = _try_build_calendar_client(ctx.config_dir)
+    _start_morning_digest(
+        ctx, calendar_client=calendar_client, gmail_client=gmail_client,
+    )
     vault_client = _try_build_vault_client(ctx.config_dir)
     vault_writer = await _try_build_vault_writer(ctx.config_dir, vault_client)
     memory_store, memory_handles = await _try_build_memory_store(

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import zoneinfo
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -61,6 +62,7 @@ class MorningDigest:
         user_email: str = "",
         self_diagnostic: SelfDiagnostic | None = None,
         tool_request_repo: Any | None = None,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
         self._service = service
@@ -72,6 +74,7 @@ class MorningDigest:
         self._gmail = gmail
         self._user_email = user_email
         self._self_diagnostic = self_diagnostic
+        self._tz = tz
         # Slice 22 — when wired, _assemble_data adds an open speculative
         # tool-gap aggregation under ``tool_gaps`` so the digest surfaces
         # them. High-severity gaps are excluded — they already pinged.
@@ -87,7 +90,7 @@ class MorningDigest:
 
         while True:
             now = datetime.now(tz=UTC)
-            next_fire = _next_fire_time(now, DIGEST_HOUR, DIGEST_MINUTE)
+            next_fire = _next_fire_time(now, DIGEST_HOUR, DIGEST_MINUTE, tz=self._tz)
             wait_seconds = (next_fire - now).total_seconds()
 
             logger.info(
@@ -319,8 +322,23 @@ class MorningDigest:
         return text[:2000]
 
 
-def _next_fire_time(now: datetime, hour: int, minute: int) -> datetime:
-    """Return the next datetime at hour:minute (UTC), at least 1 second away."""
+def _next_fire_time(
+    now: datetime,
+    hour: int,
+    minute: int,
+    tz: zoneinfo.ZoneInfo | None = None,
+) -> datetime:
+    """Return the next datetime at hour:minute, at least 1 second away.
+
+    When *tz* is provided, *hour* and *minute* are interpreted in that
+    timezone and the returned datetime is UTC.
+    """
+    if tz is not None:
+        local_now = now.astimezone(tz)
+        candidate = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= local_now:
+            candidate += timedelta(days=1)
+        return candidate.astimezone(UTC)
     candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if candidate <= now:
         candidate += timedelta(days=1)

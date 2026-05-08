@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import zoneinfo
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC
@@ -658,6 +659,52 @@ def _try_build_person_profile_skill(
         return None, None
 
 
+def _start_morning_digest(
+    ctx: StartupContext,
+    *,
+    calendar_client: Any | None = None,
+    gmail_client: Any | None = None,
+) -> None:
+    """Construct and start the MorningDigest background loop."""
+    if ctx.notification_service is None:
+        logger.info("morning_digest_skipped_no_notification_service")
+        return
+    try:
+        from donna.config import load_calendar_config, load_email_config
+        from donna.notifications.digest import MorningDigest
+
+        cal_cfg = load_calendar_config(ctx.config_dir)
+        personal = cal_cfg.calendars.get("personal")
+        calendar_id = personal.calendar_id if personal else "primary"
+
+        user_email = ""
+        try:
+            email_cfg = load_email_config(ctx.config_dir)
+            user_email = getattr(email_cfg, "user_email", "")
+        except Exception:
+            pass
+
+        digest = MorningDigest(
+            db=ctx.db,
+            service=ctx.notification_service,
+            router=ctx.router,
+            calendar_client=calendar_client,
+            calendar_id=calendar_id,
+            user_id=ctx.user_id,
+            project_root=ctx.project_root,
+            gmail=gmail_client,
+            user_email=user_email,
+            tool_request_repo=ctx.tool_request_repository,
+            tz=ctx.tz,
+        )
+        ctx.tasks.append(
+            asyncio.create_task(digest.run(), name="morning_digest")
+        )
+        logger.info("morning_digest_started")
+    except Exception as exc:
+        logger.warning("morning_digest_unavailable", reason=str(exc))
+
+
 def _start_daily_reflection_cron(
     ctx: Any, *, skill: Any | None, config: Any | None
 ) -> None:
@@ -675,6 +722,7 @@ def _start_daily_reflection_cron(
             hour_utc=config.hour_utc,
             minute_utc=config.minute_utc,
             task=_fire,
+            tz=ctx.tz,
         )
         ctx.tasks.append(asyncio.create_task(scheduler.run_forever()))
     except Exception as exc:
@@ -698,6 +746,7 @@ def _start_commitment_log_cron(
             hour_utc=config.hour_utc,
             minute_utc=config.minute_utc,
             task=_fire,
+            tz=ctx.tz,
         )
         ctx.tasks.append(asyncio.create_task(scheduler.run_forever()))
     except Exception as exc:
@@ -722,6 +771,7 @@ def _start_weekly_review_cron(
             minute_utc=config.minute_utc,
             day_of_week=config.day_of_week,
             task=_fire,
+            tz=ctx.tz,
         )
         ctx.tasks.append(asyncio.create_task(scheduler.run_forever()))
     except Exception as exc:
@@ -754,6 +804,7 @@ def _start_person_profile_cron(
             minute_utc=config.minute_utc,
             day_of_week=config.day_of_week,
             task=_fire,
+            tz=ctx.tz,
         )
         ctx.tasks.append(asyncio.create_task(scheduler.run_forever()))
     except Exception as exc:
@@ -852,6 +903,8 @@ class StartupContext:
     # haven't been redeployed (spec §10.5 row 1). None when no
     # tool_gap_surfacer was wired.
     requires_rebuild_nagger: Any | None = None
+    # Timezone for all cron/prompt scheduling — loaded from calendar.yaml.
+    tz: zoneinfo.ZoneInfo | None = None
     # Shared asyncio task list — every helper that spawns a background
     # loop appends to this. `_run_orchestrator` awaits it.
     tasks: list[asyncio.Task[Any]] = field(default_factory=list)
@@ -932,6 +985,16 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     state_machine_config = load_state_machine_config(config_dir)
     skill_config = load_skill_system_config(config_dir)
     manual_escalation_config = load_manual_escalation_config(config_dir)
+
+    # Load timezone from calendar.yaml for all cron/prompt scheduling.
+    user_tz: zoneinfo.ZoneInfo | None = None
+    try:
+        from donna.config import load_calendar_config as _load_cal
+        _cal = _load_cal(config_dir)
+        user_tz = zoneinfo.ZoneInfo(_cal.timezone)
+    except Exception:
+        log.warning("calendar_tz_load_failed_defaulting_utc")
+
     # Slice 23 — fail boot if any task type declares
     # ``manual_escalation.mode='claude_code'`` without a target_paths or
     # reference_module (spec §10.7 row 3). Catches drift from config
@@ -1181,6 +1244,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         guild_id_str=guild_id_str,
         bot=bot,
         notification_service=notification_service,
+        tz=user_tz,
     )
     if escalation_delivery_loop is not None:
         ctx_obj.tasks.append(
@@ -1766,6 +1830,7 @@ async def wire_skill_system(
             scheduler = AsyncCronScheduler(
                 hour_utc=ctx.skill_config.nightly_run_hour_utc,
                 task=_nightly_job,
+                tz=ctx.tz,
             )
             ctx.tasks.append(asyncio.create_task(scheduler.run_forever()))
             log.info(
@@ -1868,11 +1933,19 @@ async def wire_automation_subsystem(
                 )
             except Exception:
                 log.exception("runtime_tool_check_wire_failed")
+        def _automation_skill_executor_factory() -> Any:
+            from donna.skills.executor import SkillExecutor
+            return SkillExecutor(
+                model_router=skill_h.subsystem_router,
+                config=ctx.skill_config,
+                tool_gap_surfacer=ctx.tool_gap_surfacer,
+            )
+
         automation_dispatcher = AutomationDispatcher(
             connection=ctx.db.connection,
             repository=automation_repo,
             model_router=skill_h.subsystem_router,
-            skill_executor_factory=lambda: None,  # OOS-W1-2
+            skill_executor_factory=_automation_skill_executor_factory,
             budget_guard=skill_h.budget_guard,
             alert_evaluator=AlertEvaluator(),
             cron=CronScheduleCalculator(),

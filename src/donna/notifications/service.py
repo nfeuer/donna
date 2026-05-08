@@ -13,6 +13,7 @@ See docs/notifications.md and slices/slice_05_reminders_digest.md.
 from __future__ import annotations
 
 import hashlib
+import zoneinfo
 from collections import deque
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -67,6 +68,7 @@ class NotificationService:
     ) -> None:
         self._bot = bot
         self._tw = calendar_config.time_windows
+        self._tz = zoneinfo.ZoneInfo(calendar_config.timezone)
         self._user_id = user_id
         self._sms = sms
         self._gmail = gmail
@@ -84,18 +86,21 @@ class NotificationService:
         remaining = len(content) - body_budget
         return content[:body_budget] + f"\n\n…(truncated, {remaining} more chars)"
 
+    def _local_hour(self, now: datetime) -> int:
+        return now.astimezone(self._tz).hour
+
     def _is_blackout(self, now: datetime) -> bool:
         """Return True if current time is within the absolute blackout window."""
-        hour = now.hour
-        start = self._tw.blackout.start_hour  # 0
-        end = self._tw.blackout.end_hour      # 6
+        hour = self._local_hour(now)
+        start = self._tw.blackout.start_hour
+        end = self._tw.blackout.end_hour
         return start <= hour < end
 
     def _is_quiet(self, now: datetime) -> bool:
-        """Return True if current time is within quiet hours (8 PM–midnight)."""
-        hour = now.hour
-        start = self._tw.quiet_hours.start_hour  # 20
-        end = self._tw.quiet_hours.end_hour       # 24 (midnight)
+        """Return True if current time is within quiet hours."""
+        hour = self._local_hour(now)
+        start = self._tw.quiet_hours.start_hour
+        end = self._tw.quiet_hours.end_hour
         return start <= hour < end
 
     async def dispatch(
