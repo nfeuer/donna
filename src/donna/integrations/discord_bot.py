@@ -210,6 +210,15 @@ class DonnaBot(discord.Client):
             return
         await thread.send(text)
 
+    async def send_dm(self, discord_id: str, content: str) -> None:
+        """Send a direct message to a Discord user by their snowflake ID."""
+        try:
+            user = await self.fetch_user(int(discord_id))
+            await user.send(content)
+            logger.info("dm_sent", discord_id=discord_id, content_len=len(content))
+        except Exception:
+            logger.exception("dm_send_failed", discord_id=discord_id)
+
     async def create_overdue_thread(
         self,
         task_id: str,

@@ -1,4 +1,4 @@
-"""Tests for Discord user auto-onboarding flow."""
+"""Tests for Discord user auto-onboarding flow and DM delivery."""
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -124,3 +124,23 @@ class TestOnboardingGate:
         db.create_discord_user = AsyncMock()
         db.create_discord_user.assert_not_called()
         assert USER_DISCORD_ID in bot._pending_onboarding
+
+
+class TestSendDm:
+    async def test_send_dm_fetches_user_and_sends(self):
+        bot = _make_bot()
+        mock_user = MagicMock()
+        mock_user.send = AsyncMock()
+        bot.fetch_user = AsyncMock(return_value=mock_user)
+
+        await bot.send_dm("123456789", "Hello!")
+
+        bot.fetch_user.assert_called_once_with(123456789)
+        mock_user.send.assert_called_once_with("Hello!")
+
+    async def test_send_dm_handles_fetch_failure(self):
+        bot = _make_bot()
+        bot.fetch_user = AsyncMock(side_effect=discord.NotFound(MagicMock(), "not found"))
+
+        await bot.send_dm("123456789", "Hello!")
+        # Should not raise — error is logged and swallowed
