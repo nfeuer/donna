@@ -788,15 +788,12 @@ def _build_notification_tasks(
             logger.warning("weekly_planner_unavailable", reason=str(exc))
 
     if morning_digest is None or reminder_scheduler is None or overdue_detector is None:
-        if morning_digest is not None:
-            ctx.tasks.append(asyncio.create_task(morning_digest.run(), name="morning_digest"))
-        if reminder_scheduler is not None:
-            ctx.tasks.append(asyncio.create_task(reminder_scheduler.run(), name="reminder_scheduler"))
         logger.warning(
             "notification_tasks_partial",
             digest=morning_digest is not None,
             reminders=reminder_scheduler is not None,
             overdue=overdue_detector is not None,
+            weekly_planner_discarded=weekly_planner is not None,
         )
         return None
 

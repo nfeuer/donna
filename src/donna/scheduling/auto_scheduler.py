@@ -60,6 +60,7 @@ class AutoScheduler:
             logger.info("auto_scheduler_skip_not_backlog", task_id=task.id, status=task.status)
             return
 
+        slot = None
         try:
             if self._calendar_client is not None:
                 slot = await self._scheduler.schedule_task(
@@ -79,6 +80,9 @@ class AutoScheduler:
             return
         except Exception:
             logger.exception("auto_scheduler_failed", task_id=task.id)
+            return
+
+        if slot is None:
             return
 
         logger.info(

@@ -931,12 +931,9 @@ class DonnaBot(discord.Client):
         if self._event_bus is not None:
             updated_task = await self._database.get_task(task_id)
             if updated_task is not None:
-                try:
-                    await self._event_bus.emit(
-                        "challenger_resolved", task=updated_task
-                    )
-                except Exception:
-                    log.exception("challenger_resolved_emit_failed", task_id=task_id)
+                await self._event_bus.emit(
+                    "challenger_resolved", task=updated_task
+                )
 
     async def _handle_chat_message(self, message: discord.Message) -> None:
         """Route a #donna-chat message through the ConversationEngine."""
