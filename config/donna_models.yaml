@@ -94,6 +94,10 @@ routing:
   triage_failure:
     model: local_parser
     fallback: parser
+  reply_intent:
+    model: local_parser
+    fallback: parser
+    confidence_threshold: 0.5
   skill_equivalence_judge:
     model: reasoner
   skill_auto_draft:

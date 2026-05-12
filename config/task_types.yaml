@@ -142,6 +142,13 @@ task_types:
     output_schema: ""
     tools: []
 
+  reply_intent:
+    description: "Classify user reply intent and propose actions"
+    model: local_parser
+    prompt_template: prompts/reply_intent.md
+    output_schema: schemas/reply_intent_output.json
+    tools: []
+
   skill_equivalence_judge:
     description: "Compare two skill outputs for semantic equivalence during shadow sampling"
     model: reasoner
