@@ -102,6 +102,8 @@ class DonnaBot(discord.Client):
         self._challenger_threads: dict[int, str] = {}
         # Thread IDs for intent dispatcher clarification threads.
         self._clarification_threads: set[int] = set()
+        # Maps Discord snowflake ID → stashed original message for onboarding.
+        self._pending_onboarding: dict[str, str] = {}
         # Maps user_id → (new_parse_result_title, new_description, new_domain, existing_task)
         # for pending dedup decisions awaiting user reply.
         self._dedup_pending: dict[str, tuple[str, str | None, str, TaskRow]] = {}
@@ -208,6 +210,15 @@ class DonnaBot(discord.Client):
             return
         await thread.send(text)
 
+    async def send_dm(self, discord_id: str, content: str) -> None:
+        """Send a direct message to a Discord user by their snowflake ID."""
+        try:
+            user = await self.fetch_user(int(discord_id))
+            await user.send(content)
+            logger.info("dm_sent", discord_id=discord_id, content_len=len(content))
+        except Exception:
+            logger.exception("dm_send_failed", discord_id=discord_id)
+
     async def create_overdue_thread(
         self,
         task_id: str,
@@ -263,6 +274,43 @@ class DonnaBot(discord.Client):
         # Ignore bots (including self)
         if message.author.bot:
             return
+
+        # --- Onboarding gate: challenge unknown Discord users for their name ---
+        discord_id_raw = str(message.author.id)
+        if await self._database.resolve_user_id(discord_id_raw) is None:
+            raw_text = message.content.strip()
+            if discord_id_raw not in self._pending_onboarding:
+                self._pending_onboarding[discord_id_raw] = raw_text
+                await message.channel.send(
+                    "Hey! I'm Donna. I don't think we've met — what's your name?"
+                )
+                return
+            # User is replying with their name.
+            if not raw_text:
+                await message.channel.send(
+                    "I still need your name first! Just type your first name."
+                )
+                return
+            try:
+                donna_user_id = await self._database.create_discord_user(
+                    discord_id=discord_id_raw,
+                    name=raw_text,
+                    discord_username=message.author.name,
+                )
+            except Exception:
+                logger.exception("onboarding_create_user_failed", discord_id=discord_id_raw)
+                await message.channel.send(
+                    "Something went wrong setting up your profile. Try again in a moment."
+                )
+                return
+            stashed = self._pending_onboarding.pop(discord_id_raw)
+            await message.channel.send(
+                f"Nice to meet you, {raw_text}! Let me handle that for you."
+            )
+            # Replay the stashed message through the normal pipeline.
+            message.content = stashed
+            # Fall through to the rest of on_message — resolve_user_id
+            # will now return the new donna_user_id on the next lookup below.
 
         # Route overdue-thread replies before the tasks-channel filter.
         if message.channel.id in self.overdue_threads and self._overdue_reply_handler is not None:

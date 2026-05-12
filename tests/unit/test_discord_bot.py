@@ -78,6 +78,9 @@ def _make_bot(
     """Instantiate DonnaBot without a real Discord connection."""
     parser = input_parser or AsyncMock()
     db = database or AsyncMock()
+    # Ensure resolve_user_id returns a known user so the onboarding gate is bypassed.
+    # Without this, on_message would challenge every message sender for their name.
+    db.resolve_user_id = AsyncMock(return_value=USER_ID)
     # Patch discord.Client.__init__ so we can instantiate without a real token.
     with patch.object(discord.Client, "__init__", return_value=None):
         bot = DonnaBot(
