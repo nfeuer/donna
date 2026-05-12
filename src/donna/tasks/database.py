@@ -362,6 +362,7 @@ class Database:
         estimated_cost: float | None = None,
         capability_name: str | None = None,
         inputs: dict[str, Any] | None = None,
+        **event_context: Any,
     ) -> TaskRow:
         """Insert a new task and return it. Generates a uuid7 ID.
 
@@ -429,7 +430,7 @@ class Database:
                 },
             )
         if task_row is not None:
-            await self._emit_event("task_created", task=task_row)
+            await self._emit_event("task_created", task=task_row, **event_context)
         return task_row  # type: ignore[return-value]
 
     async def get_task(self, task_id: str) -> TaskRow | None:

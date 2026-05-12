@@ -71,6 +71,7 @@ class DonnaBot(discord.Client):
         chat_engine: Any | None = None,
         intent_dispatcher: Any | None = None,
         automation_repo: Any | None = None,
+        event_bus: Any | None = None,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -89,6 +90,7 @@ class DonnaBot(discord.Client):
         # Wave 3: DiscordIntentDispatcher-driven routing.
         self._intent_dispatcher = intent_dispatcher
         self._automation_repo = automation_repo
+        self._event_bus = event_bus
         # Command tree for slash commands (may fail if Client not fully initialized).
         try:
             self.tree = app_commands.CommandTree(self)
@@ -376,6 +378,7 @@ class DonnaBot(discord.Client):
                 prep_work_flag=result.prep_work_flag,
                 agent_eligible=result.agent_eligible,
                 created_via=InputChannel.DISCORD,
+                challenger_pending=self._dispatcher is not None,
             )
 
             log.info("task_created_via_discord", task_id=task.id, title=task.title)
@@ -924,6 +927,16 @@ class DonnaBot(discord.Client):
 
         # Clean up thread tracking — one round of follow-up is enough.
         self._challenger_threads.pop(message.channel.id, None)
+
+        if self._event_bus is not None:
+            updated_task = await self._database.get_task(task_id)
+            if updated_task is not None:
+                try:
+                    await self._event_bus.emit(
+                        "challenger_resolved", task=updated_task
+                    )
+                except Exception:
+                    log.exception("challenger_resolved_emit_failed", task_id=task_id)
 
     async def _handle_chat_message(self, message: discord.Message) -> None:
         """Route a #donna-chat message through the ConversationEngine."""
