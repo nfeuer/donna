@@ -31,6 +31,7 @@ from donna.tasks.state_machine import StateMachine
 
 if TYPE_CHECKING:
     from donna.integrations.supabase_sync import SupabaseSync
+    from donna.tasks.events import TaskEventBus
 
 logger = structlog.get_logger()
 
@@ -205,6 +206,7 @@ class Database:
         # and ``async observe_message(event)``. Failures never
         # propagate; see ``_fire_memory_observer`` below.
         self._memory_observer = memory_observer
+        self._event_bus: TaskEventBus | None = None
 
     def set_memory_observer(self, observer: Any | None) -> None:
         """Attach the slice-14 memory observer post-construction.
@@ -213,6 +215,19 @@ class Database:
         so the observer is wired here rather than at construction.
         """
         self._memory_observer = observer
+
+    def set_event_bus(self, bus: Any | None) -> None:
+        """Attach the task lifecycle event bus post-construction."""
+        self._event_bus = bus
+
+    async def _emit_event(self, event_type: str, **kwargs: Any) -> None:
+        """Emit a task lifecycle event if the bus is wired."""
+        if self._event_bus is None:
+            return
+        try:
+            await self._event_bus.emit(event_type, **kwargs)
+        except Exception as exc:
+            logger.warning("event_bus_emit_failed", event_type=event_type, reason=str(exc))
 
     async def _fire_memory_observer(self, method: str, event: dict[str, Any]) -> None:
         """Dispatch ``event`` to the slice-14 memory observer.
@@ -413,6 +428,8 @@ class Database:
                     "previous_status": None,
                 },
             )
+        if task_row is not None:
+            await self._emit_event("task_created", task=task_row)
         return task_row  # type: ignore[return-value]
 
     async def get_task(self, task_id: str) -> TaskRow | None:
@@ -547,6 +564,16 @@ class Database:
             to_state=new_status.value,
             side_effects=side_effects,
         )
+
+        updated_task = await self.get_task(task_id)
+        if updated_task is not None:
+            await self._emit_event(
+                "task_state_changed",
+                task=updated_task,
+                old_status=task.status,
+                new_status=new_status.value,
+                side_effects=side_effects,
+            )
 
         return side_effects
 
