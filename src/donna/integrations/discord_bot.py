@@ -100,6 +100,8 @@ class DonnaBot(discord.Client):
         self.overdue_threads: dict[int, str] = {}
         # Maps Discord thread ID → task ID for challenger follow-up routing.
         self._challenger_threads: dict[int, str] = {}
+        # Thread IDs for intent dispatcher clarification threads.
+        self._clarification_threads: set[int] = set()
         # Maps user_id → (new_parse_result_title, new_description, new_domain, existing_task)
         # for pending dedup decisions awaiting user reply.
         self._dedup_pending: dict[str, tuple[str, str | None, str, TaskRow]] = {}
@@ -282,6 +284,11 @@ class DonnaBot(discord.Client):
             task_id = self._challenger_threads[message.channel.id]
             reply = message.content.strip()
             await self._handle_challenger_reply(message, task_id, reply)
+            return
+
+        # Route clarification-thread replies back through the intent dispatcher.
+        if message.channel.id in self._clarification_threads:
+            await self._handle_tasks_channel_via_dispatcher(message)
             return
 
         # Route chat channel messages to conversation engine.
@@ -473,13 +480,17 @@ class DonnaBot(discord.Client):
         )
 
         # Build a minimal duck-typed message for the dispatcher.
+        # When replying inside a thread, message.channel IS the thread.
         thread_id: int | None = None
-        thread_obj = getattr(message, "thread", None)
-        if thread_obj is not None and hasattr(thread_obj, "id"):
-            try:
-                thread_id = int(thread_obj.id)
-            except (TypeError, ValueError):
-                thread_id = None
+        if isinstance(message.channel, discord.Thread):
+            thread_id = message.channel.id
+        else:
+            thread_obj = getattr(message, "thread", None)
+            if thread_obj is not None and hasattr(thread_obj, "id"):
+                try:
+                    thread_id = int(thread_obj.id)
+                except (TypeError, ValueError):
+                    thread_id = None
 
         class _Msg:
             content = message.content
@@ -505,6 +516,7 @@ class DonnaBot(discord.Client):
         if kind == "task_created":
             task_id = getattr(result, "task_id", None) or "?"
             await message.channel.send(f"Task captured (`{task_id}`).")
+            self._clarification_threads.discard(message.channel.id)
             return
 
         if kind == "clarification_posted":
@@ -514,6 +526,16 @@ class DonnaBot(discord.Client):
             try:
                 thread = await message.create_thread(name="Clarification")
                 await thread.send(question)
+                # Re-key the pending draft from dm:{user_id} to the real
+                # thread ID so replies in the thread match on resume.
+                if self._intent_dispatcher is not None:
+                    old_key = f"dm:{user_id}"
+                    draft = self._intent_dispatcher._drafts.get_by_thread(old_key)
+                    if draft is not None:
+                        self._intent_dispatcher._drafts.discard(old_key)
+                        draft.thread_id = thread.id
+                        self._intent_dispatcher._drafts.set(draft)
+                        self._clarification_threads.add(thread.id)
             except Exception:
                 log.exception("clarification_thread_create_failed")
                 await message.channel.send(question)
