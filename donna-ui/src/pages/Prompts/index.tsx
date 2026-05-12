@@ -3,6 +3,6 @@ import PromptsList from "./PromptsList";
 import PromptEditor from "./PromptEditor";
 
 export default function PromptsPage() {
-  const { file } = useParams<{ file?: string }>();
-  return file ? <PromptEditor /> : <PromptsList />;
+  const { "*": splat } = useParams();
+  return splat ? <PromptEditor file={splat} /> : <PromptsList />;
 }

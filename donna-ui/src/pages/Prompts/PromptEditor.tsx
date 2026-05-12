@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { ArrowLeft, Save } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { toast } from "sonner";
@@ -66,9 +66,12 @@ function useSchemaMap() {
   return map;
 }
 
-export default function PromptEditor() {
-  const { file } = useParams<{ file: string }>();
-  const filename = file ? decodeURIComponent(file) : "";
+interface PromptEditorProps {
+  file: string;
+}
+
+export default function PromptEditor({ file }: PromptEditorProps) {
+  const filename = decodeURIComponent(file);
 
   const [files, setFiles] = useState<PromptFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(true);

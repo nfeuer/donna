@@ -29,7 +29,7 @@ export default function PromptFileList({ files, loading, selected }: Props) {
         return (
           <Link
             key={f.name}
-            to={`/prompts/${encodeURIComponent(f.name)}`}
+            to={`/prompts/${f.name}`}
             className={cn(styles.item, active && styles.itemActive)}
             aria-current={active ? "page" : undefined}
           >

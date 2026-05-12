@@ -159,7 +159,7 @@ async def put_config(
 
 @router.get("/prompts")
 async def list_prompts(request: Request) -> dict[str, Any]:
-    """List available prompt template files."""
+    """List available prompt template files, including subdirectories."""
     project_root = _get_project_root(request)
     prompts_dir = project_root / "prompts"
 
@@ -167,28 +167,33 @@ async def list_prompts(request: Request) -> dict[str, Any]:
         return {"prompts": [], "prompts_dir": str(prompts_dir)}
 
     files = []
-    for path in sorted(prompts_dir.glob("*.md")):
+    for path in sorted(prompts_dir.rglob("*.md")):
+        rel = path.relative_to(prompts_dir)
         stat = path.stat()
         files.append({
-            "name": path.name,
+            "name": str(rel),
             "size_bytes": stat.st_size,
             "modified": stat.st_mtime,
         })
     return {"prompts": files, "prompts_dir": str(prompts_dir)}
 
 
-@router.get("/prompts/{filename}")
+@router.get("/prompts/{filename:path}")
 async def get_prompt(request: Request, filename: str) -> dict[str, Any]:
     """Read the content of a prompt template file."""
     if not filename.endswith(".md"):
         raise HTTPException(status_code=400, detail="Prompt files must be .md")
 
-    # Prevent directory traversal
-    if ".." in filename or "/" in filename:
+    if ".." in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     project_root = _get_project_root(request)
-    path = project_root / "prompts" / filename
+    path = (project_root / "prompts" / filename).resolve()
+
+    # Ensure resolved path stays within prompts directory
+    prompts_dir = (project_root / "prompts").resolve()
+    if not path.is_relative_to(prompts_dir):
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Prompt file not found: {filename}")
@@ -202,7 +207,7 @@ async def get_prompt(request: Request, filename: str) -> dict[str, Any]:
     }
 
 
-@router.put("/prompts/{filename}")
+@router.put("/prompts/{filename:path}")
 async def put_prompt(
     request: Request,
     filename: str,
@@ -211,7 +216,7 @@ async def put_prompt(
     """Write a prompt template file."""
     if not filename.endswith(".md"):
         raise HTTPException(status_code=400, detail="Prompt files must be .md")
-    if ".." in filename or "/" in filename:
+    if ".." in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     content = body.get("content", "")
@@ -219,11 +224,14 @@ async def put_prompt(
         raise HTTPException(status_code=400, detail="content must be a string")
 
     project_root = _get_project_root(request)
-    prompts_dir = project_root / "prompts"
-    path = prompts_dir / filename
+    prompts_dir = (project_root / "prompts").resolve()
+    path = (prompts_dir / filename).resolve()
 
-    # Atomic write
-    fd, tmp_path = tempfile.mkstemp(dir=str(prompts_dir), suffix=".tmp")
+    if not path.is_relative_to(prompts_dir):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Atomic write — use the file's parent dir for the temp file
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)
