@@ -3970,8 +3970,23 @@ documents the production auth stack (`src/donna/api/auth/`).
     admin routes declare their auth requirements (Immich login,
     service-key-only, device-token + role, etc.).
 
-Table `users` maps `donna_user_id ↔ immich_user_id ↔ role`; the
-`ip_access_log` table stores access-attempt history.
+Table `users` maps `donna_user_id ↔ immich_user_id ↔ discord_id ↔ role`.
+`immich_user_id` and `email` are nullable so Discord-onboarded users can
+exist without Immich accounts. `discord_id` (Discord snowflake) is
+unique-indexed for fast identity resolution. `Database.create_discord_user()`
+creates a user row from a Discord interaction; `Database.get_discord_id()`
+provides the reverse lookup for DM delivery. The `ip_access_log` table
+stores access-attempt history.
+
+**28.1 Discord User Auto-Onboarding** *(added v3.2)*
+
+When an unknown Discord user messages a Donna channel, an onboarding gate
+in `DonnaBot.on_message` challenges them for their name, stashes their
+original message, creates a user row via `create_discord_user()`, then
+replays the stashed message through the normal pipeline. This happens
+before any channel routing (overdue threads, clarification threads, chat,
+tasks). State is held in `DonnaBot._pending_onboarding: dict[str, str]`
+(discord_id → stashed message text, in-memory only).
 
 **29. Setup Wizard** *(added v3.1)*
 
