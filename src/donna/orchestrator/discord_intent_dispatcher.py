@@ -314,7 +314,20 @@ class DiscordIntentDispatcher:
         self._drafts.discard(existing.thread_id)
         if result.status == "ready":
             if result.intent_kind == "task":
-                return await self._create_task(result, msg)
+                # Use extracted title from the LLM, not msg.content (which
+                # is just the clarification reply like "nick").
+                title = (
+                    (result.extracted_inputs or {}).get("title")
+                    or (existing_inputs.get("title"))
+                    or merged_message
+                )
+
+                class _ResumedMsg:
+                    content = title
+                    author_id = msg.author_id
+                    thread_id = getattr(msg, "thread_id", None)
+
+                return await self._create_task(result, _ResumedMsg())  # type: ignore[arg-type]
             if result.intent_kind == "automation":
                 return await self._build_automation_draft(result, msg)
         if result.status in ("needs_input", "ambiguous"):
