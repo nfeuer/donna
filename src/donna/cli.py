@@ -198,6 +198,7 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     list until one subsystem completes (normally an indefinite-block case).
     """
     from donna.cli_wiring import (
+        _build_notification_tasks,
         build_startup_context,
         wire_automation_subsystem,
         wire_claude_code_poller,
@@ -212,10 +213,6 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     ctx = await build_startup_context(args)
     log = ctx.log
 
-    # Server task is launched first so clients can probe /healthz even if
-    # downstream wiring is still in flight. Matches the pre-refactor order.
-    ctx.tasks.append(asyncio.create_task(run_server(port=ctx.port, discord_bot=ctx.bot)))
-
     # Wave 5 F-W4-I: attempt to build a GmailClient at boot so Gmail skill
     # tools register for capabilities like email_triage. Non-fatal on failure.
     # Wave 1 followup: also attempt a GoogleCalendarClient for calendar_read.
@@ -225,7 +222,6 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         _start_daily_reflection_cron,
         _start_meeting_end_poller,
         _start_memory_tasks,
-        _start_morning_digest,
         _start_person_profile_cron,
         _start_weekly_review_cron,
         _try_build_calendar_client,
@@ -244,8 +240,33 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
 
     gmail_client = _try_build_gmail_client(ctx.config_dir)
     calendar_client = _try_build_calendar_client(ctx.config_dir)
-    _start_morning_digest(
-        ctx, calendar_client=calendar_client, gmail_client=gmail_client,
+
+    # Wire AutoScheduler + NotificationTasks before starting the server.
+    from donna.config import load_calendar_config
+    from donna.scheduling.auto_scheduler import AutoScheduler
+    from donna.scheduling.scheduler import Scheduler
+
+    cal_cfg = load_calendar_config(ctx.config_dir)
+    task_scheduler = Scheduler(cal_cfg)
+
+    personal = cal_cfg.calendars.get("personal")
+    calendar_id = personal.calendar_id if personal else "primary"
+
+    auto_scheduler = AutoScheduler(
+        scheduler=task_scheduler,
+        db=ctx.db,
+        calendar_client=calendar_client,
+        calendar_id=calendar_id,
+        notification_service=ctx.notification_service,
+    )
+    ctx.event_bus.subscribe("task_created", auto_scheduler.on_task_created)
+    ctx.event_bus.subscribe("challenger_resolved", auto_scheduler.on_challenger_resolved)
+
+    notification_tasks = _build_notification_tasks(
+        ctx,
+        calendar_client=calendar_client,
+        gmail_client=gmail_client,
+        scheduler=task_scheduler,
     )
     vault_client = _try_build_vault_client(ctx.config_dir)
     vault_writer = await _try_build_vault_writer(ctx.config_dir, vault_client)
@@ -334,6 +355,12 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     await wire_claude_code_poller(ctx, skill_h)
     automation_h = await wire_automation_subsystem(ctx, skill_h)
     _discord_h = await wire_discord(ctx, skill_h, automation_h)
+
+    # Server task is launched after all wiring so notification_tasks and
+    # AutoScheduler are ready before background loops start.
+    ctx.tasks.append(asyncio.create_task(
+        run_server(port=ctx.port, discord_bot=ctx.bot, notification_tasks=notification_tasks)
+    ))
 
     try:
         done, pending = await asyncio.wait(
