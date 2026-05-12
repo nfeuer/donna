@@ -292,7 +292,7 @@ class DonnaBot(discord.Client):
                 )
                 return
             try:
-                donna_user_id = await self._database.create_discord_user(
+                await self._database.create_discord_user(
                     discord_id=discord_id_raw,
                     name=raw_text,
                     discord_username=message.author.name,

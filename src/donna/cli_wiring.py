@@ -774,6 +774,8 @@ def _build_notification_tasks(
                 user_id=ctx.user_id,
             )
 
+            if calendar_client is None:
+                raise RuntimeError("calendar_client required for WeeklyPlanner")
             weekly_planner = WeeklyPlanner(
                 db=ctx.db,
                 scheduler=scheduler,
@@ -786,6 +788,40 @@ def _build_notification_tasks(
             logger.info("weekly_planner_constructed")
         except Exception as exc:
             logger.warning("weekly_planner_unavailable", reason=str(exc))
+
+    # --- End-of-Day Digest ---
+    eod_digest = None
+    try:
+        from donna.config import load_email_config as _load_eod_email
+        from donna.notifications.eod_digest import EodDigest
+
+        eod_email_cfg = _load_eod_email(ctx.config_dir)
+        eod_digest = EodDigest(
+            db=ctx.db,
+            service=ctx.notification_service,
+            gmail=gmail_client,
+            user_id=ctx.user_id,
+            user_email=getattr(eod_email_cfg, "user_email", ""),
+            email_config=eod_email_cfg,
+        )
+        logger.info("eod_digest_constructed")
+    except Exception as exc:
+        logger.warning("eod_digest_unavailable", reason=str(exc))
+
+    # --- Weekly Digest ---
+    weekly_digest = None
+    try:
+        from donna.notifications.weekly_digest import WeeklyDigest
+
+        weekly_digest = WeeklyDigest(
+            db=ctx.db,
+            service=ctx.notification_service,
+            router=ctx.router,
+            user_id=ctx.user_id,
+        )
+        logger.info("weekly_digest_constructed")
+    except Exception as exc:
+        logger.warning("weekly_digest_unavailable", reason=str(exc))
 
     if morning_digest is None or reminder_scheduler is None or overdue_detector is None:
         logger.warning(
@@ -802,6 +838,8 @@ def _build_notification_tasks(
         overdue_detector=overdue_detector,
         morning_digest=morning_digest,
         weekly_planner=weekly_planner,
+        eod_digest=eod_digest,
+        weekly_digest=weekly_digest,
     )
 
 
@@ -1202,9 +1240,18 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         )
 
         # Wave 1 (F-6 Step 6a): construct NotificationService with the live bot.
-        # Tasks 14 and 15 will wire this into the skill-system bundle and the
-        # AutomationDispatcher. SMS/Gmail wiring is Wave 2+.
         from donna.config import load_calendar_config
+
+        twilio_sms_instance = None
+        try:
+            from donna.config import load_sms_config
+            from donna.integrations.twilio_sms import TwilioSMS
+
+            sms_cfg = load_sms_config(config_dir)
+            twilio_sms_instance = TwilioSMS(sms_cfg)
+            log.info("twilio_sms_constructed")
+        except Exception:
+            log.warning("twilio_sms_unavailable")
 
         try:
             calendar_config = load_calendar_config(config_dir)
@@ -1212,7 +1259,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
                 bot=bot,
                 calendar_config=calendar_config,
                 user_id=user_id,
-                sms=None,
+                sms=twilio_sms_instance,
                 gmail=None,
             )
             log.info("notification_service_wired")

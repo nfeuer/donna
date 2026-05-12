@@ -46,3 +46,9 @@ If a migration fails mid-flight:
 4. Re-run `alembic upgrade head`.
 
 Full disaster recovery: [Operations → Backup & Recovery](backup-recovery.md).
+
+## Notable Migrations
+
+| Revision | Description |
+|----------|-------------|
+| `e3f4a5b6c7d8` | Make `immich_user_id` and `email` nullable on `users` table. Uses `batch_alter_table` (SQLite lacks `ALTER COLUMN`). Enables Discord-onboarded users to exist without Immich accounts. |

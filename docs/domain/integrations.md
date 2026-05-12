@@ -72,7 +72,7 @@ Design principles:
 | GitHub | Read-Write (feature branches only) | MCP (FastMCP) | `github_read`, `github_write`, `github_issues` |
 | Notes | Read-Write | MCP (FastMCP) | `notes_read`, `notes_write` |
 | Filesystem | Read-Write (sandboxed to `/donna/workspace/`) | MCP (FastMCP) | `fs_read`, `fs_write`, `fs_list` |
-| Discord | Read-Write (Donna channels only) | Direct API | `discord_send`, `discord_read`, thread management |
+| Discord | Read-Write (Donna channels + DMs) | Direct API | `discord_send`, `discord_read`, `discord_dm`, thread management |
 | Twilio | Write (outbound only) | Direct API | `sms_send`, `phone_call` |
 | Web Search | Read | MCP (FastMCP) | `search_web` (SearXNG or API) |
 | SQLite Task DB | Read-Write | Direct API | Internal orchestrator access |

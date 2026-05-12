@@ -1,10 +1,7 @@
 """Tests for DM delivery via NotificationService.dispatch_dm."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 
 from donna.notifications.service import (
     NOTIF_AUTOMATION_ALERT,

@@ -968,6 +968,29 @@ visible.
 
 ---
 
+## Discord Onboarding & DM Delivery — deferred items
+
+- **Surfaced by:** `docs/superpowers/specs/2026-05-12-discord-onboarding-dm-delivery-design.md`
+- **Spec section(s):** `spec_v3.md#§28`, `docs/domain/notifications.md`
+- **Status:** open
+- **Decision / Reasoning:** Discord user auto-onboarding and DM delivery
+  were implemented as a standalone feature (not tied to a numbered slice).
+  Several items were explicitly deferred:
+  1. **Immich account linking** for Discord-onboarded users — future feature
+     when companion app is built.
+  2. **Profile update commands** (email, phone) — users currently have no
+     self-service way to add these fields after onboarding.
+  3. **DM routing for reminders/nudges** — stays in shared channels for now;
+     only automation alerts use DMs.
+  4. **Companion app auth flow** — separate design when Flutter work begins;
+     the nullable `immich_user_id` enables magic-link auth as an alternative
+     to Immich login.
+- **Follow-up:** Items 1–2 should be addressed when the Flutter companion
+  app slice is planned. Item 3 can be enabled per-user via config when
+  users have a way to opt in.
+
+---
+
 ## How to add an entry (template)
 
 Copy this when you finish a slice:

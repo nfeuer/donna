@@ -259,8 +259,9 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         calendar_id=calendar_id,
         notification_service=ctx.notification_service,
     )
-    ctx.event_bus.subscribe("task_created", auto_scheduler.on_task_created)
-    ctx.event_bus.subscribe("challenger_resolved", auto_scheduler.on_challenger_resolved)
+    if ctx.event_bus is not None:
+        ctx.event_bus.subscribe("task_created", auto_scheduler.on_task_created)
+        ctx.event_bus.subscribe("challenger_resolved", auto_scheduler.on_challenger_resolved)
 
     notification_tasks = _build_notification_tasks(
         ctx,

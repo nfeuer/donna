@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from donna.integrations.sms_router import SmsRouter
     from donna.integrations.twilio_sms import TwilioSMS
     from donna.notifications.digest import MorningDigest
+    from donna.notifications.eod_digest import EodDigest
     from donna.notifications.escalation import EscalationManager
     from donna.notifications.escalation_delivery_loop import (
         EscalationDeliveryLoop,
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
         StaleTaskDetector,
     )
     from donna.notifications.reminders import ReminderScheduler
+    from donna.notifications.weekly_digest import WeeklyDigest
     from donna.preferences.rule_extractor import PreferenceRuleExtractor
     from donna.scheduling.priority_recalculator import PriorityRecalculator
     from donna.scheduling.weekly_planner import WeeklyPlanner
@@ -77,6 +79,9 @@ class NotificationTasks:
     evening_checkin: EveningCheckin | None = None
     stale_detector: StaleTaskDetector | None = None
     afternoon_inactivity: AfternoonInactivityCheck | None = None
+    # Digest additions:
+    eod_digest: EodDigest | None = None
+    weekly_digest: WeeklyDigest | None = None
 
 
 async def _check_sqlite(db_path: str | None) -> dict[str, Any]:
@@ -340,6 +345,20 @@ async def run_server(
                 asyncio.create_task(
                     notification_tasks.afternoon_inactivity.run(),
                     name="afternoon_inactivity",
+                )
+            )
+        if notification_tasks.eod_digest is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.eod_digest.run(),
+                    name="eod_digest",
+                )
+            )
+        if notification_tasks.weekly_digest is not None:
+            bg_tasks.append(
+                asyncio.create_task(
+                    notification_tasks.weekly_digest.run(),
+                    name="weekly_digest",
                 )
             )
         logger.info("notification_background_tasks_started", count=len(bg_tasks))

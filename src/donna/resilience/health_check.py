@@ -171,7 +171,7 @@ class SelfDiagnostic:
         try:
             summary = await self._cost_tracker.get_monthly_cost()
             budget = float(os.environ.get("DONNA_MONTHLY_BUDGET_USD", "100"))
-            pause = float(os.environ.get("DONNA_DAILY_PAUSE_USD", "20"))
+            pause = float(os.environ.get("DONNA_DAILY_PAUSE_THRESHOLD_USD", "20"))
             warnings: list[str] = []
             if summary.total_usd >= budget * 0.9:
                 warnings.append(

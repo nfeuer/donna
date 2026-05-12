@@ -1,8 +1,8 @@
 """Tests for Discord user onboarding database methods."""
 from __future__ import annotations
 
-import pytest
 import aiosqlite
+import pytest
 
 from donna.tasks.database import Database
 
@@ -30,8 +30,9 @@ async def db(tmp_path):
         )
         await conn.commit()
 
-    from donna.tasks.state_machine import StateMachine
     from unittest.mock import MagicMock
+
+    from donna.tasks.state_machine import StateMachine
     sm = MagicMock(spec=StateMachine)
     database = Database(db_path, sm)
     await database.connect()
@@ -49,7 +50,9 @@ class TestCreateDiscordUser:
         assert user_id == "alice99"
         row = await (
             await db.connection.execute(
-                "SELECT donna_user_id, name, discord_id, immich_user_id, email FROM users WHERE donna_user_id = ?",
+                "SELECT donna_user_id, name, discord_id,"
+                " immich_user_id, email"
+                " FROM users WHERE donna_user_id = ?",
                 (user_id,),
             )
         ).fetchone()
