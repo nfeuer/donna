@@ -42,8 +42,8 @@ routing:
     fallback: reasoner
     confidence_threshold: 0.7
   generate_digest:
-    model: parser
-    shadow: reasoner              # production monitoring: secondary model runs, output logged only
+    model: local_parser
+    fallback: parser
   prep_research:
     model: reasoner
   dedup_check:
