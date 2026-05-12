@@ -316,6 +316,63 @@ class Database:
         ).fetchone()
         return row[0] if row else None
 
+    async def create_discord_user(
+        self,
+        discord_id: str,
+        name: str,
+        discord_username: str,
+    ) -> str:
+        """Create a new user row for a Discord-onboarded user.
+
+        Args:
+            discord_id: Discord snowflake ID.
+            name: Display name the user provided.
+            discord_username: Discord username, used to derive donna_user_id.
+
+        Returns:
+            The generated donna_user_id.
+        """
+        conn = self.connection
+        base_id = discord_username.strip().lower()
+        donna_user_id = base_id
+        suffix = 2
+        while True:
+            existing = await (
+                await conn.execute(
+                    "SELECT 1 FROM users WHERE donna_user_id = ?",
+                    (donna_user_id,),
+                )
+            ).fetchone()
+            if existing is None:
+                break
+            donna_user_id = f"{base_id}_{suffix}"
+            suffix += 1
+
+        await conn.execute(
+            """INSERT INTO users (donna_user_id, immich_user_id, email, name, discord_id, role)
+               VALUES (?, NULL, NULL, ?, ?, 'user')""",
+            (donna_user_id, name, discord_id),
+        )
+        await conn.commit()
+        logger.info(
+            "discord_user_created",
+            donna_user_id=donna_user_id,
+            discord_id=discord_id,
+            name=name,
+        )
+        return donna_user_id
+
+    async def get_discord_id(self, donna_user_id: str) -> str | None:
+        """Look up discord_id from a donna_user_id."""
+        conn = self.connection
+        row = await (
+            await conn.execute(
+                "SELECT discord_id FROM users WHERE donna_user_id = ?",
+                (donna_user_id,),
+            )
+        ).fetchone()
+        return row[0] if row else None
+
     @property
     def connection(self) -> aiosqlite.Connection:
         """Expose the raw connection for the invocation logger."""
