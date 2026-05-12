@@ -661,16 +661,27 @@ def _try_build_person_profile_skill(
         return None, None
 
 
-def _start_morning_digest(
+def _build_notification_tasks(
     ctx: StartupContext,
     *,
     calendar_client: Any | None = None,
     gmail_client: Any | None = None,
-) -> None:
-    """Construct and start the MorningDigest background loop."""
+    scheduler: Any | None = None,
+) -> Any | None:
+    """Construct a NotificationTasks bundle for run_server().
+
+    Returns None when the notification service is unavailable (no Discord bot).
+    Components that can't be constructed are set to None — run_server() checks
+    each before starting its background loop.
+    """
     if ctx.notification_service is None:
-        logger.info("morning_digest_skipped_no_notification_service")
-        return
+        logger.info("notification_tasks_skipped_no_notification_service")
+        return None
+
+    from donna.server import NotificationTasks
+
+    # --- Morning Digest ---
+    morning_digest = None
     try:
         from donna.config import load_calendar_config, load_email_config
         from donna.notifications.digest import MorningDigest
@@ -686,7 +697,7 @@ def _start_morning_digest(
         except Exception:
             pass
 
-        digest = MorningDigest(
+        morning_digest = MorningDigest(
             db=ctx.db,
             service=ctx.notification_service,
             router=ctx.router,
@@ -699,12 +710,102 @@ def _start_morning_digest(
             tool_request_repo=ctx.tool_request_repository,
             tz=ctx.tz,
         )
-        ctx.tasks.append(
-            asyncio.create_task(digest.run(), name="morning_digest")
-        )
-        logger.info("morning_digest_started")
+        logger.info("morning_digest_constructed")
     except Exception as exc:
         logger.warning("morning_digest_unavailable", reason=str(exc))
+
+    # --- Reminder Scheduler ---
+    reminder_scheduler = None
+    try:
+        from donna.notifications.reminders import ReminderScheduler
+
+        reminder_scheduler = ReminderScheduler(
+            db=ctx.db,
+            service=ctx.notification_service,
+            user_id=ctx.user_id,
+            router=ctx.router,
+        )
+        logger.info("reminder_scheduler_constructed")
+    except Exception as exc:
+        logger.warning("reminder_scheduler_unavailable", reason=str(exc))
+
+    # --- Overdue Detector ---
+    overdue_detector = None
+    if ctx.bot is not None and scheduler is not None:
+        try:
+            from donna.config import load_calendar_config
+            from donna.notifications.overdue import OverdueDetector
+
+            cal_cfg = load_calendar_config(ctx.config_dir)
+            personal = cal_cfg.calendars.get("personal")
+            calendar_id = personal.calendar_id if personal else "primary"
+
+            overdue_detector = OverdueDetector(
+                db=ctx.db,
+                service=ctx.notification_service,
+                bot=ctx.bot,
+                scheduler=scheduler,
+                calendar_id=calendar_id,
+                user_id=ctx.user_id,
+                router=ctx.router,
+            )
+            logger.info("overdue_detector_constructed")
+        except Exception as exc:
+            logger.warning("overdue_detector_unavailable", reason=str(exc))
+
+    # --- Weekly Planner ---
+    weekly_planner = None
+    if scheduler is not None:
+        try:
+            from donna.config import load_calendar_config
+            from donna.scheduling.priority_engine import PriorityEngine
+            from donna.scheduling.priority_recalculator import PriorityRecalculator
+            from donna.scheduling.weekly_planner import WeeklyPlanner
+
+            cal_cfg = load_calendar_config(ctx.config_dir)
+            personal = cal_cfg.calendars.get("personal")
+            calendar_id = personal.calendar_id if personal else "primary"
+
+            priority_engine = PriorityEngine(cal_cfg.priority)
+            recalculator = PriorityRecalculator(
+                db=ctx.db,
+                engine=priority_engine,
+                service=ctx.notification_service,
+                user_id=ctx.user_id,
+            )
+
+            weekly_planner = WeeklyPlanner(
+                db=ctx.db,
+                scheduler=scheduler,
+                recalculator=recalculator,
+                service=ctx.notification_service,
+                calendar_client=calendar_client,
+                calendar_id=calendar_id,
+                user_id=ctx.user_id,
+            )
+            logger.info("weekly_planner_constructed")
+        except Exception as exc:
+            logger.warning("weekly_planner_unavailable", reason=str(exc))
+
+    if morning_digest is None or reminder_scheduler is None or overdue_detector is None:
+        if morning_digest is not None:
+            ctx.tasks.append(asyncio.create_task(morning_digest.run(), name="morning_digest"))
+        if reminder_scheduler is not None:
+            ctx.tasks.append(asyncio.create_task(reminder_scheduler.run(), name="reminder_scheduler"))
+        logger.warning(
+            "notification_tasks_partial",
+            digest=morning_digest is not None,
+            reminders=reminder_scheduler is not None,
+            overdue=overdue_detector is not None,
+        )
+        return None
+
+    return NotificationTasks(
+        reminder_scheduler=reminder_scheduler,
+        overdue_detector=overdue_detector,
+        morning_digest=morning_digest,
+        weekly_planner=weekly_planner,
+    )
 
 
 def _start_daily_reflection_cron(
@@ -905,6 +1006,9 @@ class StartupContext:
     # haven't been redeployed (spec §10.5 row 1). None when no
     # tool_gap_surfacer was wired.
     requires_rebuild_nagger: Any | None = None
+    # TaskEventBus — wired into Database so task mutations emit events that
+    # AutoScheduler and other subscribers can react to.
+    event_bus: Any | None = None
     # Timezone for all cron/prompt scheduling — loaded from calendar.yaml.
     tz: zoneinfo.ZoneInfo | None = None
     # Shared asyncio task list — every helper that spawns a background
@@ -979,7 +1083,11 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     )
 
     config_dir = Path(args.config_dir)
-    project_root = Path(__file__).resolve().parents[2]
+    _source_root = Path(__file__).resolve().parents[2]
+    if (_source_root / "prompts").is_dir():
+        project_root = _source_root
+    else:
+        project_root = Path(os.environ.get("DONNA_PROJECT_ROOT", "/app"))
 
     # Load configuration
     models_config = load_models_config(config_dir)
@@ -1011,6 +1119,13 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     db = Database(db_path, state_machine)
     await db.connect()
     await db.run_migrations()
+
+    # Wire the TaskEventBus so task mutations emit events that
+    # AutoScheduler and other subscribers can react to.
+    from donna.tasks.events import TaskEventBus
+
+    event_bus = TaskEventBus()
+    db.set_event_bus(event_bus)
 
     # Initialise model layer and input parser
     router = ModelRouter(models_config, task_types_config, project_root)
@@ -1084,6 +1199,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             debug_channel_id=int(debug_channel_id_str) if debug_channel_id_str else None,
             agents_channel_id=int(agents_channel_id_str) if agents_channel_id_str else None,
             guild_id=int(guild_id_str) if guild_id_str else None,
+            event_bus=event_bus,
         )
 
         # Wave 1 (F-6 Step 6a): construct NotificationService with the live bot.
@@ -1237,6 +1353,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         tool_request_repository=tool_request_repository,
         tool_gap_surfacer=tool_gap_surfacer,
         requires_rebuild_nagger=None,  # late-bound below once the bot is up
+        event_bus=event_bus,
         port=port,
         user_id=user_id,
         discord_token=discord_token,
