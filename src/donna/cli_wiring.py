@@ -1189,11 +1189,13 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     if discord_token and tasks_channel_id_str:
         from donna.integrations.discord_bot import DonnaBot
 
+        digest_channel_id_str = os.environ.get("DISCORD_DIGEST_CHANNEL_ID")
         bot = DonnaBot(
             input_parser=input_parser,
             database=db,
             tasks_channel_id=int(tasks_channel_id_str),
             debug_channel_id=int(debug_channel_id_str) if debug_channel_id_str else None,
+            digest_channel_id=int(digest_channel_id_str) if digest_channel_id_str else None,
             agents_channel_id=int(agents_channel_id_str) if agents_channel_id_str else None,
             guild_id=int(guild_id_str) if guild_id_str else None,
             event_bus=event_bus,
