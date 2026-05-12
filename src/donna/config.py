@@ -1016,3 +1016,89 @@ def load_skill_system_config(config_dir: Path) -> SkillSystemConfig:
         return SkillSystemConfig()
     data = load_yaml(path) or {}
     return SkillSystemConfig(**data)
+
+
+# --- Reply handler config (Universal Reply Handler) ---
+
+
+class ReplyIntentDef(BaseModel):
+    """A single fast-path intent definition."""
+
+    keywords: list[str]
+    action: str
+    confirm: bool = False
+
+
+class FastPathConfig(BaseModel):
+    """Fast-path tuning knobs."""
+
+    max_length: int = 60
+    multi_intent_signals: list[str] = Field(
+        default_factory=lambda: [" but ", " and also ", " however ", " although "],
+    )
+    confirm_keywords: list[str] = Field(
+        default_factory=lambda: ["yes", "go ahead", "do it", "ok", "sounds good", "yep", "sure", "go for it"],
+    )
+    reject_keywords: list[str] = Field(
+        default_factory=lambda: ["no", "cancel", "nevermind", "nah", "stop", "don't"],
+    )
+
+
+class ReplyIntentsConfig(BaseModel):
+    """Top-level config for reply_intents.yaml."""
+
+    fast_path: FastPathConfig = Field(default_factory=FastPathConfig)
+    intents: dict[str, ReplyIntentDef]
+
+
+class ActionParamDef(BaseModel):
+    """Schema for a single action parameter."""
+
+    type: str
+    from_context: bool = False
+    description: str = ""
+    enum: list[str] | None = None
+    default: Any = None
+    optional: bool = False
+
+
+class ActionDef(BaseModel):
+    """A single action in the reply action registry."""
+
+    description: str
+    handler: str
+    params: dict[str, ActionParamDef] = Field(default_factory=dict)
+    risk: Literal["low", "medium", "high"] = "low"
+
+
+class ReplyMemoryConfig(BaseModel):
+    """Thread memory tuning for the reply handler."""
+
+    window_size: int = 10
+    retention_days: int = 7
+
+
+class ReplyPlanConfig(BaseModel):
+    """Pending plan tuning for the reply handler."""
+
+    expiry_minutes: int = 60
+
+
+class ReplyActionsConfig(BaseModel):
+    """Top-level config for reply_actions.yaml."""
+
+    memory: ReplyMemoryConfig = Field(default_factory=ReplyMemoryConfig)
+    plan: ReplyPlanConfig = Field(default_factory=ReplyPlanConfig)
+    actions: dict[str, ActionDef]
+
+
+def load_reply_intents_config(config_dir: Path) -> ReplyIntentsConfig:
+    """Load reply_intents.yaml."""
+    data = load_yaml(config_dir / "reply_intents.yaml")
+    return ReplyIntentsConfig(**data)
+
+
+def load_reply_actions_config(config_dir: Path) -> ReplyActionsConfig:
+    """Load reply_actions.yaml."""
+    data = load_yaml(config_dir / "reply_actions.yaml")
+    return ReplyActionsConfig(**data)
