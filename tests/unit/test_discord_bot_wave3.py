@@ -23,6 +23,11 @@ class _FakeDispatcher:
 def _make_bot(intent_dispatcher):
     parser = MagicMock()
     db = MagicMock()
+    # Ensure resolve_user_id is awaitable and returns a known user so the
+    # onboarding gate is bypassed in these wave-3 routing tests.
+    # Use a side_effect that echoes the discord_id so _dedup_pending keys
+    # (seeded with the author's discord ID) still match user_id downstream.
+    db.resolve_user_id = AsyncMock(side_effect=lambda discord_id: discord_id)
     with patch.object(discord.Client, "__init__", return_value=None):
         bot = DonnaBot(
             input_parser=parser,
