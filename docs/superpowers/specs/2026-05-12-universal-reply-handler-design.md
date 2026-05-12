@@ -144,7 +144,7 @@ actions:
     handler: donna.replies.actions.task_actions.create_task
     params:
       title: { type: string }
-      domain: { type: string, enum: [work, personal, health, finance] }
+      domain: { type: string, enum: [work, personal, family] }
       priority: { type: int, default: 2 }
       due_by: { type: string, optional: true }
     risk: medium
