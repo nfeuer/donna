@@ -153,6 +153,77 @@ class NotificationService:
         await self._send(notification_type, content, channel, embed, thread_id, log)
         return True
 
+    async def dispatch_dm(
+        self,
+        discord_id: str,
+        notification_type: str,
+        content: str,
+        priority: int = 2,
+    ) -> bool:
+        """Dispatch a direct message to a Discord user.
+
+        Same blackout/quiet-hours gating as dispatch(). Sends via
+        bot.send_dm() instead of a channel.
+
+        Args:
+            discord_id: Discord snowflake ID of the recipient.
+            notification_type: One of NOTIF_* constants.
+            content: Message text.
+            priority: 1-5; only priority 5 passes through quiet hours.
+
+        Returns:
+            True if sent immediately, False if queued/blocked.
+        """
+        now = datetime.now(tz=UTC)
+        content_hash = hashlib.md5(content.encode(), usedforsecurity=False).hexdigest()[:8]
+
+        log = logger.bind(
+            notification_type=notification_type,
+            discord_id=discord_id,
+            priority=priority,
+            content_hash=content_hash,
+            delivery="dm",
+        )
+
+        if self._is_blackout(now):
+            log.info("dm_queued_blackout")
+            self._enqueue_dm(discord_id, notification_type, content, priority)
+            return False
+
+        if self._is_quiet(now) and priority < 5:
+            log.info("dm_queued_quiet_hours")
+            self._enqueue_dm(discord_id, notification_type, content, priority)
+            return False
+
+        try:
+            await self._bot.send_dm(discord_id, content)
+            log.info("dm_sent")
+        except Exception:
+            log.exception("dm_send_failed")
+        return True
+
+    def _enqueue_dm(
+        self,
+        discord_id: str,
+        notification_type: str,
+        content: str,
+        priority: int,
+    ) -> None:
+        """Add a DM send coroutine to the deferred queue."""
+        async def _send_later() -> None:
+            log = logger.bind(
+                notification_type=notification_type,
+                discord_id=discord_id,
+                delivery="dm",
+            )
+            try:
+                await self._bot.send_dm(discord_id, content)
+                log.info("dm_sent_from_queue")
+            except Exception:
+                log.exception("dm_send_from_queue_failed")
+
+        self._queue.append(_send_later)
+
     def _enqueue(
         self,
         notification_type: str,
