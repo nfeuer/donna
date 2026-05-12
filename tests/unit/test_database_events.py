@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 
 from donna.tasks.database import Database
-from donna.tasks.db_models import InputChannel, TaskDomain, TaskStatus
+from donna.tasks.db_models import TaskDomain, TaskStatus
 from donna.tasks.events import TaskEventBus
 from donna.tasks.state_machine import StateMachine
 

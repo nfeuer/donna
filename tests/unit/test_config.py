@@ -46,7 +46,7 @@ class TestLoadModelsConfig:
         config = load_models_config(CONFIG_DIR)
         digest = config.routing.get("generate_digest")
         assert digest is not None
-        assert digest.shadow == "reasoner"
+        assert digest.shadow is None
 
     def test_quality_monitoring_disabled_phase1(self) -> None:
         config = load_models_config(CONFIG_DIR)

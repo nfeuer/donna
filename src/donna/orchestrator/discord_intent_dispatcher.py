@@ -327,7 +327,7 @@ class DiscordIntentDispatcher:
                     author_id = msg.author_id
                     thread_id = getattr(msg, "thread_id", None)
 
-                return await self._create_task(result, _ResumedMsg())  # type: ignore[arg-type]
+                return await self._create_task(result, _ResumedMsg())
             if result.intent_kind == "automation":
                 return await self._build_automation_draft(result, msg)
         if result.status in ("needs_input", "ambiguous"):
