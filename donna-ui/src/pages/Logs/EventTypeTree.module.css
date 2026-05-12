@@ -79,8 +79,11 @@
 .leaf:hover {
   background: var(--color-accent-soft);
 }
-.leafActive {
+.leafInclude {
   background: var(--color-accent-soft);
+}
+.leafExclude {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
 }
 
 .leafText {

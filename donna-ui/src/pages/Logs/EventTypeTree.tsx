@@ -1,24 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "../../primitives/Button";
-import { Checkbox } from "../../primitives/Checkbox";
 import { Skeleton } from "../../primitives/Skeleton";
 import { cn } from "../../lib/cn";
 import { fetchEventTypes } from "../../api/logs";
+import { TriCheckbox, cycleTriState, type TriState } from "./TriCheckbox";
 import styles from "./EventTypeTree.module.css";
 
+export type EventFilterMode = "include" | "exclude";
+export type EventFilterMap = Record<string, EventFilterMode>;
+
 interface Props {
-  selected: string[];
-  onChange: (selected: string[]) => void;
+  filters: EventFilterMap;
+  onChange: (filters: EventFilterMap) => void;
 }
 
-/**
- * Sidebar event-type picker. Categories are collapsible; inside each
- * category every event is a Checkbox primitive. Key format matches the
- * AntD Tree version byte-for-byte: `${category}.${event}`, so the API
- * filter string (joined with commas) is unchanged.
- */
-export default function EventTypeTree({ selected, onChange }: Props) {
+export default function EventTypeTree({ filters, onChange }: Props) {
   const [tree, setTree] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -38,13 +35,16 @@ export default function EventTypeTree({ selected, onChange }: Props) {
     [tree],
   );
 
-  const selectedSet = useMemo(() => new Set(selected), [selected]);
-
-  const toggleLeaf = (key: string) => {
-    const next = new Set(selectedSet);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    onChange(Array.from(next));
+  const cycleLeaf = (key: string) => {
+    const current: TriState = filters[key] ?? "neutral";
+    const next = cycleTriState(current);
+    const updated = { ...filters };
+    if (next === "neutral") {
+      delete updated[key];
+    } else {
+      updated[key] = next;
+    }
+    onChange(updated);
   };
 
   const toggleCategory = (category: string) => {
@@ -52,6 +52,14 @@ export default function EventTypeTree({ selected, onChange }: Props) {
     if (next.has(category)) next.delete(category);
     else next.add(category);
     setCollapsed(next);
+  };
+
+  const clearAll = () => onChange({});
+
+  const includeAll = () => {
+    const next: EventFilterMap = {};
+    for (const key of allKeys) next[key] = "include";
+    onChange(next);
   };
 
   if (loading) {
@@ -69,10 +77,10 @@ export default function EventTypeTree({ selected, onChange }: Props) {
   return (
     <div className={styles.root}>
       <div className={styles.actions}>
-        <Button variant="ghost" size="sm" onClick={() => onChange(allKeys)}>
+        <Button variant="ghost" size="sm" onClick={includeAll}>
           All
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => onChange([])}>
+        <Button variant="ghost" size="sm" onClick={clearAll}>
           Clear
         </Button>
       </div>
@@ -101,15 +109,19 @@ export default function EventTypeTree({ selected, onChange }: Props) {
                   <ul className={styles.children}>
                     {events.map((evt) => {
                       const key = `${category}.${evt}`;
-                      const checked = selectedSet.has(key);
+                      const state: TriState = filters[key] ?? "neutral";
                       return (
-                        <li key={key} className={cn(styles.leaf, checked && styles.leafActive)}>
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={() => toggleLeaf(key)}
-                          >
+                        <li
+                          key={key}
+                          className={cn(
+                            styles.leaf,
+                            state === "include" && styles.leafInclude,
+                            state === "exclude" && styles.leafExclude,
+                          )}
+                        >
+                          <TriCheckbox state={state} onCycle={() => cycleLeaf(key)}>
                             <span className={styles.leafText}>{evt}</span>
-                          </Checkbox>
+                          </TriCheckbox>
                         </li>
                       );
                     })}

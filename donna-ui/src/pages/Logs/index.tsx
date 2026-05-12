@@ -4,7 +4,7 @@ import { Button } from "../../primitives/Button";
 import { PageHeader } from "../../primitives/PageHeader";
 import { Select, SelectItem } from "../../primitives/Select";
 import { fetchLogs, type LogEntry, type LogFilters } from "../../api/logs";
-import EventTypeTree from "./EventTypeTree";
+import EventTypeTree, { type EventFilterMap } from "./EventTypeTree";
 import { FilterBar, type FilterPreset } from "./FilterBar";
 import type { DateRangeValue } from "./DateRangePicker";
 import LogTable from "./LogTable";
@@ -38,7 +38,7 @@ export default function Logs() {
   const [source, setSource] = useState("");
 
   // Filter state
-  const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
+  const [eventFilters, setEventFilters] = useState<EventFilterMap>({});
   const [level, setLevel] = useState<LevelFilterValue>("");
   const [search, setSearch] = useState("");
   const [dateRange, setDateRange] = useState<DateRangeValue>({ start: null, end: null });
@@ -55,11 +55,19 @@ export default function Logs() {
   const doFetch = useCallback(async () => {
     setLoading(true);
     try {
+      const includes: string[] = [];
+      const excludes: string[] = [];
+      for (const [key, mode] of Object.entries(eventFilters)) {
+        if (mode === "include") includes.push(key);
+        else if (mode === "exclude") excludes.push(key);
+      }
+
       const filters: LogFilters = {
         limit: pageSize,
         offset: (page - 1) * pageSize,
       };
-      if (selectedEventTypes.length > 0) filters.event_type = selectedEventTypes.join(",");
+      if (includes.length > 0) filters.event_type = includes.join(",");
+      if (excludes.length > 0) filters.exclude_event_type = excludes.join(",");
       if (level) filters.level = level;
       if (search) filters.search = search;
       if (dateRange.start) filters.start = dateRange.start;
@@ -75,7 +83,7 @@ export default function Logs() {
     } finally {
       setLoading(false);
     }
-  }, [selectedEventTypes, level, search, dateRange, page, pageSize]);
+  }, [eventFilters, level, search, dateRange, page, pageSize]);
 
   useEffect(() => {
     doFetch();
@@ -85,7 +93,12 @@ export default function Logs() {
     (name: string) => {
       const preset = presets.find((p) => p.name === name);
       if (!preset) return;
-      setSelectedEventTypes(preset.eventTypes);
+      const map: EventFilterMap = {};
+      for (const key of preset.eventTypes) map[key] = "include";
+      if (preset.excludeEventTypes) {
+        for (const key of preset.excludeEventTypes) map[key] = "exclude";
+      }
+      setEventFilters(map);
       setLevel((preset.level as LevelFilterValue) || "");
       setSearch(preset.search);
       setPage(1);
@@ -106,9 +119,16 @@ export default function Logs() {
 
   const handleSavePreset = useCallback(
     (name: string) => {
+      const includes: string[] = [];
+      const excludes: string[] = [];
+      for (const [key, mode] of Object.entries(eventFilters)) {
+        if (mode === "include") includes.push(key);
+        else if (mode === "exclude") excludes.push(key);
+      }
       const newPreset: FilterPreset = {
         name,
-        eventTypes: selectedEventTypes,
+        eventTypes: includes,
+        excludeEventTypes: excludes,
         level,
         search,
       };
@@ -117,7 +137,7 @@ export default function Logs() {
       savePresets(next);
       toast.success(`Preset "${name}" saved`);
     },
-    [presets, selectedEventTypes, level, search],
+    [presets, eventFilters, level, search],
   );
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -132,7 +152,7 @@ export default function Logs() {
     <div className={styles.root}>
       <aside className={styles.sidebar} aria-label="Event type filter">
         <div className={styles.sidebarTitle}>Event Types</div>
-        <EventTypeTree selected={selectedEventTypes} onChange={setSelectedEventTypes} />
+        <EventTypeTree filters={eventFilters} onChange={setEventFilters} />
       </aside>
 
       <section className={styles.main}>
