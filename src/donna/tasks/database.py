@@ -305,6 +305,17 @@ class Database:
             self._conn = None
             logger.info("database_closed")
 
+    async def resolve_user_id(self, discord_id: str) -> str | None:
+        """Look up donna_user_id from a Discord snowflake ID."""
+        conn = self.connection
+        row = await (
+            await conn.execute(
+                "SELECT donna_user_id FROM users WHERE discord_id = ?",
+                (discord_id,),
+            )
+        ).fetchone()
+        return row[0] if row else None
+
     @property
     def connection(self) -> aiosqlite.Connection:
         """Expose the raw connection for the invocation logger."""

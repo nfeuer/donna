@@ -298,12 +298,15 @@ class DonnaBot(discord.Client):
             return
 
         correlation_id = str(uuid.uuid4())
-        user_id = str(message.author.id)
+        discord_id = str(message.author.id)
+        resolved = await self._database.resolve_user_id(discord_id)
+        user_id = resolved or discord_id
         raw_text = message.content.strip()
 
         log = logger.bind(
             correlation_id=correlation_id,
             user_id=user_id,
+            discord_id=discord_id,
             channel="discord",
         )
 
@@ -459,8 +462,13 @@ class DonnaBot(discord.Client):
           - automation_confirmation_needed → post the AutomationConfirmationView
           - chat / no_action → return
         """
+        discord_id = str(message.author.id)
+        resolved = await self._database.resolve_user_id(discord_id)
+        user_id = resolved or discord_id
+
         log = logger.bind(
-            user_id=str(message.author.id),
+            user_id=user_id,
+            discord_id=discord_id,
             channel="discord",
         )
 
@@ -475,7 +483,7 @@ class DonnaBot(discord.Client):
 
         class _Msg:
             content = message.content
-            author_id = str(message.author.id)
+            author_id = user_id
 
         _Msg.thread_id = thread_id  # type: ignore[attr-defined]
 
@@ -937,7 +945,9 @@ class DonnaBot(discord.Client):
 
     async def _handle_chat_message(self, message: discord.Message) -> None:
         """Route a #donna-chat message through the ConversationEngine."""
-        user_id = str(message.author.id)
+        discord_id = str(message.author.id)
+        resolved = await self._database.resolve_user_id(discord_id)
+        user_id = resolved or discord_id
         text = message.content.strip()
         log = logger.bind(user_id=user_id, channel="discord_chat")
 
