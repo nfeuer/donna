@@ -1295,7 +1295,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             log.warning("twilio_voice_unavailable", exc_info=True)
 
         # Wire EscalationManager for tiered notification escalation.
-        escalation_manager = None
+        _escalation_manager = None
         if notification_service is not None and twilio_sms_instance is not None:
             try:
                 from donna.notifications.escalation import EscalationManager
@@ -1309,9 +1309,11 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
                     import yaml as _yaml
                     with open(_prefs_path) as _f:
                         _prefs = _yaml.safe_load(_f) or {}
-                    _tier4_voice_enabled = _prefs.get("escalation", {}).get("tier4_voice_enabled", True)
+                    _tier4_voice_enabled = _prefs.get("escalation", {}).get(
+                        "tier4_voice_enabled", True
+                    )
 
-                escalation_manager = EscalationManager(
+                _escalation_manager = EscalationManager(
                     db=db,
                     service=notification_service,
                     sms=twilio_sms_instance,
@@ -1343,12 +1345,17 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             except Exception:
                 log.warning("debug_notify_failed", exc_info=True)
 
-    logs_db_path = Path(os.environ.get("DONNA_LOGS_DB_PATH", str(Path(db_path).parent / "donna_logs.db")))
+    logs_db_path = Path(
+        os.environ.get("DONNA_LOGS_DB_PATH", str(Path(db_path).parent / "donna_logs.db"))
+    )
     diagnostics = SelfDiagnostic(
         tasks_db_path=Path(db_path),
         logs_db_path=logs_db_path,
         donna_mount=Path(os.environ.get("DONNA_DATA_PATH", "/donna")),
-        last_supabase_sync_path=Path(os.environ.get("DONNA_DB_DIR", str(Path(db_path).parent))) / ".supabase_last_sync",
+        last_supabase_sync_path=(
+            Path(os.environ.get("DONNA_DB_DIR", str(Path(db_path).parent)))
+            / ".supabase_last_sync"
+        ),
         notify=_debug_notify,
     )
     try:

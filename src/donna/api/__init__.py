@@ -37,14 +37,12 @@ from donna.api.routes import (
     admin_preferences,
     admin_shadow,
     admin_tasks,
+    admin_vault,
     agents,
     health,
     llm,
     schedule,
     tasks,
-)
-from donna.api.routes import (
-    admin_vault,
 )
 from donna.api.routes import (
     admin_agents as admin_agents_routes,
