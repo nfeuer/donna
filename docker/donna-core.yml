@@ -27,6 +27,7 @@ services:
       - ../config:/donna/config
       - ../prompts:/donna/prompts:ro
       - ../schemas:/donna/schemas:ro
+      - browser-data:/data/browser
     ports:
       - "8100:8100"    # Health endpoint
     healthcheck:
@@ -45,4 +46,8 @@ services:
 
 networks:
   homelab:
+    external: true
+
+volumes:
+  browser-data:
     external: true
