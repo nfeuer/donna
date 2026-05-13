@@ -9,8 +9,6 @@ Covers Task 9 features:
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from donna.skills.executor import SkillExecutor
 from donna.skills.models import SkillRow, SkillVersionRow
 from donna.skills.tool_registry import ToolRegistry
@@ -75,8 +73,16 @@ final_output: "{{ state.step_b }}"
             "step_b": "Do step B using {{ state.step_a.result }}",
         },
         output_schemas={
-            "step_a": {"type": "object", "properties": {"result": {"type": "string"}}, "required": ["result"]},
-            "step_b": {"type": "object", "properties": {"done": {"type": "boolean"}}, "required": ["done"]},
+            "step_a": {
+                "type": "object",
+                "properties": {"result": {"type": "string"}},
+                "required": ["result"],
+            },
+            "step_b": {
+                "type": "object",
+                "properties": {"done": {"type": "boolean"}},
+                "required": ["done"],
+            },
         },
     )
 
@@ -128,9 +134,17 @@ final_output: "{{ state.step_c }}"
             "step_c": "Do step C",
         },
         output_schemas={
-            "step_a": {"type": "object", "properties": {"result": {"type": "string"}}, "required": ["result"]},
+            "step_a": {
+                "type": "object",
+                "properties": {"result": {"type": "string"}},
+                "required": ["result"],
+            },
             "step_b": {"type": "object"},
-            "step_c": {"type": "object", "properties": {"final": {"type": "boolean"}}, "required": ["final"]},
+            "step_c": {
+                "type": "object",
+                "properties": {"final": {"type": "boolean"}},
+                "required": ["final"],
+            },
         },
     )
 
@@ -194,7 +208,11 @@ final_output: "{{ state.fallback }}"
                 "properties": {"value": {"type": "string"}},
                 "required": ["value"],
             },
-            "fallback": {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"]},
+            "fallback": {
+                "type": "object",
+                "properties": {"ok": {"type": "boolean"}},
+                "required": ["ok"],
+            },
         },
     )
 
@@ -247,7 +265,11 @@ final_output: "{{ state.final }}"
         },
         output_schemas={
             "flaky": {"type": "object"},
-            "final": {"type": "object", "properties": {"v": {"type": "integer"}}, "required": ["v"]},
+            "final": {
+                "type": "object",
+                "properties": {"v": {"type": "integer"}},
+                "required": ["v"],
+            },
         },
     )
 
@@ -290,7 +312,11 @@ final_output: "{{ state.step_a }}"
         yaml_backbone,
         step_content={"step_a": "Do step A"},
         output_schemas={
-            "step_a": {"type": "object", "properties": {"value": {"type": "string"}}, "required": ["value"]},
+            "step_a": {
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+                "required": ["value"],
+            },
         },
     )
 

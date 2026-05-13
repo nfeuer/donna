@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 from donna.llm.queue import LLMQueueWorker
 from donna.llm.types import GatewayConfig, GpuConfig, Priority, QueueItem
 

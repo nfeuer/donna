@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from donna.llm.gpu_tracker import GpuTracker
 from donna.llm.types import GpuConfig
 

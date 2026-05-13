@@ -40,7 +40,7 @@ async def browser_screenshot(
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(f"{BROWSER_SIDECAR_URL}/screenshot", json=payload)
             resp.raise_for_status()
-            data = resp.json()
+            data: dict[str, Any] = resp.json()
     except Exception as exc:
         logger.warning("browser_screenshot_failed", url=url, error=str(exc))
         raise BrowserScreenshotError(str(exc)) from exc
