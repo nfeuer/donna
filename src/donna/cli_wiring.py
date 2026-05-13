@@ -1153,7 +1153,19 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     # Initialise state machine and database
     state_machine = StateMachine(state_machine_config)
     db_path = os.environ.get("DONNA_DB_PATH", "donna_tasks.db")
-    db = Database(db_path, state_machine)
+
+    # Wire Supabase write-through sync when credentials are available.
+    supabase_sync = None
+    if os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_SERVICE_ROLE_KEY"):
+        try:
+            from donna.integrations.supabase_sync import SupabaseSync
+
+            supabase_sync = SupabaseSync()
+            log.info("supabase_sync_constructed", configured=supabase_sync.configured)
+        except Exception:
+            log.warning("supabase_sync_unavailable", exc_info=True)
+
+    db = Database(db_path, state_machine, supabase_sync=supabase_sync)
     await db.connect()
     await db.run_migrations()
 
@@ -1270,6 +1282,53 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             log.info("notification_service_wired")
         except Exception:
             log.exception("notification_service_init_failed")
+
+        # Wire TwilioVoice for Tier 4 phone escalation.
+        twilio_voice_instance = None
+        try:
+            from donna.integrations.twilio_voice import TwilioVoice
+
+            if twilio_sms_instance is not None:
+                twilio_voice_instance = TwilioVoice(max_per_day=1)
+                log.info("twilio_voice_constructed")
+        except Exception:
+            log.warning("twilio_voice_unavailable", exc_info=True)
+
+        # Wire EscalationManager for tiered notification escalation.
+        escalation_manager = None
+        if notification_service is not None and twilio_sms_instance is not None:
+            try:
+                from donna.notifications.escalation import EscalationManager
+
+                gmail_client = _try_build_gmail_client(config_dir)
+                user_email = os.environ.get("DONNA_EMAIL_FROM", "")
+
+                _prefs_path = config_dir / "preferences.yaml"
+                _tier4_voice_enabled = True
+                if _prefs_path.exists():
+                    import yaml as _yaml
+                    with open(_prefs_path) as _f:
+                        _prefs = _yaml.safe_load(_f) or {}
+                    _tier4_voice_enabled = _prefs.get("escalation", {}).get("tier4_voice_enabled", True)
+
+                escalation_manager = EscalationManager(
+                    db=db,
+                    service=notification_service,
+                    sms=twilio_sms_instance,
+                    sms_config=sms_cfg,
+                    user_id=user_id,
+                    user_phone=os.environ.get("DONNA_USER_PHONE", ""),
+                    gmail=gmail_client,
+                    user_email=user_email,
+                    voice=twilio_voice_instance,
+                    tier4_enabled=_tier4_voice_enabled and twilio_voice_instance is not None,
+                )
+                log.info(
+                    "escalation_manager_wired",
+                    tier4_enabled=_tier4_voice_enabled and twilio_voice_instance is not None,
+                )
+            except Exception:
+                log.warning("escalation_manager_unavailable", exc_info=True)
 
     # Boot-time health diagnostics — runs all checks and sends warnings
     # to the Discord debug channel if available.
@@ -1469,6 +1528,50 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             )
         )
         log.info("chat_escalation_ingestion_poller_started")
+
+    # Supabase keep-alive — periodic HEAD ping to prevent idle disconnect.
+    if supabase_sync is not None and supabase_sync.configured:
+        ctx_obj.tasks.append(
+            asyncio.create_task(
+                supabase_sync.keep_alive(),
+                name="supabase_keepalive",
+            )
+        )
+        log.info("supabase_keepalive_started")
+
+    # Email parser poller — monitors a Gmail alias for forwarded task emails.
+    email_monitor_alias = os.environ.get("DONNA_EMAIL_MONITOR_ALIAS", "").strip()
+    if email_monitor_alias:
+        gmail_for_poller = _try_build_gmail_client(config_dir)
+        if gmail_for_poller is not None:
+            from donna.integrations.email_parser import poll_and_create_tasks
+
+            async def _email_poll_loop() -> None:
+                while True:
+                    try:
+                        created = await poll_and_create_tasks(
+                            gmail=gmail_for_poller,
+                            input_parser=input_parser,
+                            db=db,
+                            user_id=user_id,
+                            monitor_alias=email_monitor_alias,
+                        )
+                        if created > 0:
+                            log.info("email_poll_created_tasks", count=created)
+                    except Exception:
+                        log.exception("email_poll_error")
+                    await asyncio.sleep(300)
+
+            ctx_obj.tasks.append(
+                asyncio.create_task(
+                    _email_poll_loop(),
+                    name="email_poll_loop",
+                )
+            )
+            log.info("email_poll_loop_started", monitor_alias=email_monitor_alias)
+        else:
+            log.info("email_poll_skipped_no_gmail", monitor_alias=email_monitor_alias)
+
     return ctx_obj
 
 
