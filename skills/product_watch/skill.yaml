@@ -24,6 +24,7 @@ steps:
     kind: llm
     prompt: steps/extract_product_info.md
     output_schema: schemas/extract_product_info_v1.json
+    model: local_parser
     on_failure: continue
 
   - name: screenshot_fallback

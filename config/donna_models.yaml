@@ -22,6 +22,11 @@ models:
     model: qwen2.5:32b-instruct-q4_K_M
     estimated_cost_per_1k_tokens: 0.0001  # hardware amortization
     num_ctx: 8192
+  local_vision:
+    provider: ollama
+    model: qwen2.5-vl:7b-instruct-q6_K
+    estimated_cost_per_1k_tokens: 0.0001
+    num_ctx: 4096
 
 # Ollama local LLM connection settings (RTX 3090)
 ollama:
@@ -125,6 +130,14 @@ routing:
     shadow: local_parser
     fallback: reasoner
     confidence_threshold: 0.7
+  # GPU-aware skill step overrides — executor builds task_type with
+  # model alias prefix when a step declares model: or gpu_model:
+  skill_step__local_parser:
+    model: local_parser
+    fallback: parser
+  skill_step__local_vision:
+    model: local_vision
+    fallback: parser
   skill_validation:
     model: parser
     fallback: reasoner
