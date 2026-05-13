@@ -147,3 +147,40 @@
 .spinning {
   animation: spin 1s linear infinite;
 }
+
+.gpuCard {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.gpuCardTitle {
+  font-family: var(--font-display);
+  font-size: var(--text-small);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.gpuRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-small);
+  color: var(--color-text-primary);
+}
+
+.galleryLink {
+  font-size: var(--text-small);
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.galleryLink:hover {
+  text-decoration: underline;
+}

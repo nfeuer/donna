@@ -17,6 +17,7 @@ import RunsTab from "./RunsTab";
 import RunDrawer from "./RunDrawer";
 import AutomationsTab from "./AutomationsTab";
 import AutomationDrawer from "./AutomationDrawer";
+import GpuStatusCard from "./GpuStatusCard";
 import {
   fetchSkillTransitions,
   type TransitionRow,
@@ -146,6 +147,7 @@ export default function SkillSystemPage() {
         title="Skill System"
         actions={<RefreshButton onRefresh={handleRefresh} autoRefreshMs={30000} />}
       />
+      <GpuStatusCard />
       <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="skills">Skills</TabsTrigger>
