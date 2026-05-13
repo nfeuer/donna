@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -32,6 +32,7 @@ from donna.tasks.db_models import TaskStatus
 if TYPE_CHECKING:
     from donna.models.router import ModelRouter
     from donna.notifications.escalation import EscalationManager
+    from donna.replies.handler import ReplyHandler
 
 logger = structlog.get_logger()
 
@@ -59,6 +60,7 @@ class OverdueDetector:
         user_id: str,
         escalation_manager: EscalationManager | None = None,
         router: ModelRouter | None = None,
+        reply_handler: ReplyHandler | None = None,
     ) -> None:
         self._db = db
         self._service = service
@@ -68,6 +70,7 @@ class OverdueDetector:
         self._user_id = user_id
         self._escalation_manager = escalation_manager
         self._router = router
+        self._reply_handler = reply_handler
         # task_id set: only nudge once per day (reset at midnight).
         self._nudged: set[str] = set()
         self._nudged_date: str = ""
@@ -123,30 +126,25 @@ class OverdueDetector:
                     overdue_minutes=overdue_minutes,
                 )
 
+                # Send nudge as a threaded message so the user can reply.
+                # create_overdue_thread sends the message AND creates the thread.
+                await self._bot.create_overdue_thread(
+                    task_id=task.id,
+                    task_title=task.title,
+                    nudge_text=nudge_text,
+                )
+                sent = True
+
                 if self._escalation_manager is not None:
-                    # Route through escalation tiers (Discord → SMS → ...).
+                    # Register with escalation so it can advance to SMS/email
+                    # if the user doesn't respond. skip_initial_dispatch=True
+                    # avoids a duplicate Discord message.
                     await self._escalation_manager.escalate(
                         task_id=task.id,
                         task_title=task.title,
                         nudge_text=nudge_text,
                         priority=task.priority or 2,
-                    )
-                    sent = True
-                else:
-                    # Fallback: Discord-only (no escalation configured).
-                    sent = await self._service.dispatch(
-                        notification_type=NOTIF_OVERDUE,
-                        content=nudge_text,
-                        channel=CHANNEL_TASKS,
-                        priority=task.priority or 2,
-                    )
-
-                if sent:
-                    # Create thread so user can reply in context.
-                    await self._bot.create_overdue_thread(
-                        task_id=task.id,
-                        task_title=task.title,
-                        nudge_text=nudge_text,
+                        skip_initial_dispatch=True,
                     )
 
                 self._nudged.add(task.id)
@@ -218,32 +216,53 @@ class OverdueDetector:
 
         return fallback, False
 
-    async def handle_reply(self, task_id: str, reply: str) -> None:
+    async def handle_reply(self, task_id: str, reply: str) -> Any:
         """Handle user reply in an overdue thread.
 
-        Args:
-            task_id: The task that was nudged.
-            reply: Normalised (lower-case stripped) user reply text.
+        Delegates to ReplyHandler if wired, falls back to legacy keywords.
         """
         task = await self._db.get_task(task_id)
         if task is None:
             logger.warning("overdue_reply_task_not_found", task_id=task_id)
-            return
+            return None
 
-        if reply.startswith("done"):
+        if self._reply_handler is not None:
+            thread_id = f"overdue-{task_id}"
+            result = await self._reply_handler.handle(thread_id, reply, task, "overdue")
+            logger.info(
+                "overdue_reply_handled",
+                task_id=task_id,
+                path=result.path,
+                action=result.action,
+            )
+            if result.path in ("fast", "plan_confirmed") and self._escalation_manager is not None:
+                if result.action in ("mark_done", "reschedule"):
+                    await self._escalation_manager.acknowledge(task_id)
+                elif result.action == "snooze":
+                    await self._escalation_manager.backoff(task_id)
+            return result
+
+        # Legacy fallback (kept until ReplyHandler is fully wired)
+        _DONE_KEYWORDS = {"done", "finished", "complete", "completed", "did it", "yes"}
+        _RESCHEDULE_KEYWORDS = {"reschedule", "tomorrow", "later", "push", "move"}
+        _BUSY_KEYWORDS = {"busy", "not now", "snooze"}
+
+        words = reply.lower()
+        if any(kw in words for kw in _DONE_KEYWORDS):
             if self._escalation_manager is not None:
                 await self._escalation_manager.acknowledge(task_id)
             await self._mark_done(task_id, task)
-        elif reply.startswith("reschedule"):
+        elif any(kw in words for kw in _RESCHEDULE_KEYWORDS):
             if self._escalation_manager is not None:
                 await self._escalation_manager.acknowledge(task_id)
             await self._reschedule(task_id, task)
-        elif reply.startswith("busy"):
+        elif any(kw in words for kw in _BUSY_KEYWORDS):
             if self._escalation_manager is not None:
                 await self._escalation_manager.backoff(task_id)
             logger.info("overdue_reply_busy", task_id=task_id)
         else:
             logger.info("overdue_reply_unrecognised", task_id=task_id, reply=reply[:50])
+        return None
 
     async def _mark_done(self, task_id: str, task: object) -> None:
         """Transition task → in_progress → done and set completed_at."""
