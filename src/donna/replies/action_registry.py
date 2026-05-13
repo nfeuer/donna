@@ -45,7 +45,9 @@ class ActionRegistry:
 
         return errors
 
-    def validate_actions(self, actions: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+    def validate_actions(
+        self, actions: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[str]]:
         """Validate a list of proposed actions. Returns (valid_actions, all_errors)."""
         valid: list[dict[str, Any]] = []
         all_errors: list[str] = []
@@ -53,7 +55,11 @@ class ActionRegistry:
             errors = self.validate_action(action)
             if errors:
                 all_errors.extend(errors)
-                logger.warning("action_validation_failed", action=action.get("action"), errors=errors)
+                logger.warning(
+                    "action_validation_failed",
+                    action=action.get("action"),
+                    errors=errors,
+                )
             else:
                 valid.append(action)
         return valid, all_errors
@@ -68,9 +74,8 @@ class ActionRegistry:
         params = dict(action.get("params", {}))
 
         for param_name, param_def in defn.params.items():
-            if param_def.from_context and param_name not in params:
-                if param_name in context:
-                    params[param_name] = context[param_name]
+            if param_def.from_context and param_name not in params and param_name in context:
+                params[param_name] = context[param_name]
 
         return {**action, "params": params}
 

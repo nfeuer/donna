@@ -1,9 +1,13 @@
 """Tests for action registry validation."""
 from __future__ import annotations
 
-import pytest
-
-from donna.config import ActionDef, ActionParamDef, ReplyActionsConfig, ReplyMemoryConfig, ReplyPlanConfig
+from donna.config import (
+    ActionDef,
+    ActionParamDef,
+    ReplyActionsConfig,
+    ReplyMemoryConfig,
+    ReplyPlanConfig,
+)
 from donna.replies.action_registry import ActionRegistry
 
 
@@ -22,7 +26,9 @@ def _make_config() -> ReplyActionsConfig:
                 handler="donna.replies.actions.task_actions.create_task",
                 params={
                     "title": ActionParamDef(type="string"),
-                    "domain": ActionParamDef(type="string", enum=["work", "personal"], optional=True),
+                    "domain": ActionParamDef(
+                        type="string", enum=["work", "personal"], optional=True,
+                    ),
                     "priority": ActionParamDef(type="int", default=2),
                 },
                 risk="medium",

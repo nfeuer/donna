@@ -1,13 +1,25 @@
 """Tests for the full ReplyHandler pipeline (mocked LLM)."""
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, MagicMock
 
 import aiosqlite
 import pytest
 
+from donna.config import (
+    ActionDef,
+    ActionParamDef,
+    FastPathConfig,
+    ReplyActionsConfig,
+    ReplyIntentDef,
+    ReplyIntentsConfig,
+    ReplyMemoryConfig,
+    ReplyPlanConfig,
+)
+from donna.replies.action_registry import ActionRegistry
+from donna.replies.handler import ReplyHandler
 from donna.replies.llm_classifier import LLMClassifier
+from donna.replies.memory import ThreadMemory
 
 
 @pytest.fixture
@@ -54,10 +66,6 @@ def _mock_task() -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_classify_returns_actions_and_reply(classifier_db: aiosqlite.Connection) -> None:
-    from donna.config import ReplyActionsConfig, ReplyMemoryConfig, ReplyPlanConfig, ActionDef, ActionParamDef
-    from donna.replies.action_registry import ActionRegistry
-    from donna.replies.memory import ThreadMemory
-
     config = ReplyActionsConfig(
         memory=ReplyMemoryConfig(), plan=ReplyPlanConfig(),
         actions={
@@ -91,10 +99,6 @@ async def test_classify_returns_actions_and_reply(classifier_db: aiosqlite.Conne
 
 @pytest.mark.asyncio
 async def test_classify_strips_invalid_actions(classifier_db: aiosqlite.Connection) -> None:
-    from donna.config import ReplyActionsConfig, ReplyMemoryConfig, ReplyPlanConfig, ActionDef, ActionParamDef
-    from donna.replies.action_registry import ActionRegistry
-    from donna.replies.memory import ThreadMemory
-
     config = ReplyActionsConfig(
         memory=ReplyMemoryConfig(), plan=ReplyPlanConfig(),
         actions={
@@ -129,13 +133,6 @@ async def test_classify_strips_invalid_actions(classifier_db: aiosqlite.Connecti
 
 # --- Full pipeline tests ---
 
-from donna.config import (
-    ActionDef, ActionParamDef, FastPathConfig,
-    ReplyActionsConfig, ReplyIntentDef, ReplyIntentsConfig,
-    ReplyMemoryConfig, ReplyPlanConfig,
-)
-from donna.replies.handler import ReplyHandler, ReplyResult
-
 
 def _intents_config() -> ReplyIntentsConfig:
     return ReplyIntentsConfig(
@@ -154,14 +151,17 @@ def _intents_config() -> ReplyIntentsConfig:
 
 def _actions_config() -> ReplyActionsConfig:
     return ReplyActionsConfig(
-        memory=ReplyMemoryConfig(window_size=10), plan=ReplyPlanConfig(expiry_minutes=60),
+        memory=ReplyMemoryConfig(window_size=10),
+        plan=ReplyPlanConfig(expiry_minutes=60),
         actions={
             "mark_done": ActionDef(
-                description="Mark done", handler="donna.replies.actions.task_actions.mark_done",
+                description="Mark done",
+                handler="donna.replies.actions.task_actions.mark_done",
                 params={"task_id": ActionParamDef(type="string", from_context=True)},
             ),
             "reschedule": ActionDef(
-                description="Reschedule", handler="donna.replies.actions.task_actions.reschedule_task",
+                description="Reschedule",
+                handler="donna.replies.actions.task_actions.reschedule_task",
                 params={
                     "task_id": ActionParamDef(type="string", from_context=True),
                     "when": ActionParamDef(type="string", optional=True),
@@ -256,7 +256,8 @@ async def test_confirm_executes_pending_plan(handler_db: aiosqlite.Connection) -
         context={},
     )
     # First: LLM proposes (reply must trigger LLM path, not fast path)
-    await handler.handle("thread-1", "I finished it but also need to update the docs", mock_task_obj, "overdue")
+    complex_reply = "I finished it but also need to update the docs"
+    await handler.handle("thread-1", complex_reply, mock_task_obj, "overdue")
     # Second: user confirms
     result = await handler.handle("thread-1", "yes", mock_task_obj, "overdue")
     assert result.path == "plan_confirmed"
@@ -276,6 +277,11 @@ async def test_reject_clears_pending_plan(handler_db: aiosqlite.Connection) -> N
         db=AsyncMock(),
         context={},
     )
-    await handler.handle("thread-1", "I finished it but also need to update the docs", _mock_task(), "overdue")
-    result = await handler.handle("thread-1", "no", _mock_task(), "overdue")
+    await handler.handle(
+        "thread-1", "I finished it but also need to update the docs",
+        _mock_task(), "overdue",
+    )
+    result = await handler.handle(
+        "thread-1", "no", _mock_task(), "overdue",
+    )
     assert result.path == "plan_rejected"

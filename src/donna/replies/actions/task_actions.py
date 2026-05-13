@@ -93,7 +93,11 @@ async def create_task(db: Database, context: dict[str, Any], params: dict[str, A
     domain_str = params.get("domain", "personal")
     priority = params.get("priority", 2)
 
-    domain_map = {"work": TaskDomain.WORK, "personal": TaskDomain.PERSONAL, "family": TaskDomain.FAMILY}
+    domain_map = {
+        "work": TaskDomain.WORK,
+        "personal": TaskDomain.PERSONAL,
+        "family": TaskDomain.FAMILY,
+    }
     domain = domain_map.get(domain_str, TaskDomain.PERSONAL)
 
     user_id = context.get("user_id", "system")
@@ -123,7 +127,7 @@ async def rename_task(db: Database, context: dict[str, Any], params: dict[str, A
         return f"Renamed task to '{new_title}'."
     except Exception:
         logger.exception("rename_task_failed", task_id=task_id)
-        return f"Failed to rename task."
+        return "Failed to rename task."
 
 
 async def snooze_task(db: Database, context: dict[str, Any], params: dict[str, Any]) -> str:

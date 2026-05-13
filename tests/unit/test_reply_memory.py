@@ -65,8 +65,13 @@ async def test_prune_old_messages(mem_db: aiosqlite.Connection) -> None:
     mem = ThreadMemory(mem_db, window_size=10)
     # Insert a message with an old timestamp
     await mem_db.execute(
-        "INSERT INTO thread_memory (id, thread_id, context_type, task_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (str(uuid6.uuid7()), "thread-1", "overdue", "t1", "user", "old msg", "2020-01-01T00:00:00+00:00"),
+        "INSERT INTO thread_memory "
+        "(id, thread_id, context_type, task_id, role, content, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            str(uuid6.uuid7()), "thread-1", "overdue", "t1",
+            "user", "old msg", "2020-01-01T00:00:00+00:00",
+        ),
     )
     await mem_db.commit()
     # Insert a recent message

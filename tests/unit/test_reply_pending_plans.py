@@ -47,7 +47,7 @@ async def test_save_and_get_pending(plan_db: aiosqlite.Connection) -> None:
 async def test_confirm_plan(plan_db: aiosqlite.Connection) -> None:
     plans = PendingPlans(plan_db, expiry_minutes=60)
     actions = [{"action": "mark_done", "params": {"task_id": "t1"}}]
-    plan_id = await plans.save("thread-1", actions, "reply")
+    await plans.save("thread-1", actions, "reply")
     result = await plans.confirm("thread-1")
     assert result is not None
     assert json.loads(result["actions_json"]) == actions

@@ -54,9 +54,11 @@ class CapabilityGapTracker:
 
         for row in existing:
             existing_desc = row[1].lower().strip()
-            if existing_desc == norm_desc or _jaccard(existing_desc, norm_desc) >= _JACCARD_THRESHOLD:
+            similar = _jaccard(existing_desc, norm_desc) >= _JACCARD_THRESHOLD
+            if existing_desc == norm_desc or similar:
                 await self._conn.execute(
-                    "UPDATE capability_gap SET hit_count = hit_count + 1, last_hit_at = ? WHERE id = ?",
+                    "UPDATE capability_gap SET hit_count = hit_count + 1, "
+                    "last_hit_at = ? WHERE id = ?",
                     (now, row[0]),
                 )
                 await self._conn.commit()
@@ -65,7 +67,9 @@ class CapabilityGapTracker:
 
         gap_id = str(uuid6.uuid7())
         await self._conn.execute(
-            "INSERT INTO capability_gap (id, user_request, description, context_type, task_id, hit_count, status, created_at, last_hit_at) "
+            "INSERT INTO capability_gap "
+            "(id, user_request, description, context_type, task_id, "
+            "hit_count, status, created_at, last_hit_at) "
             "VALUES (?, ?, ?, ?, ?, 1, 'logged', ?, ?)",
             (gap_id, user_request, description, context_type, task_id, now, now),
         )
@@ -81,7 +85,10 @@ class CapabilityGapTracker:
         )
         rows = await cursor.fetchall()
         return [
-            {"id": r[0], "description": r[1], "hit_count": r[2], "created_at": r[3], "last_hit_at": r[4]}
+            {
+                "id": r[0], "description": r[1], "hit_count": r[2],
+                "created_at": r[3], "last_hit_at": r[4],
+            }
             for r in rows
         ]
 

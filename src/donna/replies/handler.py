@@ -59,10 +59,7 @@ class FastPath:
             if any(kw in lower for kw in intent.keywords):
                 matched_intents.append(name)
 
-        if len(matched_intents) != 1:
-            return False
-
-        return True
+        return len(matched_intents) == 1
 
     def match(self, reply: str) -> FastPathResult | None:
         """Try to match a reply to a single intent. Returns None if no match or complex."""
@@ -134,7 +131,9 @@ class ReplyHandler:
         self._registry = ActionRegistry(actions_config)
         self._memory = ThreadMemory(conn, window_size=actions_config.memory.window_size)
         self._plans = PendingPlans(conn, expiry_minutes=actions_config.plan.expiry_minutes)
-        self._classifier = LLMClassifier(router=router, registry=self._registry, memory=self._memory)
+        self._classifier = LLMClassifier(
+            router=router, registry=self._registry, memory=self._memory,
+        )
 
     async def handle(
         self,
@@ -175,12 +174,17 @@ class ReplyHandler:
         actions = llm_result.get("actions", [])
         reply_to_user = llm_result.get("reply_to_user", "")
 
+        task_id = getattr(task, "id", None)
         if not actions:
-            await self._memory.record(thread_id, context_type, getattr(task, "id", None), "donna", reply_to_user)
+            await self._memory.record(
+                thread_id, context_type, task_id, "donna", reply_to_user,
+            )
             return ReplyResult(path="llm", reply_to_user=reply_to_user)
 
         plan_id = await self._plans.save(thread_id, actions, reply_to_user)
-        await self._memory.record(thread_id, context_type, getattr(task, "id", None), "donna", reply_to_user)
+        await self._memory.record(
+            thread_id, context_type, task_id, "donna", reply_to_user,
+        )
 
         return ReplyResult(
             path="llm",
@@ -218,7 +222,10 @@ class ReplyHandler:
             thread_id, context_type, getattr(task, "id", None), "donna", result_msg,
         )
 
-        return ReplyResult(path="fast", action=action_name, reply_to_user=result_msg, execution_results=[result_msg])
+        return ReplyResult(
+            path="fast", action=action_name,
+            reply_to_user=result_msg, execution_results=[result_msg],
+        )
 
     async def _execute_plan(
         self, thread_id: str, pending: dict[str, Any], task: Any,

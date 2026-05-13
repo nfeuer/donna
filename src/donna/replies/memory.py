@@ -37,8 +37,9 @@ class ThreadMemory:
         """Append a message to thread memory."""
         now = datetime.now(tz=UTC).isoformat()
         await self._conn.execute(
-            "INSERT INTO thread_memory (id, thread_id, context_type, task_id, role, content, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO thread_memory"
+            " (id, thread_id, context_type, task_id, role, content, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
             (str(uuid6.uuid7()), thread_id, context_type, task_id, role, content, now),
         )
         await self._conn.commit()
@@ -62,7 +63,7 @@ class ThreadMemory:
             (cutoff,),
         )
         await self._conn.commit()
-        count = cursor.rowcount
+        count: int = cursor.rowcount
         if count:
             logger.info("thread_memory_pruned", deleted=count)
         return count

@@ -11,7 +11,7 @@ def test_load_reply_intents_config() -> None:
     assert "mark_done" in config.intents
     assert "reschedule" in config.intents
     assert "busy" in config.intents
-    for name, intent in config.intents.items():
+    for _name, intent in config.intents.items():
         assert len(intent.keywords) > 0
         assert intent.action
 
@@ -21,7 +21,7 @@ def test_load_reply_actions_config() -> None:
     assert "mark_done" in config.actions
     assert "create_task" in config.actions
     assert "request_capability" in config.actions
-    for name, action in config.actions.items():
+    for _name, action in config.actions.items():
         assert action.description
         assert action.handler
 

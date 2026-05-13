@@ -43,9 +43,14 @@ class PendingPlans:
         now = datetime.now(tz=UTC)
         expires_at = now + timedelta(minutes=self._expiry_minutes)
         await self._conn.execute(
-            "INSERT INTO pending_action_plan (id, thread_id, actions_json, reply_text, status, created_at, expires_at) "
-            "VALUES (?, ?, ?, ?, 'pending', ?, ?)",
-            (plan_id, thread_id, json.dumps(actions), reply_text, now.isoformat(), expires_at.isoformat()),
+            "INSERT INTO pending_action_plan"
+            " (id, thread_id, actions_json, reply_text, status,"
+            " created_at, expires_at)"
+            " VALUES (?, ?, ?, ?, 'pending', ?, ?)",
+            (
+                plan_id, thread_id, json.dumps(actions),
+                reply_text, now.isoformat(), expires_at.isoformat(),
+            ),
         )
         await self._conn.commit()
         return plan_id
@@ -103,7 +108,7 @@ class PendingPlans:
             (now,),
         )
         await self._conn.commit()
-        count = cursor.rowcount
+        count: int = cursor.rowcount
         if count:
             logger.info("pending_plans_expired", count=count)
         return count

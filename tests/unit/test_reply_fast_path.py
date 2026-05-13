@@ -1,8 +1,6 @@
 """Tests for fast-path keyword matching and complexity gate."""
 from __future__ import annotations
 
-import pytest
-
 from donna.config import FastPathConfig, ReplyIntentDef, ReplyIntentsConfig
 from donna.replies.handler import FastPath
 
@@ -16,8 +14,12 @@ def _make_config() -> ReplyIntentsConfig:
             reject_keywords=["no", "cancel", "nevermind"],
         ),
         intents={
-            "mark_done": ReplyIntentDef(keywords=["done", "finished", "did it"], action="mark_done"),
-            "reschedule": ReplyIntentDef(keywords=["reschedule", "tomorrow", "later"], action="reschedule"),
+            "mark_done": ReplyIntentDef(
+                keywords=["done", "finished", "did it"], action="mark_done",
+            ),
+            "reschedule": ReplyIntentDef(
+                keywords=["reschedule", "tomorrow", "later"], action="reschedule",
+            ),
             "busy": ReplyIntentDef(keywords=["busy", "not now", "snooze"], action="snooze"),
         },
     )
