@@ -1,32 +1,56 @@
 capability_name: product_watch
-version: 1
+version: 2
 description: |
-  Monitor a product URL for price and availability. Extract price,
-  currency, in-stock flag, available sizes, and title. Compute whether
-  the configured alert should fire given the user's price and size
-  constraints.
+  Monitor a product URL for price and availability using a multi-tier
+  extraction pipeline. Tier 1: Playwright text → local 32B. Tier 2:
+  Playwright screenshot → local 7B vision. Tier 3: Claude tool_use
+  fetches URL directly. Each tier cascades on failure.
 
 inputs:
   schema_ref: capabilities/product_watch/input_schema.json
 
 steps:
-  - name: fetch_page
+  - name: extract_text
     kind: tool
-    tools: [web_fetch]
+    tools: [browser_extract_text]
     tool_invocations:
-      - tool: web_fetch
+      - tool: browser_extract_text
         args:
           url: "{{ inputs.url }}"
-          timeout_s: 15
-        retry:
-          max_attempts: 2
-          backoff_s: [2, 5]
-        store_as: page
+          selector: "{{ inputs.selector | default('body') }}"
+        store_as: page_text
 
-  - name: extract_product_info
+  - name: try_local_extract
     kind: llm
     prompt: steps/extract_product_info.md
     output_schema: schemas/extract_product_info_v1.json
+    on_failure: continue
+
+  - name: screenshot_fallback
+    kind: tool
+    tools: [browser_screenshot]
+    condition: "not state.try_local_extract.success"
+    tool_invocations:
+      - tool: browser_screenshot
+        args:
+          url: "{{ inputs.url }}"
+        store_as: screenshot
+
+  - name: try_vision_extract
+    kind: llm
+    prompt: steps/extract_from_screenshot.md
+    output_schema: schemas/extract_product_info_v1.json
+    gpu_model: local_vision
+    condition: "not state.try_local_extract.success"
+    on_failure: continue
+
+  - name: claude_fallback
+    kind: llm
+    prompt: steps/extract_via_claude.md
+    output_schema: schemas/extract_product_info_v1.json
+    model: parser
+    tools: [web_fetch]
+    condition: "not (state.try_local_extract.success or state.try_vision_extract.success)"
 
   - name: format_output
     kind: llm

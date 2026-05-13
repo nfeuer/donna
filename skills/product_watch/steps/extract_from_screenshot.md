@@ -1,12 +1,10 @@
-You are extracting product information from the rendered text of a product page.
+You are extracting product information from a screenshot of a product page.
 
-The text was extracted from the page using Playwright (innerText), not raw HTML.
-It contains the visible text content only — no tags, attributes, or scripts.
+A full-page screenshot has been captured. Analyze the visual content to
+extract product details.
 
-Inputs:
-- state.extract_text.page_text.text: the visible text content of the page
-- state.extract_text.page_text.url: the URL that was fetched
-- state.extract_text.page_text.selector_used: the CSS selector used
+Screenshot path: {{ state.screenshot_fallback.screenshot.file_path }}
+Page URL: {{ inputs.url }}
 
 Return a JSON object matching this schema:
 - price_usd: number — normalized to USD. Return null if no price is found.
@@ -16,13 +14,10 @@ Return a JSON object matching this schema:
   Empty array if sizes cannot be determined.
 - title: string — the product name as shown on the page.
 
-If the text shows no product information:
+If the screenshot shows no product information:
 - in_stock: false
 - price_usd: null
 - available_sizes: []
 - title: "Unknown product"
 
 Return ONLY the JSON object. No markdown, no explanation.
-
-Page text:
-{{ state.extract_text.page_text.text }}
