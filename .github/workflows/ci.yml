@@ -50,6 +50,19 @@ jobs:
       - run: uv sync --dev
       - run: uv run pytest tests/unit/ -m "not slow and not llm" --tb=short -q
 
+  test-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --dev
+      - run: uv run pytest tests/integration/ -m "not slow and not llm" --tb=short -q
+
   docker-copy-parity:
     runs-on: ubuntu-latest
     steps:
