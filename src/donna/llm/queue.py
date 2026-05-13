@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from collections import deque
 from datetime import UTC, datetime
 from typing import Any
@@ -16,6 +17,7 @@ from typing import Any
 import structlog
 
 from donna.llm.alerter import GatewayAlerter
+from donna.llm.gpu_tracker import GpuTracker
 from donna.llm.rate_limiter import RateLimiter
 from donna.llm.types import GatewayConfig, Priority, QueueItem
 from donna.models.types import CompletionMetadata
@@ -72,6 +74,9 @@ class LLMQueueWorker:
             "external_completed": 0,
             "external_interrupted": 0,
         }
+
+        self._gpu_tracker = GpuTracker(config.gpu)
+        self._home_restore_task: asyncio.Task[None] | None = None
 
     def _next_seq(self) -> int:
         self._sequence += 1
@@ -250,35 +255,152 @@ class LLMQueueWorker:
         return True
 
     def _pop_next(self) -> QueueItem | None:
-        """Pop the next item according to the priority rules.
+        """Pop the next item with model-affinity sorting.
 
-        1. Internal queue (always first)
+        1. Internal queue first (with affinity within same priority)
         2. External priority deque (interrupted/continuation items)
-        3. External queue (if no schedule drain needed)
+        3. External queue
         """
-        # Always check internal first
         if not self._internal.empty():
-            return self._internal.get_nowait()
+            return self._pop_internal_with_affinity()
 
-        # External priority items (interrupted, chain continuations)
         if self._external_priority:
             return self._external_priority.popleft()
 
-        # Regular external queue
         if not self._external.empty():
             return self._external.get_nowait()
 
         return None
 
+    def _pop_internal_with_affinity(self) -> QueueItem:
+        """Drain internal queue, pick best item respecting priority + model affinity."""
+        items: list[QueueItem] = []
+        while not self._internal.empty():
+            items.append(self._internal.get_nowait())
+
+        if len(items) == 1:
+            return items[0]
+
+        # Items are sorted by priority (PriorityQueue). Find the best priority band.
+        best_priority = items[0].priority
+        same_priority = [it for it in items if it.priority == best_priority]
+        rest = [it for it in items if it.priority != best_priority]
+
+        loaded = self._gpu_tracker.loaded_model
+        matching = [it for it in same_priority
+                    if it.required_model is None or it.required_model == loaded]
+        non_matching = [it for it in same_priority
+                       if it.required_model is not None and it.required_model != loaded]
+
+        if matching:
+            chosen = matching[0]
+            requeue = matching[1:] + non_matching + rest
+        else:
+            chosen = non_matching[0] if non_matching else same_priority[0]
+            requeue = (non_matching[1:] if non_matching else same_priority[1:]) + rest
+
+        for it in requeue:
+            self._internal.put_nowait(it)
+
+        return chosen
+
     async def _execute(self, item: QueueItem) -> tuple[dict[str, Any], CompletionMetadata]:
-        """Execute an LLM call for the given queue item."""
+        """Execute an LLM call, swapping models if needed."""
+        # Cancel any pending home restore
+        if self._home_restore_task is not None:
+            self._home_restore_task.cancel()
+            self._home_restore_task = None
+
+        required = item.required_model
+        if required and required != self._gpu_tracker.loaded_model:
+            await self._swap_model(required)
+
+        start = time.monotonic()
         result, meta = await self._ollama.complete(
             prompt=item.prompt,
             model=item.model,
             max_tokens=item.max_tokens,
             json_mode=item.json_mode,
         )
+        exec_ms = int((time.monotonic() - start) * 1000)
+        self._gpu_tracker.record_execution_time(exec_ms)
+
+        self._schedule_home_restore_if_needed()
+
         return result, meta
+
+    async def _swap_model(self, target_model: str) -> None:
+        """Swap the loaded GPU model by requesting the target from Ollama."""
+        self._gpu_tracker.record_swap_started(target_model)
+        start = time.monotonic()
+
+        # Unload current model by setting keep_alive to 0
+        current = self._gpu_tracker.loaded_model
+        if current:
+            try:
+                await self._ollama.complete(
+                    prompt="unload", model=current,
+                    max_tokens=1, json_mode=False,
+                )
+            except Exception:
+                pass
+
+        # Load target model with a warmup prompt
+        try:
+            await asyncio.wait_for(
+                self._ollama.complete(
+                    prompt="warmup", model=target_model,
+                    max_tokens=1, json_mode=False,
+                ),
+                timeout=self._config.gpu.swap_timeout_s,
+            )
+        except TimeoutError:
+            logger.error("gpu_swap_timeout", target=target_model)
+
+        # Verify what's loaded
+        running = await self._ollama.list_running()
+        if running:
+            self._gpu_tracker.record_loaded(running[0])
+
+        duration_ms = int((time.monotonic() - start) * 1000)
+        self._gpu_tracker.record_swap_completed(target_model, duration_ms)
+
+        # Check alert thresholds
+        alerts = self._gpu_tracker.check_alerts()
+        for alert_msg in alerts:
+            if self._alerter:
+                await self._alerter.send_alert("gpu_swap", alert_msg)
+
+        async with self.state_changed:
+            self.state_changed.notify_all()
+
+    def _schedule_home_restore_if_needed(self) -> None:
+        """Schedule restoring the home model after a delay if queue has no more non-home work."""
+        if self._gpu_tracker.is_home:
+            return
+
+        # Check if any queued items need a non-home model
+        has_non_home = False
+        items: list[QueueItem] = []
+        while not self._internal.empty():
+            it = self._internal.get_nowait()
+            items.append(it)
+            if it.required_model and it.required_model != self._gpu_tracker.home_model:
+                has_non_home = True
+        for it in items:
+            self._internal.put_nowait(it)
+
+        if has_non_home:
+            return
+
+        delay = self._config.gpu.restore_home_delay_s
+        self._home_restore_task = asyncio.create_task(self._restore_home(delay))
+
+    async def _restore_home(self, delay_s: int) -> None:
+        """Wait then swap back to the home model."""
+        await asyncio.sleep(delay_s)
+        if not self._gpu_tracker.is_home:
+            await self._swap_model(self._gpu_tracker.home_model)
 
     async def preempt_external(self) -> None:
         """Cancel the currently running external request and re-enqueue it."""
@@ -374,6 +496,7 @@ class LLMQueueWorker:
             },
             "rate_limits": self._rate_limiter.get_all_usage(),
             "mode": "active" if self._config.is_active_hours() else "slow",
+            "gpu": self._gpu_tracker.get_metrics(),
         }
 
     def _peek_internal(self, n: int) -> list[dict[str, Any]]:
@@ -475,4 +598,5 @@ class LLMQueueWorker:
         )
         if self._alerter:
             self._alerter.update_debounce(config.debounce_minutes)
+        self._gpu_tracker._config = config.gpu
         logger.info("llm_queue_config_reloaded", event_type="llm_gateway.config_reloaded")
