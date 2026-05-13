@@ -276,7 +276,13 @@ def load_preferences_config(config_dir: Path) -> PreferencesConfig:
 def load_calendar_config(config_dir: Path) -> CalendarConfig:
     """Load calendar integration and scheduling configuration."""
     data = load_yaml(config_dir / "calendar.yaml")
-    return CalendarConfig(**data)
+    cfg = CalendarConfig(**data)
+    creds = cfg.credentials
+    if not Path(creds.token_path).is_absolute():
+        creds.token_path = str(config_dir / creds.token_path)
+    if not Path(creds.client_secrets_path).is_absolute():
+        creds.client_secrets_path = str(config_dir / creds.client_secrets_path)
+    return cfg
 
 
 # === SMS / Twilio Config ===
@@ -539,7 +545,13 @@ class EmailConfig(BaseModel):
 def load_email_config(config_dir: Path) -> EmailConfig:
     """Load email integration configuration."""
     data = load_yaml(config_dir / "email.yaml")
-    return EmailConfig(**data)
+    cfg = EmailConfig(**data)
+    creds = cfg.credentials
+    if not Path(creds.token_path).is_absolute():
+        creds.token_path = str(config_dir / creds.token_path)
+    if not Path(creds.client_secrets_path).is_absolute():
+        creds.client_secrets_path = str(config_dir / creds.client_secrets_path)
+    return cfg
 
 
 # === Memory / Vault Config (slice 12) ===

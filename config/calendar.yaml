@@ -61,7 +61,7 @@ priority:
   escalation_after_reschedules: 1 # bump priority after this many reschedules under pressure
 
 credentials:
-  client_secrets_path: "credentials.json"   # OAuth2 client credentials file
+  client_secrets_path: "google_credentials.json"   # OAuth2 client credentials file
   token_path: "token.json"                   # persisted token (created on first auth)
   scopes:
     - "https://www.googleapis.com/auth/calendar"

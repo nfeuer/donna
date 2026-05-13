@@ -274,6 +274,23 @@ GOOGLE_CALENDARS = SetupStep(
     validator="validate_calendar_ids",
 )
 
+GOOGLE_CALENDAR_TOKEN = SetupStep(
+    id="google_calendar_token",
+    name="Google Calendar OAuth Token",
+    phase=2,
+    required=False,
+    depends_on=["google_oauth"],
+    help_text=(
+        "Runs the Google OAuth consent flow in your browser to generate\n"
+        "a token.json for Calendar API access. The token is saved to\n"
+        "config/ and mounted into Docker containers automatically.\n"
+        "This step must run on a machine with a browser — it cannot\n"
+        "run inside Docker."
+    ),
+    prompts=[],
+    validator="validate_google_calendar_token",
+)
+
 SUPABASE = SetupStep(
     id="supabase",
     name="Supabase Cloud Replica",
@@ -371,6 +388,7 @@ ALL_STEPS: list[SetupStep] = [
     TWILIO,
     GOOGLE_OAUTH,
     GOOGLE_CALENDARS,
+    GOOGLE_CALENDAR_TOKEN,
     SUPABASE,
     VAULT,
     OLLAMA_GPU,

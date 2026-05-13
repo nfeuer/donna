@@ -299,6 +299,63 @@ async def validate_calendar_ids(env: dict[str, str]) -> ValidatorResult:
     return ValidatorResult(True, "Calendar IDs set (full validation requires OAuth flow)")
 
 
+async def validate_google_calendar_token(env: dict[str, str]) -> ValidatorResult:
+    """Run Google OAuth consent flow and save token.json next to credentials."""
+    creds_path_str = env.get("GOOGLE_CREDENTIALS_PATH", "")
+    if not creds_path_str:
+        return ValidatorResult(
+            False, "GOOGLE_CREDENTIALS_PATH not set — run Google OAuth step first"
+        )
+
+    creds_path = Path(creds_path_str)
+    if not creds_path.is_file():
+        return ValidatorResult(False, f"Credentials file not found: {creds_path}")
+
+    token_path = creds_path.parent / "token.json"
+
+    if token_path.is_file():
+        try:
+            data = json.loads(token_path.read_text())
+            if data.get("refresh_token"):
+                return ValidatorResult(
+                    True, f"Token already exists at {token_path} (has refresh token)"
+                )
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+
+        scopes = ["https://www.googleapis.com/auth/calendar"]
+        creds = None
+
+        if token_path.is_file():
+            creds = Credentials.from_authorized_user_file(  # type: ignore[no-untyped-call]
+                str(token_path), scopes
+            )
+
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), scopes)
+                creds = flow.run_local_server(port=0)
+
+            token_path.write_text(creds.to_json())
+
+        return ValidatorResult(True, f"Token saved to {token_path}")
+    except ImportError:
+        return ValidatorResult(
+            False,
+            "Google auth libraries not installed. Run: "
+            "pip install google-auth google-auth-oauthlib google-api-python-client",
+        )
+    except Exception as exc:
+        return ValidatorResult(False, f"OAuth flow failed: {exc}")
+
+
 async def validate_vault(env: dict[str, str]) -> ValidatorResult:
     """Validate vault path is absolute and the Caddy auth pair is populated.
 
@@ -429,6 +486,7 @@ VALIDATORS: dict[str, type[object] | object] = {
     "validate_twilio": validate_twilio,
     "validate_google_creds_file": validate_google_creds_file,
     "validate_calendar_ids": validate_calendar_ids,
+    "validate_google_calendar_token": validate_google_calendar_token,
     "validate_supabase": validate_supabase,
     "validate_vault": validate_vault,
     "validate_nvidia_gpu": validate_nvidia_gpu,
