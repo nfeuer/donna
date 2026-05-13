@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Check, Minus } from "lucide-react";
 import styles from "./TriCheckbox.module.css";
 
@@ -22,23 +22,18 @@ export function cycleTriState(current: TriState): TriState {
 }
 
 export function TriCheckbox({ state, onCycle, children, disabled }: TriCheckboxProps) {
-  const id = useId();
   return (
-    <label htmlFor={id} className={styles.root}>
-      <button
-        id={id}
-        type="button"
+    <span className={styles.root} onClick={disabled ? undefined : onCycle} aria-disabled={disabled || undefined}>
+      <span
         role="checkbox"
         aria-checked={state === "include" ? "true" : state === "exclude" ? "mixed" : "false"}
         className={styles.box}
         data-state={state}
-        onClick={onCycle}
-        disabled={disabled}
       >
         {state === "include" && <Check size={11} />}
         {state === "exclude" && <Minus size={11} />}
-      </button>
+      </span>
       {children}
-    </label>
+    </span>
   );
 }

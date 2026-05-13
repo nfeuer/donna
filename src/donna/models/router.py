@@ -180,6 +180,18 @@ class ModelRouter:
         """
         self._escalation_gate = gate
 
+    def _lookup_routing_entry(self, task_type: str) -> Any | None:
+        """Lookup routing config by exact key, then longest-prefix match."""
+        routing = self._models_config.routing.get(task_type)
+        if routing is None:
+            parts = task_type.split("::")
+            for i in range(len(parts) - 1, 0, -1):
+                candidate = "::".join(parts[:i])
+                routing = self._models_config.routing.get(candidate)
+                if routing is not None:
+                    break
+        return routing
+
     def _resolve_route(self, task_type: str) -> tuple[ModelProvider, str, str]:
         """Resolve task_type → (provider instance, model ID, model alias).
 
@@ -190,15 +202,7 @@ class ModelRouter:
 
         Raises RoutingError if neither exact nor any prefix match.
         """
-        routing = self._models_config.routing.get(task_type)
-        if routing is None:
-            # Prefix fallback — try progressively shorter prefixes on "::".
-            parts = task_type.split("::")
-            for i in range(len(parts) - 1, 0, -1):
-                candidate = "::".join(parts[:i])
-                routing = self._models_config.routing.get(candidate)
-                if routing is not None:
-                    break
+        routing = self._lookup_routing_entry(task_type)
         if routing is None:
             raise RoutingError(f"Unknown task type: {task_type!r}")
 
@@ -344,7 +348,7 @@ class ModelRouter:
             estimated_in = estimate_tokens(prompt)
 
             if estimated_in > budget:
-                routing_entry = self._models_config.routing.get(task_type)
+                routing_entry = self._lookup_routing_entry(task_type)
                 fallback_alias = routing_entry.fallback if routing_entry else None
 
                 if fallback_alias is None:
