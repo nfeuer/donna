@@ -64,3 +64,24 @@
   color: var(--color-text);
   margin-bottom: var(--space-3);
 }
+
+.settingsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-4);
+}
+
+.settingLabel {
+  font-weight: 600;
+  font-size: var(--text-body);
+  color: var(--color-text);
+}
+
+.settingDescription {
+  font-size: var(--text-small);
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}

@@ -106,3 +106,12 @@ export async function fetchPreferenceStats(): Promise<PreferenceStats> {
   const { data } = await client.get("/admin/preferences/stats");
   return data;
 }
+
+export async function getVoiceEscalationStatus(): Promise<{ enabled: boolean }> {
+  const { data } = await client.get("/admin/preferences/escalation/voice");
+  return data;
+}
+
+export async function toggleVoiceEscalation(enabled: boolean): Promise<void> {
+  await client.patch("/admin/preferences/escalation/voice", { enabled });
+}
