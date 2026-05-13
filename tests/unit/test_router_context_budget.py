@@ -109,6 +109,8 @@ def _build_router(
     router._invocation_logger = None
     from donna.resilience.retry import CircuitBreaker
     router._circuit_breaker = CircuitBreaker()
+    router._shadow_tasks = set()
+    router._ollama_degraded = False
 
     return router, ollama, anthropic
 

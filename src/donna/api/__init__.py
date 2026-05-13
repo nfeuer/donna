@@ -37,6 +37,7 @@ from donna.api.routes import (
     admin_preferences,
     admin_shadow,
     admin_tasks,
+    admin_vault,
     agents,
     health,
     llm,
@@ -235,6 +236,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.chat_engine = chat_engine
     app.state.chat_config = chat_config
 
+    vault_client = None
+    vault_git = None
+    try:
+        from donna.config import load_memory_config
+        memory_cfg = load_memory_config(config_dir)
+        from donna.integrations.vault import VaultClient
+        vault_client = VaultClient(config=memory_cfg)
+        if Path(memory_cfg.vault.root).exists():
+            from donna.integrations.git_repo import GitRepo
+            vault_git = GitRepo(
+                root=Path(memory_cfg.vault.root),
+                author_name=memory_cfg.vault.git_author_name,
+                author_email=memory_cfg.vault.git_author_email,
+            )
+    except Exception:
+        logger.warning("vault_client_init_failed", exc_info=True)
+    app.state.vault_client = vault_client
+    app.state.vault_git = vault_git
+
     from donna.api.auth.config import load as load_auth_config
     from donna.api.auth.dependencies import AuthContext
     from donna.api.auth.email_allowlist import sync as sync_allowlist
@@ -378,6 +398,9 @@ def create_app() -> FastAPI:
 
     # Admin-facing LLM queue (read-only, dashboard)
     app.include_router(admin_llm.router, prefix="/admin", tags=["admin"])
+
+    # Vault admin routes (read-only)
+    app.include_router(admin_vault.router, prefix="/admin", tags=["admin"])
 
     # LLM gateway for homelab services
     app.include_router(llm.router, prefix="/llm", tags=["llm"])

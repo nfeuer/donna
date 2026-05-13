@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { PageHeader } from "../../primitives/PageHeader";
 import { Select, SelectItem } from "../../primitives/Select";
 import { EmptyState } from "../../primitives/EmptyState";
+import { Switch } from "../../primitives/Switch";
 import RefreshButton from "../../components/RefreshButton";
 import RulesTable from "./RulesTable";
 import CorrectionsTable from "./CorrectionsTable";
@@ -10,6 +11,8 @@ import {
   fetchPreferenceRules,
   fetchCorrections,
   fetchPreferenceStats,
+  getVoiceEscalationStatus,
+  toggleVoiceEscalation,
   type PreferenceRule,
   type CorrectionEntry,
   type PreferenceStats,
@@ -43,6 +46,10 @@ export default function PreferencesPage() {
   const [corrTotal, setCorrTotal] = useState(0);
   const [corrLoading, setCorrLoading] = useState(false);
   const [stats, setStats] = useState<PreferenceStats | null>(null);
+
+  // Voice escalation toggle
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voiceLoading, setVoiceLoading] = useState(false);
 
   // Drawer
   const [selectedRule, setSelectedRule] = useState<PreferenceRule | null>(null);
@@ -83,6 +90,11 @@ export default function PreferencesPage() {
 
   useEffect(() => {
     doFetch();
+    getVoiceEscalationStatus()
+      .then((resp) => setVoiceEnabled(resp.enabled))
+      .catch(() => {
+        // default to true on error
+      });
   }, [doFetch]);
 
   const handleRuleClick = (rule: PreferenceRule) => {
@@ -123,6 +135,30 @@ export default function PreferencesPage() {
           </div>
         }
       />
+
+      <div className={styles.settingsRow}>
+        <div>
+          <div className={styles.settingLabel}>Voice Escalation</div>
+          <div className={styles.settingDescription}>
+            Allow Donna to place phone calls for Tier 4 escalations
+          </div>
+        </div>
+        <Switch
+          checked={voiceEnabled}
+          disabled={voiceLoading}
+          onCheckedChange={async (checked) => {
+            setVoiceLoading(true);
+            try {
+              await toggleVoiceEscalation(checked);
+              setVoiceEnabled(checked);
+            } catch {
+              // toast shown by global interceptor
+            } finally {
+              setVoiceLoading(false);
+            }
+          }}
+        />
+      </div>
 
       {!hasRules ? (
         <EmptyState

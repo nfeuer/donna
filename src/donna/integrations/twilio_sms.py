@@ -4,7 +4,7 @@ Outbound SMS: rate-limited to max 10/day (config), blocked during blackout hours
 Inbound SMS: webhook signature verification via RequestValidator.
 
 Credentials sourced from environment variables only:
-  TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, TWILIO_WEBHOOK_URL
+  TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, TWILIO_WEBHOOK_URL
 
 Direct Python API pattern — no MCP wrapping.
 See docs/integrations.md and slices/slice_07_sms_escalation.md.
@@ -37,7 +37,7 @@ class TwilioSMS:
         self._config = config
         self._account_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
         self._auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
-        self._from_number = os.environ.get("TWILIO_FROM_NUMBER", "")
+        self._from_number = os.environ.get("TWILIO_PHONE_NUMBER", "")
         self._webhook_url = os.environ.get("TWILIO_WEBHOOK_URL", "")
 
         # In-memory daily rate limit counter.

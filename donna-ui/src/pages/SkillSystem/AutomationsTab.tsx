@@ -1,13 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Loader2, Play } from "lucide-react";
 import { DataTable } from "../../primitives/DataTable";
 import { Button } from "../../primitives/Button";
 import { Pill, type PillVariant } from "../../primitives/Pill";
 import { Select, SelectItem } from "../../primitives/Select";
 import {
+  fetchAutomationRuns,
   fetchAutomations,
+  runAutomationNow,
   type Automation,
 } from "../../api/skillSystem";
+import { cn } from "../../lib/cn";
 import styles from "./SkillSystem.module.css";
 
 interface Props {
@@ -26,6 +30,9 @@ function statusVariant(status: string): PillVariant {
   return "accent";
 }
 
+const POLL_INTERVAL_MS = 3000;
+const POLL_TIMEOUT_MS = 120_000;
+
 export default function AutomationsTab({
   selectedId,
   onRowClick,
@@ -35,6 +42,8 @@ export default function AutomationsTab({
   const [status, setStatus] = useState("active");
   const [rows, setRows] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+  const pollTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,12 +57,89 @@ export default function AutomationsTab({
     }
   }, [status]);
 
+  const stopPolling = useCallback((id: string) => {
+    const timer = pollTimers.current.get(id);
+    if (timer) {
+      clearInterval(timer);
+      pollTimers.current.delete(id);
+    }
+    setRunningIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of pollTimers.current.values()) clearInterval(timer);
+    };
+  }, []);
+
+  const handleRunNow = useCallback(
+    async (id: string) => {
+      setRunningIds((prev) => new Set(prev).add(id));
+      try {
+        await runAutomationNow(id);
+      } catch {
+        stopPolling(id);
+        return;
+      }
+
+      const started = Date.now();
+      const timer = setInterval(async () => {
+        if (Date.now() - started > POLL_TIMEOUT_MS) {
+          stopPolling(id);
+          return;
+        }
+        try {
+          const { runs } = await fetchAutomationRuns(id, 1);
+          const latest = runs[0];
+          if (latest?.finished_at) {
+            stopPolling(id);
+            load();
+          }
+        } catch {
+          /* keep polling */
+        }
+      }, POLL_INTERVAL_MS);
+      pollTimers.current.set(id, timer);
+    },
+    [stopPolling, load],
+  );
+
   useEffect(() => {
     load();
   }, [load, refreshToken]);
 
   const columns = useMemo<ColumnDef<Automation>[]>(
     () => [
+      {
+        id: "run",
+        header: "",
+        size: 44,
+        cell: ({ row }) => {
+          const a = row.original;
+          const isRunning = runningIds.has(a.id);
+          return (
+            <button
+              className={styles.runBtn}
+              disabled={a.status !== "active" || isRunning}
+              title={isRunning ? "Running…" : "Run now"}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRunNow(a.id);
+              }}
+            >
+              {isRunning ? (
+                <Loader2 size={14} className={cn(styles.spinning)} />
+              ) : (
+                <Play size={14} />
+              )}
+            </button>
+          );
+        },
+      },
       { accessorKey: "name", header: "Name", size: 200 },
       { accessorKey: "capability_name", header: "Capability", size: 200 },
       { accessorKey: "trigger_type", header: "Trigger", size: 110 },
@@ -94,7 +180,7 @@ export default function AutomationsTab({
           `${row.original.run_count} (${row.original.failure_count})`,
       },
     ],
-    [],
+    [runningIds, handleRunNow],
   );
 
   return (

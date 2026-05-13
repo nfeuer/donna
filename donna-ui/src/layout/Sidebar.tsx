@@ -1,6 +1,7 @@
 import { useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
+  MessageSquare,
   ScrollText,
   CheckSquare,
   Bot,
@@ -13,6 +14,7 @@ import {
   AlertOctagon,
   SlidersHorizontal,
   BookOpen,
+  BookMarked,
   ExternalLink,
 } from "lucide-react";
 import { NavItem } from "./NavItem";
@@ -31,6 +33,8 @@ interface NavEntry {
 
 const NAV_ITEMS: NavEntry[] = [
   { path: "/", label: "Dashboard", icon: <LayoutDashboard size={18} /> },
+  { path: "/chat", label: "Chat", icon: <MessageSquare size={18} /> },
+  { path: "/vault", label: "Vault", icon: <BookMarked size={18} /> },
   { path: "/logs", label: "Logs", icon: <ScrollText size={18} /> },
   { path: "/tasks", label: "Tasks", icon: <CheckSquare size={18} /> },
   { path: "/agents", label: "Agents", icon: <Bot size={18} /> },

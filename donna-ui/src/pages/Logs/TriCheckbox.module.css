@@ -9,6 +9,11 @@
   user-select: none;
 }
 
+.root[aria-disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .box {
   width: 16px;
   height: 16px;
@@ -24,7 +29,7 @@
               background var(--duration-fast) var(--ease-out);
 }
 
-.root:hover .box { border-color: var(--color-text-dim); }
+.root:hover:not([aria-disabled]) .box { border-color: var(--color-text-dim); }
 
 .box[data-state="include"] {
   background: var(--color-accent);

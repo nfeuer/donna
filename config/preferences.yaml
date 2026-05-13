@@ -25,4 +25,8 @@ schedule:
   min_confidence: 0.7              # discard rules below this confidence
   max_corrections_per_batch: 50    # cap per extraction run to control cost
 
+# Escalation settings
+escalation:
+  tier4_voice_enabled: true    # runtime kill switch for Twilio Voice calls
+
 rules: []

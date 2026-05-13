@@ -191,6 +191,32 @@ async def approve_escalation(
     }
 
 
+@router.get("/sessions/{session_id}/context-status")
+async def get_context_status(
+    session_id: str,
+    user_id: CurrentUser,
+    engine: Any = Depends(get_chat_engine),
+    db: Any = Depends(get_database),
+) -> dict[str, Any]:
+    """Return context window usage for the session."""
+    await _require_session_owner(db, session_id, user_id)
+    messages = await db.list_chat_messages(session_id)
+    used_tokens = sum(getattr(m, "tokens_used", 0) or 0 for m in messages)
+
+    max_tokens = 8192  # default
+    if hasattr(engine, "_config") and hasattr(engine._config, "sessions"):
+        max_tokens = getattr(engine._config.sessions, "max_context_tokens", 8192)
+
+    compact_threshold = int(max_tokens * 0.85)
+
+    return {
+        "used_tokens": used_tokens,
+        "max_tokens": max_tokens,
+        "compact_threshold": compact_threshold,
+        "model_alias": "chat_respond",
+    }
+
+
 @router.delete("/sessions/{session_id}")
 async def close_session(
     session_id: str,
