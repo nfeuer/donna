@@ -1,102 +1,32 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Save } from "lucide-react";
+import { Save } from "lucide-react";
 import Editor from "@monaco-editor/react";
 import { toast } from "sonner";
-import { PageHeader } from "../../primitives/PageHeader";
 import { Button } from "../../primitives/Button";
 import { Pill } from "../../primitives/Pill";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../primitives/Tabs";
 import { DONNA_MONACO_THEME, setupDonnaMonacoTheme } from "../../lib/monacoTheme";
-import PromptFileList from "./PromptFileList";
 import MarkdownPreview from "./MarkdownPreview";
 import VariableInspector from "./VariableInspector";
 import SaveDiffModal from "../Configs/SaveDiffModal";
-import {
-  fetchPrompts,
-  fetchPrompt,
-  savePrompt,
-  fetchConfigs,
-  fetchConfig,
-  type PromptFile,
-} from "../../api/configs";
+import { fetchPrompt, savePrompt, type PromptContent } from "../../api/configs";
 import styles from "./Prompts.module.css";
 
-// Module-level cache: task_types.yaml rarely changes during a session,
-// and multiple PromptEditor mounts shouldn't each refetch it. The
-// promise is memoised so concurrent mounts share a single request.
-let schemaMapPromise: Promise<Record<string, string>> | null = null;
-
-async function loadSchemaMap(): Promise<Record<string, string>> {
-  const configs = await fetchConfigs();
-  if (!configs.some((c) => c.name === "task_types.yaml")) return {};
-  const data = await fetchConfig("task_types.yaml");
-  const next: Record<string, string> = {};
-  let currentPrompt = "";
-  for (const line of data.content.split("\n")) {
-    const p = line.match(/prompt_template:\s*(.+)/);
-    const s = line.match(/output_schema:\s*(.+)/);
-    if (p) currentPrompt = p[1].trim().split("/").pop() ?? "";
-    if (s && currentPrompt) {
-      next[currentPrompt] = s[1].trim();
-      currentPrompt = "";
-    }
-  }
-  return next;
-}
-
-function useSchemaMap() {
-  const [map, setMap] = useState<Record<string, string>>({});
-  useEffect(() => {
-    let cancelled = false;
-    if (!schemaMapPromise) {
-      schemaMapPromise = loadSchemaMap().catch(() => {
-        // Don't cache failures — let a future mount retry.
-        schemaMapPromise = null;
-        return {};
-      });
-    }
-    schemaMapPromise.then((next) => {
-      if (!cancelled) setMap(next);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return map;
-}
-
-interface PromptEditorProps {
+interface Props {
   file: string;
 }
 
-export default function PromptEditor({ file }: PromptEditorProps) {
+export default function PromptEditor({ file }: Props) {
   const filename = decodeURIComponent(file);
 
-  const [files, setFiles] = useState<PromptFile[]>([]);
-  const [filesLoading, setFilesLoading] = useState(true);
+  const [meta, setMeta] = useState<PromptContent | null>(null);
   const [originalContent, setOriginalContent] = useState("");
   const [editedContent, setEditedContent] = useState("");
   const [contentLoading, setContentLoading] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const [saving, setSaving] = useState(false);
   const [view, setView] = useState<"edit" | "preview" | "split">("split");
-  const schemaMap = useSchemaMap();
   const hasChanges = editedContent !== originalContent;
-
-  const loadFiles = useCallback(async () => {
-    setFilesLoading(true);
-    try {
-      setFiles(await fetchPrompts());
-    } catch {
-      setFiles([]);
-    } finally {
-      setFilesLoading(false);
-    }
-  }, []);
-  useEffect(() => {
-    loadFiles();
-  }, [loadFiles]);
 
   useEffect(() => {
     if (!filename) return;
@@ -106,23 +36,23 @@ export default function PromptEditor({ file }: PromptEditorProps) {
     fetchPrompt(filename)
       .then((d) => {
         if (cancelled) return;
+        setMeta(d);
         setOriginalContent(d.content);
         setEditedContent(d.content);
       })
       .catch(() => {
         if (cancelled) return;
+        setMeta(null);
         setOriginalContent("");
         setEditedContent("");
       })
       .finally(() => {
         if (!cancelled) setContentLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [filename]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!filename) return;
     setSaving(true);
     try {
@@ -130,15 +60,12 @@ export default function PromptEditor({ file }: PromptEditorProps) {
       setOriginalContent(editedContent);
       setShowDiff(false);
       toast.success(`Saved ${filename}`);
-      loadFiles();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
-  };
-
-  const linkedSchema = filename ? schemaMap[filename] ?? null : null;
+  }, [filename, editedContent]);
 
   const editorEl = (
     <Editor
@@ -160,16 +87,12 @@ export default function PromptEditor({ file }: PromptEditorProps) {
   );
 
   return (
-    <div className={styles.root}>
-      <PageHeader
-        eyebrow="System"
-        title="Prompts"
-        meta={
-          <Link to="/prompts" className={styles.backLink}>
-            <ArrowLeft size={14} /> All templates
-          </Link>
-        }
-        actions={
+    <>
+      <div className={styles.editorHeader}>
+        <h2 className={styles.editorTitle}>{filename}</h2>
+        <div className={styles.editorStatus} role="status" aria-live="polite">
+          {contentLoading && <span>Loading…</span>}
+          {hasChanges && <Pill variant="warning">Unsaved</Pill>}
           <Button
             variant="primary"
             size="sm"
@@ -178,18 +101,17 @@ export default function PromptEditor({ file }: PromptEditorProps) {
           >
             <Save size={14} /> Save
           </Button>
-        }
-      />
-
-      <div className={styles.editorHeader}>
-        <h2 className={styles.editorTitle}>{filename}</h2>
-        <div className={styles.editorStatus} role="status" aria-live="polite">
-          {contentLoading && <span>Loading…</span>}
-          {hasChanges && <Pill variant="warning">Unsaved</Pill>}
         </div>
       </div>
 
-      <PromptFileList files={files} loading={filesLoading} selected={filename} />
+      {meta && (
+        <div className={styles.metaBar}>
+          <span>{(meta.size_bytes / 1024).toFixed(1)} KB</span>
+          <span>Modified {new Date(meta.modified * 1000).toLocaleDateString()}</span>
+          {meta.model_alias && <Pill variant="accent">{meta.model_alias}</Pill>}
+          {meta.output_schema && <Pill variant="muted">{meta.output_schema}</Pill>}
+        </div>
+      )}
 
       <Tabs value={view} onValueChange={(v) => setView(v as typeof view)}>
         <TabsList>
@@ -209,7 +131,7 @@ export default function PromptEditor({ file }: PromptEditorProps) {
         </TabsContent>
       </Tabs>
 
-      <VariableInspector content={editedContent} schemaPath={linkedSchema} />
+      <VariableInspector content={editedContent} schemaPath={meta?.output_schema ?? null} />
 
       <SaveDiffModal
         open={showDiff}
@@ -220,6 +142,6 @@ export default function PromptEditor({ file }: PromptEditorProps) {
         onConfirm={handleSave}
         onCancel={() => setShowDiff(false)}
       />
-    </div>
+    </>
   );
 }
