@@ -53,7 +53,7 @@ New route registered in the FastAPI app alongside existing schedule routes.
       "start": "2026-05-12T10:30:00-04:00",
       "end": "2026-05-12T11:30:00-04:00",
       "source": "donna",
-      "priority": "high",
+      "priority": 2,
       "domain": "work",
       "all_day": false
     }
@@ -178,7 +178,7 @@ export interface CalendarEvent {
   end: string;
   source: "google" | "donna";
   calendar_id?: string;
-  priority?: string;
+  priority?: number;
   domain?: string;
   all_day: boolean;
 }
