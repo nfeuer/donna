@@ -1008,6 +1008,16 @@ visible.
 
 ---
 
+### Calendar view — IN_PROGRESS tasks not shown
+
+- **Surfaced by:** `docs/superpowers/specs/2026-05-13-calendar-view-design.md`
+- **Spec section(s):** `spec_v3.md#§4.4`
+- **Status:** open
+- **Decision / Reasoning:** The calendar week endpoint only queries `TaskStatus.SCHEDULED` tasks, matching the existing `/schedule` endpoint behavior. However, tasks that transition to `IN_PROGRESS` still have a `scheduled_start` and should appear on the calendar for a complete scheduling picture. Kept consistent with `/schedule` for now to avoid scope creep.
+- **Follow-up:** Extend `/calendar/week` to also include `IN_PROGRESS` tasks with `scheduled_start`. Consider adding a visual distinction (e.g., different opacity or badge) for in-progress vs scheduled.
+
+---
+
 ## How to add an entry (template)
 
 Copy this when you finish a slice:
