@@ -184,9 +184,9 @@ async def test_continue_injects_tool_error_and_proceeds():
 
     assert result.status == "succeeded", result.error
     # step 1's state entry is the collected tool-invocation result dict.
-    assert result.state["fetch"] == {"page": {"tool_error": "tool broke"}}
+    assert result.state["fetch"] == {"page": {"tool_error": "tool broke"}, "success": True}
     # step 2 ran.
-    assert result.state["step2_llm"] == {"saw_error": True}
+    assert result.state["step2_llm"] == {"saw_error": True, "success": True}
     assert router.complete.await_count == 1
 
 
@@ -313,6 +313,7 @@ async def test_for_each_with_on_failure_continue_collects_errors():
     assert fetch == {
         "page_0": {"tool_error": "tool broke"},
         "page_1": {"tool_error": "tool broke"},
+        "success": True,
     }
 
 

@@ -75,9 +75,10 @@ async def test_executor_runs_single_step_skill():
     )
 
     assert result.status == "succeeded"
-    assert result.final_output == {"title": "Draft Q2 review", "confidence": 0.9}
+    assert result.final_output == {"title": "Draft Q2 review", "confidence": 0.9, "success": True}
     assert "extract" in result.state
     assert result.state["extract"]["title"] == "Draft Q2 review"
+    assert result.state["extract"]["success"] is True
 
 
 async def test_executor_handles_escalate_signal():
@@ -245,7 +246,7 @@ final_output: "{{ state.classify }}"
     assert result.status == "succeeded"
     assert result.state["extract"]["title"] == "Q2 review"
     assert result.state["classify"]["priority"] == 3
-    assert result.final_output == {"priority": 3}
+    assert result.final_output == {"priority": 3, "success": True}
     assert router.complete.call_count == 2
 
 
@@ -420,7 +421,7 @@ final_output: "{{ state.step2 }}"
 
     assert result.status == "succeeded"
     assert result.state["step1"] == {}
-    assert result.state["step2"] == {"ok": True}
+    assert result.state["step2"] == {"ok": True, "success": True}
 
 
 async def test_executor_with_repository_writes_run_and_steps():
@@ -465,7 +466,7 @@ final_output: "{{ state.only }}"
     repo.finish_run.assert_awaited_once()
     finish_kwargs = repo.finish_run.call_args.kwargs
     assert finish_kwargs["status"] == "succeeded"
-    assert finish_kwargs["final_output"] == {"v": 42}
+    assert finish_kwargs["final_output"] == {"v": 42, "success": True}
 
 
 # --- Phase 3 retry-loop tests ---
@@ -518,7 +519,7 @@ final_output: "{{ state.step1 }}"
     )
 
     assert result.status == "succeeded"
-    assert result.state["step1"] == {"value": "good"}
+    assert result.state["step1"] == {"value": "good", "success": True}
     assert router.complete.call_count == 2
     triage.handle_failure.assert_awaited_once()
 
@@ -645,9 +646,9 @@ final_output: "{{ state.step3 }}"
     )
 
     assert result.status == "succeeded"
-    assert result.state["step1"] == {"a": "from_step1"}
-    assert result.state["step2"] == {"b": "from_step2"}
-    assert result.state["step3"] == {"c": "from_step3"}
+    assert result.state["step1"] == {"a": "from_step1", "success": True}
+    assert result.state["step2"] == {"b": "from_step2", "success": True}
+    assert result.state["step3"] == {"c": "from_step3", "success": True}
     assert router.complete.call_count == 4
     triage.handle_failure.assert_awaited_once()
 
@@ -712,5 +713,5 @@ final_output: "{{ state.step2 }}"
 
     assert result.status == "succeeded"
     assert result.state["step1"] == {}       # skipped → empty dict
-    assert result.state["step2"] == {"ok": True}
+    assert result.state["step2"] == {"ok": True, "success": True}
     assert router.complete.call_count == 2   # both steps attempted
