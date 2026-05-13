@@ -1,10 +1,11 @@
 """Tests for LLM gateway types and config loading."""
 from __future__ import annotations
 
+import asyncio
 import textwrap
 from pathlib import Path
 
-from donna.llm.types import Priority, load_gateway_config
+from donna.llm.types import GpuConfig, Priority, QueueItem, load_gateway_config
 
 
 class TestPriority:
@@ -73,3 +74,68 @@ class TestGatewayConfig:
         assert cfg.default_rpm == 10
         assert cfg.daily_external_usd == 5.0
         assert cfg.ollama_health_check is True
+
+
+class TestQueueItemRequiredModel:
+    def test_queue_item_has_required_model(self) -> None:
+        loop = asyncio.new_event_loop()
+        future: asyncio.Future[object] = loop.create_future()
+        item = QueueItem(
+            prompt="test",
+            model="test",
+            max_tokens=100,
+            json_mode=True,
+            future=future,
+            required_model="qwen2.5-vl:7b",
+        )
+        assert item.required_model == "qwen2.5-vl:7b"
+        loop.close()
+
+    def test_queue_item_required_model_default_none(self) -> None:
+        loop = asyncio.new_event_loop()
+        future: asyncio.Future[object] = loop.create_future()
+        item = QueueItem(
+            prompt="test",
+            model="test",
+            max_tokens=100,
+            json_mode=True,
+            future=future,
+        )
+        assert item.required_model is None
+        loop.close()
+
+
+class TestGpuConfig:
+    def test_gpu_config_defaults(self) -> None:
+        cfg = GpuConfig()
+        assert cfg.home_model == "qwen2.5:32b-instruct-q6_K"
+        assert cfg.swap_timeout_s == 120
+        assert cfg.restore_home_delay_s == 30
+        assert cfg.swaps_per_hour_warning == 4
+        assert cfg.swap_wait_ms_warning == 60000
+        assert cfg.swap_overhead_pct_warning == 25
+
+    def test_load_gateway_config_with_gpu(self, tmp_path: Path) -> None:
+        config_file = tmp_path / "llm_gateway.yaml"
+        config_file.write_text(textwrap.dedent("""\
+            gpu:
+              home_model: "qwen2.5:32b-instruct-q6_K"
+              swap_timeout_s: 90
+              restore_home_delay_s: 15
+              alerts:
+                swaps_per_hour_warning: 6
+        """))
+        cfg = load_gateway_config(tmp_path)
+        assert cfg.gpu.home_model == "qwen2.5:32b-instruct-q6_K"
+        assert cfg.gpu.swap_timeout_s == 90
+        assert cfg.gpu.restore_home_delay_s == 15
+        assert cfg.gpu.swaps_per_hour_warning == 6
+        assert cfg.gpu.swap_wait_ms_warning == 60000  # default
+        assert cfg.gpu.swap_overhead_pct_warning == 25  # default
+
+    def test_gateway_config_gpu_defaults_when_no_gpu_section(self, tmp_path: Path) -> None:
+        config_file = tmp_path / "llm_gateway.yaml"
+        config_file.write_text("ollama_health_check: true\n")
+        cfg = load_gateway_config(tmp_path)
+        assert cfg.gpu.home_model == "qwen2.5:32b-instruct-q6_K"
+        assert cfg.gpu.swap_timeout_s == 120

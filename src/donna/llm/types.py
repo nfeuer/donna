@@ -37,6 +37,18 @@ class ChainState:
 
 
 @dataclass
+class GpuConfig:
+    """GPU model management configuration."""
+
+    home_model: str = "qwen2.5:32b-instruct-q6_K"
+    swap_timeout_s: int = 120
+    restore_home_delay_s: int = 30
+    swaps_per_hour_warning: int = 4
+    swap_wait_ms_warning: int = 60000
+    swap_overhead_pct_warning: int = 25
+
+
+@dataclass
 class QueueItem:
     """A single item in the internal or external queue."""
 
@@ -61,6 +73,7 @@ class QueueItem:
     interrupt_count: int = 0
     # Cloud fallback
     allow_cloud: bool = False
+    required_model: str | None = None
 
     # Sequence number for FIFO ordering within same priority
     sequence: int = 0
@@ -104,6 +117,8 @@ class GatewayConfig:
     ollama_health_check: bool = True
     # API key
     api_key: str = ""
+    # GPU
+    gpu: GpuConfig = field(default_factory=GpuConfig)
 
     def priority_for_task_type(self, task_type: str) -> Priority:
         return self._priority_map.get(task_type, Priority.NORMAL)
@@ -159,6 +174,17 @@ def load_gateway_config(config_dir: Path) -> GatewayConfig:
 
     priority_map = {k: Priority.from_str(v) for k, v in pmap_raw.items()}
 
+    gpu_raw = raw.get("gpu", {})
+    gpu_alerts = gpu_raw.get("alerts", {})
+    gpu_config = GpuConfig(
+        home_model=str(gpu_raw.get("home_model", "qwen2.5:32b-instruct-q6_K")),
+        swap_timeout_s=int(gpu_raw.get("swap_timeout_s", 120)),
+        restore_home_delay_s=int(gpu_raw.get("restore_home_delay_s", 30)),
+        swaps_per_hour_warning=int(gpu_alerts.get("swaps_per_hour_warning", 4)),
+        swap_wait_ms_warning=int(gpu_alerts.get("swap_wait_ms_warning", 60000)),
+        swap_overhead_pct_warning=int(gpu_alerts.get("swap_overhead_pct_warning", 25)),
+    )
+
     return GatewayConfig(
         timezone=str(sched.get("timezone", "America/New_York")),
         active_hours_start=start,
@@ -179,4 +205,5 @@ def load_gateway_config(config_dir: Path) -> GatewayConfig:
         _priority_map=priority_map,
         ollama_health_check=bool(raw.get("ollama_health_check", True)),
         api_key=str(raw.get("api_key", "")),
+        gpu=gpu_config,
     )
