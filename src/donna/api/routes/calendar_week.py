@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from datetime import date as date_type, datetime, time, timedelta
+from datetime import date as date_type
+from datetime import datetime, time, timedelta
 from typing import Any
-
-from fastapi import Query, Request
 from zoneinfo import ZoneInfo
+
+import structlog
+from fastapi import Query, Request
+
+logger = structlog.get_logger()
 
 from donna.api.auth import CurrentUser, user_router
 from donna.tasks.db_models import TaskStatus
@@ -39,10 +43,7 @@ async def get_calendar_week(
     tz_name = getattr(request.app.state, "calendar_timezone", "UTC")
     tz = ZoneInfo(tz_name)
 
-    if ref_date:
-        ref = date_type.fromisoformat(ref_date)
-    else:
-        ref = datetime.now(tz=tz).date()
+    ref = date_type.fromisoformat(ref_date) if ref_date else datetime.now(tz=tz).date()
 
     week_start, week_end = _week_bounds(ref, tz)
 
@@ -66,6 +67,7 @@ async def get_calendar_week(
                         "all_day": _is_all_day(ev.start, ev.end),
                     })
             except Exception:
+                logger.warning("calendar_fetch_failed", calendar_id=cal_id, exc_info=True)
                 warnings.append(f"calendar_fetch_failed:{cal_id}")
     else:
         warnings.append("google_calendar_unavailable")
