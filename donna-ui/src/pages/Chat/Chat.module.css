@@ -1,0 +1,317 @@
+/*
+ * Chat page — styles for the full conversation UI.
+ * Uses design tokens from src/theme/tokens.css exclusively.
+ */
+
+/* ===== Layout ===== */
+
+.chatLayout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  min-height: 0;
+  flex: 1;
+}
+
+/* ===== Session list (left panel) ===== */
+
+.sessionList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sessionListEmpty {
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--text-body);
+  font-family: var(--font-body);
+  text-align: center;
+  line-height: var(--leading-normal);
+}
+
+.sessionItem {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.sessionItem:hover {
+  border-color: var(--color-accent-border);
+  background: var(--color-inset);
+}
+
+.sessionItemActive {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.sessionItemHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.sessionItemCount {
+  font-size: var(--text-label);
+  font-family: var(--font-body);
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+
+.sessionItemTime {
+  font-size: var(--text-label);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+/* ===== Conversation panel (right side) ===== */
+
+.conversationPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.pinnedTask {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-border);
+  border-radius: var(--radius-card);
+  font-size: var(--text-body);
+  font-family: var(--font-body);
+  color: var(--color-accent);
+}
+
+/* ===== Context meter ===== */
+
+.contextMeter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.meterLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-label);
+  font-family: var(--font-body);
+  color: var(--color-text-muted);
+}
+
+.meterTrack {
+  position: relative;
+  height: 4px;
+  background: var(--color-inset);
+  border-radius: var(--radius-control);
+  overflow: visible;
+}
+
+.meterBarAccent {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: var(--radius-control);
+  transition: width var(--duration-fast) var(--ease-out);
+}
+
+.meterBarWarning {
+  composes: meterBarAccent;
+  background: var(--color-warning);
+}
+
+.meterBarError {
+  composes: meterBarAccent;
+  background: var(--color-error);
+}
+
+.meterCompactMark {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 8px;
+  background: var(--color-text-muted);
+  border-radius: var(--radius-control);
+  transform: translateX(-50%);
+}
+
+/* ===== Message thread ===== */
+
+.threadContainer {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  min-height: 320px;
+}
+
+.msgUser {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.msgAssistant {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.msgBubble {
+  max-width: 75%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.msgUser .msgBubble {
+  align-items: flex-end;
+}
+
+.msgAssistant .msgBubble {
+  align-items: flex-start;
+}
+
+.msgHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.msgTime {
+  font-size: var(--text-label);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.msgContent {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  font-size: var(--text-body);
+  font-family: var(--font-body);
+  color: var(--color-text);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msgUser .msgContent {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+}
+
+/* ===== Escalation banner ===== */
+
+.escalationBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: rgba(200, 102, 94, 0.10);
+  border: 1px solid rgba(200, 102, 94, 0.28);
+  border-radius: var(--radius-card);
+  font-size: var(--text-body);
+  font-family: var(--font-body);
+  color: var(--color-error);
+  line-height: var(--leading-normal);
+}
+
+.escalateBtn {
+  margin-left: auto;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-error);
+  color: var(--color-text);
+  border: none;
+  border-radius: var(--radius-control);
+  font-size: var(--text-label);
+  font-family: var(--font-body);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-out);
+  white-space: nowrap;
+}
+
+.escalateBtn:hover {
+  opacity: 0.85;
+}
+
+/* ===== Suggested actions ===== */
+
+.suggestedActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+/* ===== Input area ===== */
+
+.inputArea {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
+.inputTextarea {
+  flex: 1;
+  resize: none;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  font-size: var(--text-body);
+  font-family: var(--font-body);
+  color: var(--color-text);
+  line-height: var(--leading-normal);
+  transition: border-color var(--duration-fast) var(--ease-out);
+  outline: none;
+}
+
+.inputTextarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.inputTextarea:focus {
+  border-color: var(--color-accent-border);
+}
+
+.inputTextarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===== Empty conversation ===== */
+
+.emptyConversation {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-body);
+  font-family: var(--font-body);
+  text-align: center;
+  padding: var(--space-6);
+  min-height: 240px;
+  background: var(--color-inset);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+}

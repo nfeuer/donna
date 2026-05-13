@@ -14,6 +14,8 @@ import SkillSystemPage from "./pages/SkillSystem";
 import EscalationsPage from "./pages/Escalations";
 import EscalationDetail from "./pages/Escalations/EscalationDetail";
 import EscalationSettingsPage from "./pages/EscalationSettings";
+import ChatPage from "./pages/Chat";
+import VaultPage from "./pages/Vault";
 import DevPrimitivesPage from "./pages/DevPrimitives";
 import { useTheme } from "./hooks/useTheme";
 import { Skeleton } from "./primitives";
@@ -40,6 +42,8 @@ export default function App() {
         <Route path="/dev/primitives" element={<DevPrimitivesPage />} />
         <Route element={<AppShell />}>
           <Route path="/" element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+          <Route path="/chat" element={<ErrorBoundary><ChatPage /></ErrorBoundary>} />
+          <Route path="/vault" element={<ErrorBoundary><VaultPage /></ErrorBoundary>} />
           <Route path="/logs" element={<ErrorBoundary><Logs /></ErrorBoundary>} />
           <Route path="/configs" element={<ErrorBoundary><Suspense fallback={editorFallback}><ConfigsPage /></Suspense></ErrorBoundary>} />
           <Route path="/configs/:file" element={<ErrorBoundary><Suspense fallback={editorFallback}><ConfigsPage /></Suspense></ErrorBoundary>} />
