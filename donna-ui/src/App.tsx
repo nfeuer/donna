@@ -16,6 +16,7 @@ import EscalationDetail from "./pages/Escalations/EscalationDetail";
 import EscalationSettingsPage from "./pages/EscalationSettings";
 import ChatPage from "./pages/Chat";
 import VaultPage from "./pages/Vault";
+import CalendarPage from "./pages/Calendar";
 import DevPrimitivesPage from "./pages/DevPrimitives";
 import { useTheme } from "./hooks/useTheme";
 import { Skeleton } from "./primitives";
@@ -53,6 +54,7 @@ export default function App() {
           <Route path="/agents/:name" element={<ErrorBoundary><AgentsPage /></ErrorBoundary>} />
           <Route path="/tasks" element={<ErrorBoundary><TasksPage /></ErrorBoundary>} />
           <Route path="/tasks/:id" element={<ErrorBoundary><TasksPage /></ErrorBoundary>} />
+          <Route path="/calendar" element={<ErrorBoundary><CalendarPage /></ErrorBoundary>} />
           <Route path="/shadow" element={<ErrorBoundary><ShadowPage /></ErrorBoundary>} />
           <Route path="/preferences" element={<ErrorBoundary><PreferencesPage /></ErrorBoundary>} />
           <Route path="/llm-gateway" element={<ErrorBoundary><LLMGatewayPage /></ErrorBoundary>} />
