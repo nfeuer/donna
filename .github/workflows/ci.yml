@@ -62,7 +62,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --dev
-      - run: uv run pytest tests/integration/ -m "not slow and not llm" -k "not test_api_no_skill and not test_calendar_sync and not test_chat_smoke and not test_run_now_endpoint and not test_wire_automation_subsystem_registers_cadence_reclamper" --tb=short -q
+      - run: uv run pytest tests/integration/ -m "not slow and not llm" -k "not test_api_no_skill and not test_chat_smoke and not test_run_now_endpoint and not test_wire_automation_subsystem_registers_cadence_reclamper" --tb=short -q
 
   docker-copy-parity:
     runs-on: ubuntu-latest

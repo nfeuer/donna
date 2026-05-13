@@ -136,16 +136,25 @@ class GoogleCalendarClient:
     # ------------------------------------------------------------------
 
     async def authenticate(self) -> None:
-        """Load or refresh OAuth2 credentials and build the API service."""
+        """Load or refresh OAuth2 credentials and build the API service.
+
+        In headless environments (Docker), a pre-provisioned ``token.json``
+        with a valid refresh token is required. Run
+        ``python -m donna.integrations.calendar`` locally once to generate it,
+        then mount it into the container.
+
+        When a browser is available, falls back to the interactive OAuth
+        consent flow.
+        """
         if self._service is not None:
-            return  # already provided (test stub or re-authentication)
+            return
 
         def _build_service() -> Any:
+            import os
             from pathlib import Path
 
             from google.auth.transport.requests import Request
             from google.oauth2.credentials import Credentials
-            from google_auth_oauthlib.flow import InstalledAppFlow
             from googleapiclient.discovery import build
 
             creds_cfg = self._config.credentials
@@ -162,12 +171,23 @@ class GoogleCalendarClient:
             if not creds or not creds.valid:
                 if creds and creds.expired and creds.refresh_token:
                     creds.refresh(Request())
+                    token_path.write_text(creds.to_json())
+                elif os.environ.get("DONNA_HEADLESS", "").lower() in ("1", "true"):
+                    raise RuntimeError(
+                        "Google Calendar token is missing or expired and cannot "
+                        "be refreshed in headless mode. Run "
+                        "'python -m donna.integrations.calendar' on a machine "
+                        "with a browser to generate token.json, then mount it "
+                        f"at {token_path}."
+                    )
                 else:
+                    from google_auth_oauthlib.flow import InstalledAppFlow
+
                     flow = InstalledAppFlow.from_client_secrets_file(
                         str(client_secrets), scopes
                     )
                     creds = flow.run_local_server(port=0)
-                token_path.write_text(creds.to_json())
+                    token_path.write_text(creds.to_json())
 
             return build("calendar", "v3", credentials=creds)
 
@@ -332,3 +352,16 @@ def _to_rfc3339(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return dt.isoformat()
+
+
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+
+    from donna.config import load_calendar_config
+
+    config_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("config")
+    cfg = load_calendar_config(config_dir)
+    client = GoogleCalendarClient(cfg)
+    asyncio.run(client.authenticate())
+    print(f"Token saved to {cfg.credentials.token_path}")

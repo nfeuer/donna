@@ -47,13 +47,14 @@ class CalendarSync:
         client: GoogleCalendarClient,
         db: Database,
         config: CalendarConfig,
-        # Injected for testing — called when a task is moved to backlog after deletion.
+        user_id: str = "nick",
         on_task_unscheduled: Any | None = None,
     ) -> None:
         self._client = client
         self._db = db
         self._config = config
-        self._on_task_unscheduled = on_task_unscheduled  # async callable(task_id, reason)
+        self._user_id = user_id
+        self._on_task_unscheduled = on_task_unscheduled
 
     # ------------------------------------------------------------------
     # Public API
@@ -242,7 +243,8 @@ class CalendarSync:
         cursor = await conn.execute(
             "SELECT event_id, calendar_id, summary, start_time, end_time, "
             "donna_managed, donna_task_id, etag, last_synced, attendees "
-            "FROM calendar_mirror"
+            "FROM calendar_mirror WHERE user_id = ?",
+            (self._user_id,),
         )
         rows = await cursor.fetchall()
         return {
@@ -276,9 +278,10 @@ class CalendarSync:
             await conn.execute(
                 """
                 INSERT INTO calendar_mirror
-                    (event_id, calendar_id, summary, start_time, end_time,
-                     donna_managed, donna_task_id, etag, last_synced, attendees)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (event_id, user_id, calendar_id, summary, start_time,
+                     end_time, donna_managed, donna_task_id, etag,
+                     last_synced, attendees)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(event_id) DO UPDATE SET
                     calendar_id  = excluded.calendar_id,
                     summary      = excluded.summary,
@@ -292,6 +295,7 @@ class CalendarSync:
                 """,
                 (
                     ev.event_id,
+                    self._user_id,
                     ev.calendar_id,
                     ev.summary,
                     ev.start.isoformat(),
@@ -304,15 +308,18 @@ class CalendarSync:
                 ),
             )
 
-        # Remove rows no longer in live data (events deleted from calendar).
         if live_events:
             placeholders = ",".join("?" for _ in live_events)
             await conn.execute(
-                f"DELETE FROM calendar_mirror WHERE event_id NOT IN ({placeholders})",
-                list(live_events.keys()),
+                "DELETE FROM calendar_mirror"
+                f" WHERE user_id = ? AND event_id NOT IN ({placeholders})",
+                [self._user_id, *live_events.keys()],
             )
         else:
-            await conn.execute("DELETE FROM calendar_mirror")
+            await conn.execute(
+                "DELETE FROM calendar_mirror WHERE user_id = ?",
+                (self._user_id,),
+            )
 
         await conn.commit()
 
@@ -356,8 +363,8 @@ class CalendarSync:
             """,
             (
                 str(uuid.uuid4()),
-                datetime.utcnow().isoformat(),
-                "nick",  # single-user Phase 1
+                datetime.now(tz=UTC).isoformat(),
+                self._user_id,
                 "calendar_sync",
                 task_id,
                 "calendar_event_time_change",

@@ -724,6 +724,7 @@ def _build_notification_tasks(
             service=ctx.notification_service,
             user_id=ctx.user_id,
             router=ctx.router,
+            tz=ctx.tz,
         )
         logger.info("reminder_scheduler_constructed")
     except Exception as exc:
@@ -805,6 +806,7 @@ def _build_notification_tasks(
             user_id=ctx.user_id,
             user_email=getattr(eod_email_cfg, "user_email", ""),
             email_config=eod_email_cfg,
+            tz=ctx.tz,
         )
         logger.info("eod_digest_constructed")
     except Exception as exc:
@@ -1182,7 +1184,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         models_config, task_types_config, project_root,
         invocation_logger=invocation_logger,
     )
-    input_parser = InputParser(router, invocation_logger, project_root)
+    input_parser = InputParser(router, invocation_logger, project_root, tz=user_tz)
 
     # Slice 17/18 — over-budget escalation infrastructure. Built before
     # the bot so the gate's delivery callback can capture a bot reference

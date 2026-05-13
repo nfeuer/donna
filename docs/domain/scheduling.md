@@ -6,6 +6,36 @@
 
 Google Calendar is the single source of truth. Read-write on personal calendar, read on work and family calendars. All three are Google Calendar — no ICS workarounds needed.
 
+### OAuth Setup
+
+The calendar client uses OAuth2 with offline refresh. In Docker
+(`DONNA_HEADLESS=true`), a pre-provisioned `token.json` with a valid
+refresh token is required. See [Docker operations](../operations/docker.md#google-calendar-oauth-in-docker)
+for the provisioning workflow.
+
+### Timezone
+
+All scheduling, notifications, and time-based decisions use the timezone
+configured in `calendar.yaml`:
+
+```yaml
+timezone: America/New_York
+```
+
+This value is loaded once at startup as a `zoneinfo.ZoneInfo` and threaded
+through all components via `ctx.tz`. Concretely:
+
+- **EOD digest** fires at 5:30 PM local time (not UTC).
+- **Reminder scheduler** flushes the blackout queue based on local hour.
+- **Blackout / quiet hours** — all `time_windows` hours in `calendar.yaml`
+  are interpreted in the configured timezone.
+- **Prompt templates** (input parser, chat, decomposition, preference
+  extractor) render `{{ current_date }}` and `{{ current_time }}` in local
+  time so the LLM reasons about the user's actual clock.
+
+Components fall back to `America/New_York` if `ctx.tz` is not set, so the
+behavior is consistent even if the config key is missing.
+
 ### Calendar Sync Strategy
 
 Polling-based sync with change detection. Polls every 5 minutes (configurable). Compares current calendar state against local mirror in SQLite.

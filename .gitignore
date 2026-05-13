@@ -27,6 +27,7 @@ docker/.setup-state.json
 
 # Credentials
 google_credentials.json
+token*.json
 *.key
 *.pem
 

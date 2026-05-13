@@ -25,4 +25,4 @@ USER donna
 
 EXPOSE 8100
 
-CMD ["python", "-m", "donna.cli", "run"]
+CMD ["python", "-m", "donna.cli", "run", "--config-dir", "/donna/config"]

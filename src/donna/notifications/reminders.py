@@ -17,6 +17,7 @@ See slices/slice_05_reminders_digest.md and docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
+import zoneinfo
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -50,11 +51,13 @@ class ReminderScheduler:
         service: NotificationService,
         user_id: str,
         router: ModelRouter | None = None,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
         self._service = service
         self._user_id = user_id
         self._router = router
+        self._tz = tz
         # task_id → date the reminder was sent (reset daily for reschedules)
         self._sent: dict[str, str] = {}
 
@@ -65,11 +68,12 @@ class ReminderScheduler:
 
         while True:
             now = datetime.now(tz=UTC)
-            today_str = now.date().isoformat()
+            local_now = now.astimezone(self._tz) if self._tz else now
+            today_str = local_now.date().isoformat()
 
-            # Flush blackout queue at boundary (6 AM).
+            # Flush blackout queue at boundary (6 AM local).
             blackout_end = self._service._tw.blackout.end_hour
-            if now.hour >= blackout_end and _last_flush_date != today_str:
+            if local_now.hour >= blackout_end and _last_flush_date != today_str:
                 flushed = await self._service.flush_queue()
                 _last_flush_date = today_str
                 if flushed:

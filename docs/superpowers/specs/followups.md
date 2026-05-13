@@ -991,6 +991,23 @@ visible.
 
 ---
 
+## Wiring Audit — `render_chat_prompt` tz not threaded at call sites
+
+- **Surfaced by:** wiring audit remediation (PR #89, timezone unification)
+- **Spec section(s):** `docs/domain/scheduling.md#timezone`
+- **Status:** open (cosmetic — falls back to `America/New_York`)
+- **Decision / Reasoning:** `render_chat_prompt` now accepts an optional
+  `tz` parameter (defaults to `America/New_York`), but `ConversationEngine`
+  calls it in 4 places without passing `tz`. The fallback is correct for
+  the single-user case, but inconsistent with the pattern where other
+  components receive `ctx.tz` explicitly. `ConversationEngine.__init__`
+  would need a `tz` param threaded from the orchestrator boot path.
+- **Follow-up:** Thread `tz` through `ConversationEngine` when it next
+  gets a feature change. Low priority since the default matches the
+  configured timezone.
+
+---
+
 ## How to add an entry (template)
 
 Copy this when you finish a slice:

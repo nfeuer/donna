@@ -12,7 +12,7 @@ from typing import Any
 
 from donna.chat.types import ChatIntent, ChatMessage
 
-_USER_TZ = zoneinfo.ZoneInfo("America/New_York")
+_DEFAULT_TZ = zoneinfo.ZoneInfo("America/New_York")
 
 
 def build_session_context(
@@ -99,9 +99,10 @@ def render_chat_prompt(
     session_context: str = "",
     intent_context: str = "",
     conversation_history: str = "",
+    tz: zoneinfo.ZoneInfo | None = None,
 ) -> str:
     """Render a chat prompt template with variables."""
-    now = datetime.now(UTC).astimezone(_USER_TZ)
+    now = datetime.now(UTC).astimezone(tz or _DEFAULT_TZ)
     return (
         template
         .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
