@@ -166,6 +166,10 @@ class ModelRouter:
         # Strong references to fire-and-forget shadow tasks so they are
         # not garbage-collected before completion.
         self._shadow_tasks: set[asyncio.Task[None]] = set()
+        # True while Ollama has fallen back to the cloud provider due to a
+        # context-overflow escalation; reset to False on the next successful
+        # Ollama call (recovery detection below).
+        self._ollama_degraded = False
 
     def set_escalation_gate(self, gate: EscalationGate | None) -> None:
         """Late-bind the over-budget escalation gate.
@@ -322,6 +326,7 @@ class ModelRouter:
             await self._budget_guard.check_pre_call(user_id)
 
         provider, model_id, alias = self._resolve_route(task_type)
+        original_alias = alias
         model_config = self._models_config.models[alias]
 
         estimated_in: int | None = None
@@ -391,6 +396,16 @@ class ModelRouter:
                 num_ctx_to_send = None  # fallback is not Ollama
                 overflow_escalated = True
 
+                if not self._ollama_degraded:
+                    self._ollama_degraded = True
+                    logger.warning(
+                        "ollama_fallback_activated",
+                        event_type="system.ollama_fallback",
+                        task_type=task_type,
+                        from_alias=original_alias,
+                        to_alias=fallback_alias,
+                    )
+
         # Compute token limit so total spend (input + output) cannot exceed
         # the approved extension. §10.6 row 1 says "extension_amount × token_rate";
         # in practice both prompt input and generated output are billed, so we
@@ -459,6 +474,22 @@ class ModelRouter:
             circuit_breaker=self._circuit_breaker,
             **call_kwargs,
         )
+
+        # Recovery detection: if the call actually went to Ollama (i.e. was not
+        # escalated to the cloud fallback) and we previously marked Ollama as
+        # degraded, this success means Ollama is back.
+        original_model_config = self._models_config.models[original_alias]
+        if (
+            original_model_config.provider == "ollama"
+            and not overflow_escalated
+            and self._ollama_degraded
+        ):
+            self._ollama_degraded = False
+            logger.info(
+                "ollama_recovered",
+                event_type="system.ollama_recovered",
+                task_type=task_type,
+            )
 
         enriched_metadata = CompletionMetadata(
             latency_ms=metadata.latency_ms,
