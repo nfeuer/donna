@@ -8,11 +8,10 @@ from zoneinfo import ZoneInfo
 import structlog
 from fastapi import Query, Request
 
-logger = structlog.get_logger()
-
 from donna.api.auth import CurrentUser, user_router
 from donna.tasks.db_models import TaskStatus
 
+logger = structlog.get_logger()
 router = user_router()
 
 
