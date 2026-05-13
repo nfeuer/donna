@@ -366,11 +366,30 @@ async def get_prompt(request: Request, filename: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Prompt file not found: {filename}")
 
     content = path.read_text(encoding="utf-8")
+
+    # Reverse-lookup: which task_type uses this prompt?
+    config_dir = _get_config_dir(request)
+    task_types_cfg = _load_yaml(config_dir / "task_types.yaml").get("task_types", {})
+    task_type = None
+    model_alias = None
+    output_schema = None
+    for tt_name, tt_cfg in task_types_cfg.items():
+        tpl = tt_cfg.get("prompt_template", "")
+        rel_name = tpl.removeprefix("prompts/") if tpl.startswith("prompts/") else tpl
+        if rel_name == filename:
+            task_type = tt_name
+            model_alias = tt_cfg.get("model")
+            output_schema = tt_cfg.get("output_schema")
+            break
+
     return {
         "name": filename,
         "content": content,
         "size_bytes": path.stat().st_size,
         "modified": path.stat().st_mtime,
+        "task_type": task_type,
+        "model_alias": model_alias,
+        "output_schema": output_schema,
     }
 
 
