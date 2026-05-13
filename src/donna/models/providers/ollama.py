@@ -147,6 +147,20 @@ class OllamaProvider:
         except (TimeoutError, aiohttp.ClientError):
             return []
 
+    async def list_running(self) -> list[str]:
+        """Return names of models currently loaded in GPU memory.
+
+        Calls Ollama's /api/ps endpoint.
+        """
+        try:
+            session = self._get_session()
+            async with session.get(f"{self._base_url}/api/ps") as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+                return [m["name"] for m in data.get("models", [])]
+        except (TimeoutError, aiohttp.ClientError):
+            return []
+
     async def close(self) -> None:
         """Close the underlying HTTP session."""
         if self._session and not self._session.closed:
