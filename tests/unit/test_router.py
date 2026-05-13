@@ -274,14 +274,16 @@ class TestOllamaFallbackTracking:
             events.append(event_dict.get("event", ""))
             raise structlog.DropEvent()
 
-        with structlog.testing.capture_logs() as cap_logs:
-            with patch.object(
+        with (
+            structlog.testing.capture_logs() as cap_logs,
+            patch.object(
                 ollama_router._providers["anthropic"],
                 "complete",
                 new_callable=AsyncMock,
                 return_value=cloud_response,
-            ):
-                await ollama_router.complete(large_prompt, "summarize")
+            ),
+        ):
+            await ollama_router.complete(large_prompt, "summarize")
 
         event_names = [e["event"] for e in cap_logs]
         assert "ollama_fallback_activated" in event_names
