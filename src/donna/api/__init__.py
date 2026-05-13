@@ -39,6 +39,7 @@ from donna.api.routes import (
     admin_tasks,
     admin_vault,
     agents,
+    calendar_week,
     health,
     llm,
     schedule,
@@ -317,6 +318,38 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.warning("skill_system_config_load_failed", exc_info=True)
         app.state.skill_system_config = None
 
+    # Calendar client (non-fatal — None if config or credentials missing)
+    cal_client = None
+    cal_timezone = "UTC"
+    cal_ids: list[str] = []
+    try:
+        from donna.config import load_calendar_config
+        from donna.integrations.calendar import GoogleCalendarClient
+
+        cal_cfg = load_calendar_config(config_dir)
+        cal_timezone = cal_cfg.timezone
+        cal_ids = [
+            c.calendar_id for c in cal_cfg.calendars.values()
+            if c.calendar_id
+        ]
+        token_path = Path(cal_cfg.credentials.token_path)
+        secrets_path = Path(cal_cfg.credentials.client_secrets_path)
+        if token_path.exists() and secrets_path.exists():
+            cal_client = GoogleCalendarClient(config=cal_cfg)
+        else:
+            logger.warning(
+                "calendar_client_unavailable",
+                reason="credential_file_missing",
+                token_exists=token_path.exists(),
+                secrets_exists=secrets_path.exists(),
+            )
+    except Exception:
+        logger.warning("calendar_client_init_failed", exc_info=True)
+
+    app.state.calendar_client = cal_client
+    app.state.calendar_timezone = cal_timezone
+    app.state.calendar_ids = cal_ids
+
     logger.info("donna_api_started", db_path=str(db_path), port=8200)
     yield
 
@@ -373,6 +406,7 @@ def create_app() -> FastAPI:
 
     app.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
     app.include_router(schedule.router, prefix="/schedule", tags=["schedule"])
+    app.include_router(calendar_week.router, prefix="/calendar", tags=["calendar"])
     app.include_router(agents.router, prefix="/agents", tags=["agents"])
 
     app.include_router(admin_dashboard.router, prefix="/admin", tags=["admin"])
