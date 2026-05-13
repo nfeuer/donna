@@ -1,6 +1,6 @@
 """End-of-day digest — weekday afternoon status summary via email and Discord.
 
-Runs at 5:30 PM UTC weekdays (configurable via EmailConfig.digest).
+Runs at 5:30 PM local time weekdays (configurable via EmailConfig.digest).
 Assembles tasks completed today, still-open tasks, and cost summary,
 then posts to Discord #donna-digest and creates an email draft.
 
@@ -49,6 +49,7 @@ class EodDigest:
         user_id: str,
         user_email: str,
         email_config: EmailConfig,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
         self._service = service
@@ -56,9 +57,10 @@ class EodDigest:
         self._user_id = user_id
         self._user_email = user_email
         self._config = email_config
+        self._tz = tz
 
     async def run(self) -> None:
-        """Sleep until the next weekday 5:30 PM UTC, fire digest, repeat."""
+        """Sleep until the next weekday 5:30 PM local time, fire digest, repeat."""
         hour = self._config.digest.eod_hour
         minute = self._config.digest.eod_minute
         weekdays_only = self._config.digest.eod_weekdays_only
@@ -72,7 +74,7 @@ class EodDigest:
 
         while True:
             now = datetime.now(tz=UTC)
-            next_fire = _next_eod_fire_time(now, hour, minute, weekdays_only)
+            next_fire = _next_eod_fire_time(now, hour, minute, weekdays_only, tz=self._tz)
             wait_seconds = (next_fire - now).total_seconds()
 
             logger.info(
@@ -326,7 +328,7 @@ class EodDigest:
 
     async def _assemble_data(self, now: datetime) -> dict[str, Any]:
         """Collect end-of-day task and cost data."""
-        _tz = zoneinfo.ZoneInfo("America/New_York")
+        _tz = self._tz or zoneinfo.ZoneInfo("America/New_York")
         local_now = now.astimezone(_tz)
         today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_start + timedelta(days=1)
@@ -403,18 +405,24 @@ class EodDigest:
 
 
 def _next_eod_fire_time(
-    now: datetime, hour: int, minute: int, weekdays_only: bool
+    now: datetime,
+    hour: int,
+    minute: int,
+    weekdays_only: bool,
+    tz: zoneinfo.ZoneInfo | None = None,
 ) -> datetime:
     """Return the next EOD fire time (UTC), skipping weekends if configured."""
-    candidate = _next_fire_time(now, hour, minute)
+    candidate = _next_fire_time(now, hour, minute, tz=tz)
 
     if not weekdays_only:
         return candidate
 
     # Advance past weekends (Mon=0 … Fri=4, Sat=5, Sun=6).
+    # When tz is set, check the weekday in local time.
     for _ in range(7):
-        if candidate.weekday() < 5:
+        local = candidate.astimezone(tz) if tz else candidate
+        if local.weekday() < 5:
             return candidate
-        candidate = _next_fire_time(candidate, hour, minute)
+        candidate = _next_fire_time(candidate, hour, minute, tz=tz)
 
     return candidate

@@ -54,11 +54,13 @@ class DecompositionService:
         router: ModelRouter,
         user_id: str,
         project_root: Path,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
         self._router = router
         self._user_id = user_id
         self._project_root = project_root
+        self._tz = tz
 
     async def decompose(self, task_id: str, user_context: str = "") -> DecomposeResult:
         """Decompose a task into subtasks.
@@ -107,7 +109,8 @@ class DecompositionService:
         template_path = self._project_root / "prompts" / "task_decompose.md"
         template = template_path.read_text()
 
-        now = datetime.now(UTC).astimezone(zoneinfo.ZoneInfo("America/New_York"))
+        _tz = self._tz or zoneinfo.ZoneInfo("America/New_York")
+        now = datetime.now(UTC).astimezone(_tz)
         replacements = {
             "{{ current_date }}": now.strftime("%Y-%m-%d"),
             "{{ task_title }}": task.title,

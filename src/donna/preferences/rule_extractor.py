@@ -46,12 +46,14 @@ class PreferenceRuleExtractor:
         user_id: str,
         project_root: Path,
         config: PreferencesConfig | None = None,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
         self._router = router
         self._user_id = user_id
         self._project_root = project_root
         self._config = config
+        self._tz = tz
 
     async def run_weekly(self) -> None:
         """Sleep until the configured interval has passed, then run extract()."""
@@ -179,7 +181,8 @@ class PreferenceRuleExtractor:
         template_path = self._project_root / "prompts" / "extract_preferences.md"
         template = template_path.read_text()
 
-        now = datetime.now(UTC).astimezone(zoneinfo.ZoneInfo("America/New_York"))
+        _tz = self._tz or zoneinfo.ZoneInfo("America/New_York")
+        now = datetime.now(UTC).astimezone(_tz)
         prompt = (
             template
             .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))

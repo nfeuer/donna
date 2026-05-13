@@ -46,12 +46,14 @@ class TaskParseResult:
     confidence: float
 
 
-_USER_TZ = zoneinfo.ZoneInfo("America/New_York")
+_DEFAULT_TZ = zoneinfo.ZoneInfo("America/New_York")
 
 
-def _render_template(template: str, user_input: str) -> str:
+def _render_template(
+    template: str, user_input: str, tz: zoneinfo.ZoneInfo | None = None
+) -> str:
     """Fill template variables with current context."""
-    now = datetime.now(UTC).astimezone(_USER_TZ)
+    now = datetime.now(UTC).astimezone(tz or _DEFAULT_TZ)
     return (
         template
         .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
@@ -91,12 +93,14 @@ class InputParser:
         project_root: Path,
         deduplicator: Deduplicator | None = None,
         preference_applier: PreferenceApplier | None = None,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._router = router
         self._invocation_logger = invocation_logger
         self._project_root = project_root
         self._deduplicator = deduplicator
         self._preference_applier = preference_applier
+        self._tz = tz
 
     async def parse(
         self,
@@ -120,7 +124,7 @@ class InputParser:
         """
         # 1. Render prompt template
         template = self._router.get_prompt_template(TASK_TYPE)
-        prompt = _render_template(template, raw_text)
+        prompt = _render_template(template, raw_text, tz=self._tz)
 
         # 2. Call the model (invocation logged automatically by ModelRouter)
         response, _metadata = await self._router.complete(
