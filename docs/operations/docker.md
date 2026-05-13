@@ -27,6 +27,23 @@ docker compose \
 
 Helper scripts: `scripts/donna-up.sh`, `scripts/donna-down.sh`.
 
+## Config Volume
+
+The orchestrator reads configuration from a mounted volume rather than
+the baked-in `/app/config` directory. The Dockerfile CMD includes
+`--config-dir /donna/config`, and the compose file mounts the repo's
+`config/` directory there:
+
+```yaml
+volumes:
+  - ../config:/donna/config   # writable — OAuth token refresh writes here
+```
+
+The mount is **writable** (no `:ro`) so the Google Calendar client can
+refresh its OAuth token and write the updated `token.json` back to disk.
+Relative paths in `calendar.yaml` (e.g. `token_path: "token.json"`) are
+resolved against this config directory at load time.
+
 ## Environment
 
 Copy `docker/.env.example` to `docker/.env` and fill in:

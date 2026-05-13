@@ -85,16 +85,20 @@ For email: use `In-Reply-To` headers for threading.
 
 | Type | Channel | Timing | Content |
 |------|---------|--------|---------|
-| Morning Digest | Email | 6:30 AM | Full day schedule, tasks, prep results, agent activity, carry-overs, system health |
+| Morning Digest | Email | 6:30 AM ET | Full day schedule, tasks, prep results, agent activity, carry-overs, system health |
 | Task Reminders | App push / Discord | 15 min before start | Task name, duration, prep materials |
 | Overdue Nudge | SMS | 30 min after scheduled end | "Finish or reschedule?" |
 | Agent Interrogation | Email + App | When PM agent needs info | Specific targeted questions |
 | Agent Completion | Email | When agent finishes | Summary, thought process, output location, cost |
-| End-of-Day Digest | Email | 5:30 PM weekdays | Completed, rescheduled, agent activity, daily cost |
+| End-of-Day Digest | Email | 5:30 PM ET weekdays | Completed, rescheduled, agent activity, daily cost |
 | Budget Alert | SMS + Email | $20 daily or 90% monthly | Spend breakdown, continue/pause |
 | Conflict Alert | SMS + App | On detection | Description, proposed resolution |
 | Urgent Escalation | Phone Call (TTS) | Critical deadline miss or system failure | Brief TTS via Twilio with callback |
-| Weekly Efficiency Digest | Discord (#donna-digest) | Sunday 7 PM | Completion rate, most-nudged tasks, reschedule patterns, domain breakdown, LLM cost |
+| Weekly Efficiency Digest | Discord (#donna-digest) | Sunday 7 PM ET | Completion rate, most-nudged tasks, reschedule patterns, domain breakdown, LLM cost |
+
+All times above are in the user's configured timezone (see
+[Scheduling > Timezone](scheduling.md#timezone)). The timezone is loaded
+from `calendar.yaml` at startup and passed to all notification components.
 
 ## Escalation Tiers
 
