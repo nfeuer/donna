@@ -125,7 +125,8 @@ class TestGetLogsFallback:
 
         with patch("donna.api.routes.admin_logs._query_loki", side_effect=Exception("Loki down")):
             result = await get_logs(
-                request, event_type=None, level=None, service=None,
+                request, event_type=None, exclude_event_type=None,
+                level=None, service=None,
                 search=None, correlation_id=None, task_id=None,
                 start=None, end=None, limit=50, offset=0,
             )
@@ -141,7 +142,8 @@ class TestGetLogsFallback:
         ]
         with patch("donna.api.routes.admin_logs._query_loki", return_value=entries):
             result = await get_logs(
-                request, event_type=None, level=None, service=None,
+                request, event_type=None, exclude_event_type=None,
+                level=None, service=None,
                 search=None, correlation_id=None, task_id=None,
                 start=None, end=None, limit=50, offset=0,
             )
@@ -176,7 +178,8 @@ class TestInvocationLogFallback:
             side_effect=[_cursor(fetchone=(0,)), _cursor()]
         )
         result = await _query_invocation_log_fallback(
-            request, event_type=None, level=None, service=None,
+            request, event_type=None, exclude_event_type=None,
+            level=None, service=None,
             search=None, task_id="task-001", start=None, end=None,
             limit=50, offset=0,
         )
@@ -190,7 +193,8 @@ class TestInvocationLogFallback:
             side_effect=[_cursor(fetchone=(0,)), _cursor()]
         )
         await _query_invocation_log_fallback(
-            request, event_type=None, level=None, service=None,
+            request, event_type=None, exclude_event_type=None,
+            level=None, service=None,
             search="parse", task_id=None, start=None, end=None,
             limit=50, offset=0,
         )
@@ -203,7 +207,8 @@ class TestInvocationLogFallback:
             side_effect=[_cursor(fetchone=(0,)), _cursor()]
         )
         await _query_invocation_log_fallback(
-            request, event_type=None, level=None, service=None,
+            request, event_type=None, exclude_event_type=None,
+            level=None, service=None,
             search=None, task_id=None,
             start="2026-04-01", end="2026-04-05",
             limit=50, offset=0,

@@ -123,7 +123,7 @@ class InputParser:
         prompt = _render_template(template, raw_text)
 
         # 2. Call the model (invocation logged automatically by ModelRouter)
-        response, metadata = await self._router.complete(
+        response, _metadata = await self._router.complete(
             prompt, task_type=TASK_TYPE, user_id=user_id,
         )
 

@@ -219,7 +219,7 @@ class Deduplicator:
             fuzzy_score=fuzzy_score,
         )
 
-        response, metadata = await self._router.complete(
+        response, _metadata = await self._router.complete(
             prompt, task_type=TASK_TYPE, user_id=user_id,
         )
         schema = self._router.get_output_schema(TASK_TYPE)

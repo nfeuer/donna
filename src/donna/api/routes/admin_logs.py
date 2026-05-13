@@ -157,8 +157,12 @@ async def get_trace(
 @router.get("/logs")
 async def get_logs(
     request: Request,
-    event_type: str | None = Query(default=None, description="Comma-separated event types to include"),
-    exclude_event_type: str | None = Query(default=None, description="Comma-separated event types to exclude"),
+    event_type: str | None = Query(
+        default=None, description="Comma-separated event types to include",
+    ),
+    exclude_event_type: str | None = Query(
+        default=None, description="Comma-separated event types to exclude",
+    ),
     level: str | None = Query(default=None, description="Comma-separated levels"),
     service: str | None = Query(default=None),
     search: str | None = Query(default=None, description="Full-text search"),

@@ -1037,7 +1037,10 @@ class FastPathConfig(BaseModel):
         default_factory=lambda: [" but ", " and also ", " however ", " although "],
     )
     confirm_keywords: list[str] = Field(
-        default_factory=lambda: ["yes", "go ahead", "do it", "ok", "sounds good", "yep", "sure", "go for it"],
+        default_factory=lambda: [
+            "yes", "go ahead", "do it", "ok",
+            "sounds good", "yep", "sure", "go for it",
+        ],
     )
     reject_keywords: list[str] = Field(
         default_factory=lambda: ["no", "cancel", "nevermind", "nah", "stop", "don't"],

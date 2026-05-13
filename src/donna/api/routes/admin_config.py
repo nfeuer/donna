@@ -299,9 +299,10 @@ def _build_prompt_stats(
     unused = []
     for p in all_prompts:
         name = p["name"]
-        if name not in mapped_prompts:
-            unused.append(name)
-        elif prompt_to_task[name]["task_type"] not in invocation_counts:
+        if (
+            name not in mapped_prompts
+            or prompt_to_task[name]["task_type"] not in invocation_counts
+        ):
             unused.append(name)
 
     return {

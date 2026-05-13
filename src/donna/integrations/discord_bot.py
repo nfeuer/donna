@@ -65,7 +65,7 @@ class DonnaBot(discord.Client):
         digest_channel_id: int | None = None,
         agents_channel_id: int | None = None,
         guild_id: int | None = None,
-        overdue_reply_handler: Callable[[str, str], Awaitable[None]] | None = None,
+        overdue_reply_handler: Callable[[str, str], Awaitable[Any]] | None = None,
         dispatcher: AgentDispatcher | None = None,
         chat_channel_id: int | None = None,
         chat_engine: Any | None = None,
