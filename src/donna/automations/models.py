@@ -14,7 +14,7 @@ AUTOMATION_COLUMNS = (
     "alert_channels", "max_cost_per_run_usd", "min_interval_seconds",
     "status", "last_run_at", "next_run_at", "run_count",
     "failure_count", "created_at", "updated_at", "created_via",
-    "active_cadence_cron",
+    "active_cadence_cron", "gpu_model", "preferred_window",
 )
 SELECT_AUTOMATION = ", ".join(AUTOMATION_COLUMNS)
 
@@ -49,6 +49,8 @@ class AutomationRow:
     updated_at: datetime
     created_via: str
     active_cadence_cron: str | None = None
+    gpu_model: str | None = None
+    preferred_window: str | None = None
 
     @property
     def target_cadence_cron(self) -> str | None:
@@ -111,6 +113,8 @@ def row_to_automation(row: Sequence[Any]) -> AutomationRow:
         updated_at=updated_at,
         created_via=row[19],
         active_cadence_cron=row[20] if len(row) > 20 else None,
+        gpu_model=row[21] if len(row) > 21 else None,
+        preferred_window=row[22] if len(row) > 22 else None,
     )
 
 
