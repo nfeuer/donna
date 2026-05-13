@@ -50,6 +50,8 @@ class AutomationRepository:
         next_run_at: datetime | None = None,
         target_cadence_cron: str | None = None,
         active_cadence_cron: str | None = None,
+        gpu_model: str | None = None,
+        preferred_window: str | None = None,
     ) -> str:
         auto_id = str(uuid6.uuid7())
         now_iso = datetime.now(UTC).isoformat()
@@ -70,6 +72,8 @@ class AutomationRepository:
                     0, 0,
                     now_iso, now_iso, created_via,
                     active_cadence_cron,
+                    gpu_model,
+                    preferred_window,
                 ),
             )
         except aiosqlite.IntegrityError as exc:

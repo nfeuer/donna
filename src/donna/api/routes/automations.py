@@ -199,6 +199,8 @@ async def create_automation(
         min_interval_seconds=body.min_interval_seconds,
         created_via=body.created_via,
         next_run_at=next_run_at,
+        gpu_model=body.gpu_model,
+        preferred_window=body.preferred_window,
     )
 
     row = await repo.get(auto_id)
