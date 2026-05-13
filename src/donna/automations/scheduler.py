@@ -19,12 +19,14 @@ class AutomationScheduler:
         repository: Any,
         dispatcher: Any,
         poll_interval_seconds: int,
+        gpu_home_model: str | None = None,
         now_fn: Callable[[], datetime] | None = None,
         sleep_fn: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
         self._repo = repository
         self._dispatcher = dispatcher
         self._poll = poll_interval_seconds
+        self._gpu_home_model = gpu_home_model
         self._now_fn = now_fn or (lambda: datetime.now(UTC))
         self._sleep_fn = sleep_fn or asyncio.sleep
         self._stop = False
@@ -33,6 +35,29 @@ class AutomationScheduler:
     def stop(self) -> None:
         self._stop = True
 
+    def _group_by_gpu_model(self, rows: list[Any]) -> list[Any]:
+        """Reorder rows: home-model first, then each non-home group.
+
+        Within each group, original order is preserved.
+        """
+        if not self._gpu_home_model:
+            return rows
+
+        home: list[Any] = []
+        groups: dict[str, list[Any]] = {}
+
+        for row in rows:
+            gpu = getattr(row, "gpu_model", None)
+            if gpu is None or gpu == self._gpu_home_model:
+                home.append(row)
+            else:
+                groups.setdefault(gpu, []).append(row)
+
+        result = list(home)
+        for group in groups.values():
+            result.extend(group)
+        return result
+
     async def run_once(self) -> None:
         now = self._now_fn()
         try:
@@ -40,7 +65,8 @@ class AutomationScheduler:
         except Exception:
             logger.exception("automation_scheduler_list_due_failed")
             return
-        for row in due:
+        ordered = self._group_by_gpu_model(due)
+        for row in ordered:
             aid: str | None = getattr(row, "id", None)
             if aid is None or aid in self._dispatching:
                 continue
