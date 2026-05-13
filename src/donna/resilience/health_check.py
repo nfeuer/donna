@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -34,6 +35,8 @@ class SelfDiagnostic:
         donna_mount: Mount point to check disk space on (default: /donna)
         cost_tracker: Optional CostTracker for budget status check.
         last_supabase_sync_path: Path to a file whose mtime records last sync.
+        notify: Optional async callback that receives a plain-text/markdown
+            summary of detected issues.  Called only when warnings exist.
     """
 
     def __init__(
@@ -43,12 +46,14 @@ class SelfDiagnostic:
         donna_mount: Path = Path("/donna"),
         cost_tracker: CostTracker | None = None,
         last_supabase_sync_path: Path | None = None,
+        notify: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self._tasks_db = tasks_db_path
         self._logs_db = logs_db_path
         self._donna_mount = donna_mount
         self._cost_tracker = cost_tracker
         self._last_supabase_sync_path = last_supabase_sync_path
+        self._notify = notify
 
     async def run(self) -> list[str]:
         """Run all checks and return a list of warning strings.
@@ -72,6 +77,15 @@ class SelfDiagnostic:
             )
         else:
             logger.info("self_diagnostic_all_clear", event_type="system.health_check")
+
+        if warnings and self._notify is not None:
+            summary = "\n".join(f"- {w}" for w in warnings)
+            try:
+                await self._notify(
+                    f"**Health Check — {len(warnings)} issue(s) detected at boot:**\n{summary}"
+                )
+            except Exception:
+                logger.warning("health_check_notify_failed", exc_info=True)
 
         return warnings
 

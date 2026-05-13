@@ -1271,6 +1271,34 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         except Exception:
             log.exception("notification_service_init_failed")
 
+    # Boot-time health diagnostics — runs all checks and sends warnings
+    # to the Discord debug channel if available.
+    from donna.resilience.health_check import SelfDiagnostic
+
+    async def _debug_notify(message: str) -> None:
+        if bot is not None and debug_channel_id_str:
+            try:
+                channel = bot.get_channel(int(debug_channel_id_str))
+                if channel:
+                    await channel.send(message[:2000])
+            except Exception:
+                log.warning("debug_notify_failed", exc_info=True)
+
+    logs_db_path = Path(os.environ.get("DONNA_LOGS_DB_PATH", str(Path(db_path).parent / "donna_logs.db")))
+    diagnostics = SelfDiagnostic(
+        tasks_db_path=Path(db_path),
+        logs_db_path=logs_db_path,
+        donna_mount=Path(os.environ.get("DONNA_DATA_PATH", "/donna")),
+        last_supabase_sync_path=Path(os.environ.get("DONNA_DB_DIR", str(Path(db_path).parent))) / ".supabase_last_sync",
+        notify=_debug_notify,
+    )
+    try:
+        boot_warnings = await diagnostics.run()
+        if boot_warnings:
+            log.warning("boot_diagnostics_issues", count=len(boot_warnings))
+    except Exception:
+        log.exception("boot_diagnostics_failed")
+
     # Slice 17 — assemble the gate + delivery loop only when the bot is
     # available. Without a bot the four-button view has nowhere to land;
     # callers can still detect over-budget tasks via BudgetGuard.
