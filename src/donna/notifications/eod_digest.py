@@ -10,6 +10,7 @@ See slices/slice_08_email_corrections.md and docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
+import zoneinfo
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -325,7 +326,9 @@ class EodDigest:
 
     async def _assemble_data(self, now: datetime) -> dict[str, Any]:
         """Collect end-of-day task and cost data."""
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        _tz = zoneinfo.ZoneInfo("America/New_York")
+        local_now = now.astimezone(_tz)
+        today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_start + timedelta(days=1)
 
         all_tasks = await self._db.list_tasks(user_id=self._user_id)

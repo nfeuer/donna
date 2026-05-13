@@ -17,6 +17,7 @@ See slices/slice_05_reminders_digest.md and docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
+import zoneinfo
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -24,7 +25,11 @@ import structlog
 
 from donna.integrations.discord_bot import DonnaBot
 from donna.models.router import ContextOverflowError
-from donna.notifications.service import CHANNEL_TASKS, NOTIF_OVERDUE, NotificationService
+from donna.notifications.service import (
+    CHANNEL_DEBUG,
+    NOTIF_OVERDUE,
+    NotificationService,
+)
 from donna.scheduling.scheduler import Scheduler
 from donna.tasks.database import Database
 from donna.tasks.db_models import TaskStatus
@@ -61,6 +66,7 @@ class OverdueDetector:
         escalation_manager: EscalationManager | None = None,
         router: ModelRouter | None = None,
         reply_handler: ReplyHandler | None = None,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
         self._service = service
@@ -71,9 +77,22 @@ class OverdueDetector:
         self._escalation_manager = escalation_manager
         self._router = router
         self._reply_handler = reply_handler
+        self._tz = tz
         # task_id set: only nudge once per day (reset at midnight).
         self._nudged: set[str] = set()
         self._nudged_date: str = ""
+
+    async def _alert_debug(self, message: str) -> None:
+        """Send an error/warning to #donna-debug so failures aren't silent."""
+        try:
+            await self._service.dispatch(
+                notification_type=NOTIF_OVERDUE,
+                content=f"⚠️ {message}",
+                channel=CHANNEL_DEBUG,
+                priority=5,
+            )
+        except Exception:
+            logger.exception("debug_alert_dispatch_failed")
 
     async def run(self) -> None:
         """Loop forever, checking for overdue tasks every 15 minutes."""
@@ -94,8 +113,11 @@ class OverdueDetector:
 
             try:
                 await self._check_and_nudge(now)
-            except Exception:
+            except Exception as exc:
                 logger.exception("overdue_check_failed")
+                await self._alert_debug(
+                    f"Overdue check failed: {type(exc).__name__}: {exc}",
+                )
 
             await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
@@ -179,7 +201,8 @@ class OverdueDetector:
 
         Returns (nudge_text, llm_generated).
         """
-        time_str = now.strftime("%I:%M %p")
+        local_now = now.astimezone(self._tz) if self._tz else now
+        time_str = local_now.strftime("%I:%M %p")
         fallback = (
             f"It's {time_str} and you haven't touched '{getattr(task, 'title', '')}'."
             " Did you finish it or should I find time tomorrow?"
@@ -189,15 +212,18 @@ class OverdueDetector:
             return fallback, False
 
         try:
-            prompt = (
-                f"Task: {getattr(task, 'title', '')}\n"
-                f"Domain: {getattr(task, 'domain', 'personal')}\n"
-                f"Priority: {getattr(task, 'priority', 2)}\n"
-                f"Scheduled start: {getattr(task, 'scheduled_start', 'unknown')}\n"
-                f"Time overdue: {overdue_minutes} minutes\n"
-                f"Nudge count: {getattr(task, 'nudge_count', 0)}\n"
-                f"Reschedule count: {getattr(task, 'reschedule_count', 0)}\n"
-                f"Current time: {time_str}\n"
+            from jinja2 import Template
+
+            template_str = self._router.get_prompt_template("generate_nudge")
+            prompt = Template(template_str).render(
+                task_title=getattr(task, "title", ""),
+                domain=getattr(task, "domain", "personal"),
+                priority=getattr(task, "priority", 2),
+                scheduled_start=getattr(task, "scheduled_start", "unknown"),
+                overdue_duration=overdue_minutes,
+                nudge_count=getattr(task, "nudge_count", 0),
+                reschedule_count=getattr(task, "reschedule_count", 0),
+                current_time=time_str,
             )
             result, _meta = await self._router.complete(
                 prompt=prompt,
@@ -211,8 +237,12 @@ class OverdueDetector:
             logger.warning("nudge_llm_empty_response", task_id=getattr(task, "id", None))
         except ContextOverflowError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.exception("nudge_llm_failed", task_id=getattr(task, "id", None))
+            await self._alert_debug(
+                f"LLM nudge failed for '{getattr(task, 'title', '?')}': "
+                f"{type(exc).__name__}: {exc}",
+            )
 
         return fallback, False
 
@@ -228,7 +258,17 @@ class OverdueDetector:
 
         if self._reply_handler is not None:
             thread_id = f"overdue-{task_id}"
-            result = await self._reply_handler.handle(thread_id, reply, task, "overdue")
+            try:
+                result = await self._reply_handler.handle(
+                    thread_id, reply, task, "overdue",
+                )
+            except Exception as exc:
+                logger.exception("reply_handler_failed", task_id=task_id)
+                await self._alert_debug(
+                    f"Reply handler crashed for task '{task.title}': "
+                    f"{type(exc).__name__}: {exc}",
+                )
+                return None
             logger.info(
                 "overdue_reply_handled",
                 task_id=task_id,
@@ -243,20 +283,20 @@ class OverdueDetector:
             return result
 
         # Legacy fallback (kept until ReplyHandler is fully wired)
-        _DONE_KEYWORDS = {"done", "finished", "complete", "completed", "did it", "yes"}
-        _RESCHEDULE_KEYWORDS = {"reschedule", "tomorrow", "later", "push", "move"}
-        _BUSY_KEYWORDS = {"busy", "not now", "snooze"}
+        done_kw = {"done", "finished", "complete", "completed", "did it", "yes"}
+        reschedule_kw = {"reschedule", "tomorrow", "later", "push", "move"}
+        busy_kw = {"busy", "not now", "snooze"}
 
         words = reply.lower()
-        if any(kw in words for kw in _DONE_KEYWORDS):
+        if any(kw in words for kw in done_kw):
             if self._escalation_manager is not None:
                 await self._escalation_manager.acknowledge(task_id)
             await self._mark_done(task_id, task)
-        elif any(kw in words for kw in _RESCHEDULE_KEYWORDS):
+        elif any(kw in words for kw in reschedule_kw):
             if self._escalation_manager is not None:
                 await self._escalation_manager.acknowledge(task_id)
             await self._reschedule(task_id, task)
-        elif any(kw in words for kw in _BUSY_KEYWORDS):
+        elif any(kw in words for kw in busy_kw):
             if self._escalation_manager is not None:
                 await self._escalation_manager.backoff(task_id)
             logger.info("overdue_reply_busy", task_id=task_id)

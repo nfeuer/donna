@@ -65,7 +65,7 @@ def _make_detector() -> tuple[OverdueDetector, AsyncMock, AsyncMock, MagicMock]:
 
 class TestOverdueDetection:
     async def test_task_past_buffer_triggers_nudge(self) -> None:
-        detector, db, service, _bot = _make_detector()
+        detector, db, _service, bot = _make_detector()
         now = _utc(10, 0)
         # Task started at 9:00, duration 20 min → ends 9:20 + 30 min buffer = 9:50 overdue
         start = _utc(9, 0)
@@ -75,7 +75,7 @@ class TestOverdueDetection:
 
         await detector._check_and_nudge(now)
 
-        service.dispatch.assert_called_once()
+        bot.create_overdue_thread.assert_called_once()
 
     async def test_task_within_buffer_not_nudged(self) -> None:
         detector, db, service, _bot = _make_detector()
@@ -100,7 +100,7 @@ class TestOverdueDetection:
         service.dispatch.assert_not_called()
 
     async def test_nudge_only_sent_once_per_day(self) -> None:
-        detector, db, service, _bot = _make_detector()
+        detector, db, _service, bot = _make_detector()
         now = _utc(10, 0)
         start = _utc(9, 0)
         task = _task(scheduled_start=start.isoformat(), estimated_duration=20)
@@ -109,7 +109,7 @@ class TestOverdueDetection:
         await detector._check_and_nudge(now)
         await detector._check_and_nudge(now)
 
-        assert service.dispatch.call_count == 1
+        assert bot.create_overdue_thread.call_count == 1
 
     async def test_overdue_thread_created_when_sent(self) -> None:
         detector, db, _service, bot = _make_detector()
@@ -124,7 +124,7 @@ class TestOverdueDetection:
         bot.create_overdue_thread.assert_called_once()
 
     async def test_nudge_message_contains_task_title(self) -> None:
-        detector, db, service, _bot = _make_detector()
+        detector, db, _service, bot = _make_detector()
         now = _utc(10, 0)
         start = _utc(9, 0)
         db.list_tasks = AsyncMock(return_value=[
@@ -133,13 +133,12 @@ class TestOverdueDetection:
 
         await detector._check_and_nudge(now)
 
-        content = service.dispatch.call_args[1]["content"]
-        assert "Write blog post" in content
+        nudge_text = bot.create_overdue_thread.call_args[1]["nudge_text"]
+        assert "Write blog post" in nudge_text
 
-    async def test_service_dispatch_not_called_when_service_blocks(self) -> None:
-        """When service queues (blackout), thread creation is skipped."""
-        detector, db, service, bot = _make_detector()
-        service.dispatch = AsyncMock(return_value=False)  # queued, not sent
+    async def test_thread_created_even_once_per_task(self) -> None:
+        """Thread is created on first nudge, not on subsequent checks."""
+        detector, db, _service, bot = _make_detector()
         now = _utc(10, 0)
         start = _utc(9, 0)
         db.list_tasks = AsyncMock(return_value=[
@@ -147,8 +146,9 @@ class TestOverdueDetection:
         ])
 
         await detector._check_and_nudge(now)
+        await detector._check_and_nudge(now)
 
-        bot.create_overdue_thread.assert_not_called()
+        bot.create_overdue_thread.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +243,6 @@ class TestHandleReplyReschedule:
         db.get_task = AsyncMock(return_value=task_mock)
         db.transition_task_state = AsyncMock()
 
-        await detector.handle_reply("t1", "maybe later")
+        await detector.handle_reply("t1", "what is this about?")
 
         db.transition_task_state.assert_not_called()

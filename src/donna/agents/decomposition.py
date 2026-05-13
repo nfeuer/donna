@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import zoneinfo
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -106,7 +107,7 @@ class DecompositionService:
         template_path = self._project_root / "prompts" / "task_decompose.md"
         template = template_path.read_text()
 
-        now = datetime.now(tz=UTC)
+        now = datetime.now(UTC).astimezone(zoneinfo.ZoneInfo("America/New_York"))
         replacements = {
             "{{ current_date }}": now.strftime("%Y-%m-%d"),
             "{{ task_title }}": task.title,

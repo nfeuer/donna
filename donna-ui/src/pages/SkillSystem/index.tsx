@@ -127,9 +127,9 @@ export default function SkillSystemPage() {
 
   const drawerOpen = selectedId !== null;
 
-  // SkillDrawer is used by both Skills and Drafts tabs.
+  // SkillDrawer is only used by Drafts tab; Skills uses inline SkillDetailPanel.
   const skillDrawerOpen =
-    drawerOpen && (tab === "skills" || tab === "drafts");
+    drawerOpen && tab === "drafts";
   const candidateDrawerOpen = drawerOpen && tab === "candidates";
   const runDrawerOpen = drawerOpen && tab === "runs";
   const automationDrawerOpen = drawerOpen && tab === "automations";
@@ -159,6 +159,10 @@ export default function SkillSystemPage() {
           <SkillsTab
             selectedId={tab === "skills" ? selectedId : null}
             onRowClick={handleRowClick}
+            onCloseDetail={() => closeDrawer(false)}
+            onRunsLink={handleRunsLink}
+            onMutated={handleMutated}
+            transitions={transitions}
             refreshToken={refreshToken}
           />
         </TabsContent>

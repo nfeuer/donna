@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Download } from "lucide-react";
 import { Button } from "../../primitives/Button";
@@ -17,17 +17,30 @@ interface Props {
   onTaskClick: (id: string) => void;
 }
 
-/**
- * Single timestamp formatter used by the Logs table *and* the trace
- * view. Replaces the inline `.replace("T", " ").slice(0, 19)` dotted
- * around the old AntD code (Wave 3 audit item P2).
- */
 export function formatTimestamp(iso: string | undefined | null): string {
   if (!iso) return "—";
-  // Keep the format identical to the old AntD table:
-  // "2026-04-08 13:05:47" — no timezone, second-precision.
-  const cleaned = iso.replace("T", " ");
-  return cleaned.length >= 19 ? cleaned.slice(0, 19) : cleaned;
+  // Handle Loki nanosecond epoch strings that leaked through
+  if (/^\d{16,}$/.test(iso)) {
+    const ms = Number(BigInt(iso) / 1_000_000n);
+    const d = new Date(ms);
+    if (!isNaN(d.getTime())) return d.toLocaleString();
+  }
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+}
+
+function rowId(row: LogEntry): string {
+  return `${row.timestamp}-${row.correlation_id ?? ""}-${row.event_type ?? ""}`;
+}
+
+function MessageCell({ value, expanded }: { value: string; expanded: boolean }) {
+  if (!value) return <span className={styles.dim}>—</span>;
+  return (
+    <span className={expanded ? styles.messageExpanded : styles.message}>
+      {value}
+    </span>
+  );
 }
 
 export default function LogTable({
@@ -36,6 +49,13 @@ export default function LogTable({
   onCorrelationClick,
   onTaskClick,
 }: Props) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const handleRowClick = useCallback((row: LogEntry) => {
+    const id = rowId(row);
+    setExpandedId((prev) => (prev === id ? null : id));
+  }, []);
+
   const columns = useMemo<ColumnDef<LogEntry>[]>(
     () => [
       {
@@ -64,7 +84,12 @@ export default function LogTable({
       {
         accessorKey: "message",
         header: "Message",
-        cell: (info) => <span className={styles.message}>{info.getValue<string>() || "—"}</span>,
+        cell: (info) => (
+          <MessageCell
+            value={info.getValue<string>()}
+            expanded={rowId(info.row.original) === expandedId}
+          />
+        ),
       },
       {
         accessorKey: "service",
@@ -115,7 +140,7 @@ export default function LogTable({
         },
       },
     ],
-    [onCorrelationClick, onTaskClick],
+    [onCorrelationClick, onTaskClick, expandedId],
   );
 
   const handleExport = () => {
@@ -146,24 +171,23 @@ export default function LogTable({
           <Download size={12} /> Export CSV
         </Button>
       </div>
-      <DataTable<LogEntry>
-        data={entries}
-        columns={columns}
-        getRowId={(row) =>
-          `${row.timestamp}-${row.correlation_id ?? ""}-${row.event_type ?? ""}`
-        }
-        loading={loading}
-        virtual
-        rowHeight={44}
-        maxHeight={560}
-        emptyState={
-          <EmptyState
-            eyebrow="No events"
-            title="No events match."
-            body="Widen the window or loosen the filters."
-          />
-        }
-      />
+      <div className={styles.scrollContainer}>
+        <DataTable<LogEntry>
+          data={entries}
+          columns={columns}
+          getRowId={rowId}
+          onRowClick={handleRowClick}
+          loading={loading}
+          pageSize={500}
+          emptyState={
+            <EmptyState
+              eyebrow="No events"
+              title="No events match."
+              body="Widen the window or loosen the filters."
+            />
+          }
+        />
+      </div>
     </div>
   );
 }

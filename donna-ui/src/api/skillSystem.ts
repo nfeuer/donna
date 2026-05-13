@@ -84,6 +84,36 @@ export async function setRequiresHumanGate(
 }
 
 // ---------------------------------------------------------------------------
+// Capabilities
+// ---------------------------------------------------------------------------
+
+export interface Capability {
+  id: string;
+  name: string;
+  description: string;
+  input_schema: {
+    type?: string;
+    required?: string[];
+    properties?: Record<
+      string,
+      { type: string | string[]; description?: string }
+    >;
+  };
+  trigger_type: string;
+  status: string;
+  created_at: string;
+  created_by: string;
+  notes: string | null;
+}
+
+export async function fetchCapabilityByName(
+  name: string,
+): Promise<Capability> {
+  const { data } = await client.get(`/admin/capabilities/${name}`);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // Candidates
 // ---------------------------------------------------------------------------
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+import zoneinfo
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -178,7 +179,7 @@ class PreferenceRuleExtractor:
         template_path = self._project_root / "prompts" / "extract_preferences.md"
         template = template_path.read_text()
 
-        now = datetime.now(tz=UTC)
+        now = datetime.now(UTC).astimezone(zoneinfo.ZoneInfo("America/New_York"))
         prompt = (
             template
             .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
