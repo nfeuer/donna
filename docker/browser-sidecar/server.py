@@ -32,6 +32,9 @@ DATA_DIR = Path(os.environ.get("BROWSER_DATA_DIR", "/data/browser"))
 SCREENSHOTS_DIR = DATA_DIR / "screenshots"
 PORT = int(os.environ.get("BROWSER_PORT", "3100"))
 
+# Limit concurrent Chromium instances to avoid resource exhaustion.
+_browser_semaphore = asyncio.Semaphore(3)
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -92,7 +95,7 @@ async def handle_extract_text(request: web.Request) -> web.Response:
 
     url: str | None = body.get("url")
     selector: str = body.get("selector", "body")
-    timeout_ms: int = int(body.get("timeout_ms", 15_000))
+    timeout_ms: int = min(int(body.get("timeout_ms", 15_000)), 60_000)
     automation_id: str | None = body.get("automation_id", None)
 
     if not url:
@@ -109,19 +112,20 @@ async def handle_extract_text(request: web.Request) -> web.Response:
     page_title = ""
 
     try:
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
-            try:
-                context = await browser.new_context()
+        async with _browser_semaphore:
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(headless=True)
                 try:
-                    page = await context.new_page()
-                    await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-                    text = await page.inner_text(selector, timeout=timeout_ms)
-                    page_title = await page.title()
+                    context = await browser.new_context()
+                    try:
+                        page = await context.new_page()
+                        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                        text = await page.inner_text(selector, timeout=timeout_ms)
+                        page_title = await page.title()
+                    finally:
+                        await context.close()
                 finally:
-                    await context.close()
-            finally:
-                await browser.close()
+                    await browser.close()
     except Exception as exc:
         duration_ms = (time.monotonic() - start) * 1000
         exc_name = type(exc).__name__
@@ -199,7 +203,7 @@ async def handle_screenshot(request: web.Request) -> web.Response:
 
     url: str | None = body.get("url")
     selector: str | None = body.get("selector")
-    timeout_ms: int = int(body.get("timeout_ms", 15_000))
+    timeout_ms: int = min(int(body.get("timeout_ms", 15_000)), 60_000)
     automation_id: str | None = body.get("automation_id", None)
 
     if not url:
@@ -216,44 +220,45 @@ async def handle_screenshot(request: web.Request) -> web.Response:
     png_path: Path | None = None
 
     try:
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
-            try:
-                context = await browser.new_context(viewport={"width": 1280, "height": 800})
+        async with _browser_semaphore:
+            async with async_playwright() as pw:
+                browser = await pw.chromium.launch(headless=True)
                 try:
-                    page = await context.new_page()
-                    await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-                    page_title = await page.title()
+                    context = await browser.new_context(viewport={"width": 1280, "height": 800})
+                    try:
+                        page = await context.new_page()
+                        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                        page_title = await page.title()
 
-                    _ensure_dirs()
-                    png_path = SCREENSHOTS_DIR / f"{request_id}.png"
+                        _ensure_dirs()
+                        png_path = SCREENSHOTS_DIR / f"{request_id}.png"
 
-                    if selector:
-                        element = await page.query_selector(selector)
-                        if element is None:
-                            duration_ms = (time.monotonic() - start) * 1000
-                            logger.error(
-                                "screenshot_error",
-                                url=url,
-                                action="screenshot",
-                                duration_ms=round(duration_ms, 2),
-                                response_bytes=0,
-                                status="error",
-                                error=f"Selector '{selector}' matched no elements",
-                            )
-                            return _error_response(
-                                f"Selector '{selector}' matched no elements",
-                                "selector_not_found",
-                                duration_ms,
-                                status=404,
-                            )
-                        await element.screenshot(path=str(png_path))
-                    else:
-                        await page.screenshot(path=str(png_path), full_page=True)
+                        if selector:
+                            element = await page.query_selector(selector)
+                            if element is None:
+                                duration_ms = (time.monotonic() - start) * 1000
+                                logger.error(
+                                    "screenshot_error",
+                                    url=url,
+                                    action="screenshot",
+                                    duration_ms=round(duration_ms, 2),
+                                    response_bytes=0,
+                                    status="error",
+                                    error=f"Selector '{selector}' matched no elements",
+                                )
+                                return _error_response(
+                                    f"Selector '{selector}' matched no elements",
+                                    "selector_not_found",
+                                    duration_ms,
+                                    status=404,
+                                )
+                            await element.screenshot(path=str(png_path))
+                        else:
+                            await page.screenshot(path=str(png_path), full_page=True)
+                    finally:
+                        await context.close()
                 finally:
-                    await context.close()
-            finally:
-                await browser.close()
+                    await browser.close()
     except Exception as exc:
         duration_ms = (time.monotonic() - start) * 1000
         exc_name = type(exc).__name__
