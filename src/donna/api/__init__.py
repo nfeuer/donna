@@ -336,6 +336,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         secrets_path = Path(cal_cfg.credentials.client_secrets_path)
         if token_path.exists() and secrets_path.exists():
             cal_client = GoogleCalendarClient(config=cal_cfg)
+            try:
+                await cal_client.authenticate()
+            except Exception:
+                logger.warning("calendar_client_auth_failed", exc_info=True)
+                cal_client = None
         else:
             logger.warning(
                 "calendar_client_unavailable",
