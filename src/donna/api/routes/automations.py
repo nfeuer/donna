@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -33,6 +33,18 @@ class CreateAutomationRequest(BaseModel):
     max_cost_per_run_usd: float | None = None
     min_interval_seconds: int = 300
     created_via: str = "dashboard"
+    gpu_model: str | None = None
+    preferred_window: str | None = None
+
+
+class TierStatsResponse(BaseModel):
+    automation_id: str
+    window_days: int
+    total_runs: int
+    tier_1_text: int
+    tier_2_vision: int
+    tier_3_claude: int
+    estimated_claude_cost_usd: float
 
 
 class UpdateAutomationRequest(BaseModel):
@@ -44,6 +56,8 @@ class UpdateAutomationRequest(BaseModel):
     alert_channels: list[Any] | None = None
     max_cost_per_run_usd: float | None = None
     min_interval_seconds: int | None = None
+    gpu_model: str | None = None
+    preferred_window: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +93,8 @@ def _automation_to_dict(row: AutomationRow) -> dict[str, Any]:
         "created_at": _dt_iso(row.created_at),
         "updated_at": _dt_iso(row.updated_at),
         "created_via": row.created_via,
+        "gpu_model": getattr(row, "gpu_model", None),
+        "preferred_window": getattr(row, "preferred_window", None),
     }
 
 
@@ -219,6 +235,10 @@ async def update_automation(
         fields["max_cost_per_run_usd"] = body.max_cost_per_run_usd
     if body.min_interval_seconds is not None:
         fields["min_interval_seconds"] = body.min_interval_seconds
+    if body.gpu_model is not None:
+        fields["gpu_model"] = body.gpu_model
+    if body.preferred_window is not None:
+        fields["preferred_window"] = body.preferred_window
 
     if body.schedule is not None:
         # Validate + recompute next_run_at when schedule changes
@@ -345,3 +365,46 @@ async def get_runs(
 
     runs = await repo.list_runs(automation_id, limit=limit, offset=offset)
     return {"runs": [_run_to_dict(r) for r in runs], "count": len(runs)}
+
+
+@router.get("/automations/{automation_id}/tier-stats")
+async def get_tier_stats(
+    automation_id: str,
+    request: Request,
+    window_days: int = Query(default=30, ge=1, le=365),
+) -> dict[str, Any]:
+    """Return aggregated tier success counts for an automation."""
+    conn = request.app.state.db.connection
+    repo = AutomationRepository(conn)
+
+    row = await repo.get(automation_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Automation '{automation_id}' not found")
+
+    runs = await repo.list_runs(automation_id, limit=1000)
+
+    cutoff = datetime.now(UTC) - timedelta(days=window_days)
+    recent = [r for r in runs if r.started_at >= cutoff]
+
+    tier_1 = 0
+    tier_2 = 0
+    tier_3 = 0
+    for run in recent:
+        if run.output and isinstance(run.output, dict):
+            tier = run.output.get("tier", "")
+            if "tier_1" in tier:
+                tier_1 += 1
+            elif "tier_2" in tier:
+                tier_2 += 1
+            elif "tier_3" in tier:
+                tier_3 += 1
+
+    return {
+        "automation_id": automation_id,
+        "window_days": window_days,
+        "total_runs": len(recent),
+        "tier_1_text": tier_1,
+        "tier_2_vision": tier_2,
+        "tier_3_claude": tier_3,
+        "estimated_claude_cost_usd": round(tier_3 * 0.03, 2),
+    }
