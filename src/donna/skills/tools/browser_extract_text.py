@@ -42,7 +42,7 @@ async def browser_extract_text(
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(f"{BROWSER_SIDECAR_URL}/extract-text", json=payload)
             resp.raise_for_status()
-            data = resp.json()
+            data: dict[str, Any] = resp.json()
     except Exception as exc:
         logger.warning("browser_extract_text_failed", url=url, error=str(exc))
         raise BrowserExtractError(str(exc)) from exc

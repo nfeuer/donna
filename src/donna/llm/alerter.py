@@ -77,6 +77,10 @@ class GatewayAlerter:
         )
         await self._send(key, msg)
 
+    async def send_alert(self, alert_type: str, message: str) -> None:
+        """Generic alert dispatch keyed by alert_type."""
+        await self._send(alert_type, message)
+
     async def alert_budget(
         self, spent: float, limit: float, pct: int
     ) -> None:

@@ -51,7 +51,9 @@ async def db(tmp_path: Path):
             failure_count INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
             created_via TEXT NOT NULL,
-            active_cadence_cron TEXT
+            active_cadence_cron TEXT,
+            gpu_model TEXT,
+            preferred_window TEXT
         );
         CREATE TABLE skill (
             id TEXT PRIMARY KEY,
