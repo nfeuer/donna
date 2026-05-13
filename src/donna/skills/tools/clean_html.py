@@ -10,8 +10,8 @@ import asyncio
 import re
 from typing import Any
 
-import lxml.etree
-import lxml.html
+import lxml.etree  # type: ignore[import-untyped]
+import lxml.html  # type: ignore[import-untyped]
 import structlog
 
 logger = structlog.get_logger()
