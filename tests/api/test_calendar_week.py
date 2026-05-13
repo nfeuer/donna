@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import pytest
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
+
+import pytest
 
 from donna.api.routes.calendar_week import _week_bounds, get_calendar_week
 
@@ -28,7 +29,7 @@ class FakeTask:
     title: str
     scheduled_start: str
     estimated_duration: int
-    priority: str
+    priority: int
     domain: str
     donna_managed: bool
 
@@ -88,7 +89,7 @@ class TestGetCalendarWeek:
             title="Review proposals",
             scheduled_start="2026-05-13T10:30:00-04:00",
             estimated_duration=3600,
-            priority="high",
+            priority=2,
             domain="work",
             donna_managed=True,
         )
@@ -105,7 +106,7 @@ class TestGetCalendarWeek:
         assert result["events"][0]["title"] == "Team standup"
         assert result["events"][1]["source"] == "donna"
         assert result["events"][1]["title"] == "Review proposals"
-        assert result["events"][1]["priority"] == "high"
+        assert result["events"][1]["priority"] == 2
 
     @pytest.mark.asyncio
     async def test_returns_donna_only_when_calendar_unavailable(
@@ -118,7 +119,7 @@ class TestGetCalendarWeek:
             title="Review proposals",
             scheduled_start="2026-05-13T10:30:00-04:00",
             estimated_duration=3600,
-            priority="high",
+            priority=2,
             domain="work",
             donna_managed=True,
         )
@@ -145,7 +146,7 @@ class TestGetCalendarWeek:
             title="Quick task",
             scheduled_start="2026-05-14T14:00:00-04:00",
             estimated_duration=1800,  # 30 minutes
-            priority="medium",
+            priority=3,
             domain="personal",
             donna_managed=True,
         )
