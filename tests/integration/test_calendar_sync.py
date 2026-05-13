@@ -161,20 +161,21 @@ def _make_mock_client(events: list[CalendarEvent]) -> GoogleCalendarClient:
 
 async def _seed_mirror(
     db: Database, event_id: str, task_id: str, start: datetime, end: datetime,
+    user_id: str = "nick",
 ) -> None:
     """Insert a row into calendar_mirror directly."""
     conn = db.connection
     await conn.execute(
         """
         INSERT INTO calendar_mirror
-            (event_id, calendar_id, summary, start_time, end_time,
+            (event_id, user_id, calendar_id, summary, start_time, end_time,
              donna_managed, donna_task_id, etag, last_synced)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            event_id, "primary", "Task Event",
+            event_id, user_id, "primary", "Task Event",
             start.isoformat(), end.isoformat(),
-            1, task_id, '"etag1"', datetime.utcnow().isoformat(),
+            1, task_id, '"etag1"', datetime.now(tz=UTC).isoformat(),
         ),
     )
     await conn.commit()
@@ -367,13 +368,13 @@ class TestMirrorUpdate:
         await conn.execute(
             """
             INSERT INTO calendar_mirror
-                (event_id, calendar_id, summary, start_time, end_time,
+                (event_id, user_id, calendar_id, summary, start_time, end_time,
                  donna_managed, donna_task_id, etag, last_synced)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("ev-stale", "primary", "Old Event",
+            ("ev-stale", "nick", "primary", "Old Event",
              _utc(2026, 3, 20, 10).isoformat(), _utc(2026, 3, 20, 11).isoformat(),
-             0, None, '"old"', datetime.utcnow().isoformat()),
+             0, None, '"old"', datetime.now(tz=UTC).isoformat()),
         )
         await conn.commit()
 

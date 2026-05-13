@@ -6,6 +6,13 @@
 
 Google Calendar is the single source of truth. Read-write on personal calendar, read on work and family calendars. All three are Google Calendar — no ICS workarounds needed.
 
+### OAuth Setup
+
+The calendar client uses OAuth2 with offline refresh. In Docker
+(`DONNA_HEADLESS=true`), a pre-provisioned `token.json` with a valid
+refresh token is required. See [Docker operations](../operations/docker.md#google-calendar-oauth-in-docker)
+for the provisioning workflow.
+
 ### Calendar Sync Strategy
 
 Polling-based sync with change detection. Polls every 5 minutes (configurable). Compares current calendar state against local mirror in SQLite.
