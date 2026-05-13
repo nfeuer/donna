@@ -10,6 +10,8 @@ from functools import partial
 from typing import Any
 
 from donna.skills.tool_registry import ToolRegistry
+from donna.skills.tools.browser_extract_text import browser_extract_text
+from donna.skills.tools.browser_screenshot import browser_screenshot
 from donna.skills.tools.calendar_read import calendar_read
 from donna.skills.tools.cost_summary import cost_summary
 from donna.skills.tools.email_read import email_read
@@ -58,6 +60,8 @@ def register_default_tools(
     registry.register("web_fetch", web_fetch)
     registry.register("rss_fetch", rss_fetch)
     registry.register("html_extract", html_extract)
+    registry.register("browser_extract_text", browser_extract_text)
+    registry.register("browser_screenshot", browser_screenshot)
 
     if gmail_client is not None:
         registry.register(
@@ -124,6 +128,8 @@ def register_default_tools(
 
 __all__ = [
     "DEFAULT_TOOL_REGISTRY",
+    "browser_extract_text",
+    "browser_screenshot",
     "calendar_read",
     "cost_summary",
     "email_read",
