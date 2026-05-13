@@ -2263,10 +2263,19 @@ async def wire_automation_subsystem(
             runtime_tool_check=runtime_tool_check,
             tool_gap_surfacer=ctx.tool_gap_surfacer,
         )
+        gpu_home_model: str | None = None
+        try:
+            from donna.llm.types import load_gateway_config
+            gw = load_gateway_config(ctx.config_dir)
+            gpu_home_model = gw.gpu.home_model
+        except Exception:
+            log.debug("gpu_home_model_not_available")
+
         automation_scheduler = AutomationScheduler(
             repository=automation_repo,
             dispatcher=automation_dispatcher,
             poll_interval_seconds=ctx.skill_config.automation_poll_interval_seconds,
+            gpu_home_model=gpu_home_model,
         )
         ctx.tasks.append(asyncio.create_task(automation_scheduler.run_forever()))
         log.info(

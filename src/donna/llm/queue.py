@@ -612,5 +612,5 @@ class LLMQueueWorker:
         )
         if self._alerter:
             self._alerter.update_debounce(config.debounce_minutes)
-        self._gpu_tracker._config = config.gpu
+        self._gpu_tracker.update_config(config.gpu)
         logger.info("llm_queue_config_reloaded", event_type="llm_gateway.config_reloaded")

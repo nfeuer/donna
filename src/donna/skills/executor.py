@@ -208,6 +208,13 @@ class SkillExecutor:
                         state=state.to_dict(), inputs=inputs,
                     )
                 except Exception:
+                    logger.warning(
+                        "skill_step_condition_error",
+                        skill_id=skill.id,
+                        step_name=step_name,
+                        condition=condition,
+                        exc_info=True,
+                    )
                     cond_result = False
 
                 if not cond_result:
@@ -620,7 +627,11 @@ class SkillExecutor:
         if prompt_additions:
             rendered = rendered + "\n\n" + prompt_additions
 
-        prefix = self._task_type_prefix or "skill_step"
+        step_model = step.get("model") or step.get("gpu_model")
+        if step_model:
+            prefix = f"skill_step__{step_model}"
+        else:
+            prefix = self._task_type_prefix or "skill_step"
         task_type = f"{prefix}::{skill.capability_name}::{step_name}"
 
         if self._run_sink is not None and self._config is not None:

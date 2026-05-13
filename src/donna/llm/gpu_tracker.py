@@ -25,6 +25,14 @@ class SwapRecord:
     completed: bool = False
 
 
+@dataclass
+class ExecRecord:
+    """Timestamped execution duration for rolling overhead calculation."""
+
+    timestamp: float
+    duration_ms: int
+
+
 class GpuTracker:
     """Tracks the currently loaded GPU model and rolling swap metrics.
 
@@ -35,9 +43,8 @@ class GpuTracker:
         self._config = config
         self._loaded_model: str | None = None
         self._swaps: deque[SwapRecord] = deque(maxlen=200)
+        self._execs: deque[ExecRecord] = deque(maxlen=500)
         self._current_swap: SwapRecord | None = None
-        self._total_swap_ms_1h: int = 0
-        self._total_exec_ms_1h: int = 0
 
     @property
     def loaded_model(self) -> str | None:
@@ -79,7 +86,6 @@ class GpuTracker:
             self._current_swap = None
 
         self._loaded_model = to_model
-        self._total_swap_ms_1h += duration_ms
 
         logger.info(
             "gpu_swap_completed",
@@ -89,22 +95,30 @@ class GpuTracker:
         )
 
     def record_execution_time(self, duration_ms: int) -> None:
-        self._total_exec_ms_1h += duration_ms
+        self._execs.append(ExecRecord(
+            timestamp=time.monotonic(),
+            duration_ms=duration_ms,
+        ))
+
+    def update_config(self, config: GpuConfig) -> None:
+        self._config = config
 
     def get_metrics(self) -> dict[str, Any]:
         cutoff = time.monotonic() - 3600
-        recent = [s for s in self._swaps if s.completed and s.started_at > cutoff]
-        swap_count = len(recent)
+        recent_swaps = [s for s in self._swaps if s.completed and s.started_at > cutoff]
+        swap_count = len(recent_swaps)
 
         avg_swap_ms = 0
-        if recent:
-            avg_swap_ms = sum(s.duration_ms for s in recent) // len(recent)
+        if recent_swaps:
+            avg_swap_ms = sum(s.duration_ms for s in recent_swaps) // len(recent_swaps)
 
-        last_swap_ms = recent[-1].duration_ms if recent else 0
+        last_swap_ms = recent_swaps[-1].duration_ms if recent_swaps else 0
 
-        total_time = self._total_swap_ms_1h + self._total_exec_ms_1h
+        swap_ms_1h = sum(s.duration_ms for s in recent_swaps)
+        exec_ms_1h = sum(e.duration_ms for e in self._execs if e.timestamp > cutoff)
+        total_time = swap_ms_1h + exec_ms_1h
         overhead_pct = (
-            round(self._total_swap_ms_1h / total_time * 100, 1) if total_time > 0 else 0.0
+            round(swap_ms_1h / total_time * 100, 1) if total_time > 0 else 0.0
         )
 
         return {
