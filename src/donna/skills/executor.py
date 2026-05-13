@@ -200,6 +200,26 @@ class SkillExecutor:
             step_kind = step.get("kind", "llm")
             allowed_tools = step.get("tools", [])
 
+            # Evaluate condition if present
+            condition = step.get("condition")
+            if condition:
+                try:
+                    cond_result = self._jinja.compile_expression(condition)(
+                        state=state.to_dict(), inputs=inputs,
+                    )
+                except Exception:
+                    cond_result = False
+
+                if not cond_result:
+                    logger.info(
+                        "skill_step_skipped_condition",
+                        skill_id=skill.id,
+                        step_name=step_name,
+                        condition=condition,
+                    )
+                    idx += 1
+                    continue
+
             step_start = time.monotonic()
             record = StepResultRecord(
                 step_name=step_name, step_index=idx, step_kind=step_kind,
@@ -214,6 +234,8 @@ class SkillExecutor:
                         user_id=user_id,
                         capability_name=skill.capability_name,
                     )
+                    if isinstance(collected, dict):
+                        collected["success"] = True
                     state[step_name] = collected
                     record.output = collected
                     record.tool_calls = list(collected.keys())
@@ -260,6 +282,8 @@ class SkillExecutor:
 
                     schema = version.output_schemas.get(step_name, {})
                     validate_output(llm_output, schema)
+                    if isinstance(llm_output, dict):
+                        llm_output["success"] = True
                     state[step_name] = llm_output
                     record.output = llm_output
 
@@ -295,6 +319,8 @@ class SkillExecutor:
 
                     schema = version.output_schemas.get(step_name, {})
                     validate_output(llm_output, schema)
+                    if isinstance(llm_output, dict):
+                        llm_output["success"] = True
                     state[step_name] = llm_output
                     record.output = llm_output
 
@@ -379,6 +405,19 @@ class SkillExecutor:
                 step_results.append(record)
                 await self._persist_step_if_repo(skill_run_id, record)
 
+                # on_failure=continue — absorb the error and advance.
+                step_on_failure = step.get("on_failure")
+                if step_on_failure == "continue":
+                    state[step_name] = {"success": False, "error": str(exc)}
+                    record.validation_status = "continued"
+                    logger.info(
+                        "skill_step_continued",
+                        skill_id=skill.id, step=step_name, error=str(exc),
+                    )
+                    idx += 1
+                    prompt_additions = None
+                    continue
+
                 # No triage configured → escalate typed failures inline.
                 if self._triage is None:
                     error_type = {
@@ -451,6 +490,20 @@ class SkillExecutor:
                 record.latency_ms = int((time.monotonic() - step_start) * 1000)
                 step_results.append(record)
                 await self._persist_step_if_repo(skill_run_id, record)
+
+                # on_failure=continue — absorb the error and advance.
+                step_on_failure = step.get("on_failure")
+                if step_on_failure == "continue":
+                    state[step_name] = {"success": False, "error": str(exc)}
+                    record.validation_status = "continued"
+                    logger.info(
+                        "skill_step_continued",
+                        skill_id=skill.id, step=step_name, error=str(exc),
+                    )
+                    idx += 1
+                    prompt_additions = None
+                    continue
+
                 logger.exception(
                     "skill_executor_unexpected_failure",
                     skill_id=skill.id, step=step_name,
