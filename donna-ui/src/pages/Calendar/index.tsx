@@ -43,6 +43,7 @@ export default function CalendarPage() {
       setWarnings(resp.warnings ?? []);
     } catch {
       setEvents([]);
+      setWarnings([]);
     } finally {
       setLoading(false);
     }
