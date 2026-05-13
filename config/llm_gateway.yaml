@@ -40,3 +40,12 @@ alerts:
   debounce_minutes: 10
 
 ollama_health_check: true
+
+gpu:
+  home_model: "qwen2.5:32b-instruct-q6_K"
+  swap_timeout_s: 120
+  restore_home_delay_s: 30
+  alerts:
+    swaps_per_hour_warning: 4
+    swap_wait_ms_warning: 60000
+    swap_overhead_pct_warning: 25
