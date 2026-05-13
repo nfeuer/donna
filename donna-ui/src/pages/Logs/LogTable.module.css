@@ -26,6 +26,16 @@
   max-width: 100%;
 }
 
+.scrollContainer {
+  max-height: 560px;
+  overflow-y: auto;
+  border-radius: var(--radius-md, 6px);
+}
+
+.scrollContainer table {
+  table-layout: fixed;
+}
+
 .message {
   font-family: var(--font-body);
   font-size: var(--text-body);
@@ -33,7 +43,16 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: inline-block;
+  display: block;
+}
+
+.messageExpanded {
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-all;
+  display: block;
   max-width: 100%;
 }
 

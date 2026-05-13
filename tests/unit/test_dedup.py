@@ -225,7 +225,8 @@ class TestFuzzyScoreBucketing:
             await dedup.check("Oil change for car", None, "personal", "nick")
 
         assert exc_info.value.verdict == "same"
-        inv_logger.log.assert_called_once()
+        # Invocation logging is now handled by ModelRouter, not Deduplicator
+        inv_logger.log.assert_not_called()
 
     async def test_no_active_tasks_no_check(self) -> None:
         """No active tasks → dedup skipped."""
@@ -242,8 +243,8 @@ class TestFuzzyScoreBucketing:
         await dedup.check("Get oil change", None, "personal", "nick")
         router.complete.assert_not_called()
 
-    async def test_dedup_logs_invocation_on_llm_path(self) -> None:
-        """LLM path logs invocation with correct metadata."""
+    async def test_dedup_delegates_logging_to_router(self) -> None:
+        """LLM path delegates invocation logging to ModelRouter."""
         task = _make_task_row(title="Oil change for lawn mower")
         dedup, router, inv_logger = self._make_deduplicator([task])
         router.complete = AsyncMock(return_value=(_dedup_response("different"), _make_metadata()))
@@ -251,11 +252,8 @@ class TestFuzzyScoreBucketing:
         with patch("donna.tasks.dedup.fuzz.token_sort_ratio", return_value=75):
             await dedup.check("Oil change for car", None, "personal", "nick")
 
-        inv_logger.log.assert_called_once()
-        log_call = inv_logger.log.call_args[0][0]
-        assert log_call.task_type == "dedup_check"
-        assert log_call.user_id == "nick"
-        assert log_call.cost_usd == 0.0012
+        # Invocation logging is now handled by ModelRouter, not Deduplicator
+        inv_logger.log.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

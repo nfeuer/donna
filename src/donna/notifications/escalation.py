@@ -103,6 +103,7 @@ class EscalationManager:
         nudge_text: str,
         priority: int = 2,
         start_at_tier: int = 1,
+        skip_initial_dispatch: bool = False,
     ) -> None:
         """Start or continue escalation for an overdue task.
 
@@ -116,6 +117,8 @@ class EscalationManager:
             nudge_text: The notification message body.
             priority: Task priority (1–5).
             start_at_tier: Starting tier (default 1; use 2 for budget alerts).
+            skip_initial_dispatch: If True, skip the Tier 1 Discord dispatch
+                (caller already sent the message, e.g. via create_overdue_thread).
         """
         existing = await self._get_pending(task_id)
         if existing is not None:
@@ -129,13 +132,14 @@ class EscalationManager:
         now = datetime.now(tz=UTC)
 
         if start_at_tier == 1:
-            # Tier 1: Discord
-            await self._service.dispatch(
-                notification_type=NOTIF_OVERDUE,
-                content=nudge_text,
-                channel=CHANNEL_TASKS,
-                priority=priority,
-            )
+            if not skip_initial_dispatch:
+                # Tier 1: Discord
+                await self._service.dispatch(
+                    notification_type=NOTIF_OVERDUE,
+                    content=nudge_text,
+                    channel=CHANNEL_TASKS,
+                    priority=priority,
+                )
             wait = timedelta(minutes=self._config.escalation.tier1_wait_minutes)
             current_tier = 1
         else:

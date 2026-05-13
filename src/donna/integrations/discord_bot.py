@@ -65,7 +65,7 @@ class DonnaBot(discord.Client):
         digest_channel_id: int | None = None,
         agents_channel_id: int | None = None,
         guild_id: int | None = None,
-        overdue_reply_handler: Callable[[str, str], Awaitable[None]] | None = None,
+        overdue_reply_handler: Callable[[str, str], Awaitable[Any]] | None = None,
         dispatcher: AgentDispatcher | None = None,
         chat_channel_id: int | None = None,
         chat_engine: Any | None = None,
@@ -315,14 +315,16 @@ class DonnaBot(discord.Client):
         # Route overdue-thread replies before the tasks-channel filter.
         if message.channel.id in self.overdue_threads and self._overdue_reply_handler is not None:
             task_id = self.overdue_threads[message.channel.id]
-            reply = message.content.strip().lower()
+            reply = message.content.strip()
             logger.info(
                 "overdue_reply_received",
                 task_id=task_id,
                 reply=reply[:50],
             )
             try:
-                await self._overdue_reply_handler(task_id, reply)
+                result = await self._overdue_reply_handler(task_id, reply)
+                if hasattr(result, "reply_to_user") and result.reply_to_user:
+                    await message.channel.send(result.reply_to_user)
             except Exception:
                 logger.exception("overdue_reply_handler_failed", task_id=task_id)
             return

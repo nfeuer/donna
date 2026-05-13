@@ -11,6 +11,7 @@ import styles from "./FilterBar.module.css";
 export interface FilterPreset {
   name: string;
   eventTypes: string[];
+  excludeEventTypes?: string[];
   level: string;
   search: string;
 }

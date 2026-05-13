@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "reasoning": {
+      "type": "string",
+      "description": "Internal chain-of-thought explaining the interpretation. Logged but not shown to user."
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "Action name from the available actions list"
+          },
+          "params": {
+            "type": "object",
+            "description": "Parameters for the action"
+          }
+        },
+        "required": ["action", "params"]
+      },
+      "description": "Ordered list of actions to propose to the user"
+    },
+    "reply_to_user": {
+      "type": "string",
+      "description": "Donna's response in persona. Summarizes the proposed plan and ends with a confirmation prompt."
+    }
+  },
+  "required": ["reasoning", "actions", "reply_to_user"]
+}

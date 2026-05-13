@@ -1,8 +1,27 @@
 import { useParams } from "react-router-dom";
-import PromptsList from "./PromptsList";
+import { PageHeader } from "../../primitives/PageHeader";
+import PromptSidebar from "./PromptSidebar";
 import PromptEditor from "./PromptEditor";
+import PromptWelcome from "./PromptWelcome";
+import styles from "./Prompts.module.css";
 
 export default function PromptsPage() {
-  const { file } = useParams<{ file?: string }>();
-  return file ? <PromptEditor /> : <PromptsList />;
+  const { "*": splat } = useParams();
+  const selected = splat || null;
+
+  return (
+    <div className={styles.root}>
+      <PromptSidebar selected={selected} />
+      <section className={styles.main}>
+        {selected ? (
+          <PromptEditor file={selected} />
+        ) : (
+          <>
+            <PageHeader eyebrow="System" title="Prompts" />
+            <PromptWelcome />
+          </>
+        )}
+      </section>
+    </div>
+  );
 }

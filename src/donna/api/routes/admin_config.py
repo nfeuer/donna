@@ -159,7 +159,7 @@ async def put_config(
 
 @router.get("/prompts")
 async def list_prompts(request: Request) -> dict[str, Any]:
-    """List available prompt template files."""
+    """List available prompt template files, including subdirectories."""
     project_root = _get_project_root(request)
     prompts_dir = project_root / "prompts"
 
@@ -167,42 +167,234 @@ async def list_prompts(request: Request) -> dict[str, Any]:
         return {"prompts": [], "prompts_dir": str(prompts_dir)}
 
     files = []
-    for path in sorted(prompts_dir.glob("*.md")):
+    for path in sorted(prompts_dir.rglob("*.md")):
+        rel = path.relative_to(prompts_dir)
         stat = path.stat()
         files.append({
-            "name": path.name,
+            "name": str(rel),
             "size_bytes": stat.st_size,
             "modified": stat.st_mtime,
         })
     return {"prompts": files, "prompts_dir": str(prompts_dir)}
 
 
-@router.get("/prompts/{filename}")
+def _load_yaml(path: Path) -> dict[str, Any]:
+    """Load a YAML file, returning empty dict on missing/invalid."""
+    if not path.exists():
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _build_prompt_stats(
+    *,
+    prompts_dir: Path,
+    config_dir: Path,
+    invocation_counts: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Build prompt stats from config files and invocation counts.
+
+    Pure function — all I/O (DB queries) happens in the caller.
+
+    Args:
+        prompts_dir: Path to the prompts directory.
+        config_dir: Path to the config directory.
+        invocation_counts: Mapping of task_type to invocation/cost data.
+
+    Returns:
+        Dictionary with prompt statistics for the dashboard.
+    """
+    # Enumerate prompts
+    all_prompts: list[dict[str, Any]] = []
+    for path in sorted(prompts_dir.rglob("*.md")):
+        rel = str(path.relative_to(prompts_dir))
+        stat = path.stat()
+        all_prompts.append({"name": rel, "modified": stat.st_mtime})
+
+    # Folder breakdown
+    by_folder: dict[str, int] = {}
+    for p in all_prompts:
+        folder = str(Path(p["name"]).parent)
+        key = "root" if folder == "." else folder
+        by_folder[key] = by_folder.get(key, 0) + 1
+
+    # Load task_types.yaml — map prompt filename -> task_type metadata
+    task_types_cfg = _load_yaml(config_dir / "task_types.yaml").get("task_types", {})
+    prompt_to_task: dict[str, dict[str, str]] = {}
+    for tt_name, tt_cfg in task_types_cfg.items():
+        tpl = tt_cfg.get("prompt_template", "")
+        rel_name = tpl.removeprefix("prompts/") if tpl.startswith("prompts/") else tpl
+        if rel_name:
+            prompt_to_task[rel_name] = {
+                "task_type": tt_name,
+                "model": tt_cfg.get("model", ""),
+                "output_schema": tt_cfg.get("output_schema", ""),
+            }
+
+    # Model routing
+    model_counts: dict[str, int] = {}
+    for meta in prompt_to_task.values():
+        model_alias = meta["model"]
+        model_counts[model_alias] = model_counts.get(model_alias, 0) + 1
+
+    # Agent coverage
+    agents_cfg = _load_yaml(config_dir / "agents.yaml").get("agents", {})
+    known_map: dict[str, list[str]] = {
+        "pm": [
+            "parse_task", "parse_task_local", "classify_priority",
+            "dedup_check", "task_decompose",
+        ],
+        "scheduler": ["generate_reminder"],
+        "research": ["prep_research"],
+        "coding": [],
+        "challenger": ["challenge_task"],
+        "communication": [
+            "generate_nudge", "generate_digest", "generate_weekly_digest",
+        ],
+    }
+    agent_task_map: dict[str, list[str]] = {}
+    for agent_name, agent_cfg in agents_cfg.items():
+        agent_tools = set(agent_cfg.get("allowed_tools", []))
+        mapped = set(known_map.get(agent_name, []))
+        for tt_name, tt_cfg in task_types_cfg.items():
+            tt_tools = set(tt_cfg.get("tools", []))
+            if tt_tools and tt_tools & agent_tools:
+                mapped.add(tt_name)
+        agent_task_map[agent_name] = sorted(mapped)
+
+    prompt_agents: dict[str, list[str]] = {}
+    for prompt_name, meta in prompt_to_task.items():
+        tt = meta["task_type"]
+        agents = [a for a, tts in agent_task_map.items() if tt in tts]
+        if agents:
+            prompt_agents[prompt_name] = sorted(agents)
+
+    agent_coverage = sorted(
+        [{"prompt": k, "agents": v} for k, v in prompt_agents.items()],
+        key=lambda x: len(x["agents"]),
+        reverse=True,
+    )
+
+    # Most invoked
+    most_invoked = []
+    for prompt_name, meta in prompt_to_task.items():
+        tt = meta["task_type"]
+        counts = invocation_counts.get(tt, {})
+        if counts.get("invocations", 0) > 0:
+            most_invoked.append({
+                "prompt": prompt_name,
+                "task_type": tt,
+                "invocations": counts["invocations"],
+                "cost_usd": round(counts.get("cost_usd", 0), 4),
+            })
+    most_invoked.sort(key=lambda x: x["invocations"], reverse=True)
+
+    # Recently modified (top 3)
+    recently_modified = sorted(
+        all_prompts, key=lambda x: x["modified"], reverse=True,
+    )[:3]
+
+    # Unused
+    mapped_prompts = set(prompt_to_task.keys())
+    unused = []
+    for p in all_prompts:
+        name = p["name"]
+        if (
+            name not in mapped_prompts
+            or prompt_to_task[name]["task_type"] not in invocation_counts
+        ):
+            unused.append(name)
+
+    return {
+        "total": len(all_prompts),
+        "by_folder": by_folder,
+        "most_invoked": most_invoked[:10],
+        "agent_coverage": agent_coverage,
+        "model_routing": model_counts,
+        "recently_modified": recently_modified,
+        "unused": unused,
+    }
+
+
+@router.get("/prompts/stats")
+async def get_prompt_stats(request: Request) -> dict[str, Any]:
+    """Prompt usage stats for the welcome dashboard."""
+    project_root = _get_project_root(request)
+    prompts_dir = project_root / "prompts"
+    config_dir = _get_config_dir(request)
+
+    invocation_counts: dict[str, dict[str, Any]] = {}
+    try:
+        conn = request.app.state.db.connection
+        cursor = await conn.execute(
+            """SELECT task_type, COUNT(*), COALESCE(SUM(cost_usd), 0)
+               FROM invocation_log
+               GROUP BY task_type"""
+        )
+        for row in await cursor.fetchall():
+            invocation_counts[row[0]] = {
+                "invocations": row[1],
+                "cost_usd": float(row[2]),
+            }
+    except Exception:
+        pass
+
+    return _build_prompt_stats(
+        prompts_dir=prompts_dir,
+        config_dir=config_dir,
+        invocation_counts=invocation_counts,
+    )
+
+
+@router.get("/prompts/{filename:path}")
 async def get_prompt(request: Request, filename: str) -> dict[str, Any]:
     """Read the content of a prompt template file."""
     if not filename.endswith(".md"):
         raise HTTPException(status_code=400, detail="Prompt files must be .md")
 
-    # Prevent directory traversal
-    if ".." in filename or "/" in filename:
+    if ".." in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     project_root = _get_project_root(request)
-    path = project_root / "prompts" / filename
+    path = (project_root / "prompts" / filename).resolve()
+
+    # Ensure resolved path stays within prompts directory
+    prompts_dir = (project_root / "prompts").resolve()
+    if not path.is_relative_to(prompts_dir):
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Prompt file not found: {filename}")
 
     content = path.read_text(encoding="utf-8")
+
+    # Reverse-lookup: which task_type uses this prompt?
+    config_dir = _get_config_dir(request)
+    task_types_cfg = _load_yaml(config_dir / "task_types.yaml").get("task_types", {})
+    task_type = None
+    model_alias = None
+    output_schema = None
+    for tt_name, tt_cfg in task_types_cfg.items():
+        tpl = tt_cfg.get("prompt_template", "")
+        rel_name = tpl.removeprefix("prompts/") if tpl.startswith("prompts/") else tpl
+        if rel_name == filename:
+            task_type = tt_name
+            model_alias = tt_cfg.get("model")
+            output_schema = tt_cfg.get("output_schema")
+            break
+
     return {
         "name": filename,
         "content": content,
         "size_bytes": path.stat().st_size,
         "modified": path.stat().st_mtime,
+        "task_type": task_type,
+        "model_alias": model_alias,
+        "output_schema": output_schema,
     }
 
 
-@router.put("/prompts/{filename}")
+@router.put("/prompts/{filename:path}")
 async def put_prompt(
     request: Request,
     filename: str,
@@ -211,7 +403,7 @@ async def put_prompt(
     """Write a prompt template file."""
     if not filename.endswith(".md"):
         raise HTTPException(status_code=400, detail="Prompt files must be .md")
-    if ".." in filename or "/" in filename:
+    if ".." in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     content = body.get("content", "")
@@ -219,11 +411,14 @@ async def put_prompt(
         raise HTTPException(status_code=400, detail="content must be a string")
 
     project_root = _get_project_root(request)
-    prompts_dir = project_root / "prompts"
-    path = prompts_dir / filename
+    prompts_dir = (project_root / "prompts").resolve()
+    path = (prompts_dir / filename).resolve()
 
-    # Atomic write
-    fd, tmp_path = tempfile.mkstemp(dir=str(prompts_dir), suffix=".tmp")
+    if not path.is_relative_to(prompts_dir):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Atomic write — use the file's parent dir for the temp file
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(content)

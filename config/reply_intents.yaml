@@ -1,0 +1,30 @@
+# Fast-path keyword intent definitions for the Universal Reply Handler.
+# See docs/superpowers/specs/2026-05-12-universal-reply-handler-design.md
+
+fast_path:
+  max_length: 60
+  multi_intent_signals:
+    - " but "
+    - " and also "
+    - " however "
+    - " although "
+
+  # Confirmation/rejection keywords for pending action plans
+  confirm_keywords: ["yes", "go ahead", "do it", "ok", "sounds good", "yep", "sure", "go for it"]
+  reject_keywords: ["no", "cancel", "nevermind", "nah", "stop", "don't"]
+
+intents:
+  mark_done:
+    keywords: ["done", "finished", "complete", "completed", "did it", "yes"]
+    action: mark_done
+    confirm: false
+
+  reschedule:
+    keywords: ["reschedule", "tomorrow", "later", "push", "move"]
+    action: reschedule
+    confirm: false
+
+  busy:
+    keywords: ["busy", "not now", "snooze"]
+    action: snooze
+    confirm: false

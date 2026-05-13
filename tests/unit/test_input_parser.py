@@ -151,21 +151,18 @@ class TestInputParser:
         assert result.deadline_type == "hard"
         assert result.deadline is not None
 
-    async def test_invocation_logged(
+    async def test_invocation_logged_by_router(
         self, router: ModelRouter, mock_logger: AsyncMock
     ) -> None:
+        """Invocation logging is handled by ModelRouter.complete(), not InputParser."""
         router.complete = AsyncMock(  # type: ignore[method-assign]
             return_value=(_buy_milk_response(), _make_metadata())
         )
         parser = InputParser(router, mock_logger, PROJECT_ROOT)
         await parser.parse("Buy milk", user_id="nick")
 
-        mock_logger.log.assert_called_once()
-        call_args = mock_logger.log.call_args[0][0]
-        assert call_args.task_type == "parse_task"
-        assert call_args.model_alias == "parser"
-        assert call_args.cost_usd == 0.0016
-        assert call_args.user_id == "nick"
+        # InputParser no longer logs directly — the router does.
+        mock_logger.log.assert_not_called()
 
     async def test_malformed_response_raises_validation_error(
         self, router: ModelRouter, mock_logger: AsyncMock

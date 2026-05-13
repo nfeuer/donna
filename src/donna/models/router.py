@@ -29,6 +29,7 @@ from donna.resilience.retry import CircuitBreaker, TaskCategory, resilient_call
 if TYPE_CHECKING:
     from donna.cost.budget import BudgetGuard
     from donna.cost.escalation_gate import EscalationGate
+    from donna.logging.invocation_logger import InvocationLogger
 
 logger = structlog.get_logger()
 
@@ -123,6 +124,7 @@ class ModelRouter:
         ]
         | None = None,
         escalation_gate: EscalationGate | None = None,
+        invocation_logger: InvocationLogger | None = None,
     ) -> None:
         self._models_config = models_config
         self._task_types_config = task_types_config
@@ -130,6 +132,7 @@ class ModelRouter:
         self._budget_guard = budget_guard
         self._on_shadow_complete = on_shadow_complete
         self._escalation_gate = escalation_gate
+        self._invocation_logger = invocation_logger
         self._circuit_breaker = CircuitBreaker()
 
         # Instantiate one provider instance per unique provider name in config.
@@ -478,6 +481,31 @@ class ModelRouter:
                 escalation_request_id=_escalation_request_id,
                 correlation_id=_escalation_correlation_id,
             )
+
+        # Auto-log every successful LLM call to invocation_log.
+        if self._invocation_logger is not None:
+            from donna.logging.invocation_logger import InvocationMetadata
+
+            try:
+                await self._invocation_logger.log(
+                    InvocationMetadata(
+                        task_type=task_type,
+                        model_alias=alias,
+                        model_actual=enriched_metadata.model_actual,
+                        input_hash="",
+                        latency_ms=enriched_metadata.latency_ms,
+                        tokens_in=enriched_metadata.tokens_in,
+                        tokens_out=enriched_metadata.tokens_out,
+                        cost_usd=enriched_metadata.cost_usd,
+                        estimated_tokens_in=enriched_metadata.estimated_tokens_in,
+                        overflow_escalated=enriched_metadata.overflow_escalated,
+                        user_id=user_id,
+                        task_id=task_id,
+                        escalation_request_id=_escalation_request_id,
+                    )
+                )
+            except Exception:
+                logger.warning("invocation_log_write_failed", task_type=task_type)
 
         # Shadow mode: fire secondary model in parallel if configured.
         routing = self._models_config.routing.get(task_type)

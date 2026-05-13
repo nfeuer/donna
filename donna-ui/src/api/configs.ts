@@ -24,6 +24,9 @@ export interface PromptContent {
   content: string;
   size_bytes: number;
   modified: number;
+  task_type: string | null;
+  model_alias: string | null;
+  output_schema: string | null;
 }
 
 export async function fetchConfigs(): Promise<ConfigFile[]> {

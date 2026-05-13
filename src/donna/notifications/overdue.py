@@ -17,14 +17,19 @@ See slices/slice_05_reminders_digest.md and docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
+import zoneinfo
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from donna.integrations.discord_bot import DonnaBot
 from donna.models.router import ContextOverflowError
-from donna.notifications.service import CHANNEL_TASKS, NOTIF_OVERDUE, NotificationService
+from donna.notifications.service import (
+    CHANNEL_DEBUG,
+    NOTIF_OVERDUE,
+    NotificationService,
+)
 from donna.scheduling.scheduler import Scheduler
 from donna.tasks.database import Database
 from donna.tasks.db_models import TaskStatus
@@ -32,6 +37,7 @@ from donna.tasks.db_models import TaskStatus
 if TYPE_CHECKING:
     from donna.models.router import ModelRouter
     from donna.notifications.escalation import EscalationManager
+    from donna.replies.handler import ReplyHandler
 
 logger = structlog.get_logger()
 
@@ -59,6 +65,8 @@ class OverdueDetector:
         user_id: str,
         escalation_manager: EscalationManager | None = None,
         router: ModelRouter | None = None,
+        reply_handler: ReplyHandler | None = None,
+        tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
         self._service = service
@@ -68,9 +76,23 @@ class OverdueDetector:
         self._user_id = user_id
         self._escalation_manager = escalation_manager
         self._router = router
+        self._reply_handler = reply_handler
+        self._tz = tz
         # task_id set: only nudge once per day (reset at midnight).
         self._nudged: set[str] = set()
         self._nudged_date: str = ""
+
+    async def _alert_debug(self, message: str) -> None:
+        """Send an error/warning to #donna-debug so failures aren't silent."""
+        try:
+            await self._service.dispatch(
+                notification_type=NOTIF_OVERDUE,
+                content=f"⚠️ {message}",
+                channel=CHANNEL_DEBUG,
+                priority=5,
+            )
+        except Exception:
+            logger.exception("debug_alert_dispatch_failed")
 
     async def run(self) -> None:
         """Loop forever, checking for overdue tasks every 15 minutes."""
@@ -91,8 +113,11 @@ class OverdueDetector:
 
             try:
                 await self._check_and_nudge(now)
-            except Exception:
+            except Exception as exc:
                 logger.exception("overdue_check_failed")
+                await self._alert_debug(
+                    f"Overdue check failed: {type(exc).__name__}: {exc}",
+                )
 
             await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
@@ -123,30 +148,25 @@ class OverdueDetector:
                     overdue_minutes=overdue_minutes,
                 )
 
+                # Send nudge as a threaded message so the user can reply.
+                # create_overdue_thread sends the message AND creates the thread.
+                await self._bot.create_overdue_thread(
+                    task_id=task.id,
+                    task_title=task.title,
+                    nudge_text=nudge_text,
+                )
+                sent = True
+
                 if self._escalation_manager is not None:
-                    # Route through escalation tiers (Discord → SMS → ...).
+                    # Register with escalation so it can advance to SMS/email
+                    # if the user doesn't respond. skip_initial_dispatch=True
+                    # avoids a duplicate Discord message.
                     await self._escalation_manager.escalate(
                         task_id=task.id,
                         task_title=task.title,
                         nudge_text=nudge_text,
                         priority=task.priority or 2,
-                    )
-                    sent = True
-                else:
-                    # Fallback: Discord-only (no escalation configured).
-                    sent = await self._service.dispatch(
-                        notification_type=NOTIF_OVERDUE,
-                        content=nudge_text,
-                        channel=CHANNEL_TASKS,
-                        priority=task.priority or 2,
-                    )
-
-                if sent:
-                    # Create thread so user can reply in context.
-                    await self._bot.create_overdue_thread(
-                        task_id=task.id,
-                        task_title=task.title,
-                        nudge_text=nudge_text,
+                        skip_initial_dispatch=True,
                     )
 
                 self._nudged.add(task.id)
@@ -181,7 +201,8 @@ class OverdueDetector:
 
         Returns (nudge_text, llm_generated).
         """
-        time_str = now.strftime("%I:%M %p")
+        local_now = now.astimezone(self._tz) if self._tz else now
+        time_str = local_now.strftime("%I:%M %p")
         fallback = (
             f"It's {time_str} and you haven't touched '{getattr(task, 'title', '')}'."
             " Did you finish it or should I find time tomorrow?"
@@ -191,15 +212,18 @@ class OverdueDetector:
             return fallback, False
 
         try:
-            prompt = (
-                f"Task: {getattr(task, 'title', '')}\n"
-                f"Domain: {getattr(task, 'domain', 'personal')}\n"
-                f"Priority: {getattr(task, 'priority', 2)}\n"
-                f"Scheduled start: {getattr(task, 'scheduled_start', 'unknown')}\n"
-                f"Time overdue: {overdue_minutes} minutes\n"
-                f"Nudge count: {getattr(task, 'nudge_count', 0)}\n"
-                f"Reschedule count: {getattr(task, 'reschedule_count', 0)}\n"
-                f"Current time: {time_str}\n"
+            from jinja2 import Template
+
+            template_str = self._router.get_prompt_template("generate_nudge")
+            prompt = Template(template_str).render(
+                task_title=getattr(task, "title", ""),
+                domain=getattr(task, "domain", "personal"),
+                priority=getattr(task, "priority", 2),
+                scheduled_start=getattr(task, "scheduled_start", "unknown"),
+                overdue_duration=overdue_minutes,
+                nudge_count=getattr(task, "nudge_count", 0),
+                reschedule_count=getattr(task, "reschedule_count", 0),
+                current_time=time_str,
             )
             result, _meta = await self._router.complete(
                 prompt=prompt,
@@ -213,37 +237,72 @@ class OverdueDetector:
             logger.warning("nudge_llm_empty_response", task_id=getattr(task, "id", None))
         except ContextOverflowError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.exception("nudge_llm_failed", task_id=getattr(task, "id", None))
+            await self._alert_debug(
+                f"LLM nudge failed for '{getattr(task, 'title', '?')}': "
+                f"{type(exc).__name__}: {exc}",
+            )
 
         return fallback, False
 
-    async def handle_reply(self, task_id: str, reply: str) -> None:
+    async def handle_reply(self, task_id: str, reply: str) -> Any:
         """Handle user reply in an overdue thread.
 
-        Args:
-            task_id: The task that was nudged.
-            reply: Normalised (lower-case stripped) user reply text.
+        Delegates to ReplyHandler if wired, falls back to legacy keywords.
         """
         task = await self._db.get_task(task_id)
         if task is None:
             logger.warning("overdue_reply_task_not_found", task_id=task_id)
-            return
+            return None
 
-        if reply.startswith("done"):
+        if self._reply_handler is not None:
+            thread_id = f"overdue-{task_id}"
+            try:
+                result = await self._reply_handler.handle(
+                    thread_id, reply, task, "overdue",
+                )
+            except Exception as exc:
+                logger.exception("reply_handler_failed", task_id=task_id)
+                await self._alert_debug(
+                    f"Reply handler crashed for task '{task.title}': "
+                    f"{type(exc).__name__}: {exc}",
+                )
+                return None
+            logger.info(
+                "overdue_reply_handled",
+                task_id=task_id,
+                path=result.path,
+                action=result.action,
+            )
+            if result.path in ("fast", "plan_confirmed") and self._escalation_manager is not None:
+                if result.action in ("mark_done", "reschedule"):
+                    await self._escalation_manager.acknowledge(task_id)
+                elif result.action == "snooze":
+                    await self._escalation_manager.backoff(task_id)
+            return result
+
+        # Legacy fallback (kept until ReplyHandler is fully wired)
+        done_kw = {"done", "finished", "complete", "completed", "did it", "yes"}
+        reschedule_kw = {"reschedule", "tomorrow", "later", "push", "move"}
+        busy_kw = {"busy", "not now", "snooze"}
+
+        words = reply.lower()
+        if any(kw in words for kw in done_kw):
             if self._escalation_manager is not None:
                 await self._escalation_manager.acknowledge(task_id)
             await self._mark_done(task_id, task)
-        elif reply.startswith("reschedule"):
+        elif any(kw in words for kw in reschedule_kw):
             if self._escalation_manager is not None:
                 await self._escalation_manager.acknowledge(task_id)
             await self._reschedule(task_id, task)
-        elif reply.startswith("busy"):
+        elif any(kw in words for kw in busy_kw):
             if self._escalation_manager is not None:
                 await self._escalation_manager.backoff(task_id)
             logger.info("overdue_reply_busy", task_id=task_id)
         else:
             logger.info("overdue_reply_unrecognised", task_id=task_id, reply=reply[:50])
+        return None
 
     async def _mark_done(self, task_id: str, task: object) -> None:
         """Transition task → in_progress → done and set completed_at."""

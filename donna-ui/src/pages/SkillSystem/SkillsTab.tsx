@@ -3,12 +3,17 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "../../primitives/DataTable";
 import { Pill } from "../../primitives/Pill";
 import { Select, SelectItem } from "../../primitives/Select";
-import { fetchSkills, type Skill } from "../../api/skillSystem";
+import { fetchSkills, type Skill, type TransitionRow } from "../../api/skillSystem";
+import SkillDetailPanel from "./SkillDetailPanel";
 import styles from "./SkillSystem.module.css";
 
 interface Props {
   selectedId: string | null;
   onRowClick: (id: string) => void;
+  onCloseDetail: () => void;
+  onRunsLink: (skillId: string) => void;
+  onMutated: () => void;
+  transitions: TransitionRow[];
   refreshToken: number;
 }
 
@@ -26,6 +31,10 @@ const STATE_FILTERS: string[] = [
 export default function SkillsTab({
   selectedId,
   onRowClick,
+  onCloseDetail,
+  onRunsLink,
+  onMutated,
+  transitions,
   refreshToken,
 }: Props) {
   const ALL = "__all__";
@@ -117,6 +126,14 @@ export default function SkillsTab({
           {skills.length} skills
         </span>
       </div>
+      <SkillDetailPanel
+        skillId={selectedId}
+        open={selectedId !== null}
+        onClose={onCloseDetail}
+        transitions={transitions}
+        onRunsLink={onRunsLink}
+        onMutated={onMutated}
+      />
       <DataTable
         data={skills}
         columns={columns}

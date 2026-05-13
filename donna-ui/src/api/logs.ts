@@ -26,6 +26,7 @@ export interface LogsResponse {
 
 export interface LogFilters {
   event_type?: string;
+  exclude_event_type?: string;
   level?: string;
   service?: string;
   search?: string;

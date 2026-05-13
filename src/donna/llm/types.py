@@ -77,6 +77,7 @@ class GatewayConfig:
     """Parsed gateway configuration with accessors."""
 
     # Scheduling
+    timezone: str = "America/New_York"
     active_hours_start: int = 6
     active_hours_end: int = 22
     schedule_drain_minutes: int = 2
@@ -108,9 +109,12 @@ class GatewayConfig:
         return self._priority_map.get(task_type, Priority.NORMAL)
 
     def is_active_hours(self, now: datetime | None = None) -> bool:
+        import zoneinfo
+
         if now is None:
             now = datetime.now(UTC)
-        hour = now.hour
+        local = now.astimezone(zoneinfo.ZoneInfo(self.timezone))
+        hour = local.hour
         return self.active_hours_start <= hour < self.active_hours_end
 
     def rpm_for_caller(self, caller: str) -> int:
@@ -156,6 +160,7 @@ def load_gateway_config(config_dir: Path) -> GatewayConfig:
     priority_map = {k: Priority.from_str(v) for k, v in pmap_raw.items()}
 
     return GatewayConfig(
+        timezone=str(sched.get("timezone", "America/New_York")),
         active_hours_start=start,
         active_hours_end=end,
         schedule_drain_minutes=int(sched.get("schedule_drain_minutes", 2)),

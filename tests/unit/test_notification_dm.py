@@ -34,6 +34,9 @@ class TestDispatchDm:
         bot = AsyncMock()
         service = _make_service(bot)
 
+        service._is_blackout = lambda now: False
+        service._is_quiet = lambda now: False
+
         result = await service.dispatch_dm(
             discord_id="123456789",
             notification_type=NOTIF_AUTOMATION_ALERT,
@@ -64,6 +67,7 @@ class TestDispatchDm:
         bot = AsyncMock()
         service = _make_service(bot)
 
+        service._is_blackout = lambda now: False
         service._is_quiet = lambda now: True
 
         result = await service.dispatch_dm(

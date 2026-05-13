@@ -1,0 +1,59 @@
+# Action registry for the Universal Reply Handler.
+# See docs/superpowers/specs/2026-05-12-universal-reply-handler-design.md
+
+memory:
+  window_size: 10
+  retention_days: 7
+
+plan:
+  expiry_minutes: 60
+
+actions:
+  mark_done:
+    description: "Mark a task as completed"
+    handler: donna.replies.actions.task_actions.mark_done
+    params:
+      task_id: { type: string, from_context: true }
+    risk: low
+
+  reschedule:
+    description: "Reschedule a task to a new time"
+    handler: donna.replies.actions.task_actions.reschedule_task
+    params:
+      task_id: { type: string, from_context: true }
+      when: { type: string, description: "Natural language time expression" }
+    risk: low
+
+  create_task:
+    description: "Create a new task"
+    handler: donna.replies.actions.task_actions.create_task
+    params:
+      title: { type: string }
+      domain: { type: string, enum: [work, personal, family] }
+      priority: { type: int, default: 2 }
+      due_by: { type: string, optional: true }
+    risk: medium
+
+  rename_task:
+    description: "Rename or update a task's title"
+    handler: donna.replies.actions.task_actions.rename_task
+    params:
+      task_id: { type: string, from_context: true }
+      new_title: { type: string }
+    risk: low
+
+  snooze:
+    description: "Snooze notifications for this task"
+    handler: donna.replies.actions.task_actions.snooze_task
+    params:
+      task_id: { type: string, from_context: true }
+      duration_hours: { type: int, default: 2 }
+    risk: low
+
+  request_capability:
+    description: "Flag that the user wants something Donna can't do yet"
+    handler: donna.replies.actions.gap_actions.log_capability_gap
+    params:
+      description: { type: string }
+      user_request: { type: string }
+    risk: low

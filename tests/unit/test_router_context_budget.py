@@ -106,6 +106,7 @@ def _build_router(
     router._providers = {"ollama": ollama, "anthropic": anthropic}
     router._prompt_cache = {}
     router._schema_cache = {}
+    router._invocation_logger = None
     from donna.resilience.retry import CircuitBreaker
     router._circuit_breaker = CircuitBreaker()
 

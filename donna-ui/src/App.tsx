@@ -44,7 +44,7 @@ export default function App() {
           <Route path="/configs" element={<ErrorBoundary><Suspense fallback={editorFallback}><ConfigsPage /></Suspense></ErrorBoundary>} />
           <Route path="/configs/:file" element={<ErrorBoundary><Suspense fallback={editorFallback}><ConfigsPage /></Suspense></ErrorBoundary>} />
           <Route path="/prompts" element={<ErrorBoundary><Suspense fallback={editorFallback}><PromptsPage /></Suspense></ErrorBoundary>} />
-          <Route path="/prompts/:file" element={<ErrorBoundary><Suspense fallback={editorFallback}><PromptsPage /></Suspense></ErrorBoundary>} />
+          <Route path="/prompts/*" element={<ErrorBoundary><Suspense fallback={editorFallback}><PromptsPage /></Suspense></ErrorBoundary>} />
           <Route path="/agents" element={<ErrorBoundary><AgentsPage /></ErrorBoundary>} />
           <Route path="/agents/:name" element={<ErrorBoundary><AgentsPage /></ErrorBoundary>} />
           <Route path="/tasks" element={<ErrorBoundary><TasksPage /></ErrorBoundary>} />

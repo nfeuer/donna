@@ -739,6 +739,7 @@ def _build_notification_tasks(
             cal_cfg = load_calendar_config(ctx.config_dir)
             personal = cal_cfg.calendars.get("personal")
             calendar_id = personal.calendar_id if personal else "primary"
+            overdue_tz = zoneinfo.ZoneInfo(cal_cfg.timezone)
 
             overdue_detector = OverdueDetector(
                 db=ctx.db,
@@ -748,6 +749,7 @@ def _build_notification_tasks(
                 calendar_id=calendar_id,
                 user_id=ctx.user_id,
                 router=ctx.router,
+                tz=overdue_tz,
             )
             logger.info("overdue_detector_constructed")
         except Exception as exc:
@@ -1163,8 +1165,11 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     db.set_event_bus(event_bus)
 
     # Initialise model layer and input parser
-    router = ModelRouter(models_config, task_types_config, project_root)
     invocation_logger = InvocationLogger(db.connection)
+    router = ModelRouter(
+        models_config, task_types_config, project_root,
+        invocation_logger=invocation_logger,
+    )
     input_parser = InputParser(router, invocation_logger, project_root)
 
     # Slice 17/18 — over-budget escalation infrastructure. Built before
@@ -1865,6 +1870,7 @@ async def wire_skill_system(
     # AutomationDispatcher._run_one).
     subsystem_router = ModelRouter(
         ctx.models_config, ctx.task_types_config, ctx.project_root,
+        invocation_logger=ctx.invocation_logger,
     )
 
     # CostTracker is constructed here (rather than later, inside the

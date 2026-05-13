@@ -26,6 +26,16 @@ router = admin_router()
 
 _LOKI_URL = os.environ.get("DONNA_LOKI_URL", "http://donna-loki:3100")
 
+
+def _ns_to_iso(ns_str: str) -> str:
+    """Convert a Loki nanosecond timestamp string to ISO 8601."""
+    try:
+        ns = int(ns_str)
+        dt = datetime.fromtimestamp(ns / 1_000_000_000, tz=UTC)
+        return dt.isoformat()
+    except (ValueError, OverflowError, OSError):
+        return ns_str
+
 # Static event type hierarchy matching docs/observability.md
 EVENT_TYPE_TREE: dict[str, list[str]] = {
     "task": [
@@ -147,7 +157,12 @@ async def get_trace(
 @router.get("/logs")
 async def get_logs(
     request: Request,
-    event_type: str | None = Query(default=None, description="Comma-separated event types"),
+    event_type: str | None = Query(
+        default=None, description="Comma-separated event types to include",
+    ),
+    exclude_event_type: str | None = Query(
+        default=None, description="Comma-separated event types to exclude",
+    ),
     level: str | None = Query(default=None, description="Comma-separated levels"),
     service: str | None = Query(default=None),
     search: str | None = Query(default=None, description="Full-text search"),
@@ -167,6 +182,7 @@ async def get_logs(
     try:
         result = await _query_loki(
             event_type=event_type,
+            exclude_event_type=exclude_event_type,
             level=level,
             service=service,
             search=search,
@@ -191,7 +207,7 @@ async def get_logs(
 
     # Fallback: query invocation_log
     return await _query_invocation_log_fallback(
-        request, event_type, level, service, search,
+        request, event_type, exclude_event_type, level, service, search,
         task_id, start, end, limit, offset,
     )
 
@@ -199,6 +215,7 @@ async def get_logs(
 async def _query_loki(
     *,
     event_type: str | None,
+    exclude_event_type: str | None = None,
     level: str | None,
     service: str | None,
     search: str | None,
@@ -209,12 +226,20 @@ async def _query_loki(
     limit: int,
 ) -> list[dict[str, Any]] | None:
     """Build and execute a LogQL query against Loki."""
-    # Build stream selector
-    selectors: list[str] = []
-    if service:
-        selectors.append(f'service="{service}"')
+    # Build stream selector — use stream-level filters for Promtail-promoted labels
+    selectors: list[str] = [
+        f'service="{service}"' if service else 'service=~".+"'
+    ]
 
-    stream = "{" + ", ".join(selectors) + "}" if selectors else '{service=~".+"}'
+    if event_type:
+        types = "|".join(t.strip().replace(".", "\\\\.") for t in event_type.split(","))
+        selectors.append(f'event_type=~"{types}"')
+
+    if exclude_event_type:
+        exc_types = "|".join(t.strip().replace(".", "\\\\.") for t in exclude_event_type.split(","))
+        selectors.append(f'event_type!~"{exc_types}"')
+
+    stream = "{" + ", ".join(selectors) + "}"
 
     # Build pipeline
     pipeline_parts: list[str] = ["json"]
@@ -225,12 +250,8 @@ async def _query_loki(
         stream = stream_with_filter
 
     if level:
-        levels = "|".join(lvl.strip() for lvl in level.split(","))
+        levels = "|".join(lvl.strip().lower() for lvl in level.split(","))
         pipeline_parts.append(f'level=~"{levels}"')
-
-    if event_type:
-        types = "|".join(t.strip().replace(".", "\\.") for t in event_type.split(","))
-        pipeline_parts.append(f'event_type=~"{types}"')
 
     if correlation_id:
         pipeline_parts.append(f'correlation_id="{correlation_id}"')
@@ -273,7 +294,7 @@ async def _query_loki(
                 parsed = {"message": line}
 
             entries.append({
-                "timestamp": parsed.get("timestamp", ts),
+                "timestamp": parsed.get("timestamp") or _ns_to_iso(ts),
                 "level": parsed.get("level", stream_labels.get("level", "INFO")),
                 "event_type": parsed.get("event_type", ""),
                 "message": parsed.get("message", parsed.get("event", "")),
@@ -319,6 +340,7 @@ async def _query_loki_trace(correlation_id: str) -> list[dict[str, Any]]:
 async def _query_invocation_log_fallback(
     request: Request,
     event_type: str | None,
+    exclude_event_type: str | None,
     level: str | None,
     service: str | None,
     search: str | None,
@@ -336,11 +358,17 @@ async def _query_invocation_log_fallback(
 
     if event_type:
         types = [t.strip() for t in event_type.split(",")]
-        # Map event types to task_types where possible
         task_types = [t.replace("api.call.", "").replace("agent.", "") for t in types]
         placeholders = ", ".join("?" for _ in task_types)
         where_clauses.append(f"task_type IN ({placeholders})")
         params.extend(task_types)
+
+    if exclude_event_type:
+        exc_types = [t.strip() for t in exclude_event_type.split(",")]
+        exc_task_types = [t.replace("api.call.", "").replace("agent.", "") for t in exc_types]
+        exc_placeholders = ", ".join("?" for _ in exc_task_types)
+        where_clauses.append(f"task_type NOT IN ({exc_placeholders})")
+        params.extend(exc_task_types)
 
     if task_id:
         where_clauses.append("task_id = ?")

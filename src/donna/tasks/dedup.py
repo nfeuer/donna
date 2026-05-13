@@ -11,13 +11,12 @@ Thresholds (from slice_06_dedup_cost.md):
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 import structlog
 from rapidfuzz import fuzz
 
-from donna.logging.invocation_logger import InvocationLogger, InvocationMetadata
+from donna.logging.invocation_logger import InvocationLogger
 from donna.models.router import ModelRouter
 from donna.models.validation import validate_output
 from donna.tasks.database import Database, TaskRow
@@ -87,10 +86,6 @@ def _render_dedup_template(
         .replace("{{ task_b_domain }}", new_domain)
         .replace("{{ fuzzy_score }}", f"{fuzzy_score:.0f}")
     )
-
-
-def _input_hash(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
 class Deduplicator:
@@ -224,26 +219,11 @@ class Deduplicator:
             fuzzy_score=fuzzy_score,
         )
 
-        response, metadata = await self._router.complete(prompt, task_type=TASK_TYPE)
+        response, _metadata = await self._router.complete(
+            prompt, task_type=TASK_TYPE, user_id=user_id,
+        )
         schema = self._router.get_output_schema(TASK_TYPE)
         validated = validate_output(response, schema)
-
-        await self._invocation_logger.log(
-            InvocationMetadata(
-                task_type=TASK_TYPE,
-                model_alias=self._router._models_config.routing[TASK_TYPE].model,
-                model_actual=metadata.model_actual,
-                input_hash=_input_hash(f"{existing_task.title}|{new_title}"),
-                latency_ms=metadata.latency_ms,
-                tokens_in=metadata.tokens_in,
-                tokens_out=metadata.tokens_out,
-                cost_usd=metadata.cost_usd,
-                estimated_tokens_in=metadata.estimated_tokens_in,
-                overflow_escalated=metadata.overflow_escalated,
-                user_id=user_id,
-                output=validated,
-            )
-        )
 
         return validated["verdict"], validated["reasoning"]
 

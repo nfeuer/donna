@@ -66,7 +66,8 @@ const EMPTY_FORM: FormState = {
 };
 
 function statusVariant(s: string): PillVariant {
-  if (s === "active") return "success";
+  if (s === "active" || s === "succeeded") return "success";
+  if (s === "failed") return "error";
   if (s === "paused") return "warning";
   if (s === "deleted") return "muted";
   return "accent";

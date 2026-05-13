@@ -8,14 +8,14 @@ a typed TaskParseResult. See docs/task-system.md.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
+import zoneinfo
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from donna.logging.invocation_logger import InvocationLogger, InvocationMetadata
+from donna.logging.invocation_logger import InvocationLogger
 from donna.models.router import ModelRouter
 from donna.models.validation import validate_output
 from donna.tasks.dedup import Deduplicator, DuplicateDetectedError  # noqa: F401 — re-exported
@@ -46,20 +46,18 @@ class TaskParseResult:
     confidence: float
 
 
+_USER_TZ = zoneinfo.ZoneInfo("America/New_York")
+
+
 def _render_template(template: str, user_input: str) -> str:
     """Fill template variables with current context."""
-    now = datetime.now(UTC)
+    now = datetime.now(UTC).astimezone(_USER_TZ)
     return (
         template
         .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
-        .replace("{{ current_time }}", now.strftime("%H:%M %Z"))
+        .replace("{{ current_time }}", now.strftime("%I:%M %p %Z"))
         .replace("{{ user_input }}", user_input)
     )
-
-
-def _input_hash(text: str) -> str:
-    """SHA-256 hash of input for dedup and invocation logging."""
-    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def _to_parse_result(data: dict[str, Any]) -> TaskParseResult:
@@ -124,30 +122,14 @@ class InputParser:
         template = self._router.get_prompt_template(TASK_TYPE)
         prompt = _render_template(template, raw_text)
 
-        # 2. Call the model
-        response, metadata = await self._router.complete(prompt, task_type=TASK_TYPE)
+        # 2. Call the model (invocation logged automatically by ModelRouter)
+        response, _metadata = await self._router.complete(
+            prompt, task_type=TASK_TYPE, user_id=user_id,
+        )
 
         # 3. Validate against schema
         schema = self._router.get_output_schema(TASK_TYPE)
         validated = validate_output(response, schema)
-
-        # 4. Log the invocation
-        await self._invocation_logger.log(
-            InvocationMetadata(
-                task_type=TASK_TYPE,
-                model_alias=self._router._models_config.routing[TASK_TYPE].model,
-                model_actual=metadata.model_actual,
-                input_hash=_input_hash(raw_text),
-                latency_ms=metadata.latency_ms,
-                tokens_in=metadata.tokens_in,
-                tokens_out=metadata.tokens_out,
-                cost_usd=metadata.cost_usd,
-                estimated_tokens_in=metadata.estimated_tokens_in,
-                overflow_escalated=metadata.overflow_escalated,
-                user_id=user_id,
-                output=validated,
-            )
-        )
 
         # 5. Convert to result
         result = _to_parse_result(validated)

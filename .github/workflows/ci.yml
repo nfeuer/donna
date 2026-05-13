@@ -49,3 +49,19 @@ jobs:
           python-version: "3.12"
       - run: uv sync --dev
       - run: uv run pytest tests/unit/ -m "not slow and not llm" --tb=short -q
+
+  docker-copy-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify API Dockerfile copies all runtime directories from orchestrator
+        run: |
+          extract_copies() { grep '^COPY' "$1" | awk '{print $2}' | sort; }
+          orch=$(extract_copies docker/Dockerfile.orchestrator)
+          api=$(extract_copies docker/Dockerfile.api)
+          missing=$(comm -23 <(echo "$orch") <(echo "$api"))
+          if [ -n "$missing" ]; then
+            echo "::error::Dockerfile.api is missing COPY directives present in Dockerfile.orchestrator:"
+            echo "$missing"
+            exit 1
+          fi

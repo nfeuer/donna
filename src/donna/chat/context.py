@@ -6,10 +6,13 @@ based on intent type and session state.
 
 from __future__ import annotations
 
+import zoneinfo
 from datetime import UTC, datetime
 from typing import Any
 
 from donna.chat.types import ChatIntent, ChatMessage
+
+_USER_TZ = zoneinfo.ZoneInfo("America/New_York")
 
 
 def build_session_context(
@@ -98,11 +101,11 @@ def render_chat_prompt(
     conversation_history: str = "",
 ) -> str:
     """Render a chat prompt template with variables."""
-    now = datetime.now(UTC)
+    now = datetime.now(UTC).astimezone(_USER_TZ)
     return (
         template
         .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
-        .replace("{{ current_time }}", now.strftime("%H:%M %Z"))
+        .replace("{{ current_time }}", now.strftime("%I:%M %p %Z"))
         .replace("{{ user_name }}", user_name)
         .replace("{{ user_input }}", user_input)
         .replace("{{ session_context }}", session_context)

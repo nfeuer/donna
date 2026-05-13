@@ -172,7 +172,8 @@ class MorningDigest:
 
     async def _assemble_data(self, now: datetime) -> dict[str, Any]:
         """Collect all data needed for the digest template."""
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        local_now = now.astimezone(self._tz) if self._tz else now
+        today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = today_start + timedelta(days=1)
         yesterday_start = today_start - timedelta(days=1)
 
