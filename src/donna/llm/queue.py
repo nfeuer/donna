@@ -334,18 +334,11 @@ class LLMQueueWorker:
         self._gpu_tracker.record_swap_started(target_model)
         start = time.monotonic()
 
-        # Unload current model by setting keep_alive to 0
-        current = self._gpu_tracker.loaded_model
-        if current:
-            try:
-                await self._ollama.complete(
-                    prompt="unload", model=current,
-                    max_tokens=1, json_mode=False,
-                )
-            except Exception:
-                pass
+        async with self.state_changed:
+            self.state_changed.notify_all()
 
         # Load target model with a warmup prompt
+        # Ollama automatically unloads the current model when loading a new one.
         try:
             await asyncio.wait_for(
                 self._ollama.complete(
@@ -374,25 +367,46 @@ class LLMQueueWorker:
         async with self.state_changed:
             self.state_changed.notify_all()
 
+    def _has_non_home_queued(self) -> bool:
+        """Check if any queued item requires a non-home GPU model."""
+        home = self._gpu_tracker.home_model
+
+        # Internal queue (drain + refill)
+        items: list[QueueItem] = []
+        found = False
+        while not self._internal.empty():
+            it = self._internal.get_nowait()
+            items.append(it)
+            if it.required_model and it.required_model != home:
+                found = True
+        for it in items:
+            self._internal.put_nowait(it)
+        if found:
+            return True
+
+        # External priority deque
+        for it in self._external_priority:
+            if it.required_model and it.required_model != home:
+                return True
+
+        # External queue (drain + refill)
+        ext_items: list[QueueItem] = []
+        while not self._external.empty():
+            it = self._external.get_nowait()
+            ext_items.append(it)
+            if it.required_model and it.required_model != home:
+                found = True
+        for it in ext_items:
+            self._external.put_nowait(it)
+
+        return found
+
     def _schedule_home_restore_if_needed(self) -> None:
         """Schedule restoring the home model after a delay if queue has no more non-home work."""
         if self._gpu_tracker.is_home:
             return
-
-        # Check if any queued items need a non-home model
-        has_non_home = False
-        items: list[QueueItem] = []
-        while not self._internal.empty():
-            it = self._internal.get_nowait()
-            items.append(it)
-            if it.required_model and it.required_model != self._gpu_tracker.home_model:
-                has_non_home = True
-        for it in items:
-            self._internal.put_nowait(it)
-
-        if has_non_home:
+        if self._has_non_home_queued():
             return
-
         delay = self._config.gpu.restore_home_delay_s
         self._home_restore_task = asyncio.create_task(self._restore_home(delay))
 
