@@ -327,6 +327,8 @@ export interface Automation {
   created_at: string;
   updated_at: string;
   created_via: string;
+  gpu_model: string | null;
+  preferred_window: string | null;
 }
 
 export interface AutomationRun {
@@ -368,6 +370,8 @@ export interface CreateAutomationBody {
   max_cost_per_run_usd?: number | null;
   min_interval_seconds?: number;
   created_via?: string;
+  gpu_model?: string | null;
+  preferred_window?: string | null;
 }
 
 export interface UpdateAutomationBody {
@@ -379,6 +383,8 @@ export interface UpdateAutomationBody {
   alert_channels?: string[];
   max_cost_per_run_usd?: number | null;
   min_interval_seconds?: number;
+  gpu_model?: string | null;
+  preferred_window?: string | null;
 }
 
 export async function fetchAutomations(params: {
@@ -446,5 +452,53 @@ export async function fetchAutomationRuns(
   const { data } = await client.get(`/admin/automations/${id}/runs`, {
     params: { limit },
   });
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Tier Stats
+// ---------------------------------------------------------------------------
+
+export interface TierStats {
+  automation_id: string;
+  window_days: number;
+  total_runs: number;
+  tier_1_text: number;
+  tier_2_vision: number;
+  tier_3_claude: number;
+  estimated_claude_cost_usd: number;
+}
+
+export async function fetchTierStats(
+  automationId: string,
+  windowDays = 30,
+): Promise<TierStats> {
+  const { data } = await client.get(
+    `/admin/automations/${automationId}/tier-stats`,
+    { params: { window_days: windowDays } },
+  );
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// GPU / Queue Status
+// ---------------------------------------------------------------------------
+
+export interface GpuMetrics {
+  loaded_model: string | null;
+  is_home: boolean;
+  swaps_this_hour: number;
+  last_swap_duration_ms: number;
+  avg_swap_duration_ms_1h: number;
+  swap_overhead_pct_1h: number;
+}
+
+export interface QueueStatus {
+  gpu: GpuMetrics | null;
+  [key: string]: unknown;
+}
+
+export async function fetchQueueStatus(): Promise<QueueStatus> {
+  const { data } = await client.get("/admin/llm/queue/status");
   return data;
 }

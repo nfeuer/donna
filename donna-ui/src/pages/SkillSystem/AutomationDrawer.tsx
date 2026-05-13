@@ -65,6 +65,15 @@ const EMPTY_FORM: FormState = {
   user_id: "nick",
 };
 
+function tierPill(output: Record<string, unknown> | null) {
+  const tier = output?.tier as string | undefined;
+  if (!tier) return null;
+  if (tier.includes("tier_1")) return <Pill variant="success">Tier 1</Pill>;
+  if (tier.includes("tier_2")) return <Pill variant="warning">Tier 2</Pill>;
+  if (tier.includes("tier_3")) return <Pill variant="error">Tier 3</Pill>;
+  return null;
+}
+
 function statusVariant(s: string): PillVariant {
   if (s === "active" || s === "succeeded") return "success";
   if (s === "failed") return "error";
@@ -322,6 +331,22 @@ export default function AutomationDrawer({
                     </span>
                   </div>
                 )}
+                {(() => {
+                  if (mode !== "edit" || automation?.capability_name !== "product_watch") return null;
+                  const watchUrl = typeof automation.inputs?.url === "string" ? automation.inputs.url : null;
+                  if (!watchUrl) return null;
+                  const base = import.meta.env.VITE_GALLERY_BASE_URL || `http://${window.location.hostname}:3100`;
+                  return (
+                    <a
+                      href={`${base}/gallery?url=${encodeURIComponent(watchUrl)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.galleryLink}
+                    >
+                      View screenshot gallery
+                    </a>
+                  );
+                })()}
                 <div className={styles.formRow}>
                   <label className={styles.formLabel}>Name</label>
                   <Input
@@ -507,6 +532,7 @@ export default function AutomationDrawer({
                           <Pill variant={statusVariant(r.status)}>
                             {r.status}
                           </Pill>
+                          {tierPill(r.output)}
                         </div>
                         <div className={styles.inlineMeta}>
                           <span>path: {r.execution_path}</span>
