@@ -92,13 +92,21 @@ async def handle_extract_text(request: web.Request) -> web.Response:
 
     url: str | None = body.get("url")
     selector: str = body.get("selector", "body")
+    timeout_ms: int = int(body.get("timeout_ms", 15_000))
+    automation_id: str | None = body.get("automation_id", None)
 
     if not url:
         return _error_response("'url' field is required", "validation_error", 0, status=400)
 
     request_id = str(uuid.uuid4())
-    logger = log.bind(request_id=request_id, url=url, selector=selector, endpoint="extract-text")
+    timestamp = _now_iso()
+    logger = log.bind(request_id=request_id, url=url, selector=selector, action="extract-text")
     logger.info("extract_text_start")
+
+    status_str = "success"
+    error_str: str | None = None
+    text = ""
+    page_title = ""
 
     try:
         async with async_playwright() as pw:
@@ -107,8 +115,8 @@ async def handle_extract_text(request: web.Request) -> web.Response:
                 context = await browser.new_context()
                 try:
                     page = await context.new_page()
-                    await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-                    text = await page.inner_text(selector, timeout=10_000)
+                    await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                    text = await page.inner_text(selector, timeout=timeout_ms)
                     page_title = await page.title()
                 finally:
                     await context.close()
@@ -116,37 +124,59 @@ async def handle_extract_text(request: web.Request) -> web.Response:
                 await browser.close()
     except Exception as exc:
         duration_ms = (time.monotonic() - start) * 1000
-        logger.error("extract_text_error", error=str(exc), error_type=type(exc).__name__)
-        return _error_response(str(exc), type(exc).__name__, duration_ms)
+        exc_name = type(exc).__name__
+        status_str = "timeout" if "timeout" in exc_name.lower() or "timeout" in str(exc).lower() else "error"
+        error_str = str(exc)
+        logger.error(
+            "extract_text_error",
+            url=url,
+            action="extract-text",
+            duration_ms=round(duration_ms, 2),
+            response_bytes=0,
+            status=status_str,
+            error=error_str,
+        )
+        return _error_response(str(exc), exc_name, duration_ms)
 
     duration_ms = (time.monotonic() - start) * 1000
+    response_bytes = len(text.encode("utf-8"))
 
     _ensure_dirs()
     metadata = {
+        "url": url,
+        "timestamp": timestamp,
+        "text": text,
+        "selector": selector,
+        "duration_ms": round(duration_ms, 2),
+        "automation_id": automation_id,
+        "screenshot_path": None,
+        # internal bookkeeping fields (not part of spec storage format but useful)
         "id": request_id,
         "type": "extract-text",
-        "url": url,
-        "selector": selector,
         "title": page_title,
-        "text": text,
-        "timestamp": _now_iso(),
-        "duration_ms": round(duration_ms, 2),
     }
     meta_path = SCREENSHOTS_DIR / f"{request_id}.json"
     meta_path.write_text(json.dumps(metadata, indent=2))
 
-    logger.info("extract_text_done", duration_ms=round(duration_ms, 2), text_length=len(text))
+    logger.info(
+        "extract_text_done",
+        url=url,
+        action="extract-text",
+        duration_ms=round(duration_ms, 2),
+        response_bytes=response_bytes,
+        status=status_str,
+        error=None,
+    )
 
     return web.Response(
         status=200,
         content_type="application/json",
         text=json.dumps(
             {
-                "id": request_id,
-                "url": url,
-                "selector": selector,
-                "title": page_title,
                 "text": text,
+                "url": url,
+                "selector_used": selector,
+                "timestamp": timestamp,
                 "duration_ms": round(duration_ms, 2),
             }
         ),
@@ -169,13 +199,21 @@ async def handle_screenshot(request: web.Request) -> web.Response:
 
     url: str | None = body.get("url")
     selector: str | None = body.get("selector")
+    timeout_ms: int = int(body.get("timeout_ms", 15_000))
+    automation_id: str | None = body.get("automation_id", None)
 
     if not url:
         return _error_response("'url' field is required", "validation_error", 0, status=400)
 
     request_id = str(uuid.uuid4())
-    logger = log.bind(request_id=request_id, url=url, endpoint="screenshot")
+    timestamp = _now_iso()
+    logger = log.bind(request_id=request_id, url=url, action="screenshot")
     logger.info("screenshot_start")
+
+    status_str = "success"
+    error_str: str | None = None
+    page_title = ""
+    png_path: Path | None = None
 
     try:
         async with async_playwright() as pw:
@@ -184,7 +222,7 @@ async def handle_screenshot(request: web.Request) -> web.Response:
                 context = await browser.new_context(viewport={"width": 1280, "height": 800})
                 try:
                     page = await context.new_page()
-                    await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                    await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
                     page_title = await page.title()
 
                     _ensure_dirs()
@@ -194,6 +232,15 @@ async def handle_screenshot(request: web.Request) -> web.Response:
                         element = await page.query_selector(selector)
                         if element is None:
                             duration_ms = (time.monotonic() - start) * 1000
+                            logger.error(
+                                "screenshot_error",
+                                url=url,
+                                action="screenshot",
+                                duration_ms=round(duration_ms, 2),
+                                response_bytes=0,
+                                status="error",
+                                error=f"Selector '{selector}' matched no elements",
+                            )
                             return _error_response(
                                 f"Selector '{selector}' matched no elements",
                                 "selector_not_found",
@@ -209,37 +256,61 @@ async def handle_screenshot(request: web.Request) -> web.Response:
                 await browser.close()
     except Exception as exc:
         duration_ms = (time.monotonic() - start) * 1000
-        logger.error("screenshot_error", error=str(exc), error_type=type(exc).__name__)
-        return _error_response(str(exc), type(exc).__name__, duration_ms)
+        exc_name = type(exc).__name__
+        status_str = "timeout" if "timeout" in exc_name.lower() or "timeout" in str(exc).lower() else "error"
+        error_str = str(exc)
+        logger.error(
+            "screenshot_error",
+            url=url,
+            action="screenshot",
+            duration_ms=round(duration_ms, 2),
+            response_bytes=0,
+            status=status_str,
+            error=error_str,
+        )
+        return _error_response(str(exc), exc_name, duration_ms)
 
     duration_ms = (time.monotonic() - start) * 1000
-    screenshot_url = f"/screenshots/{request_id}.png"
+    file_path_str = str(png_path)
+    response_bytes = png_path.stat().st_size if png_path and png_path.exists() else 0
 
     metadata = {
+        "url": url,
+        "timestamp": timestamp,
+        "text": None,
+        "selector": selector,
+        "duration_ms": round(duration_ms, 2),
+        "automation_id": automation_id,
+        "screenshot_path": file_path_str,
+        # internal bookkeeping fields
         "id": request_id,
         "type": "screenshot",
-        "url": url,
-        "selector": selector,
         "title": page_title,
-        "screenshot_path": str(png_path),
-        "screenshot_url": screenshot_url,
-        "timestamp": _now_iso(),
-        "duration_ms": round(duration_ms, 2),
+        # keep screenshot_url for gallery backward compat
+        "screenshot_url": f"/screenshots/{request_id}.png",
     }
     meta_path = SCREENSHOTS_DIR / f"{request_id}.json"
     meta_path.write_text(json.dumps(metadata, indent=2))
 
-    logger.info("screenshot_done", duration_ms=round(duration_ms, 2), path=str(png_path))
+    logger.info(
+        "screenshot_done",
+        url=url,
+        action="screenshot",
+        duration_ms=round(duration_ms, 2),
+        response_bytes=response_bytes,
+        status=status_str,
+        error=None,
+    )
 
     return web.Response(
         status=200,
         content_type="application/json",
         text=json.dumps(
             {
-                "id": request_id,
+                "file_path": file_path_str,
+                "page_title": page_title,
                 "url": url,
-                "title": page_title,
-                "screenshot_url": screenshot_url,
+                "timestamp": timestamp,
                 "duration_ms": round(duration_ms, 2),
             }
         ),
@@ -260,10 +331,13 @@ GALLERY_HTML = """\
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #111; color: #e0e0e0; font-family: system-ui, sans-serif; min-height: 100vh; }
-  header { padding: 1.25rem 1.5rem; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  header { padding: 1.25rem 1.5rem; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
   header h1 { font-size: 1.15rem; font-weight: 600; color: #fff; letter-spacing: 0.02em; flex: 0 0 auto; }
-  #filter { flex: 1 1 200px; max-width: 400px; padding: 0.45rem 0.75rem; background: #222; border: 1px solid #333; border-radius: 6px; color: #e0e0e0; font-size: 0.9rem; outline: none; }
-  #filter:focus { border-color: #555; }
+  .filter-input { flex: 1 1 180px; max-width: 340px; padding: 0.45rem 0.75rem; background: #222; border: 1px solid #333; border-radius: 6px; color: #e0e0e0; font-size: 0.9rem; outline: none; }
+  .filter-input:focus { border-color: #555; }
+  .date-label { font-size: 0.8rem; color: #888; flex: 0 0 auto; }
+  .date-input { padding: 0.42rem 0.6rem; background: #222; border: 1px solid #333; border-radius: 6px; color: #e0e0e0; font-size: 0.85rem; outline: none; color-scheme: dark; }
+  .date-input:focus { border-color: #555; }
   #count { font-size: 0.82rem; color: #666; margin-left: auto; flex: 0 0 auto; }
   main { padding: 1.5rem; }
   #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
@@ -284,25 +358,29 @@ GALLERY_HTML = """\
   /* Overlay */
   #overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; overflow-y: auto; }
   #overlay.open { display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1rem; }
-  #detail { background: #1a1a1a; border: 1px solid #333; border-radius: 10px; width: 100%; max-width: 900px; overflow: hidden; position: relative; }
-  #detail-close { position: absolute; top: 0.75rem; right: 0.75rem; background: #333; border: none; color: #ccc; width: 2rem; height: 2rem; border-radius: 50%; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; }
+  #detail { background: #1a1a1a; border: 1px solid #333; border-radius: 10px; width: 100%; max-width: 1100px; overflow: hidden; position: relative; }
+  #detail-close { position: absolute; top: 0.75rem; right: 0.75rem; background: #333; border: none; color: #ccc; width: 2rem; height: 2rem; border-radius: 50%; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; z-index: 1; }
   #detail-close:hover { background: #444; color: #fff; }
-  #detail-inner { display: flex; flex-direction: column; }
-  #detail-img-wrap { background: #111; border-bottom: 1px solid #2a2a2a; text-align: center; padding: 1rem; }
-  #detail-img { max-width: 100%; max-height: 480px; object-fit: contain; border-radius: 4px; }
-  #detail-info { padding: 1rem 1.25rem; }
+  #detail-inner { display: flex; flex-direction: row; align-items: flex-start; min-height: 300px; }
+  #detail-img-wrap { flex: 0 0 55%; background: #111; border-right: 1px solid #2a2a2a; text-align: center; padding: 1rem; align-self: stretch; display: flex; align-items: center; justify-content: center; }
+  #detail-img { max-width: 100%; max-height: 520px; object-fit: contain; border-radius: 4px; }
+  #detail-info { flex: 1 1 0; padding: 1rem 1.25rem; overflow-y: auto; max-height: 600px; }
   #detail-url { font-size: 0.82rem; color: #888; word-break: break-all; margin-bottom: 0.5rem; }
   #detail-title { font-size: 1rem; font-weight: 600; color: #ddd; margin-bottom: 0.75rem; }
   #detail-text-wrap { margin-top: 0.75rem; }
   #detail-text-label { font-size: 0.78rem; color: #666; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
-  #detail-text { background: #111; border: 1px solid #2a2a2a; border-radius: 6px; padding: 0.75rem; font-size: 0.83rem; color: #bbb; white-space: pre-wrap; max-height: 300px; overflow-y: auto; line-height: 1.5; }
+  #detail-text { background: #111; border: 1px solid #2a2a2a; border-radius: 6px; padding: 0.75rem; font-size: 0.83rem; color: #bbb; white-space: pre-wrap; max-height: 400px; overflow-y: auto; line-height: 1.5; }
   #detail-ts { font-size: 0.75rem; color: #555; margin-top: 0.75rem; }
 </style>
 </head>
 <body>
 <header>
   <h1>Browser Gallery</h1>
-  <input id="filter" type="text" placeholder="Filter by URL..." aria-label="Filter by URL">
+  <input id="filter" class="filter-input" type="text" placeholder="Filter by URL..." aria-label="Filter by URL">
+  <span class="date-label">From</span>
+  <input id="date-start" class="date-input" type="date" aria-label="Start date">
+  <span class="date-label">To</span>
+  <input id="date-end" class="date-input" type="date" aria-label="End date">
   <span id="count"></span>
 </header>
 <main>
@@ -310,7 +388,7 @@ GALLERY_HTML = """\
 </main>
 <div id="overlay" role="dialog" aria-modal="true" aria-label="Detail view">
   <div id="detail">
-    <button id="detail-close" aria-label="Close detail">×</button>
+    <button id="detail-close" aria-label="Close detail">&times;</button>
     <div id="detail-inner">
       <div id="detail-img-wrap" style="display:none">
         <img id="detail-img" alt="Screenshot">
@@ -352,9 +430,24 @@ GALLERY_HTML = """\
 
   function applyFilter() {
     var q = document.getElementById('filter').value.toLowerCase();
-    filtered = q
-      ? items.filter(function (it) { return it.url.toLowerCase().indexOf(q) !== -1; })
-      : items.slice();
+    var startVal = document.getElementById('date-start').value;
+    var endVal = document.getElementById('date-end').value;
+    var startMs = startVal ? new Date(startVal).getTime() : null;
+    // end date: include the full end day
+    var endMs = endVal ? new Date(endVal).getTime() + 86400000 - 1 : null;
+
+    filtered = items.filter(function (it) {
+      if (q && it.url.toLowerCase().indexOf(q) === -1) { return false; }
+      if (it.timestamp) {
+        var ts = new Date(it.timestamp).getTime();
+        if (startMs !== null && ts < startMs) { return false; }
+        if (endMs !== null && ts > endMs) { return false; }
+      } else {
+        // item has no timestamp — exclude if a date range is set
+        if (startMs !== null || endMs !== null) { return false; }
+      }
+      return true;
+    });
     renderGrid();
   }
 
@@ -493,6 +586,8 @@ GALLERY_HTML = """\
     if (e.key === 'Escape') { closeDetail(); }
   });
   document.getElementById('filter').addEventListener('input', applyFilter);
+  document.getElementById('date-start').addEventListener('change', applyFilter);
+  document.getElementById('date-end').addEventListener('change', applyFilter);
 
   fetchItems();
 })();
