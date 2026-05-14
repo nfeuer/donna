@@ -14,6 +14,10 @@ export default defineConfig({
         target: "http://localhost:8200",
         changeOrigin: true,
       },
+      "/calendar/": {
+        target: "http://localhost:8200",
+        changeOrigin: true,
+      },
     },
   },
 });

@@ -92,13 +92,13 @@ export default function CalendarPage() {
                 Donna
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setWeekDate(addDays(weekDate, -7))}>
+            <Button variant="ghost" size="sm" aria-label="Previous week" onClick={() => setWeekDate(addDays(weekDate, -7))}>
               <ChevronLeft size={16} />
             </Button>
             <span style={{ fontSize: "var(--text-body)", color: "var(--color-text)", fontWeight: 500, minWidth: 160, textAlign: "center" }}>
               {weekLabel}
             </span>
-            <Button variant="ghost" size="sm" onClick={() => setWeekDate(addDays(weekDate, 7))}>
+            <Button variant="ghost" size="sm" aria-label="Next week" onClick={() => setWeekDate(addDays(weekDate, 7))}>
               <ChevronRight size={16} />
             </Button>
             {!isCurrentWeek && (

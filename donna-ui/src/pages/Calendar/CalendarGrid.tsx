@@ -49,8 +49,10 @@ function getEventStyle(event: CalendarEvent): React.CSSProperties {
 
 function getDayIndex(isoString: string, weekStartDate: Date): number {
   const d = new Date(isoString);
+  const eventDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const weekDay = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate());
   const diff = Math.round(
-    (d.getTime() - weekStartDate.getTime()) / (1000 * 60 * 60 * 24),
+    (eventDay.getTime() - weekDay.getTime()) / (1000 * 60 * 60 * 24),
   );
   return Math.max(0, Math.min(6, diff));
 }
