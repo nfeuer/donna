@@ -77,6 +77,10 @@ async def _resolve_user_id(
             detail={"error": "ip_not_trusted", "step": "request_access"},
         )
 
+    if result.get("reason") == "internal_cidr":
+        default_uid = os.environ.get("DONNA_DEFAULT_USER_ID", "admin")
+        return default_uid
+
     bearer = _immich_bearer_from_request(request)
     if not bearer:
         raise HTTPException(
