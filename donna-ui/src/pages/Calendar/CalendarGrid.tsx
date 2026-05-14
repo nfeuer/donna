@@ -183,6 +183,7 @@ export function CalendarGrid({ events, loading, weekStart }: CalendarGridProps) 
                   className={cn(
                     styles.event,
                     ev.source === "google" ? styles.eventGoogle : styles.eventDonna,
+                    ev.status === "done" && styles.eventDone,
                   )}
                   style={getEventStyle(ev)}
                 >

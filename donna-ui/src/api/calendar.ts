@@ -9,6 +9,7 @@ export interface CalendarEvent {
   calendar_id?: string;
   priority?: number;
   domain?: string;
+  status?: string;
   all_day: boolean;
 }
 

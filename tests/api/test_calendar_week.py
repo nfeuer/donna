@@ -32,6 +32,7 @@ class FakeTask:
     priority: int
     domain: str
     donna_managed: bool
+    status: str = "scheduled"
 
 
 class TestWeekBounds:
@@ -93,7 +94,13 @@ class TestGetCalendarWeek:
             domain="work",
             donna_managed=True,
         )
-        mock_request.app.state.db.list_tasks.return_value = [donna_task]
+
+        from donna.tasks.db_models import TaskStatus
+        async def _list_tasks(user_id: str, status: TaskStatus) -> list:
+            if status == TaskStatus.SCHEDULED:
+                return [donna_task]
+            return []
+        mock_request.app.state.db.list_tasks.side_effect = _list_tasks
 
         result = await get_calendar_week(
             request=mock_request,
@@ -107,6 +114,7 @@ class TestGetCalendarWeek:
         assert result["events"][1]["source"] == "donna"
         assert result["events"][1]["title"] == "Review proposals"
         assert result["events"][1]["priority"] == 2
+        assert result["events"][1]["status"] == "scheduled"
 
     @pytest.mark.asyncio
     async def test_returns_donna_only_when_calendar_unavailable(
@@ -123,7 +131,13 @@ class TestGetCalendarWeek:
             domain="work",
             donna_managed=True,
         )
-        mock_request.app.state.db.list_tasks.return_value = [donna_task]
+
+        from donna.tasks.db_models import TaskStatus
+        async def _list_tasks(user_id: str, status: TaskStatus) -> list:
+            if status == TaskStatus.SCHEDULED:
+                return [donna_task]
+            return []
+        mock_request.app.state.db.list_tasks.side_effect = _list_tasks
 
         result = await get_calendar_week(
             request=mock_request,
@@ -150,7 +164,13 @@ class TestGetCalendarWeek:
             domain="personal",
             donna_managed=True,
         )
-        mock_request.app.state.db.list_tasks.return_value = [donna_task]
+
+        from donna.tasks.db_models import TaskStatus
+        async def _list_tasks(user_id: str, status: TaskStatus) -> list:
+            if status == TaskStatus.SCHEDULED:
+                return [donna_task]
+            return []
+        mock_request.app.state.db.list_tasks.side_effect = _list_tasks
 
         result = await get_calendar_week(
             request=mock_request,

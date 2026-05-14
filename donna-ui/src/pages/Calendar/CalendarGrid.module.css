@@ -167,6 +167,14 @@
   color: var(--color-accent);
 }
 
+.eventDone {
+  opacity: 0.45;
+}
+
+.eventDone .eventTitle {
+  text-decoration: line-through;
+}
+
 .skeleton {
   animation: pulse 1.5s ease-in-out infinite;
   background: var(--color-surface);

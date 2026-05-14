@@ -72,8 +72,10 @@ async def get_calendar_week(
         warnings.append("google_calendar_unavailable")
 
     db = request.app.state.db
-    all_scheduled = await db.list_tasks(user_id=user_id, status=TaskStatus.SCHEDULED)
-    for task in all_scheduled:
+    donna_tasks = []
+    for status in (TaskStatus.SCHEDULED, TaskStatus.DONE):
+        donna_tasks.extend(await db.list_tasks(user_id=user_id, status=status))
+    for task in donna_tasks:
         if not task.scheduled_start:
             continue
         try:
@@ -91,6 +93,7 @@ async def get_calendar_week(
                     "source": "donna",
                     "priority": task.priority,
                     "domain": task.domain,
+                    "status": task.status,
                     "all_day": False,
                 })
         except ValueError:
