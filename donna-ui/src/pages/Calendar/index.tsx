@@ -37,9 +37,9 @@ export default function CalendarPage() {
     setLoading(true);
     try {
       const resp = await fetchCalendarWeek(weekDate);
-      setEvents(resp.events);
-      setWeekStart(resp.week_start);
-      setWeekEnd(resp.week_end);
+      setEvents(resp.events ?? []);
+      setWeekStart(resp.week_start ?? "");
+      setWeekEnd(resp.week_end ?? "");
       setWarnings(resp.warnings ?? []);
     } catch {
       setEvents([]);
