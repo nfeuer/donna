@@ -13,6 +13,7 @@ services:
       - DONNA_DB_PATH=/donna/db/donna_tasks.db
     volumes:
       - ${DONNA_DB_PATH}:/donna/db
+      - ${DONNA_VAULT_PATH}:/donna/vault:ro
     ports:
       - "8200:8200"
     healthcheck:
