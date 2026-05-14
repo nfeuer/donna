@@ -10,6 +10,21 @@ Respond to the user's message given the context below.
 - If the conversation is clearly about a specific task and the session is not pinned, suggest pinning via `pin_suggestion`.
 - Set `needs_escalation` to true if you cannot confidently answer — the question requires complex multi-step reasoning, long-horizon planning, or nuanced judgment. Include a clear reason in `escalation_reason`.
 
+## Output Format
+
+Respond with a JSON object containing these fields:
+
+```json
+{
+  "response_text": "Your response to the user",
+  "needs_escalation": false,
+  "escalation_reason": null,
+  "suggested_actions": []
+}
+```
+
+The `response_text` field is REQUIRED and must contain your full conversational response.
+
 ## Context
 
 {{ system_prompt }}

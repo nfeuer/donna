@@ -128,13 +128,20 @@ class ConversationEngine:
         intent_ctx = await self._load_intent_context(intent, user_id)
 
         # Load and render prompt
-        system_template = self._load_system_prompt()
-        prompt = render_chat_prompt(
-            template=system_template,
+        system_prompt = self._load_system_prompt()
+        rendered_system = render_chat_prompt(
+            template=system_prompt,
             user_input=text,
             user_name="Nick",
             session_context=session_ctx,
             intent_context=intent_ctx,
+        )
+        respond_template = self._load_respond_template()
+        prompt = (
+            respond_template
+            .replace("{{ system_prompt }}", rendered_system)
+            .replace("{{ conversation_history }}", session_ctx)
+            .replace("{{ user_input }}", text)
         )
 
         # Call LLM for response
@@ -318,6 +325,17 @@ class ConversationEngine:
             tasks=tasks,
             schedule_summary=schedule_summary,
             open_task_count=open_task_count,
+        )
+
+    def _load_respond_template(self) -> str:
+        """Load the chat respond template."""
+        path = self._project_root / "prompts" / "chat" / "chat_respond.md"
+        if path.exists():
+            return path.read_text()
+        return (
+            "Respond to the user's message.\n\n"
+            "{{ system_prompt }}\n\n"
+            "## User Message\n\n{{ user_input }}"
         )
 
     def _load_system_prompt(self) -> str:
