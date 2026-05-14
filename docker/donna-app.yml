@@ -14,10 +14,11 @@ services:
     volumes:
       - ${DONNA_DB_PATH}:/donna/db
       - ${DONNA_VAULT_PATH}:/donna/vault:ro
+      - ${DONNA_DATA_PATH}/donna/config:/app/config
     ports:
       - "8200:8200"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8200/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8200/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
