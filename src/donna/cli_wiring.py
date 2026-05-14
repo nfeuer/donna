@@ -953,10 +953,10 @@ def _start_person_profile_cron(
         logger.warning("person_profile_cron_unavailable", reason=str(exc))
 
 
-def _try_build_calendar_client(config_dir: Path) -> Any | None:
-    """Attempt to construct a GoogleCalendarClient from config/calendar.yaml.
+async def _try_build_calendar_client(config_dir: Path) -> Any | None:
+    """Attempt to construct and authenticate a GoogleCalendarClient.
 
-    Non-fatal: returns None if config or credentials are absent.
+    Non-fatal: returns None if config, credentials, or auth fail.
     """
     calendar_yaml = config_dir / "calendar.yaml"
     if not calendar_yaml.exists():
@@ -976,7 +976,10 @@ def _try_build_calendar_client(config_dir: Path) -> Any | None:
                 secrets_exists=secrets_path.exists(),
             )
             return None
-        return GoogleCalendarClient(config=cal_cfg)
+        client = GoogleCalendarClient(config=cal_cfg)
+        await client.authenticate()
+        logger.info("calendar_client_authenticated")
+        return client
     except Exception as exc:
         logger.warning("calendar_client_unavailable", reason=str(exc))
         return None
