@@ -727,6 +727,7 @@ class DonnaBot(discord.Client):
             tool_registry=getattr(self, "_automation_tool_registry", None),
             capability_tool_lookup=getattr(self, "_automation_capability_lookup", None),
             capability_input_schema_lookup=getattr(self, "_automation_input_schema_lookup", None),
+            capability_default_alerts_lookup=getattr(self, "_automation_default_alerts_lookup", None),
         )
         try:
             automation_id = await creation.approve(view.draft, name=view.name)

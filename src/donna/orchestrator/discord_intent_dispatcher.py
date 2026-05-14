@@ -47,6 +47,7 @@ class DraftAutomation:
     active_cadence_cron: str | None
     skill_candidate: bool = False
     skill_candidate_reasoning: str | None = None
+    notification_channels: list[str] | None = None
 
 
 @dataclass
@@ -270,6 +271,7 @@ class DiscordIntentDispatcher:
             alert_conditions=result.alert_conditions,
             target_cadence_cron=target_cron,
             active_cadence_cron=active_cron,  # None when paused
+            notification_channels=result.notification_channels,
         )
         return DispatchResult(kind="automation_confirmation_needed", draft_automation=draft)
 
@@ -293,6 +295,7 @@ class DiscordIntentDispatcher:
             active_cadence_cron=active_cron,  # None when paused
             skill_candidate=verdict.skill_candidate,
             skill_candidate_reasoning=verdict.skill_candidate_reasoning,
+            notification_channels=verdict.notification_channels,
         )
         return DispatchResult(kind="automation_confirmation_needed", draft_automation=draft)
 

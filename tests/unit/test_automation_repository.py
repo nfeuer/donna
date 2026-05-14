@@ -62,7 +62,7 @@ async def _create(repo, *, name="Test Auto", status_override=None, next_run_at=N
         inputs={"url": "https://example.com"},
         trigger_type="on_schedule", schedule="0 12 * * *",
         alert_conditions={"all_of": []},
-        alert_channels=["discord"],
+        alert_channels=["discord_channel"],
         max_cost_per_run_usd=2.0,
         min_interval_seconds=300,
         created_via="dashboard",

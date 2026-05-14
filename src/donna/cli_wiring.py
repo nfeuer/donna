@@ -2406,6 +2406,21 @@ async def wire_discord(
                 )
             except Exception:
                 log.exception("automation_default_min_interval_load_failed")
+        # Wire default_alert_conditions lookup so AutomationCreationPath
+        # falls back to capability-level defaults when the LLM returns null.
+        from donna.capabilities.default_alerts_lookup import (
+            CapabilityDefaultAlertsLookup,
+        )
+
+        _caps_yaml = ctx.config_dir / "capabilities.yaml"
+        if _caps_yaml.exists():
+            _default_alerts = CapabilityDefaultAlertsLookup(_caps_yaml)
+
+            async def _async_default_alerts(name: str) -> dict | None:
+                return _default_alerts.get(name)
+
+            ctx.bot._automation_default_alerts_lookup = _async_default_alerts
+
         log.info("discord_intent_dispatcher_wired")
 
     # Slice 22 — wire the tool-gap ping poster onto the surfacer once

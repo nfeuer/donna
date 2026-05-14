@@ -21,6 +21,11 @@
     },
     "missing_fields": {"type": "array", "items": {"type": "string"}},
     "clarifying_question": {"type": ["string", "null"]},
-    "low_quality_signals": {"type": "array", "items": {"type": "string"}}
+    "low_quality_signals": {"type": "array", "items": {"type": "string"}},
+    "notification_channels": {
+      "type": ["array", "null"],
+      "items": {"enum": ["discord_dm", "sms", "email", "discord_channel"]},
+      "description": "User's preferred alert delivery channels extracted from phrases like 'text me', 'DM me', 'email me'. Null = default (discord_dm)."
+    }
   }
 }

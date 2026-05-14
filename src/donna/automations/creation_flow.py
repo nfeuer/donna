@@ -34,6 +34,7 @@ class MissingToolError(Exception):
 
 CapabilityToolLookup = Callable[[str], Awaitable[list[str]]]
 CapabilityInputSchemaLookup = Callable[[str], Awaitable[dict[str, Any]]]
+CapabilityDefaultAlertsLookup = Callable[[str], Awaitable[dict[str, Any] | None]]
 
 
 class AutomationCreationPath:
@@ -45,6 +46,7 @@ class AutomationCreationPath:
         tool_registry: Any | None = None,
         capability_tool_lookup: CapabilityToolLookup | None = None,
         capability_input_schema_lookup: CapabilityInputSchemaLookup | None = None,
+        capability_default_alerts_lookup: CapabilityDefaultAlertsLookup | None = None,
     ) -> None:
         self._repo = repository
         # Sourced from config/automations.yaml in production wiring; keeps
@@ -53,6 +55,7 @@ class AutomationCreationPath:
         self._tool_registry = tool_registry
         self._capability_tool_lookup = capability_tool_lookup
         self._capability_input_schema_lookup = capability_input_schema_lookup
+        self._capability_default_alerts_lookup = capability_default_alerts_lookup
 
     async def approve(self, draft: DraftAutomation, *, name: str) -> str | None:
         """Create the automation row. Returns its id or ``None`` on duplicate."""
@@ -97,6 +100,27 @@ class AutomationCreationPath:
             except Exception:
                 logger.exception("capability_input_schema_lookup_failed")
 
+        alert_conditions = draft.alert_conditions
+        if (
+            not alert_conditions
+            and self._capability_default_alerts_lookup is not None
+            and draft.capability_name
+        ):
+            try:
+                defaults = await self._capability_default_alerts_lookup(
+                    draft.capability_name
+                )
+                if defaults:
+                    alert_conditions = defaults
+            except Exception:
+                logger.exception("capability_default_alerts_lookup_failed")
+        if not alert_conditions:
+            alert_conditions = {}
+
+        alert_channels = getattr(draft, "notification_channels", None) or [
+            "discord_dm"
+        ]
+
         try:
             automation_id = await self._repo.create(
                 user_id=draft.user_id,
@@ -106,8 +130,8 @@ class AutomationCreationPath:
                 inputs=inputs,
                 trigger_type="on_schedule",
                 schedule=draft.schedule_cron,
-                alert_conditions=draft.alert_conditions or {},
-                alert_channels=["discord_dm"],
+                alert_conditions=alert_conditions,
+                alert_channels=alert_channels,
                 max_cost_per_run_usd=None,
                 min_interval_seconds=self._default_min_interval_seconds,
                 created_via="discord",

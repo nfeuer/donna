@@ -7,6 +7,10 @@ classify its intent and extract structured data.
 {% for cap in capabilities %}
 - **{{ cap.name }}**: {{ cap.description }}
   Input schema: {{ (cap.input_schema.get('properties', {}) if cap.input_schema else {}) | tojson }}
+{% if cap.default_output_shape and cap.default_output_shape.get('properties') %}
+  Output fields: {% for fname, fschema in cap.default_output_shape['properties'].items() %}{{ fname }} ({{ fschema.get('type', 'any') }}){% if not loop.last %}, {% endif %}{% endfor %}
+
+{% endif %}
 {% endfor %}
 
 ## Your job
@@ -22,13 +26,24 @@ Analyze the user's message and emit JSON matching this schema:
 - `extracted_inputs`: object of fields from the capability's input schema
 - `schedule`: {cron, human_readable} when intent is automation with a clear schedule
 - `deadline`: ISO-8601 datetime when intent is task with a deadline
-- `alert_conditions`: alert DSL describing when the automation should DM on skill output.
+- `alert_conditions`: alert DSL describing when the automation should notify on skill output.
+  Use the **Output fields** listed above for each capability to decide what to alert on.
+  For monitoring capabilities (product_watch, news_check, email_triage), the skill computes
+  a `triggers_alert` boolean — use `{"field": "triggers_alert", "op": "==", "value": true}`
+  as the default when the user wants alerts but doesn't specify a condition.
   - Terminal: `{"field": "<dotted.path>", "op": "<op>", "value": <any>}` where
     `op` is one of `==`, `!=`, `<`, `<=`, `>`, `>=`, `contains`, `exists`.
   - Composite: `{"all_of": [<node>, <node>, ...]}` or `{"any_of": [<node>, ...]}` — nodes may
     themselves be terminal or composite.
-  - Leave `null` when no alert is needed. Do NOT emit `{expression, channels}` — that
-    shape is ignored by the alert evaluator.
+  - Leave `null` only when intent_kind is `task`, `question`, or `chat`.
+    For `automation` intents, ALWAYS set alert_conditions — at minimum use
+    `{"field": "triggers_alert", "op": "==", "value": true}`.
+  - Do NOT emit `{expression, channels}` — that shape is ignored by the alert evaluator.
+- `notification_channels`: array of preferred delivery channels the user wants for alerts.
+  Extract from phrases like "text me" → `["sms"]`, "DM me" → `["discord_dm"]`,
+  "send me an email" → `["email"]`, "post in the channel" → `["discord_channel"]`.
+  Multiple channels are allowed (e.g. "DM me and text me" → `["discord_dm", "sms"]`).
+  Null when the user doesn't specify a preference (system default: discord_dm).
 - `missing_fields`: required input schema fields the user did not supply
 - `clarifying_question`: a single question asking the user for missing info
 - `low_quality_signals`: array of strings flagging ambiguity (e.g., "malformed_url", "ambiguous_date")

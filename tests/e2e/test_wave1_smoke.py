@@ -213,7 +213,7 @@ async def test_automation_tick_alerts(runtime) -> None:
         trigger_type="on_schedule",
         schedule="0 * * * *",
         alert_conditions={"all_of": [{"field": "ok", "op": "==", "value": True}]},
-        alert_channels=["tasks"],
+        alert_channels=["discord_channel"],
         max_cost_per_run_usd=1.0,
         min_interval_seconds=300,
         created_via="dashboard",

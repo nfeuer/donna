@@ -71,7 +71,7 @@ def _news_check_automation_values(
             "topics": ["AI safety", "alignment"],
         }),
         json.dumps({"all_of": [{"field": "triggers_alert", "op": "==", "value": True}]}),
-        json.dumps(["tasks"]),
+        json.dumps(["discord_channel"]),
         past,
         now.isoformat(),
         now.isoformat(),

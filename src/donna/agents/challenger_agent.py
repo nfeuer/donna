@@ -51,6 +51,7 @@ class ChallengerMatchResult:
     alert_conditions: dict[str, Any] | None = None  # {expression, channels}
     confidence: float = 0.0  # LLM self-assessed confidence 0..1
     low_quality_signals: list[str] = field(default_factory=list)
+    notification_channels: list[str] | None = None
 
 
 class ChallengerAgent:
@@ -352,6 +353,7 @@ class ChallengerAgent:
             alert_conditions=parse.get("alert_conditions"),
             confidence=confidence,
             low_quality_signals=list(parse.get("low_quality_signals") or []),
+            notification_channels=parse.get("notification_channels"),
         )
 
     async def execute(self, task: TaskRow, context: AgentContext) -> AgentResult:

@@ -107,7 +107,7 @@ async def _insert_email_triage_automation(
             name,
             json.dumps(inputs),
             json.dumps({"all_of": [{"field": "triggers_alert", "op": "==", "value": True}]}),
-            json.dumps(["tasks"]),
+            json.dumps(["discord_channel"]),
             past,
             now.isoformat(),
             now.isoformat(),

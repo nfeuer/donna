@@ -170,6 +170,9 @@ class FakeDonnaBot:
     async def send_to_thread(self, thread_id: int, content: str) -> None:
         self.sends.append(("thread", str(thread_id), content))
 
+    async def send_dm(self, discord_id: str, content: str) -> None:
+        self.sends.append(("dm", discord_id, content))
+
 
 @dataclass
 class Wave1Runtime:

@@ -32,6 +32,10 @@ capabilities:
         size_available: {type: boolean}
         triggers_alert: {type: boolean}
         title: {type: string}
+    default_alert_conditions:
+      field: triggers_alert
+      op: "=="
+      value: true
 
   - name: news_check
     description: |
@@ -65,6 +69,10 @@ capabilities:
         message: {type: ["string", "null"]}
         meta:
           type: object
+    default_alert_conditions:
+      field: triggers_alert
+      op: "=="
+      value: true
 
   - name: email_triage
     description: |
@@ -96,6 +104,10 @@ capabilities:
         message: {type: ["string", "null"]}
         meta:
           type: object
+    default_alert_conditions:
+      field: triggers_alert
+      op: "=="
+      value: true
 
   - name: generate_digest
     description: "Generate morning digest in Donna persona"

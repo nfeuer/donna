@@ -34,6 +34,7 @@ class NoveltyVerdict:
     skill_candidate: bool
     skill_candidate_reasoning: str
     clarifying_question: str | None
+    notification_channels: list[str] | None = None
 
 
 class ClaudeNoveltyJudge:
@@ -114,4 +115,5 @@ class ClaudeNoveltyJudge:
             skill_candidate=bool(parsed["skill_candidate"]),
             skill_candidate_reasoning=parsed["skill_candidate_reasoning"],
             clarifying_question=parsed.get("clarifying_question"),
+            notification_channels=parsed.get("notification_channels"),
         )

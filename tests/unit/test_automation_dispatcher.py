@@ -78,7 +78,7 @@ async def _seed_automation(db, *, alert_conditions=None, max_cost=None):
         inputs={"url": "https://cos.com/shirt"},
         trigger_type="on_schedule", schedule="0 12 * * *",
         alert_conditions=alert_conditions or {},
-        alert_channels=["discord"],
+        alert_channels=["discord_channel"],
         max_cost_per_run_usd=max_cost,
         min_interval_seconds=300,
         created_via="dashboard",
@@ -116,6 +116,9 @@ def _make_dispatcher(db, **overrides):
 
     notifier = overrides.pop("notifier", AsyncMock())
     notifier.dispatch = AsyncMock(return_value=True)
+    notifier.dispatch_dm = AsyncMock(return_value=True)
+    notifier.dispatch_sms = AsyncMock(return_value=True)
+    notifier.dispatch_email = AsyncMock(return_value=True)
 
     kwargs = dict(
         connection=db,
@@ -290,3 +293,88 @@ async def test_alert_not_sent_when_conditions_false(db):
     report = await dispatcher.dispatch(auto)
     assert report.alert_sent is False
     notifier.dispatch.assert_not_awaited()
+
+
+async def test_alert_dispatches_to_discord_dm(db):
+    auto_id, _ = await _seed_automation(
+        db,
+        alert_conditions={"field": "triggers_alert", "op": "==", "value": True},
+    )
+    await db.execute(
+        "UPDATE automation SET alert_channels = ? WHERE id = ?",
+        ('["discord_dm"]', auto_id),
+    )
+    await db.commit()
+    auto = await AutomationRepository(db).get(auto_id)
+
+    router = AsyncMock()
+    router.complete = AsyncMock(
+        return_value=(
+            {"triggers_alert": True, "price_usd": 450, "title": "Test"},
+            MagicMock(invocation_id="inv-1", cost_usd=0.01),
+        ),
+    )
+    dispatcher, _repo, *_, notifier = _make_dispatcher(db, router=router)
+    report = await dispatcher.dispatch(auto)
+
+    assert report.alert_sent is True
+    notifier.dispatch_dm.assert_awaited_once()
+    assert notifier.dispatch_dm.call_args.kwargs["notification_type"] == "automation_alert"
+
+
+async def test_alert_dispatches_to_sms(db, monkeypatch):
+    auto_id, _ = await _seed_automation(
+        db,
+        alert_conditions={"field": "triggers_alert", "op": "==", "value": True},
+    )
+    await db.execute(
+        "UPDATE automation SET alert_channels = ? WHERE id = ?",
+        ('["sms"]', auto_id),
+    )
+    await db.commit()
+    auto = await AutomationRepository(db).get(auto_id)
+
+    monkeypatch.setenv("DONNA_USER_PHONE", "+15551234567")
+
+    router = AsyncMock()
+    router.complete = AsyncMock(
+        return_value=(
+            {"triggers_alert": True, "price_usd": 450},
+            MagicMock(invocation_id="inv-1", cost_usd=0.01),
+        ),
+    )
+    dispatcher, _repo, *_, notifier = _make_dispatcher(db, router=router)
+    report = await dispatcher.dispatch(auto)
+
+    assert report.alert_sent is True
+    notifier.dispatch_sms.assert_awaited_once()
+    assert notifier.dispatch_sms.call_args.kwargs["to"] == "+15551234567"
+
+
+async def test_alert_dispatches_to_multiple_channels(db, monkeypatch):
+    auto_id, _ = await _seed_automation(
+        db,
+        alert_conditions={"field": "triggers_alert", "op": "==", "value": True},
+    )
+    await db.execute(
+        "UPDATE automation SET alert_channels = ? WHERE id = ?",
+        ('["discord_dm", "sms"]', auto_id),
+    )
+    await db.commit()
+    auto = await AutomationRepository(db).get(auto_id)
+
+    monkeypatch.setenv("DONNA_USER_PHONE", "+15551234567")
+
+    router = AsyncMock()
+    router.complete = AsyncMock(
+        return_value=(
+            {"triggers_alert": True},
+            MagicMock(invocation_id="inv-1", cost_usd=0.01),
+        ),
+    )
+    dispatcher, _repo, *_, notifier = _make_dispatcher(db, router=router)
+    report = await dispatcher.dispatch(auto)
+
+    assert report.alert_sent is True
+    notifier.dispatch_dm.assert_awaited_once()
+    notifier.dispatch_sms.assert_awaited_once()

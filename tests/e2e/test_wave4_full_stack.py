@@ -49,7 +49,7 @@ async def _seed_automation(
             json.dumps(inputs),
             schedule,
             json.dumps({"all_of": [{"field": "triggers_alert", "op": "==", "value": True}]}),
-            json.dumps(["tasks"]),
+            json.dumps(["discord_channel"]),
             past,
             now.isoformat(),
             now.isoformat(),

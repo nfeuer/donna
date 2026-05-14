@@ -7,6 +7,7 @@ global BudgetGuard, alert evaluation + dispatch, consecutive-failure pause.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -249,12 +250,11 @@ class AutomationDispatcher:
                 alert_content = self._render_alert_content(automation, output)
                 try:
                     if self._notifier is not None:
-                        await self._notifier.dispatch(
-                            notification_type=NOTIF_AUTOMATION_ALERT,
-                            content=alert_content,
-                            channel=CHANNEL_TASKS,
-                            priority=3,
-                        )
+                        channels = automation.alert_channels or ["discord_dm"]
+                        for ch in channels:
+                            await self._dispatch_alert_to_channel(
+                                ch, automation, alert_content,
+                            )
                         alert_sent = True
                 except Exception:
                     logger.exception(
@@ -466,6 +466,58 @@ class AutomationDispatcher:
             f"Automation '{automation.name}' alert:\n"
             f"Output: {json.dumps(output, indent=2)}"
         )
+
+    async def _dispatch_alert_to_channel(
+        self,
+        channel: str,
+        automation: AutomationRow,
+        content: str,
+    ) -> None:
+        if channel == "discord_dm":
+            await self._notifier.dispatch_dm(
+                discord_id=automation.user_id,
+                notification_type=NOTIF_AUTOMATION_ALERT,
+                content=content,
+                priority=3,
+            )
+        elif channel == "sms":
+            phone = os.environ.get("DONNA_USER_PHONE", "")
+            if phone:
+                await self._notifier.dispatch_sms(
+                    body=content, to=phone, priority=3,
+                )
+            else:
+                logger.warning(
+                    "automation_alert_sms_no_phone",
+                    automation_id=automation.id,
+                )
+        elif channel == "email":
+            email = os.environ.get("DONNA_USER_EMAIL", "")
+            if email:
+                await self._notifier.dispatch_email(
+                    to=email,
+                    subject=f"Donna Alert: {automation.name}",
+                    body=content,
+                    priority=3,
+                )
+            else:
+                logger.warning(
+                    "automation_alert_email_no_address",
+                    automation_id=automation.id,
+                )
+        elif channel == "discord_channel":
+            await self._notifier.dispatch(
+                notification_type=NOTIF_AUTOMATION_ALERT,
+                content=content,
+                channel=CHANNEL_TASKS,
+                priority=3,
+            )
+        else:
+            logger.warning(
+                "automation_alert_unknown_channel",
+                automation_id=automation.id,
+                channel=channel,
+            )
 
     @staticmethod
     def _classify_outcome(run_status: str, error: str | None) -> str:
