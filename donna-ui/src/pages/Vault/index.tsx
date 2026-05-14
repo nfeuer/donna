@@ -163,8 +163,8 @@ export default function VaultPage() {
 
         <TabsContent value="notes">
           <div className={styles.filterRow}>
-            <Select value={folder} onValueChange={setFolder} placeholder="All folders">
-              <SelectItem value="">All folders</SelectItem>
+            <Select value={folder || "__all__"} onValueChange={(v) => setFolder(v === "__all__" ? "" : v)} placeholder="All folders">
+              <SelectItem value="__all__">All folders</SelectItem>
               {folders.map((f) => (
                 <SelectItem key={f} value={f}>{f}</SelectItem>
               ))}
