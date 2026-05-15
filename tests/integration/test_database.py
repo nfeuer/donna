@@ -19,6 +19,7 @@ from donna.tasks.db_models import (
     TaskDomain,
     TaskStatus,
 )
+from donna.tasks.events import TaskEventBus
 from donna.tasks.state_machine import InvalidTransitionError
 
 pytestmark = pytest.mark.asyncio
@@ -356,3 +357,66 @@ class TestAlembicMigrations:
 
         assert "tasks" not in tables
         assert "invocation_log" not in tables
+
+
+class TestUpdateTaskEvent:
+    """Verify that update_task emits task_updated events via TaskEventBus."""
+
+    async def test_emits_task_updated_with_changed_fields(self, db: Database) -> None:
+        bus = TaskEventBus()
+        db.set_event_bus(bus)
+
+        received: list[dict] = []
+
+        async def handler(task, **ctx):
+            received.append({"task": task, **ctx})
+
+        bus.subscribe("task_updated", handler)
+
+        task = await db.create_task(user_id="nick", title="Event test", priority=3)
+        await db.update_task(task.id, priority=5, source="api")
+
+        assert len(received) == 1
+        evt = received[0]
+        assert evt["task"].priority == 5
+        assert evt["source"] == "api"
+        assert "priority" in evt["changed_fields"]
+        old_val, new_val = evt["changed_fields"]["priority"]
+        assert old_val == 3
+        assert new_val == 5
+        assert evt["previous"].priority == 3
+
+    async def test_no_source_emits_event_with_none(self, db: Database) -> None:
+        bus = TaskEventBus()
+        db.set_event_bus(bus)
+
+        received: list[dict] = []
+
+        async def handler(task, **ctx):
+            received.append({"task": task, **ctx})
+
+        bus.subscribe("task_updated", handler)
+
+        task = await db.create_task(user_id="nick", title="No source test")
+        await db.update_task(task.id, title="Renamed")
+
+        assert len(received) == 1
+        assert received[0]["source"] is None
+
+    async def test_no_change_no_event(self, db: Database) -> None:
+        bus = TaskEventBus()
+        db.set_event_bus(bus)
+
+        received: list[dict] = []
+
+        async def handler(task, **ctx):
+            received.append({"task": task, **ctx})
+
+        bus.subscribe("task_updated", handler)
+
+        task = await db.create_task(user_id="nick", title="Same value", priority=2)
+        await db.update_task(task.id, priority=2)
+
+        # Event is still emitted, but changed_fields should be empty
+        assert len(received) == 1
+        assert received[0]["changed_fields"] == {}
