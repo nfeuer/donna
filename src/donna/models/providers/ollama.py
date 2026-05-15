@@ -49,6 +49,8 @@ class OllamaProvider:
         max_tokens: int = 1024,
         json_mode: bool = True,
         num_ctx: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Send a prompt and return parsed output with metadata.
 

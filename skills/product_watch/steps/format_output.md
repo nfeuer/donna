@@ -14,12 +14,15 @@ Extracted info (from whichever tier succeeded):
 {% elif state.try_vision_extract is defined and state.try_vision_extract.success %}
 - Tier: 2 (local vision extraction)
 - Extraction: state.try_vision_extract
+{% elif state.claude_with_triage is defined and state.claude_with_triage.success %}
+- Tier: 3 (Claude with local triage)
+- Extraction: state.claude_with_triage
 {% else %}
-- Tier: 3 (Claude fallback)
+- Tier: 4 (Claude direct fallback)
 - Extraction: state.claude_fallback
 {% endif %}
 
-{% set extraction = state.try_local_extract if (state.try_local_extract.success is defined and state.try_local_extract.success) else (state.try_vision_extract if (state.try_vision_extract is defined and state.try_vision_extract.success) else state.claude_fallback) %}
+{% set extraction = state.try_local_extract if (state.try_local_extract.success is defined and state.try_local_extract.success) else (state.try_vision_extract if (state.try_vision_extract is defined and state.try_vision_extract.success) else (state.claude_with_triage if (state.claude_with_triage is defined and state.claude_with_triage.success) else state.claude_fallback)) %}
 
 Compute the final output:
 - ok: true
@@ -33,7 +36,6 @@ Compute the final output:
                   (inputs.max_price_usd is null OR price_usd <= inputs.max_price_usd)).
                   Else false.
 - title: {{ extraction.title }}
-- tier: "tier_1_text" or "tier_2_vision" or "tier_3_claude" (whichever succeeded)
 
 Return ONLY the JSON object.
 

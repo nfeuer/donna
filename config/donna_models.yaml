@@ -138,10 +138,10 @@ routing:
   # model alias prefix when a step declares model: or gpu_model:
   skill_step__local_parser:
     model: local_parser
-    fallback: parser
+    fallback: null
   skill_step__local_vision:
     model: local_vision
-    fallback: parser
+    fallback: null
   skill_validation:
     model: parser
     fallback: reasoner

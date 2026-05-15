@@ -634,24 +634,90 @@ class SkillExecutor:
             prefix = self._task_type_prefix or "skill_step"
         task_type = f"{prefix}::{skill.capability_name}::{step_name}"
 
-        if self._run_sink is not None and self._config is not None:
-            timeout_s = getattr(self._config, "validation_per_step_timeout_s", 60)
-            output, meta = await asyncio.wait_for(
-                self._router.complete(
-                    prompt=rendered,
-                    task_type=task_type,
-                    user_id=user_id,
-                ),
-                timeout=timeout_s,
-            )
-        else:
+        step_tools = step.get("tools", [])
+        tool_definitions = None
+        if step_tools and step.get("kind") == "llm":
+            from donna.skills.tool_schemas import resolve_tool_definitions
+            tool_definitions = resolve_tool_definitions(step_tools)
+
+        output, meta, total_cost = await self._complete_with_tool_loop(
+            rendered, task_type, user_id, step_tools, tool_definitions,
+        )
+
+        inv_id = getattr(meta, "invocation_id", None)
+        return output, inv_id, total_cost
+
+    async def _complete_with_tool_loop(
+        self,
+        prompt: str,
+        task_type: str,
+        user_id: str,
+        tool_names: list[str],
+        tool_definitions: list[dict[str, Any]] | None,
+        max_rounds: int = 5,
+    ) -> tuple[Any, Any, float]:
+        """Call the router, handling tool_use loops when tools are provided."""
+        total_cost = 0.0
+        last_meta: Any = None
+
+        if not tool_definitions:
+            if self._run_sink is not None and self._config is not None:
+                timeout_s = getattr(self._config, "validation_per_step_timeout_s", 60)
+                output, meta = await asyncio.wait_for(
+                    self._router.complete(prompt=prompt, task_type=task_type, user_id=user_id),
+                    timeout=timeout_s,
+                )
+            else:
+                output, meta = await self._router.complete(
+                    prompt=prompt, task_type=task_type, user_id=user_id,
+                )
+            return output, meta, getattr(meta, "cost_usd", 0.0)
+
+        messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+
+        for _ in range(max_rounds):
             output, meta = await self._router.complete(
-                prompt=rendered,
+                prompt=prompt,
                 task_type=task_type,
                 user_id=user_id,
+                tools=tool_definitions,
+                messages=messages,
             )
+            total_cost += getattr(meta, "cost_usd", 0.0)
+            last_meta = meta
 
-        return output, getattr(meta, "invocation_id", None), getattr(meta, "cost_usd", 0.0)
+            if not isinstance(output, dict) or "_tool_use" not in output:
+                return output, last_meta, total_cost
+
+            tool_calls = output["_tool_use"]
+            raw_content = output.get("_content", [])
+            messages.append({"role": "assistant", "content": raw_content})
+
+            for call in tool_calls:
+                try:
+                    result = await self._tool_registry.dispatch(
+                        call["name"], call["input"], tool_names,
+                    )
+                    messages.append({
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": call["id"],
+                            "content": json.dumps(result),
+                        }],
+                    })
+                except Exception as exc:
+                    messages.append({
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": call["id"],
+                            "content": f"Error: {exc}",
+                            "is_error": True,
+                        }],
+                    })
+
+        raise RuntimeError(f"tool_use loop exceeded {max_rounds} rounds")
 
     async def _run_tool_invocations(
         self, invocations: list[dict[str, Any]], state: StateObject,
