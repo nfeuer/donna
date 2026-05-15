@@ -432,16 +432,18 @@ class DonnaBot(discord.Client):
             return
 
         # Untracked thread under #donna-tasks (e.g. old overdue thread after
-        # restart).  Don't route through the intent dispatcher — it would
-        # create garbage tasks or try to nest threads.  Treat any reply here
-        # as a status update on the most recent active task.
+        # restart).  Done intents are already handled by the check above
+        # (line 430), so only non-done messages reach here.
         in_untracked_thread = (
             parent_id == self._tasks_channel_id
             and message.channel.id != self._tasks_channel_id
         )
         if in_untracked_thread:
-            log.info("untracked_thread_reply", raw_text=raw_text[:60])
-            await self._handle_done_intent(message, user_id, log)
+            log.info("untracked_thread_non_done_reply", raw_text=raw_text[:60])
+            await message.reply(
+                "I see your reply but I'm not sure what you'd like me to do. "
+                "Try **done** to mark a task complete."
+            )
             return
 
         # Wave 3: if the intent dispatcher is wired, route the message through
