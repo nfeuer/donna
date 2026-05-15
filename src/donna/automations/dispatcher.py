@@ -283,16 +283,16 @@ class AutomationDispatcher:
 
         run_succeeded = run_status == "succeeded"
         next_run_at = self._compute_next_run(automation, now)
-        await self._repo.advance_schedule(
+        advance_kwargs: dict[str, Any] = dict(
             automation_id=automation.id, last_run_at=now,
             next_run_at=next_run_at,
             increment_run_count=True,
             increment_failure_count=not run_succeeded,
         )
         if run_succeeded:
-            await self._repo.update_fields(
-                automation.id, failure_count=0, status="active",
-            )
+            advance_kwargs["status_override"] = "active"
+            advance_kwargs["failure_count_override"] = 0
+        await self._repo.advance_schedule(**advance_kwargs)
 
         if not run_succeeded:
             await self._notify_debug(
