@@ -52,7 +52,7 @@ class CorrectionSubscriber:
 
     LEARNABLE_FIELDS = frozenset({
         "priority", "domain", "title", "description",
-        "scheduled_start", "due_date", "effort_minutes", "tags",
+        "scheduled_start", "deadline", "estimated_duration", "tags",
     })
 
     def __init__(self, db: Database) -> None:
@@ -81,7 +81,7 @@ Pattern matches existing codebase conventions (`PreferenceRuleExtractor`, `Prefe
 ### 3. Field Allowlist
 
 **Learnable fields** (user overriding Donna's judgment):
-- `priority`, `domain`, `title`, `description`, `scheduled_start`, `due_date`, `effort_minutes`, `tags`
+- `priority`, `domain`, `title`, `description`, `scheduled_start`, `deadline`, `estimated_duration`, `tags`
 
 **Excluded fields** (status transitions, internal bookkeeping):
 - `status`, `completed_at`, `agent_status`, `agent_output`, `notes`, `dependencies`, `inputs_json`, `matched_skill`, `reschedule_count`
