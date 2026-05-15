@@ -71,6 +71,10 @@ class OllamaProvider:
             json.JSONDecodeError: If json_mode=True and the response is not valid JSON.
             aiohttp.ClientError: On connection or HTTP-level failures.
         """
+        if tools:
+            raise NotImplementedError("Ollama does not support tool_use")
+        if messages:
+            raise NotImplementedError("Ollama does not support multi-turn messages")
         session = self._get_session()
         start = time.monotonic()
 
