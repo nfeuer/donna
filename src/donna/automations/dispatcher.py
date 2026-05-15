@@ -22,6 +22,7 @@ from donna.automations.repository import AutomationRepository
 from donna.config import SkillSystemConfig
 from donna.cost.budget import BudgetPausedError
 from donna.notifications.service import (
+    CHANNEL_DEBUG,
     CHANNEL_TASKS,
     NOTIF_AUTOMATION_ALERT,
     NOTIF_AUTOMATION_FAILURE,
@@ -85,6 +86,9 @@ class AutomationDispatcher:
                 increment_run_count=False, increment_failure_count=False,
             )
             logger.info("automation_skipped_budget", automation_id=automation.id)
+            await self._notify_debug(
+                f"Automation '{automation.name}' skipped: daily budget paused"
+            )
             return DispatchReport(
                 automation_id=automation.id, run_id=None,
                 outcome="skipped_budget", alert_sent=False,
@@ -155,6 +159,10 @@ class AutomationDispatcher:
                     automation_id=automation.id,
                     missing_tools=missing,
                 )
+                await self._notify_debug(
+                    f"Automation '{automation.name}' blocked: "
+                    f"missing tools: {', '.join(missing)}"
+                )
                 return DispatchReport(
                     automation_id=automation.id,
                     run_id=None,
@@ -216,6 +224,9 @@ class AutomationDispatcher:
                 automation_id=automation.id, last_run_at=now,
                 next_run_at=next_run_at,
                 increment_run_count=False, increment_failure_count=False,
+            )
+            await self._notify_debug(
+                f"Automation '{automation.name}' skipped mid-run: daily budget paused"
             )
             return DispatchReport(
                 automation_id=automation.id, run_id=run_id,
@@ -279,9 +290,14 @@ class AutomationDispatcher:
             increment_failure_count=not run_succeeded,
         )
         if run_succeeded:
-            await self._repo.reset_failure_count(automation.id)
+            await self._repo.update_fields(
+                automation.id, failure_count=0, status="active",
+            )
 
         if not run_succeeded:
+            await self._notify_debug(
+                f"Automation '{automation.name}' run failed: {error or 'unknown'}"
+            )
             updated = await self._repo.get(automation.id)
             if (
                 updated is not None
@@ -297,7 +313,7 @@ class AutomationDispatcher:
                     if self._notifier is not None:
                         await self._notifier.dispatch(
                             notification_type=NOTIF_AUTOMATION_FAILURE,
-                            content=pause_msg, channel=CHANNEL_TASKS, priority=4,
+                            content=pause_msg, channel=CHANNEL_DEBUG, priority=4,
                         )
                 except Exception:
                     logger.exception(
@@ -505,7 +521,7 @@ class AutomationDispatcher:
                     "automation_alert_email_no_address",
                     automation_id=automation.id,
                 )
-        elif channel == "discord_channel":
+        elif channel in ("discord_channel", "discord"):
             await self._notifier.dispatch(
                 notification_type=NOTIF_AUTOMATION_ALERT,
                 content=content,
@@ -518,6 +534,18 @@ class AutomationDispatcher:
                 automation_id=automation.id,
                 channel=channel,
             )
+
+    async def _notify_debug(self, content: str) -> None:
+        try:
+            if self._notifier is not None:
+                await self._notifier.dispatch(
+                    notification_type=NOTIF_AUTOMATION_FAILURE,
+                    content=content,
+                    channel=CHANNEL_DEBUG,
+                    priority=3,
+                )
+        except Exception:
+            logger.exception("automation_debug_notification_failed")
 
     @staticmethod
     def _classify_outcome(run_status: str, error: str | None) -> str:

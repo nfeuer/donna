@@ -1092,6 +1092,10 @@ class StartupContext:
     event_bus: Any | None = None
     # Timezone for all cron/prompt scheduling — loaded from calendar.yaml.
     tz: zoneinfo.ZoneInfo | None = None
+    # Calendar client for event lifecycle (create/update/delete).
+    # None when credentials are missing or authentication fails.
+    calendar_client: Any | None = None
+    calendar_id: str = "primary"
     # Shared asyncio task list — every helper that spawns a background
     # loop appends to this. `_run_orchestrator` awaits it.
     tasks: list[asyncio.Task[Any]] = field(default_factory=list)
@@ -2592,7 +2596,11 @@ async def wire_discord(
 
         discord_config = load_discord_config(ctx.config_dir)
         if discord_config.commands.enabled:
-            register_commands(bot, ctx.db, ctx.user_id)
+            register_commands(
+                bot, ctx.db, ctx.user_id,
+                calendar_client=ctx.calendar_client,
+                calendar_id=ctx.calendar_id,
+            )
             # Slice 20 — register `/donna_submit` for the chat-mode
             # fallback path. Skipped silently when the bot is unavailable
             # or when manual escalation hasn't been wired (single-user

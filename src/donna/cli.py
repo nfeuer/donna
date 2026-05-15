@@ -252,6 +252,9 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     personal = cal_cfg.calendars.get("personal")
     calendar_id = personal.calendar_id if personal else "primary"
 
+    ctx.calendar_client = calendar_client
+    ctx.calendar_id = calendar_id
+
     auto_scheduler = AutoScheduler(
         scheduler=task_scheduler,
         db=ctx.db,

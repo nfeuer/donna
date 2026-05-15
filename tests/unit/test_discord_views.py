@@ -122,13 +122,15 @@ class TestOverdueNudgeView:
     @pytest.mark.asyncio
     async def test_cancel_updates_status(self) -> None:
         db = AsyncMock()
-        db.update_task = AsyncMock()
+        task = _make_task_row(calendar_event_id=None)
+        db.get_task = AsyncMock(return_value=task)
+        db.transition_task_state = AsyncMock()
         view = OverdueNudgeView(task_id="task-abc-123", db=db)
         interaction = _make_interaction()
 
         await view.cancel.callback(interaction)
 
-        db.update_task.assert_called_once()
+        db.transition_task_state.assert_called_once()
         interaction.response.send_message.assert_called_once()
 
 
