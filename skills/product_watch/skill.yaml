@@ -61,13 +61,14 @@ steps:
     output_schema: schemas/extract_product_info_v1.json
     model: parser
     condition: "state.triage_for_claude.success and not (state.try_local_extract.success or state.try_vision_extract.success)"
+    on_failure: continue
 
   - name: claude_fallback
     kind: llm
     prompt: steps/extract_via_claude.md
     output_schema: schemas/extract_product_info_v1.json
     model: parser
-    condition: "not (state.try_local_extract.success or state.try_vision_extract.success or state.triage_for_claude.success)"
+    condition: "not (state.try_local_extract.success or state.try_vision_extract.success or state.claude_with_triage.success)"
 
   - name: format_output
     kind: llm
