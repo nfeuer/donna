@@ -239,7 +239,10 @@ class TestHandleReplyReschedule:
         detector, db, _service, _bot = _make_detector()
 
         task_mock = _task(task_id="t1", status="in_progress")
-        refreshed = _task(task_id="t1", status="scheduled", scheduled_start="2026-05-14T10:00:00+00:00")
+        refreshed = _task(
+            task_id="t1", status="scheduled",
+            scheduled_start="2026-05-14T10:00:00+00:00",
+        )
         db.get_task = AsyncMock(side_effect=[task_mock, refreshed])
         db.transition_task_state = AsyncMock()
         db.update_task = AsyncMock()

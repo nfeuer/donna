@@ -2458,7 +2458,7 @@ async def wire_discord(
         if _caps_yaml.exists():
             _default_alerts = CapabilityDefaultAlertsLookup(_caps_yaml)
 
-            async def _async_default_alerts(name: str) -> dict | None:
+            async def _async_default_alerts(name: str) -> dict[str, Any] | None:
                 return _default_alerts.get(name)
 
             ctx.bot._automation_default_alerts_lookup = _async_default_alerts

@@ -95,7 +95,9 @@ class TestHandleMessage:
         assert isinstance(resp, ChatResponse)
         assert resp.text == "Hey there!"
 
-    async def test_reuses_active_session(self, engine: ConversationEngine, mock_db: AsyncMock) -> None:
+    async def test_reuses_active_session(
+        self, engine: ConversationEngine, mock_db: AsyncMock,
+    ) -> None:
         mock_db.get_active_chat_session.return_value = MagicMock(
             id="existing-sess", user_id="nick", channel="discord",
             status="active", message_count=3, pinned_task_id=None,
@@ -108,7 +110,9 @@ class TestHandleMessage:
         mock_db.create_chat_session.assert_not_called()
         assert resp.text == "Hey there!"
 
-    async def test_escalation_detected(self, engine: ConversationEngine, mock_router: AsyncMock) -> None:
+    async def test_escalation_detected(
+        self, engine: ConversationEngine, mock_router: AsyncMock,
+    ) -> None:
         mock_router.complete.side_effect = [
             (
                 {

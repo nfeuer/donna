@@ -144,7 +144,7 @@ class DonnaBot(discord.Client):
             cursor = await conn.execute(
                 "SELECT discord_thread_id, task_id FROM overdue_thread_map"
             )
-            rows = await cursor.fetchall()
+            rows = list(await cursor.fetchall())
             for row in rows:
                 self.overdue_threads[row[0]] = row[1]
             logger.info("overdue_threads_restored", count=len(rows))
@@ -788,7 +788,9 @@ class DonnaBot(discord.Client):
             tool_registry=getattr(self, "_automation_tool_registry", None),
             capability_tool_lookup=getattr(self, "_automation_capability_lookup", None),
             capability_input_schema_lookup=getattr(self, "_automation_input_schema_lookup", None),
-            capability_default_alerts_lookup=getattr(self, "_automation_default_alerts_lookup", None),
+            capability_default_alerts_lookup=getattr(
+                self, "_automation_default_alerts_lookup", None,
+            ),
         )
         try:
             automation_id = await creation.approve(view.draft, name=view.name)
@@ -1199,9 +1201,7 @@ def _detect_done_intent(text: str) -> bool:
         return True
     if any(lowered.startswith(kw) for kw in ("mark done", "mark it done")):
         return True
-    if _DONE_RE.match(lowered):
-        return True
-    return False
+    return bool(_DONE_RE.match(lowered))
 
 
 # ------------------------------------------------------------------

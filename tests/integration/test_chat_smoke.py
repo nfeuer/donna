@@ -58,7 +58,9 @@ def mock_router() -> AsyncMock:
 
 
 @pytest.mark.asyncio
-async def test_full_chat_flow(connected_db: Database, mock_router: AsyncMock, tmp_path: Path) -> None:
+async def test_full_chat_flow(
+    connected_db: Database, mock_router: AsyncMock, tmp_path: Path,
+) -> None:
     """End-to-end: send a message, get a response, verify session was created."""
     config = ChatConfig()
     engine = ConversationEngine(
