@@ -47,48 +47,44 @@ class AnthropicProvider:
         model: str,
         max_tokens: int = 1024,
         num_ctx: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Send a prompt and return parsed JSON output with metadata.
 
         Args:
-            prompt: The fully-rendered prompt text.
+            prompt: The fully-rendered prompt text (ignored when messages is set).
             model: Anthropic model ID (e.g. "claude-sonnet-4-20250514").
             max_tokens: Maximum output tokens.
             num_ctx: Accepted for Protocol uniformity; ignored by Anthropic.
+            tools: Anthropic-format tool definitions for tool_use.
+            messages: Full messages list (overrides prompt when set).
 
         Returns:
             Tuple of (parsed JSON dict, CompletionMetadata).
+            When the model returns tool_use blocks, the dict contains a
+            ``_tool_use`` key with the list of tool call dicts.
 
         Raises:
             json.JSONDecodeError: If the response is not valid JSON.
             anthropic.APIError: On API-level failures.
         """
-        # num_ctx is Ollama-only; accepted for Protocol uniformity.
         start = time.monotonic()
 
-        response = await self._client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}],
-        )
+        msgs = messages or [{"role": "user", "content": prompt}]
+        api_kwargs: dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": msgs,
+        }
+        if tools:
+            api_kwargs["tools"] = tools
+
+        response = await self._client.messages.create(**api_kwargs)
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
         tokens_in = response.usage.input_tokens
         tokens_out = response.usage.output_tokens
-
-        first_block = response.content[0]
-        # The first block is a TextBlock for non-tool responses; narrow the
-        # union so mypy accepts `.text`. If the API ever returns a non-text
-        # block first, .text access would have raised before — preserve that
-        # crash behavior via assert.
-        assert isinstance(first_block, anthropic.types.TextBlock), (
-            f"expected TextBlock, got {type(first_block).__name__}"
-        )
-        raw_text = first_block.text
-        parsed = parse_json_response(raw_text)
-
-        # stop_reason == "max_tokens" means the response was truncated by the
-        # caller-supplied max_tokens cap (used for extension-budget enforcement).
         token_limited = response.stop_reason == "max_tokens"
 
         metadata = CompletionMetadata(
@@ -108,5 +104,20 @@ class AnthropicProvider:
             tokens_out=tokens_out,
             cost_usd=metadata.cost_usd,
         )
+
+        if response.stop_reason == "tool_use":
+            tool_calls = [
+                {"id": b.id, "name": b.name, "input": b.input}
+                for b in response.content
+                if isinstance(b, anthropic.types.ToolUseBlock)
+            ]
+            return {"_tool_use": tool_calls, "_content": response.content}, metadata
+
+        text_block = next(
+            (b for b in response.content if isinstance(b, anthropic.types.TextBlock)),
+            None,
+        )
+        raw_text = text_block.text if text_block else ""
+        parsed = parse_json_response(raw_text)
 
         return parsed, metadata

@@ -233,6 +233,8 @@ class ModelRouter:
         originating_entity: tuple[str, str] | None = None,
         target_paths: dict[str, str] | None = None,
         base_sha: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Route a completion call through the configured provider.
 
@@ -469,6 +471,10 @@ class ModelRouter:
         call_kwargs: dict[str, Any] = {"num_ctx": num_ctx_to_send}
         if _max_tokens_override is not None:
             call_kwargs["max_tokens"] = _max_tokens_override
+        if tools is not None:
+            call_kwargs["tools"] = tools
+        if messages is not None:
+            call_kwargs["messages"] = messages
 
         result, metadata = await resilient_call(
             provider.complete,

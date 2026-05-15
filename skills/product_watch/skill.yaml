@@ -1,10 +1,12 @@
 capability_name: product_watch
-version: 2
+version: 3
 description: |
   Monitor a product URL for price and availability using a multi-tier
-  extraction pipeline. Tier 1: Playwright text → local 32B. Tier 2:
-  Playwright screenshot → local 7B vision. Tier 3: Claude tool_use
-  fetches URL directly. Each tier cascades on failure.
+  extraction pipeline. Tier 1: Playwright text → local 32B (truncated
+  to fit context). Tier 2: Playwright screenshot → local 7B vision.
+  Tier 3: local LLM triages page content into compact snippets, then
+  Claude extracts from those snippets. Tier 4: Claude fetches URL
+  directly (last resort). Each tier cascades on failure.
 
 inputs:
   schema_ref: capabilities/product_watch/input_schema.json
@@ -45,13 +47,28 @@ steps:
     condition: "not state.try_local_extract.success"
     on_failure: continue
 
+  - name: triage_for_claude
+    kind: llm
+    prompt: steps/triage_for_claude.md
+    output_schema: schemas/triage_output_v1.json
+    model: local_parser
+    condition: "not (state.try_local_extract.success or state.try_vision_extract.success)"
+    on_failure: continue
+
+  - name: claude_with_triage
+    kind: llm
+    prompt: steps/extract_with_triage.md
+    output_schema: schemas/extract_product_info_v1.json
+    model: parser
+    condition: "state.triage_for_claude.success and not (state.try_local_extract.success or state.try_vision_extract.success)"
+    on_failure: continue
+
   - name: claude_fallback
     kind: llm
     prompt: steps/extract_via_claude.md
     output_schema: schemas/extract_product_info_v1.json
     model: parser
-    tools: [web_fetch]
-    condition: "not (state.try_local_extract.success or state.try_vision_extract.success)"
+    condition: "not (state.try_local_extract.success or state.try_vision_extract.success or state.claude_with_triage.success)"
 
   - name: format_output
     kind: llm

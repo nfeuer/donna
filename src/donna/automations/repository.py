@@ -195,21 +195,34 @@ class AutomationRepository:
         next_run_at: datetime | None,
         increment_run_count: bool,
         increment_failure_count: bool,
+        status_override: str | None = None,
+        failure_count_override: int | None = None,
     ) -> None:
         now_iso = datetime.now(UTC).isoformat()
+        clauses = [
+            "last_run_at = ?",
+            "next_run_at = ?",
+            "run_count = run_count + ?",
+            "failure_count = failure_count + ?",
+        ]
+        params: list[Any] = [
+            last_run_at.isoformat(),
+            next_run_at.isoformat() if next_run_at else None,
+            1 if increment_run_count else 0,
+            1 if increment_failure_count else 0,
+        ]
+        if status_override is not None:
+            clauses.append("status = ?")
+            params.append(status_override)
+        if failure_count_override is not None:
+            clauses.append("failure_count = ?")
+            params.append(failure_count_override)
+        clauses.append("updated_at = ?")
+        params.append(now_iso)
+        params.append(automation_id)
         await self._conn.execute(
-            "UPDATE automation SET "
-            "last_run_at = ?, next_run_at = ?, "
-            "run_count = run_count + ?, "
-            "failure_count = failure_count + ?, "
-            "updated_at = ? WHERE id = ?",
-            (
-                last_run_at.isoformat(),
-                next_run_at.isoformat() if next_run_at else None,
-                1 if increment_run_count else 0,
-                1 if increment_failure_count else 0,
-                now_iso, automation_id,
-            ),
+            f"UPDATE automation SET {', '.join(clauses)} WHERE id = ?",
+            tuple(params),
         )
         await self._conn.commit()
 

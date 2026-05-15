@@ -4,7 +4,6 @@ The text was extracted from the page using Playwright (innerText), not raw HTML.
 It contains the visible text content only — no tags, attributes, or scripts.
 
 Inputs:
-- state.extract_text.page_text.text: the visible text content of the page
 - state.extract_text.page_text.url: the URL that was fetched
 - state.extract_text.page_text.selector_used: the CSS selector used
 
@@ -25,4 +24,4 @@ If the text shows no product information:
 Return ONLY the JSON object. No markdown, no explanation.
 
 Page text:
-{{ state.extract_text.page_text.text }}
+{{ state.extract_text.page_text.text[:16000] }}

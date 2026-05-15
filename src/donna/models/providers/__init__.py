@@ -25,4 +25,6 @@ class ModelProvider(Protocol):
         model: str,
         max_tokens: int = 1024,
         num_ctx: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]: ...

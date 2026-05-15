@@ -49,6 +49,8 @@ class OllamaProvider:
         max_tokens: int = 1024,
         json_mode: bool = True,
         num_ctx: int | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Send a prompt and return parsed output with metadata.
 
@@ -69,6 +71,10 @@ class OllamaProvider:
             json.JSONDecodeError: If json_mode=True and the response is not valid JSON.
             aiohttp.ClientError: On connection or HTTP-level failures.
         """
+        if tools:
+            raise NotImplementedError("Ollama does not support tool_use")
+        if messages:
+            raise NotImplementedError("Ollama does not support multi-turn messages")
         session = self._get_session()
         start = time.monotonic()
 
