@@ -145,8 +145,8 @@ async def test_wire_automation_subsystem_registers_cadence_reclamper(
         _ = await wire_automation_subsystem(ctx, skill_h)
         subscribers = skill_h.bundle.lifecycle_manager.after_state_change._subscribers
         names = [getattr(fn, "__qualname__", repr(fn)) for fn in subscribers]
-        assert any("reclamp_for_capability" in n for n in names), (
-            f"CadenceReclamper.reclamp_for_capability not registered; "
+        assert any("reclamp" in n for n in names), (
+            f"CadenceReclamper reclamp adapter not registered; "
             f"got subscribers: {names}"
         )
     finally:

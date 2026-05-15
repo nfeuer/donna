@@ -213,8 +213,7 @@ class TestHandleReplyReschedule:
         db.transition_task_state = AsyncMock()
         db.get_task = AsyncMock(side_effect=[task_mock, refreshed])
 
-        # Provide a calendar client stub on the scheduler.
-        detector._scheduler._client = MagicMock()
+        detector._calendar_client = MagicMock()
 
         await detector.handle_reply("t1", "reschedule")
 
@@ -227,7 +226,7 @@ class TestHandleReplyReschedule:
         refreshed = _task(task_id="t1", status="scheduled")
         db.get_task = AsyncMock(side_effect=[task_mock, refreshed])
         db.transition_task_state = AsyncMock()
-        detector._scheduler._client = MagicMock()
+        detector._calendar_client = MagicMock()
 
         await detector.handle_reply("t1", "reschedule")
 
@@ -235,6 +234,22 @@ class TestHandleReplyReschedule:
         state_calls = [c[0][1] for c in db.transition_task_state.call_args_list]
         assert TaskStatus.IN_PROGRESS in state_calls
         assert TaskStatus.SCHEDULED in state_calls
+
+    async def test_reschedule_fallback_bumps_by_one_day_without_calendar(self) -> None:
+        detector, db, _service, _bot = _make_detector()
+
+        task_mock = _task(task_id="t1", status="in_progress")
+        refreshed = _task(task_id="t1", status="scheduled", scheduled_start="2026-05-14T10:00:00+00:00")
+        db.get_task = AsyncMock(side_effect=[task_mock, refreshed])
+        db.transition_task_state = AsyncMock()
+        db.update_task = AsyncMock()
+
+        await detector.handle_reply("t1", "reschedule")
+
+        detector._scheduler.schedule_task.assert_not_called()
+        db.update_task.assert_called_once()
+        call_kwargs = db.update_task.call_args
+        assert "2026-05-15" in call_kwargs[1]["scheduled_start"]
 
     async def test_unrecognised_reply_does_nothing(self) -> None:
         detector, db, _service, _bot = _make_detector()

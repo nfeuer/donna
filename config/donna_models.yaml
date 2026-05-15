@@ -99,6 +99,10 @@ routing:
   triage_failure:
     model: local_parser
     fallback: parser
+  claude_novelty:
+    model: parser
+    fallback: reasoner
+    confidence_threshold: 0.7
   reply_intent:
     model: local_parser
     fallback: parser

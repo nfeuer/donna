@@ -39,7 +39,7 @@ async def test_orchestrator_registers_default_tools(monkeypatch, tmp_path) -> No
     monkeypatch.setattr("donna.skills.tools.register_default_tools", _capture)
     monkeypatch.setattr(
         "donna.cli_wiring._try_build_calendar_client",
-        lambda _cfg: _stub_calendar_client(),
+        AsyncMock(return_value=_stub_calendar_client()),
     )
 
     async def _noop(*a, **k):
@@ -78,7 +78,7 @@ async def test_orchestrator_seeds_capabilities_from_yaml(monkeypatch, tmp_path) 
         return None
     monkeypatch.setattr(
         "donna.cli_wiring._try_build_calendar_client",
-        lambda _cfg: _stub_calendar_client(),
+        AsyncMock(return_value=_stub_calendar_client()),
     )
     monkeypatch.setattr("donna.integrations.discord_bot.DonnaBot.start", _noop)
     monkeypatch.setattr("donna.server.run_server", _noop)
@@ -123,7 +123,7 @@ async def test_orchestrator_registers_wave_one_tools(monkeypatch, tmp_path) -> N
         return None
     monkeypatch.setattr(
         "donna.cli_wiring._try_build_calendar_client",
-        lambda _cfg: _stub_calendar_client(),
+        AsyncMock(return_value=_stub_calendar_client()),
     )
     monkeypatch.setattr("donna.integrations.discord_bot.DonnaBot.start", _noop)
     monkeypatch.setattr("donna.server.run_server", _noop)
@@ -162,7 +162,7 @@ async def test_capability_tool_registry_check_passes_on_seeded_yaml(
         return None
     monkeypatch.setattr(
         "donna.cli_wiring._try_build_calendar_client",
-        lambda _cfg: _stub_calendar_client(),
+        AsyncMock(return_value=_stub_calendar_client()),
     )
     monkeypatch.setattr("donna.integrations.discord_bot.DonnaBot.start", _noop)
     monkeypatch.setattr("donna.server.run_server", _noop)
@@ -221,7 +221,7 @@ async def test_capability_tool_registry_check_fails_on_unregistered_tool(
         return None
     monkeypatch.setattr(
         "donna.cli_wiring._try_build_calendar_client",
-        lambda _cfg: _stub_calendar_client(),
+        AsyncMock(return_value=_stub_calendar_client()),
     )
     monkeypatch.setattr("donna.integrations.discord_bot.DonnaBot.start", _noop)
     monkeypatch.setattr("donna.server.run_server", _noop)
