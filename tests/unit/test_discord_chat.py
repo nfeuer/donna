@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -24,7 +23,7 @@ def mock_engine() -> AsyncMock:
 
 
 class TestDiscordChatRouting:
-    def test_chat_channel_message_routes_to_engine(self, mock_engine: AsyncMock) -> None:
+    async def test_chat_channel_message_routes_to_engine(self, mock_engine: AsyncMock) -> None:
         """Messages in #donna-chat should route to the ConversationEngine."""
         from donna.integrations.discord_bot import DonnaBot
 
@@ -43,12 +42,12 @@ class TestDiscordChatRouting:
         message.author.id = 12345
         message.channel.send = AsyncMock()
 
-        asyncio.get_event_loop().run_until_complete(bot.on_message(message))
+        await bot.on_message(message)
 
         mock_engine.handle_message.assert_called_once()
         message.channel.send.assert_called_once_with("You have 3 tasks today.")
 
-    def test_tasks_channel_still_works(self, mock_engine: AsyncMock) -> None:
+    async def test_tasks_channel_still_works(self, mock_engine: AsyncMock) -> None:
         """Messages in #donna-tasks should still go through InputParser."""
         from donna.integrations.discord_bot import DonnaBot
 
@@ -81,13 +80,13 @@ class TestDiscordChatRouting:
         message.author.id = 12345
         message.channel.send = AsyncMock()
 
-        asyncio.get_event_loop().run_until_complete(bot.on_message(message))
+        await bot.on_message(message)
 
         # Should go through parser, NOT the chat engine
         mock_parser.parse.assert_called_once()
         mock_engine.handle_message.assert_not_called()
 
-    def test_escalation_shows_buttons(self, mock_engine: AsyncMock) -> None:
+    async def test_escalation_shows_buttons(self, mock_engine: AsyncMock) -> None:
         """When engine returns needs_escalation, show Approve/Decline buttons."""
         from donna.integrations.discord_bot import DonnaBot
 
@@ -113,7 +112,7 @@ class TestDiscordChatRouting:
         message.author.id = 12345
         message.channel.send = AsyncMock()
 
-        asyncio.get_event_loop().run_until_complete(bot.on_message(message))
+        await bot.on_message(message)
 
         # Should be called with a view (buttons)
         send_call = message.channel.send.call_args

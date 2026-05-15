@@ -239,7 +239,7 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     )
 
     gmail_client = _try_build_gmail_client(ctx.config_dir)
-    calendar_client = _try_build_calendar_client(ctx.config_dir)
+    calendar_client = await _try_build_calendar_client(ctx.config_dir)
 
     # Wire AutoScheduler + NotificationTasks before starting the server.
     from donna.config import load_calendar_config

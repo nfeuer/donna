@@ -11,12 +11,18 @@ depend on any in-process dispatcher.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("IMMICH_ADMIN_API_KEY"),
+    reason="requires IMMICH_ADMIN_API_KEY env var",
+)
 
 
 def _seed_capability(db_path: Path) -> None:

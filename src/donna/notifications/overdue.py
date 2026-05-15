@@ -66,6 +66,7 @@ class OverdueDetector:
         escalation_manager: EscalationManager | None = None,
         router: ModelRouter | None = None,
         reply_handler: ReplyHandler | None = None,
+        calendar_client: Any | None = None,
         tz: zoneinfo.ZoneInfo | None = None,
     ) -> None:
         self._db = db
@@ -77,6 +78,7 @@ class OverdueDetector:
         self._escalation_manager = escalation_manager
         self._router = router
         self._reply_handler = reply_handler
+        self._calendar_client = calendar_client
         self._tz = tz
         # task_id set: only nudge once per day (reset at midnight).
         self._nudged: set[str] = set()
@@ -325,8 +327,6 @@ class OverdueDetector:
 
     async def _reschedule(self, task_id: str, task: object) -> None:
         """Transition task → in_progress → scheduled and find next slot."""
-        from donna.integrations.calendar import GoogleCalendarClient
-
         current_status = getattr(task, "status", "")
         if current_status != TaskStatus.IN_PROGRESS.value:
             try:
@@ -348,20 +348,27 @@ class OverdueDetector:
             refreshed = await self._db.get_task(task_id)
             if refreshed is None:
                 return
-            # Use the calendar client from the scheduler's perspective.
-            # The client attribute is set during wiring in server.py.
-            client: GoogleCalendarClient | None = getattr(self._scheduler, "_client", None)
-            if client is None:
-                logger.warning("overdue_reschedule_no_calendar_client", task_id=task_id)
-                return
-            await self._scheduler.schedule_task(
-                task=refreshed,
-                db=self._db,
-                client=client,
-                calendar_id=self._calendar_id,
-                force_reschedule=True,
-            )
-            logger.info("overdue_task_rescheduled", task_id=task_id)
+            if self._calendar_client is not None:
+                await self._scheduler.schedule_task(
+                    task=refreshed,
+                    db=self._db,
+                    client=self._calendar_client,
+                    calendar_id=self._calendar_id,
+                    force_reschedule=True,
+                )
+                logger.info("overdue_task_rescheduled", task_id=task_id)
+            else:
+                # No calendar client — bump scheduled_start by 1 day as fallback.
+                old_start = _parse_dt(getattr(refreshed, "scheduled_start", None))
+                new_start = (old_start or datetime.now(UTC)) + timedelta(days=1)
+                await self._db.update_task(
+                    task_id, scheduled_start=new_start.isoformat(),
+                )
+                logger.info(
+                    "overdue_task_rescheduled_fallback",
+                    task_id=task_id,
+                    new_start=new_start.isoformat(),
+                )
         except Exception:
             logger.exception("overdue_reschedule_schedule_failed", task_id=task_id)
 

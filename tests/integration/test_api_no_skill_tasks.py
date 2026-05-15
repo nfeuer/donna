@@ -9,11 +9,17 @@ these assertions are meaningful.
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("IMMICH_ADMIN_API_KEY"),
+    reason="requires IMMICH_ADMIN_API_KEY env var",
+)
 
 
 @pytest.fixture

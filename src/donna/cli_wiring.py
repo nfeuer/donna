@@ -730,6 +730,43 @@ def _build_notification_tasks(
     except Exception as exc:
         logger.warning("reminder_scheduler_unavailable", reason=str(exc))
 
+    # --- Reply Handler (used by OverdueDetector) ---
+    reply_handler = None
+    try:
+        from donna.config import load_reply_actions_config, load_reply_intents_config
+        from donna.replies.handler import ReplyHandler
+
+        intents_cfg = load_reply_intents_config(ctx.config_dir)
+        actions_cfg = load_reply_actions_config(ctx.config_dir)
+        reply_context: dict[str, Any] = {
+            "scheduler": scheduler,
+            "calendar_client": calendar_client,
+            "calendar_id": None,
+            "user_id": ctx.user_id,
+        }
+        try:
+            from donna.config import load_calendar_config as _load_cal_rh
+
+            _rh_cal_cfg = _load_cal_rh(ctx.config_dir)
+            _rh_personal = _rh_cal_cfg.calendars.get("personal")
+            reply_context["calendar_id"] = (
+                _rh_personal.calendar_id if _rh_personal else "primary"
+            )
+        except Exception:
+            pass
+
+        reply_handler = ReplyHandler(
+            conn=ctx.db.connection,
+            intents_config=intents_cfg,
+            actions_config=actions_cfg,
+            router=ctx.router,
+            db=ctx.db,
+            context=reply_context,
+        )
+        logger.info("reply_handler_constructed")
+    except Exception as exc:
+        logger.warning("reply_handler_unavailable", reason=str(exc))
+
     # --- Overdue Detector ---
     overdue_detector = None
     if ctx.bot is not None and scheduler is not None:
@@ -750,6 +787,8 @@ def _build_notification_tasks(
                 calendar_id=calendar_id,
                 user_id=ctx.user_id,
                 router=ctx.router,
+                reply_handler=reply_handler,
+                calendar_client=calendar_client,
                 tz=overdue_tz,
             )
             logger.info("overdue_detector_constructed")
@@ -953,10 +992,10 @@ def _start_person_profile_cron(
         logger.warning("person_profile_cron_unavailable", reason=str(exc))
 
 
-def _try_build_calendar_client(config_dir: Path) -> Any | None:
-    """Attempt to construct a GoogleCalendarClient from config/calendar.yaml.
+async def _try_build_calendar_client(config_dir: Path) -> Any | None:
+    """Attempt to construct and authenticate a GoogleCalendarClient.
 
-    Non-fatal: returns None if config or credentials are absent.
+    Non-fatal: returns None if config, credentials, or auth fail.
     """
     calendar_yaml = config_dir / "calendar.yaml"
     if not calendar_yaml.exists():
@@ -976,7 +1015,10 @@ def _try_build_calendar_client(config_dir: Path) -> Any | None:
                 secrets_exists=secrets_path.exists(),
             )
             return None
-        return GoogleCalendarClient(config=cal_cfg)
+        client = GoogleCalendarClient(config=cal_cfg)
+        await client.authenticate()
+        logger.info("calendar_client_authenticated")
+        return client
     except Exception as exc:
         logger.warning("calendar_client_unavailable", reason=str(exc))
         return None
@@ -2416,7 +2458,7 @@ async def wire_discord(
         if _caps_yaml.exists():
             _default_alerts = CapabilityDefaultAlertsLookup(_caps_yaml)
 
-            async def _async_default_alerts(name: str) -> dict | None:
+            async def _async_default_alerts(name: str) -> dict[str, Any] | None:
                 return _default_alerts.get(name)
 
             ctx.bot._automation_default_alerts_lookup = _async_default_alerts

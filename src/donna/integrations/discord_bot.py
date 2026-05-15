@@ -18,7 +18,7 @@ import contextlib
 import re
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import discord
@@ -116,6 +116,9 @@ class DonnaBot(discord.Client):
         """Log bot online status, sync commands, and announce in #donna-debug."""
         logger.info("discord_bot_ready", user=str(self.user))
 
+        # Restore persisted overdue thread mappings from DB.
+        await self._restore_overdue_threads()
+
         # Sync slash commands to guild for instant registration.
         if self._guild_id is not None and self.tree is not None:
             try:
@@ -129,6 +132,42 @@ class DonnaBot(discord.Client):
             channel = self.get_channel(self._debug_channel_id)
             if channel is not None and hasattr(channel, "send"):
                 await channel.send("Donna is online.")
+
+    # ------------------------------------------------------------------
+    # Overdue thread map persistence
+    # ------------------------------------------------------------------
+
+    async def _restore_overdue_threads(self) -> None:
+        """Load overdue thread mappings from DB into the in-memory dict."""
+        try:
+            conn = self._database.connection
+            cursor = await conn.execute(
+                "SELECT discord_thread_id, task_id FROM overdue_thread_map"
+            )
+            rows = list(await cursor.fetchall())
+            for row in rows:
+                self.overdue_threads[row[0]] = row[1]
+            logger.info("overdue_threads_restored", count=len(rows))
+        except Exception:
+            logger.warning("overdue_threads_restore_failed")
+
+    async def _persist_overdue_thread(self, discord_thread_id: int, task_id: str) -> None:
+        """Write a single overdue thread mapping to the DB."""
+        try:
+            conn = self._database.connection
+            now = datetime.now(tz=UTC).isoformat()
+            await conn.execute(
+                "INSERT OR REPLACE INTO overdue_thread_map "
+                "(discord_thread_id, task_id, created_at) VALUES (?, ?, ?)",
+                (discord_thread_id, task_id, now),
+            )
+            await conn.commit()
+        except Exception:
+            logger.exception(
+                "overdue_thread_persist_failed",
+                discord_thread_id=discord_thread_id,
+                task_id=task_id,
+            )
 
     # ------------------------------------------------------------------
     # Outbound messaging (Slice 5)
@@ -244,6 +283,7 @@ class DonnaBot(discord.Client):
         if hasattr(msg, "create_thread"):
             thread = await msg.create_thread(name=f"Overdue: {task_title[:80]}")
             self.overdue_threads[thread.id] = task_id
+            await self._persist_overdue_thread(thread.id, task_id)
             logger.info(
                 "overdue_thread_created",
                 task_id=task_id,
@@ -253,6 +293,7 @@ class DonnaBot(discord.Client):
 
         # Fallback: channel doesn't support threading; track the message channel.
         self.overdue_threads[msg.channel.id] = task_id
+        await self._persist_overdue_thread(msg.channel.id, task_id)
         return msg.channel.id
 
     # ------------------------------------------------------------------
@@ -350,8 +391,10 @@ class DonnaBot(discord.Client):
             await self._handle_chat_message(message)
             return
 
-        # Ignore messages outside the designated tasks channel
-        if message.channel.id != self._tasks_channel_id:
+        # Ignore messages outside the designated tasks channel (including
+        # threads whose parent is the tasks channel).
+        parent_id = getattr(message.channel, "parent_id", None)
+        if message.channel.id != self._tasks_channel_id and parent_id != self._tasks_channel_id:
             return
 
         correlation_id = str(uuid.uuid4())
@@ -381,6 +424,24 @@ class DonnaBot(discord.Client):
         field_update = _detect_field_update(raw_text)
         if field_update is not None:
             await self._handle_field_update(message, user_id, raw_text, field_update, log)
+            return
+
+        # Detect "done" / "finished" / "completed" and mark the most recent active task.
+        if _detect_done_intent(raw_text):
+            await self._handle_done_intent(message, user_id, log)
+            return
+
+        # Untracked thread under #donna-tasks (e.g. old overdue thread after
+        # restart).  Don't route through the intent dispatcher — it would
+        # create garbage tasks or try to nest threads.  Treat any reply here
+        # as a status update on the most recent active task.
+        in_untracked_thread = (
+            parent_id == self._tasks_channel_id
+            and message.channel.id != self._tasks_channel_id
+        )
+        if in_untracked_thread:
+            log.info("untracked_thread_reply", raw_text=raw_text[:60])
+            await self._handle_done_intent(message, user_id, log)
             return
 
         # Wave 3: if the intent dispatcher is wired, route the message through
@@ -727,7 +788,9 @@ class DonnaBot(discord.Client):
             tool_registry=getattr(self, "_automation_tool_registry", None),
             capability_tool_lookup=getattr(self, "_automation_capability_lookup", None),
             capability_input_schema_lookup=getattr(self, "_automation_input_schema_lookup", None),
-            capability_default_alerts_lookup=getattr(self, "_automation_default_alerts_lookup", None),
+            capability_default_alerts_lookup=getattr(
+                self, "_automation_default_alerts_lookup", None,
+            ),
         )
         try:
             automation_id = await creation.approve(view.draft, name=view.name)
@@ -941,6 +1004,50 @@ class DonnaBot(discord.Client):
         )
 
     # ------------------------------------------------------------------
+    # Mark-done from main channel
+    # ------------------------------------------------------------------
+
+    async def _handle_done_intent(
+        self,
+        message: discord.Message,
+        user_id: str,
+        log: Any,
+    ) -> None:
+        """Mark the user's most recent active task as done."""
+        from donna.tasks.db_models import TaskStatus
+
+        all_tasks = await self._database.list_tasks(user_id=user_id)
+        active_tasks = [
+            t for t in all_tasks
+            if t.status not in ("done", "cancelled", "backlog")
+        ]
+        if not active_tasks:
+            await message.channel.send("No active tasks to mark done.")
+            return
+
+        task = active_tasks[-1]
+        current_status = task.status
+
+        try:
+            if current_status != TaskStatus.IN_PROGRESS.value:
+                await self._database.transition_task_state(
+                    task.id, TaskStatus.IN_PROGRESS,
+                )
+            await self._database.transition_task_state(task.id, TaskStatus.DONE)
+            await self._database.update_task(
+                task.id, completed_at=datetime.now(UTC),
+            )
+        except Exception:
+            log.exception("done_intent_transition_failed", task_id=task.id)
+            await message.channel.send(
+                f"Couldn't mark '{task.title}' as done — state transition failed."
+            )
+            return
+
+        log.info("task_done_via_text", task_id=task.id, title=task.title)
+        await message.channel.send(f"Done! Marked '{task.title}' as complete.")
+
+    # ------------------------------------------------------------------
     # Challenger agent integration
     # ------------------------------------------------------------------
 
@@ -1069,6 +1176,32 @@ def _suggest_automation_name(draft: Any) -> str:
         token = str(first_input).split("/")[-1][:20]
         return f"{cap}_{token}"
     return cap
+
+
+# ------------------------------------------------------------------
+# Done-intent detection
+# ------------------------------------------------------------------
+
+_DONE_KEYWORDS = frozenset({
+    "done", "finished", "complete", "completed", "did it",
+    "it's done", "its done", "all done", "got it done",
+    "taken care of", "handled", "mark done", "mark it done",
+})
+
+_DONE_RE = re.compile(
+    r"^(?:i\s+)?(?:just\s+)?(?:finished|completed|did)\b",
+    re.IGNORECASE,
+)
+
+
+def _detect_done_intent(text: str) -> bool:
+    """Detect if the user is trying to mark a task done."""
+    lowered = text.lower().strip()
+    if lowered in _DONE_KEYWORDS:
+        return True
+    if any(lowered.startswith(kw) for kw in ("mark done", "mark it done")):
+        return True
+    return bool(_DONE_RE.match(lowered))
 
 
 # ------------------------------------------------------------------

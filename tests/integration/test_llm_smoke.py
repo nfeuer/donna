@@ -9,6 +9,7 @@ Expected cost: ~$0.05 for 3 calls.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -17,6 +18,11 @@ import pytest
 from donna.config import load_models_config, load_task_types_config
 from donna.models.router import ModelRouter
 from donna.orchestrator.input_parser import InputParser
+
+_skip_no_api_key = pytest.mark.skipif(
+    not os.environ.get("ANTHROPIC_API_KEY"),
+    reason="requires live Claude API key (ANTHROPIC_API_KEY)",
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = PROJECT_ROOT / "config"
@@ -52,6 +58,7 @@ def _get_case(cases: list[dict], case_id: str) -> dict:
 
 
 @pytest.mark.llm
+@_skip_no_api_key
 class TestLLMSmoke:
     """Smoke tests that call the real Anthropic API."""
 
