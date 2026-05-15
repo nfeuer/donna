@@ -10,7 +10,7 @@ See the discord interaction expansion plan.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import discord
 import structlog
@@ -58,7 +58,13 @@ async def _task_autocomplete(
     return choices
 
 
-def register_commands(bot: DonnaBot, db: Database, user_id: str) -> None:
+def register_commands(
+    bot: DonnaBot,
+    db: Database,
+    user_id: str,
+    calendar_client: Any | None = None,
+    calendar_id: str = "primary",
+) -> None:
     """Register all slash commands on the bot's command tree."""
 
     guild = discord.Object(id=bot._guild_id) if bot._guild_id else None
@@ -153,7 +159,18 @@ def register_commands(bot: DonnaBot, db: Database, user_id: str) -> None:
             await interaction.response.send_message("Task not found.", ephemeral=True)
             return
         try:
-            await db.update_task(task_id, status=TaskStatus.CANCELLED)
+            await db.transition_task_state(task_id, TaskStatus.CANCELLED)
+            if task.calendar_event_id and calendar_client is not None:
+                try:
+                    await calendar_client.delete_event(
+                        calendar_id, task.calendar_event_id,
+                    )
+                except Exception:
+                    logger.warning(
+                        "cancel_calendar_delete_failed",
+                        task_id=task_id,
+                        event_id=task.calendar_event_id,
+                    )
             await interaction.response.send_message(
                 f"'{task.title}' cancelled.", ephemeral=True
             )

@@ -10,11 +10,14 @@ import json
 from datetime import datetime
 from typing import Any
 
+import structlog
 from fastapi import HTTPException, Request, status
 from pydantic import BaseModel
 
 from donna.api.auth import CurrentUser, user_router
 from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain, TaskStatus
+
+logger = structlog.get_logger()
 
 router = user_router()
 
@@ -181,4 +184,20 @@ async def cancel_task(
     if existing is None or existing.user_id != user_id:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    await db.update_task(task_id, status=TaskStatus.CANCELLED.value)
+    await db.transition_task_state(task_id, TaskStatus.CANCELLED)
+
+    if existing.calendar_event_id:
+        cal_client = getattr(request.app.state, "calendar_client", None)
+        if cal_client is not None:
+            try:
+                calendar_id = "primary"
+                cal_ids = getattr(request.app.state, "calendar_ids", [])
+                if cal_ids:
+                    calendar_id = cal_ids[0]
+                await cal_client.delete_event(calendar_id, existing.calendar_event_id)
+            except Exception:
+                logger.warning(
+                    "cancel_calendar_delete_failed",
+                    task_id=task_id,
+                    event_id=existing.calendar_event_id,
+                )

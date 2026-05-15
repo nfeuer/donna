@@ -232,10 +232,19 @@ class TaskConfirmationView(discord.ui.View):
 class OverdueNudgeView(discord.ui.View):
     """Buttons on overdue nudges: Done, +30min, Reschedule, Cancel."""
 
-    def __init__(self, task_id: str, db: Database, timeout: float = 3600) -> None:
+    def __init__(
+        self,
+        task_id: str,
+        db: Database,
+        timeout: float = 3600,
+        calendar_client: Any | None = None,
+        calendar_id: str = "primary",
+    ) -> None:
         super().__init__(timeout=timeout)
         self._task_id = task_id
         self._db = db
+        self._calendar_client = calendar_client
+        self._calendar_id = calendar_id
 
     @discord.ui.button(label="Done", style=ButtonStyle.green, custom_id="overdue_done")
     async def done(self, interaction: Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
@@ -283,7 +292,19 @@ class OverdueNudgeView(discord.ui.View):
         from donna.tasks.db_models import TaskStatus
 
         try:
-            await self._db.update_task(self._task_id, status=TaskStatus.CANCELLED)
+            task = await self._db.get_task(self._task_id)
+            await self._db.transition_task_state(self._task_id, TaskStatus.CANCELLED)
+            if task and task.calendar_event_id and self._calendar_client is not None:
+                try:
+                    await self._calendar_client.delete_event(
+                        self._calendar_id, task.calendar_event_id,
+                    )
+                except Exception:
+                    logger.warning(
+                        "cancel_calendar_delete_failed",
+                        task_id=self._task_id,
+                        event_id=task.calendar_event_id,
+                    )
             await interaction.response.send_message("Task cancelled.", ephemeral=True)
             logger.info("overdue_cancelled_via_button", task_id=self._task_id)
         except Exception:
