@@ -55,6 +55,7 @@ class ChatSession:
     message_count: int
     pinned_task_id: str | None = None
     summary: str | None = None
+    pending_action: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)

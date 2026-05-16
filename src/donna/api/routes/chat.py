@@ -54,6 +54,7 @@ async def send_message(
         raise HTTPException(status_code=400, detail="text is required")
 
     channel = body.get("channel", "api")
+    context = body.get("context")
 
     if session_id == "new":
         sid = None
@@ -66,6 +67,7 @@ async def send_message(
         user_id=user_id,
         text=text,
         channel=channel,
+        dashboard_context=context,
     )
 
     return {
@@ -106,6 +108,46 @@ async def list_sessions(
                 "message_count": s.message_count,
             }
             for s in sessions
+        ],
+    }
+
+
+@router.post("/sessions/{session_id}/confirm")
+async def confirm_action(
+    session_id: str,
+    user_id: CurrentUser,
+    body: dict[str, Any] = Body(...),
+    engine: Any = Depends(get_chat_engine),
+    db: Any = Depends(get_database),
+) -> dict[str, Any]:
+    """Confirm or reject a pending action."""
+    await _require_session_owner(db, session_id, user_id)
+    confirmed = body.get("confirmed", False)
+    resp = await engine.handle_confirm(session_id, user_id, confirmed)
+    return {
+        "session_id": resp.session_id,
+        "text": resp.text,
+        "needs_escalation": resp.needs_escalation,
+        "suggested_actions": resp.suggested_actions,
+    }
+
+
+@router.get("/actions")
+async def list_actions(
+    engine: Any = Depends(get_chat_engine),
+) -> dict[str, Any]:
+    """List available chat actions."""
+    if not hasattr(engine, "_action_registry") or engine._action_registry is None:
+        return {"actions": []}
+    return {
+        "actions": [
+            {
+                "name": a.name,
+                "description": a.description,
+                "domain": a.domain,
+                "safety": a.safety,
+            }
+            for a in engine._action_registry.list()
         ],
     }
 

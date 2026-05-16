@@ -867,6 +867,7 @@ class Database:
             message_count=data["message_count"],
             pinned_task_id=data.get("pinned_task_id"),
             summary=data.get("summary"),
+            pending_action=data.get("pending_action"),
         )
 
     @staticmethod
