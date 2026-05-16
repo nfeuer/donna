@@ -31,6 +31,7 @@ class ChatResponse:
     """Response from the ConversationEngine."""
 
     text: str
+    session_id: str | None = None
     needs_escalation: bool = False
     escalation_reason: str | None = None
     estimated_cost: float | None = None

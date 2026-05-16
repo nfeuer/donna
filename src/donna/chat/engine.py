@@ -101,6 +101,7 @@ class ConversationEngine:
                     f"{intent_result.get('escalation_reason', 'complex reasoning required')}. "
                     f"Estimated cost: ~${cost_estimate:.2f}. Go ahead?"
                 ),
+                session_id=session.id,
                 needs_escalation=True,
                 escalation_reason=intent_result.get("escalation_reason"),
                 estimated_cost=cost_estimate,
@@ -162,6 +163,7 @@ class ConversationEngine:
                     f"{response_data.get('escalation_reason', 'complex reasoning required')}. "
                     f"Estimated cost: ~${cost_estimate:.2f}. Go ahead?"
                 ),
+                session_id=session.id,
                 needs_escalation=True,
                 escalation_reason=response_data.get("escalation_reason"),
                 estimated_cost=cost_estimate,
@@ -170,6 +172,7 @@ class ConversationEngine:
         else:
             result = ChatResponse(
                 text=response_text,
+                session_id=session.id,
                 suggested_actions=response_data.get("suggested_actions", []),
                 pin_suggestion=response_data.get("pin_suggestion"),
                 session_pinned_task_id=getattr(session, "pinned_task_id", None),
