@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from datetime import datetime
 from typing import Any
 
@@ -29,7 +30,10 @@ async def query_tasks(params: dict[str, Any], ctx: ActionContext) -> ActionResul
     )
 
     task_list = [
-        {"id": t.id, "title": t.title, "status": t.status, "priority": t.priority, "domain": t.domain}
+        {
+            "id": t.id, "title": t.title, "status": t.status,
+            "priority": t.priority, "domain": t.domain,
+        }
         for t in tasks
     ]
     return ActionResult(
@@ -87,10 +91,8 @@ async def create_task(params: dict[str, Any], ctx: ActionContext) -> ActionResul
 
     domain = TaskDomain.PERSONAL
     if params.get("domain"):
-        try:
+        with contextlib.suppress(ValueError):
             domain = TaskDomain(params["domain"])
-        except ValueError:
-            pass
 
     from donna.tasks.db_models import InputChannel
     task = await ctx.db.create_task(

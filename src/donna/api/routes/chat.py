@@ -7,7 +7,7 @@ See docs/superpowers/specs/archive/2026-04-12-chat-interface-design.md.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import Body, Depends, HTTPException, Query, Request
 
@@ -86,8 +86,8 @@ async def send_message(
 async def list_sessions(
     user_id: CurrentUser,
     db: Any = Depends(get_database),
-    status: Optional[str] = Query(default=None),
-    channel: Optional[str] = Query(default=None),
+    status: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
     """List chat sessions for the current user."""
@@ -147,7 +147,7 @@ async def list_actions(
                 "domain": a.domain,
                 "safety": a.safety,
             }
-            for a in engine._action_registry.list()
+            for a in engine._action_registry.list_actions()
         ],
     }
 

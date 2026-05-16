@@ -1,9 +1,10 @@
 """Tests for vault action handlers."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from donna.chat.actions.vault import read_vault_file, create_vault_note, list_vault_files
+import pytest
+
+from donna.chat.actions.vault import create_vault_note, list_vault_files, read_vault_file
 from donna.chat.types import ActionContext
 
 

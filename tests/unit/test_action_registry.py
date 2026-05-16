@@ -1,10 +1,10 @@
 """Tests for ActionRegistry loading, matching, and execution."""
 
-import pytest
 from pathlib import Path
 
+import pytest
+
 from donna.chat.actions import ActionRegistry
-from donna.chat.types import ActionDefinition
 
 
 @pytest.fixture
@@ -48,12 +48,12 @@ actions:
 
 def test_load_from_yaml(sample_yaml: Path) -> None:
     registry = ActionRegistry.from_yaml(sample_yaml)
-    assert len(registry.list()) == 3
+    assert len(registry.list_actions()) == 3
 
 
 def test_load_missing_file(tmp_path: Path) -> None:
     registry = ActionRegistry.from_yaml(tmp_path / "nonexistent.yaml")
-    assert len(registry.list()) == 0
+    assert len(registry.list_actions()) == 0
 
 
 def test_match_by_action_hint(sample_yaml: Path) -> None:

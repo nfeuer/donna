@@ -40,7 +40,10 @@ async def create_vault_note(params: dict[str, Any], ctx: ActionContext) -> Actio
             result = await ctx.db.create_vault_note(title=title, content=content, folder=folder)
             return ActionResult(
                 success=True,
-                data={"title": title, "path": result if isinstance(result, str) else f"{folder}/{title}.md"},
+                data={
+                    "title": title,
+                    "path": result if isinstance(result, str) else f"{folder}/{title}.md",
+                },
                 summary=f"Created vault note: {title}",
             )
         return ActionResult(success=False, error="Vault write not available via this interface.")
@@ -55,7 +58,10 @@ async def list_vault_files(params: dict[str, Any], ctx: ActionContext) -> Action
         if hasattr(ctx.db, "list_vault_files"):
             files = await ctx.db.list_vault_files(folder=folder)
         else:
-            return ActionResult(success=False, error="Vault listing not available via this interface.")
+            return ActionResult(
+                success=False,
+                error="Vault listing not available via this interface.",
+            )
     except Exception as exc:
         return ActionResult(success=False, error=f"Failed to list vault files: {exc}")
 

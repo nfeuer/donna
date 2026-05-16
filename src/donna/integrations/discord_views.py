@@ -380,7 +380,9 @@ class DomainSelectView(discord.ui.View):
 
         value = select.values[0]
         try:
-            await self._db.update_task(self._task_id, source="discord_select", domain=TaskDomain(value))
+            await self._db.update_task(
+                self._task_id, source="discord_select", domain=TaskDomain(value),
+            )
             await interaction.response.send_message(
                 f"Domain set to {value}.", ephemeral=True
             )

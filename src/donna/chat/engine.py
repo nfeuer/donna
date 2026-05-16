@@ -396,7 +396,7 @@ class ConversationEngine:
                 ctx_str = f"User is viewing the {page.title()} page."
 
         example_output = json.dumps(
-            {p: f"<{p}>" for p in action.parameters.get("properties", {}).keys()},
+            {p: f"<{p}>" for p in action.parameters.get("properties", {})},
             indent=2,
         )
 
@@ -448,7 +448,11 @@ class ConversationEngine:
             action_description=action.description,
             params_json=json.dumps(params, indent=2),
             success=str(result.success),
-            result_data=json.dumps(result.data, indent=2, default=str) if result.data else (result.error or "No data"),
+            result_data=(
+                json.dumps(result.data, indent=2, default=str)
+                if result.data
+                else (result.error or "No data")
+            ),
         )
 
         resp, _ = await self._router.complete(
@@ -456,7 +460,7 @@ class ConversationEngine:
             task_type="chat_respond",
             user_id="system",
         )
-        return resp.get("response_text", result.summary or "Done.")
+        return str(resp.get("response_text", result.summary or "Done."))
 
     async def handle_confirm(
         self, session_id: str, user_id: str, confirmed: bool,

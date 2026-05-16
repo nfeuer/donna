@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import importlib
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 import structlog
 import yaml
@@ -60,7 +61,7 @@ class ActionRegistry:
     def get(self, name: str) -> ActionDefinition | None:
         return self._actions.get(name)
 
-    def list(self) -> list[ActionDefinition]:
+    def list_actions(self) -> list[ActionDefinition]:
         return list(self._actions.values())
 
     def list_for_domain(self, domain: str) -> list[ActionDefinition]:
@@ -71,7 +72,7 @@ class ActionRegistry:
             return self._handlers[action.name]
         module_path, func_name = action.handler.rsplit(".", 1)
         module = importlib.import_module(module_path)
-        handler = getattr(module, func_name)
+        handler: ActionHandler = getattr(module, func_name)
         self._handlers[action.name] = handler
         return handler
 

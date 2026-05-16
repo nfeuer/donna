@@ -69,6 +69,7 @@ async def db(tmp_path: Path) -> Database:
             pinned_task_id TEXT,
             status TEXT NOT NULL DEFAULT 'active',
             summary TEXT,
+            pending_action TEXT,
             created_at TEXT NOT NULL,
             last_activity TEXT NOT NULL,
             expires_at TEXT NOT NULL,
@@ -85,6 +86,8 @@ async def db(tmp_path: Path) -> Database:
             content TEXT NOT NULL,
             intent TEXT,
             tokens_used INTEGER,
+            action_name TEXT,
+            action_result TEXT,
             created_at TEXT NOT NULL,
             FOREIGN KEY (session_id) REFERENCES conversation_sessions(id)
         )"""

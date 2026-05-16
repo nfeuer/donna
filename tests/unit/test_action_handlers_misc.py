@@ -1,11 +1,12 @@
 """Tests for skills, automations, and debug action handlers."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from donna.chat.actions.skills import execute_skill, list_skills, create_skill_draft
+import pytest
+
 from donna.chat.actions.automations import create_automation, list_automations
-from donna.chat.actions.debug import get_debug_data, get_agent_status
+from donna.chat.actions.debug import get_agent_status, get_debug_data
+from donna.chat.actions.skills import create_skill_draft, execute_skill, list_skills
 from donna.chat.types import ActionContext
 
 
@@ -69,7 +70,10 @@ async def test_create_automation_success(ctx: ActionContext) -> None:
 @pytest.mark.asyncio
 async def test_list_automations(ctx: ActionContext) -> None:
     ctx.db.list_automations = AsyncMock(return_value=[
-        MagicMock(name="Daily watch", trigger_type="schedule", active=True, skill_name="product_watch"),
+        MagicMock(
+            name="Daily watch", trigger_type="schedule",
+            active=True, skill_name="product_watch",
+        ),
     ])
     result = await list_automations({}, ctx)
     assert result.success is True

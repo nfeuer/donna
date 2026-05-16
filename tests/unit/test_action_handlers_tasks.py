@@ -1,9 +1,16 @@
 """Tests for task action handlers."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from donna.chat.actions.tasks import query_tasks, get_task, create_task, update_task, reschedule_task
+import pytest
+
+from donna.chat.actions.tasks import (
+    create_task,
+    get_task,
+    query_tasks,
+    reschedule_task,
+    update_task,
+)
 from donna.chat.types import ActionContext
 
 

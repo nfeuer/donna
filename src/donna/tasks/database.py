@@ -513,7 +513,9 @@ class Database:
             return None
         return _row_to_task(row)
 
-    async def update_task(self, task_id: str, *, source: str | None = None, **fields: Any) -> TaskRow | None:
+    async def update_task(
+        self, task_id: str, *, source: str | None = None, **fields: Any,
+    ) -> TaskRow | None:
         """Update specific fields on a task. Returns updated row or None.
 
         Args:
@@ -1056,9 +1058,13 @@ class Database:
 
         await conn.execute(
             """INSERT INTO conversation_messages
-               (id, session_id, role, content, intent, tokens_used, action_name, action_result, created_at)
+               (id, session_id, role, content, intent, tokens_used,
+                action_name, action_result, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (message_id, session_id, role, content, intent, tokens_used, action_name, action_result, now_iso),
+            (
+                message_id, session_id, role, content, intent,
+                tokens_used, action_name, action_result, now_iso,
+            ),
         )
         await conn.execute(
             """UPDATE conversation_sessions
