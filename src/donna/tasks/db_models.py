@@ -383,6 +383,7 @@ class ChatSessionModel(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     message_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pending_action: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ChatMessageModel(Base):
@@ -400,6 +401,8 @@ class ChatMessageModel(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     intent: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    action_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    action_result: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
