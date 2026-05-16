@@ -21,3 +21,10 @@ chat:
   discord:
     # Set via DONNA_DISCORD_CHAT_CHANNEL_ID env var at runtime
     chat_channel_id: null
+
+  quick_panel:
+    ttl_minutes: 15
+    channel: dashboard_quick
+
+  actions:
+    enabled: true

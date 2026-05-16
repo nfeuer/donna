@@ -2084,6 +2084,14 @@ All learned preferences are transparent, editable, and reversible.
 
 **9.1 Correction Logging**
 
+Corrections are captured via an event-driven pipeline. All user-initiated
+task updates flow through `Database.update_task(source=...)`, which emits
+a `task_updated` event on the `TaskEventBus` with field-level diffs.
+`CorrectionSubscriber` listens for these events and logs corrections for
+changes to learnable fields (`priority`, `domain`, `title`, `description`,
+`scheduled_start`, `deadline`, `estimated_duration`, `tags`). System-initiated
+updates (`source=None`) are ignored.
+
 When the user corrects a system output (e.g., changes a task's domain,
 priority, or scheduled time), the correction is logged:
 

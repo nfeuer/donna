@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Drawer } from "../../primitives/Drawer";
+import { CenterDialog } from "../../primitives/CenterDialog";
 import { Pill } from "../../primitives/Pill";
 import { Switch } from "../../primitives/Switch";
 import {
@@ -83,7 +83,7 @@ export default function SkillDrawer({
   };
 
   return (
-    <Drawer
+    <CenterDialog
       open={open}
       onOpenChange={onOpenChange}
       title={detail ? detail.capability_name : "Skill"}
@@ -104,7 +104,7 @@ export default function SkillDrawer({
           />
         )}
       </div>
-    </Drawer>
+    </CenterDialog>
   );
 }
 

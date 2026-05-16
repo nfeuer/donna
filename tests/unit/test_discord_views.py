@@ -201,7 +201,7 @@ class TestPrioritySelectView:
         ):
             await select_item.callback(interaction)
 
-        db.update_task.assert_called_once_with("task-abc-123", priority=4)
+        db.update_task.assert_called_once_with("task-abc-123", source="discord_select", priority=4)
 
 
 class TestDomainSelectView:
@@ -219,7 +219,11 @@ class TestDomainSelectView:
         ):
             await select_item.callback(interaction)
 
-        db.update_task.assert_called_once()
+        from donna.tasks.db_models import TaskDomain
+
+        db.update_task.assert_called_once_with(
+            "task-abc-123", source="discord_select", domain=TaskDomain.WORK,
+        )
 
 
 class TestTaskListPaginationView:

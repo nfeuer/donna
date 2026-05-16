@@ -100,10 +100,11 @@ def render_chat_prompt(
     intent_context: str = "",
     conversation_history: str = "",
     tz: zoneinfo.ZoneInfo | None = None,
+    **extra: str,
 ) -> str:
     """Render a chat prompt template with variables."""
     now = datetime.now(UTC).astimezone(tz or _DEFAULT_TZ)
-    return (
+    rendered = (
         template
         .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
         .replace("{{ current_time }}", now.strftime("%I:%M %p %Z"))
@@ -113,3 +114,6 @@ def render_chat_prompt(
         .replace("{{ intent_context }}", intent_context)
         .replace("{{ conversation_history }}", conversation_history)
     )
+    for key, value in extra.items():
+        rendered = rendered.replace(f"{{{{ {key} }}}}", str(value))
+    return rendered

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Drawer } from "../../primitives/Drawer";
+import { CenterDialog } from "../../primitives/CenterDialog";
 import { Button } from "../../primitives/Button";
 import { Input, Textarea } from "../../primitives/Input";
 import { Pill, type PillVariant } from "../../primitives/Pill";
@@ -289,7 +289,7 @@ export default function AutomationDrawer({
     };
 
   return (
-    <Drawer
+    <CenterDialog
       open={open}
       onOpenChange={onOpenChange}
       title={
@@ -564,6 +564,6 @@ export default function AutomationDrawer({
           </Tabs>
         )}
       </div>
-    </Drawer>
+    </CenterDialog>
   );
 }

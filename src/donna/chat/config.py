@@ -40,12 +40,23 @@ class DiscordChatConfig(BaseModel):
     chat_channel_id: int | None = None
 
 
+class QuickPanelConfig(BaseModel):
+    ttl_minutes: int = 15
+    channel: str = "dashboard_quick"
+
+
+class ActionsConfig(BaseModel):
+    enabled: bool = True
+
+
 class ChatConfig(BaseModel):
     persona: PersonaConfig = Field(default_factory=PersonaConfig)
     sessions: SessionsConfig = Field(default_factory=SessionsConfig)
     escalation: EscalationConfig = Field(default_factory=EscalationConfig)
     intents: IntentsConfig = Field(default_factory=IntentsConfig)
     discord: DiscordChatConfig = Field(default_factory=DiscordChatConfig)
+    quick_panel: QuickPanelConfig = Field(default_factory=QuickPanelConfig)
+    actions: ActionsConfig = Field(default_factory=ActionsConfig)
 
 
 def load_chat_config(config_dir: Path) -> ChatConfig:

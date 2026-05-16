@@ -8,16 +8,44 @@ Adapts to user behavior without model fine-tuning. Logs corrections, extracts pa
 
 ## Correction Logging
 
-When the user corrects a system output (changes domain, priority, scheduled time), the correction is logged:
+When the user corrects a system output (changes domain, priority, scheduled time), the correction is logged automatically via the event-driven pipeline.
+
+### How it works
+
+All user-initiated task updates flow through `Database.update_task()`, which emits a `task_updated` event on the `TaskEventBus` with field-level diffs and a `source` tag. `CorrectionSubscriber` listens for these events and logs corrections for changes to learnable fields.
+
+```
+User action → update_task(source="discord_modal") → TaskEventBus
+    → CorrectionSubscriber.on_task_updated() → log_correction()
+```
+
+### Source tags
+
+Each update path tags its source so the subscriber can distinguish user-initiated changes from system updates:
+
+| Source | Origin |
+|--------|--------|
+| `discord_modal` | Discord edit modal |
+| `discord_select` | Discord priority/domain select menus |
+| `discord_command` | Discord slash commands (e.g., `/done`, `/priority`) |
+| `api` | REST API (dashboard, Flutter app) |
+| `calendar_sync` | Google Calendar time changes |
+| `None` | System-initiated (ignored by subscriber) |
+
+### Learnable fields
+
+Only changes to these fields are logged as corrections: `priority`, `domain`, `title`, `description`, `scheduled_start`, `deadline`, `estimated_duration`, `tags`.
+
+### Correction log schema
 
 | Field | Type | Description |
 |-------|------|-------------|
 | id | UUID | Correction identifier |
 | timestamp | DateTime | When corrected |
 | user_id | String | Who made the correction |
-| task_type | String | Which task type was wrong (e.g., parse_task) |
+| task_type | String | Source tag (e.g., `discord_modal`, `api`) |
 | task_id | UUID | Specific task corrected |
-| input_text | String | Original natural language input |
+| input_text | String | Original natural language input (empty for event-driven corrections) |
 | field_corrected | String | Which field changed (domain, priority, etc.) |
 | original_value | String | System's output |
 | corrected_value | String | User's correction |

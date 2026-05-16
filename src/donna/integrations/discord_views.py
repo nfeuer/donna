@@ -135,7 +135,7 @@ class TaskEditModal(discord.ui.Modal, title="Edit Task"):
 
         if updates:
             try:
-                await self._db.update_task(self._task_id, **updates)
+                await self._db.update_task(self._task_id, source="discord_modal", **updates)
                 summary = "\n".join(changes)
                 await interaction.response.send_message(
                     f"Task updated:\n{summary}", ephemeral=True
@@ -341,7 +341,7 @@ class PrioritySelectView(discord.ui.View):
     ) -> None:
         value = int(select.values[0])
         try:
-            await self._db.update_task(self._task_id, priority=value)
+            await self._db.update_task(self._task_id, source="discord_select", priority=value)
             await interaction.response.send_message(
                 f"Priority set to {value}.", ephemeral=True
             )
@@ -380,7 +380,9 @@ class DomainSelectView(discord.ui.View):
 
         value = select.values[0]
         try:
-            await self._db.update_task(self._task_id, domain=TaskDomain(value))
+            await self._db.update_task(
+                self._task_id, source="discord_select", domain=TaskDomain(value),
+            )
             await interaction.response.send_message(
                 f"Domain set to {value}.", ephemeral=True
             )

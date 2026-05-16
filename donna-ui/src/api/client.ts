@@ -12,12 +12,14 @@ client.interceptors.response.use(
     const status = error.response?.status;
     const detail = error.response?.data?.detail || error.message;
 
-    if (status && status >= 500) {
-      toast.error(`Server Error (${status})`, { description: detail });
-    } else if (!error.response) {
+    if (!error.response) {
       toast.warning("Network Error", {
         description: "Could not reach the Donna API. Is the backend running?",
       });
+    } else if (status === 401 || status === 403) {
+      toast.error("Authentication Required", { description: detail });
+    } else if (status && status >= 400) {
+      toast.error(`Error (${status})`, { description: detail });
     }
 
     return Promise.reject(error);

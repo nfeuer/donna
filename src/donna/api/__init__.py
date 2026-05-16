@@ -69,6 +69,7 @@ from donna.api.routes import (
 from donna.api.routes import (
     skills as skills_routes,
 )
+from donna.chat.actions import ActionRegistry
 from donna.chat.config import get_chat_config
 from donna.chat.engine import ConversationEngine
 from donna.config import load_state_machine_config
@@ -227,9 +228,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             t_cfg = load_task_types_config(config_dir)
             project_root = Path(os.environ.get("DONNA_PROJECT_ROOT", "."))
             chat_router = ModelRouter(m_cfg, t_cfg, project_root)
+            action_registry = ActionRegistry.from_yaml(config_dir / "chat_actions.yaml")
             chat_engine = ConversationEngine(
                 db=db, router=chat_router, config=chat_config,
                 project_root=project_root,
+                action_registry=action_registry,
             )
         except Exception:
             logger.warning("chat_engine_init_failed", exc_info=True)

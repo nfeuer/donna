@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import Body, Depends, HTTPException, Request
+from fastapi import Body, Depends, HTTPException, Query, Request
 
 from donna.api.auth import CurrentUser, user_router
 from donna.chat.types import ChatResponse
@@ -54,6 +54,7 @@ async def send_message(
         raise HTTPException(status_code=400, detail="text is required")
 
     channel = body.get("channel", "api")
+    context = body.get("context")
 
     if session_id == "new":
         sid = None
@@ -66,16 +67,88 @@ async def send_message(
         user_id=user_id,
         text=text,
         channel=channel,
+        dashboard_context=context,
     )
 
     return {
         "text": resp.text,
+        "session_id": resp.session_id,
         "needs_escalation": resp.needs_escalation,
         "escalation_reason": resp.escalation_reason,
         "estimated_cost": resp.estimated_cost,
         "suggested_actions": resp.suggested_actions,
         "pin_suggestion": resp.pin_suggestion,
         "session_pinned_task_id": resp.session_pinned_task_id,
+    }
+
+
+@router.get("/sessions")
+async def list_sessions(
+    user_id: CurrentUser,
+    db: Any = Depends(get_database),
+    status: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    """List chat sessions for the current user."""
+    sessions = await db.list_chat_sessions(
+        user_id=user_id, status=status, channel=channel, limit=limit,
+    )
+    return {
+        "sessions": [
+            {
+                "id": s.id,
+                "user_id": s.user_id,
+                "channel": s.channel,
+                "status": s.status,
+                "pinned_task_id": s.pinned_task_id,
+                "summary": s.summary,
+                "created_at": s.created_at,
+                "last_activity": s.last_activity,
+                "message_count": s.message_count,
+            }
+            for s in sessions
+        ],
+    }
+
+
+@router.post("/sessions/{session_id}/confirm")
+async def confirm_action(
+    session_id: str,
+    user_id: CurrentUser,
+    body: dict[str, Any] = Body(...),
+    engine: Any = Depends(get_chat_engine),
+    db: Any = Depends(get_database),
+) -> dict[str, Any]:
+    """Confirm or reject a pending action."""
+    await _require_session_owner(db, session_id, user_id)
+    confirmed = body.get("confirmed", False)
+    resp = await engine.handle_confirm(session_id, user_id, confirmed)
+    return {
+        "session_id": resp.session_id,
+        "text": resp.text,
+        "needs_escalation": resp.needs_escalation,
+        "suggested_actions": resp.suggested_actions,
+    }
+
+
+@router.get("/actions")
+async def list_actions(
+    engine: Any = Depends(get_chat_engine),
+) -> dict[str, Any]:
+    """List available chat actions."""
+    if not hasattr(engine, "_action_registry") or engine._action_registry is None:
+        return {"actions": []}
+    return {
+        "actions": [
+            {
+                "name": a.name,
+                "description": a.description,
+                "domain": a.domain,
+                "safety": a.safety,
+            }
+            for a in engine._action_registry.list_actions()
+        ],
     }
 
 

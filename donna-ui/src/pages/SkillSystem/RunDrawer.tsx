@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Drawer } from "../../primitives/Drawer";
+import { CenterDialog } from "../../primitives/CenterDialog";
 import { Button } from "../../primitives/Button";
 import { Pill, type PillVariant } from "../../primitives/Pill";
 import { Skeleton } from "../../primitives/Skeleton";
@@ -92,7 +92,7 @@ export default function RunDrawer({
   };
 
   return (
-    <Drawer
+    <CenterDialog
       open={open}
       onOpenChange={onOpenChange}
       title={detail ? `Run ${detail.id.slice(0, 8)}` : "Skill Run"}
@@ -254,6 +254,6 @@ export default function RunDrawer({
           </>
         )}
       </div>
-    </Drawer>
+    </CenterDialog>
   );
 }

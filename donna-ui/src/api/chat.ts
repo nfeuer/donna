@@ -38,6 +38,7 @@ export interface ChatMessage {
 
 export interface ChatResponse {
   text: string;
+  session_id: string | null;
   needs_escalation: boolean;
   escalation_reason?: string;
   estimated_cost?: number;
@@ -62,14 +63,23 @@ export interface SessionWithMessages {
 // API functions
 // ---------------------------------------------------------------------------
 
+export async function listSessions(
+  params: { status?: string; channel?: string; limit?: number } = {},
+): Promise<{ sessions: ChatSession[] }> {
+  const { data } = await client.get("/chat/sessions", { params });
+  return data;
+}
+
 export async function sendMessage(
   sessionId: string,
   text: string,
   channel = "api",
+  context?: { page: string; selected_item: { type: string; id: string; label: string } | null },
 ): Promise<ChatResponse> {
   const { data } = await client.post(`/chat/sessions/${sessionId}/messages`, {
     text,
     channel,
+    context,
   });
   return data;
 }
@@ -123,6 +133,16 @@ export async function escalateSession(
   const { data } = await client.post(
     `/chat/sessions/${sessionId}/escalate`,
   );
+  return data;
+}
+
+export async function confirmAction(
+  sessionId: string,
+  confirmed: boolean,
+): Promise<ChatResponse> {
+  const { data } = await client.post(`/chat/sessions/${sessionId}/confirm`, {
+    confirmed,
+  });
   return data;
 }
 

@@ -513,8 +513,18 @@ class Database:
             return None
         return _row_to_task(row)
 
-    async def update_task(self, task_id: str, **fields: Any) -> TaskRow | None:
-        """Update specific fields on a task. Returns updated row or None."""
+    async def update_task(
+        self, task_id: str, *, source: str | None = None, **fields: Any,
+    ) -> TaskRow | None:
+        """Update specific fields on a task. Returns updated row or None.
+
+        Args:
+            task_id: The task UUID to update.
+            source: Optional origin tag (e.g. ``"api"``, ``"discord_modal"``).
+                When non-None, the emitted ``task_updated`` event signals a
+                user-initiated change that downstream subscribers (such as
+                :class:`CorrectionSubscriber`) may log for preference learning.
+        """
         if not fields:
             return await self.get_task(task_id)
 
@@ -566,6 +576,20 @@ class Database:
                     "task": dataclasses.asdict(task_row),
                     "previous_status": previous_status,
                 },
+            )
+            changed_fields: dict[str, tuple[Any, Any]] = {}
+            if previous_row is not None:
+                for key in fields:
+                    old_val = getattr(previous_row, key, None)
+                    new_val = getattr(task_row, key, None)
+                    if old_val != new_val:
+                        changed_fields[key] = (old_val, new_val)
+            await self._emit_event(
+                "task_updated",
+                task=task_row,
+                previous=previous_row,
+                changed_fields=changed_fields,
+                source=source,
             )
         return task_row
 
@@ -845,6 +869,7 @@ class Database:
             message_count=data["message_count"],
             pinned_task_id=data.get("pinned_task_id"),
             summary=data.get("summary"),
+            pending_action=data.get("pending_action"),
         )
 
     @staticmethod
@@ -927,6 +952,37 @@ class Database:
             return None
         return self._row_to_chat_session(row, cursor.description)
 
+    async def list_chat_sessions(
+        self,
+        user_id: str,
+        status: str | None = None,
+        channel: str | None = None,
+        limit: int = 50,
+    ) -> list[ChatSession]:
+        """List chat sessions for a user, newest first."""
+        conn = self.connection
+        where_clauses = ["user_id = ?"]
+        params: list[Any] = [user_id]
+
+        if status is not None:
+            where_clauses.append("status = ?")
+            params.append(status)
+        if channel is not None:
+            where_clauses.append("channel = ?")
+            params.append(channel)
+
+        query = (
+            "SELECT * FROM conversation_sessions"
+            f" WHERE {' AND '.join(where_clauses)}"
+            " ORDER BY last_activity DESC LIMIT ?"
+        )
+        params.append(limit)
+
+        cursor = await conn.execute(query, params)
+        rows = await cursor.fetchall()
+        description = cursor.description
+        return [self._row_to_chat_session(row, description) for row in rows]
+
     async def update_chat_session(self, session_id: str, **kwargs: Any) -> None:
         """Update allowed fields on a chat session.
 
@@ -940,6 +996,7 @@ class Database:
             "last_activity",
             "expires_at",
             "message_count",
+            "pending_action",
         }
         if not kwargs:
             return
@@ -991,6 +1048,8 @@ class Database:
         content: str,
         intent: str | None = None,
         tokens_used: int | None = None,
+        action_name: str | None = None,
+        action_result: str | None = None,
     ) -> ChatMessage:
         """Insert a message and increment session message_count + last_activity."""
         conn = self.connection
@@ -999,9 +1058,13 @@ class Database:
 
         await conn.execute(
             """INSERT INTO conversation_messages
-               (id, session_id, role, content, intent, tokens_used, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (message_id, session_id, role, content, intent, tokens_used, now_iso),
+               (id, session_id, role, content, intent, tokens_used,
+                action_name, action_result, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                message_id, session_id, role, content, intent,
+                tokens_used, action_name, action_result, now_iso,
+            ),
         )
         await conn.execute(
             """UPDATE conversation_sessions

@@ -1224,6 +1224,11 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     event_bus = TaskEventBus()
     db.set_event_bus(event_bus)
 
+    from donna.preferences.correction_subscriber import CorrectionSubscriber
+
+    correction_subscriber = CorrectionSubscriber(db)
+    event_bus.subscribe("task_updated", correction_subscriber.on_task_updated)
+
     # Initialise model layer and input parser
     invocation_logger = InvocationLogger(db.connection)
     router = ModelRouter(

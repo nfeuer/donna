@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+from typing import Any
 
 
 class ChatIntent(enum.StrEnum):
@@ -31,6 +32,7 @@ class ChatResponse:
     """Response from the ConversationEngine."""
 
     text: str
+    session_id: str | None = None
     needs_escalation: bool = False
     escalation_reason: str | None = None
     estimated_cost: float | None = None
@@ -53,6 +55,7 @@ class ChatSession:
     message_count: int
     pinned_task_id: str | None = None
     summary: str | None = None
+    pending_action: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -66,3 +69,36 @@ class ChatMessage:
     created_at: str
     intent: str | None = None
     tokens_used: int | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class ActionContext:
+    """Context passed to every action handler."""
+
+    db: Any  # donna.tasks.database.Database
+    user_id: str
+    session_id: str
+    config: Any  # donna.chat.config.ChatConfig
+    dashboard_context: dict[str, Any] | None = None
+
+
+@dataclasses.dataclass
+class ActionResult:
+    """Standardized result from action handler execution."""
+
+    success: bool
+    data: dict[str, Any] = dataclasses.field(default_factory=dict)
+    summary: str = ""
+    error: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class ActionDefinition:
+    """Single action from chat_actions.yaml."""
+
+    name: str
+    description: str
+    domain: str
+    safety: str  # "read" | "write" | "confirm"
+    handler: str  # dotted path, e.g. "donna.chat.actions.tasks.query_tasks"
+    parameters: dict[str, Any] = dataclasses.field(default_factory=dict)

@@ -11,7 +11,7 @@ import RefreshButton from "../../components/RefreshButton";
 import SkillsTab from "./SkillsTab";
 import SkillDrawer from "./SkillDrawer";
 import CandidatesTab from "./CandidatesTab";
-import CandidateDrawer from "./CandidateDrawer";
+import CandidateExpander from "./CandidateExpander";
 import DraftsTab from "./DraftsTab";
 import RunsTab from "./RunsTab";
 import RunDrawer from "./RunDrawer";
@@ -131,7 +131,7 @@ export default function SkillSystemPage() {
   // SkillDrawer is only used by Drafts tab; Skills uses inline SkillDetailPanel.
   const skillDrawerOpen =
     drawerOpen && tab === "drafts";
-  const candidateDrawerOpen = drawerOpen && tab === "candidates";
+  const candidateExpanderOpen = drawerOpen && tab === "candidates";
   const runDrawerOpen = drawerOpen && tab === "runs";
   const automationDrawerOpen = drawerOpen && tab === "automations";
 
@@ -209,12 +209,13 @@ export default function SkillSystemPage() {
         onRunsLink={handleRunsLink}
         onMutated={handleMutated}
       />
-      <CandidateDrawer
-        candidateId={candidateDrawerOpen ? selectedId : null}
-        open={candidateDrawerOpen}
-        onOpenChange={closeDrawer}
-        onMutated={handleMutated}
-      />
+      {candidateExpanderOpen && selectedId && (
+        <CandidateExpander
+          candidateId={selectedId}
+          onClose={() => closeDrawer(false)}
+          onMutated={handleMutated}
+        />
+      )}
       <RunDrawer
         runId={runDrawerOpen ? selectedId : null}
         open={runDrawerOpen}
