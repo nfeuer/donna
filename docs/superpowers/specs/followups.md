@@ -1018,6 +1018,16 @@ visible.
 
 ---
 
+### Event-driven corrections — uncovered call sites and gaps
+
+- **Surfaced by:** `docs/superpowers/specs/2026-05-15-preferences-event-driven-corrections-design.md`
+- **Spec section(s):** `spec_v3.md#§7.4`
+- **Status:** open
+- **Decision / Reasoning:** The event-driven correction pipeline covers the 6 call sites in the spec's source table, but several user-initiated `update_task` calls were not tagged with `source=`: `/done` and `/reschedule` slash commands in `discord_commands.py`, `rename_task` in `task_actions.py`, and dedup merge paths in `discord_bot.py` lines 885/910. Additionally, `CorrectionSubscriber` does not wire `cluster_detector` (F-7 fast-path for correction cluster scanning), and `input_text` is now empty for all event-driven corrections (previously Discord regex commands logged the raw message text). The `spec_v3.md` §9.1 section on correction logging still describes direct call-site logging rather than the event-driven approach.
+- **Follow-up:** (1) Tag remaining user-initiated `update_task` calls with `source=`. (2) Wire `cluster_detector` into `CorrectionSubscriber` if F-7 fast-path scanning is needed. (3) Update `spec_v3.md` §9.1 to reflect event-driven routing. (4) Consider threading `input_text` through the event for Discord regex command corrections.
+
+---
+
 ## How to add an entry (template)
 
 Copy this when you finish a slice:
