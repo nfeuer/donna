@@ -4,7 +4,7 @@ import RefreshButton from "../../components/RefreshButton";
 import { Button } from "../../primitives/Button";
 import { PageHeader } from "../../primitives/PageHeader";
 import { fetchTasks, type TaskSummary } from "../../api/tasks";
-import TaskDetailDrawer from "./TaskDetailDrawer";
+import TaskDetailExpander from "./TaskDetailExpander";
 import TaskFilters from "./TaskFilters";
 import TaskTable from "./TaskTable";
 import { ALL_VALUE } from "./taskStatusStyles";
@@ -158,7 +158,9 @@ export default function TasksPage() {
         </div>
       </nav>
 
-      <TaskDetailDrawer taskId={routeId ?? null} onClose={handleDrawerClose} />
+      {routeId && (
+        <TaskDetailExpander taskId={routeId} onClose={handleDrawerClose} />
+      )}
     </div>
   );
 }

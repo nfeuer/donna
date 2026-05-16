@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "../../primitives/DataTable";
-import { Drawer } from "../../primitives/Drawer";
 import { Pill } from "../../primitives/Pill";
 import { ScrollArea } from "../../primitives/ScrollArea";
 import { Skeleton } from "../../primitives/Skeleton";
@@ -21,30 +20,23 @@ import {
   priorityToPillVariant,
   statusToPillVariant,
 } from "./taskStatusStyles";
-import styles from "./TaskDetailDrawer.module.css";
+import styles from "./TaskDetailExpander.module.css";
 
 interface Props {
-  taskId: string | null;
+  taskId: string;
   onClose: () => void;
 }
 
 /**
- * Drawer-based task detail surface. Replaces the free-floating
- * /tasks/:id page and the AntD Card/Descriptions/Steps/Tree stack.
- * Focus trap + ESC close come free from the Radix-backed Drawer
- * primitive (audit item P1 "Task drawer a11y").
+ * Inline expansion panel for task details. Renders directly below
+ * the task table instead of in a drawer overlay.
  */
-export default function TaskDetailDrawer({ taskId, onClose }: Props) {
+export default function TaskDetailExpander({ taskId, onClose }: Props) {
   const [task, setTask] = useState<TaskDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    if (!taskId) {
-      setTask(null);
-      setNotFound(false);
-      return;
-    }
     let cancelled = false;
     setLoading(true);
     setNotFound(false);
@@ -66,14 +58,20 @@ export default function TaskDetailDrawer({ taskId, onClose }: Props) {
     };
   }, [taskId]);
 
-  const title = task?.title ?? (taskId ? `Task · ${taskId.slice(0, 8)}…` : "Task");
+  const handleClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  const title = task?.title ?? `Task · ${taskId.slice(0, 8)}…`;
 
   return (
-    <Drawer
-      open={!!taskId}
-      onOpenChange={(open) => !open && onClose()}
-      title={title}
-    >
+    <div className={styles.expanderContainer}>
+      <div className={styles.expanderHeader}>
+        <span>{title}</span>
+        <button className={styles.collapseBtn} onClick={handleClose}>
+          Collapse
+        </button>
+      </div>
       {loading ? (
         <div className={styles.loading}>
           <Skeleton height={16} />
@@ -84,14 +82,14 @@ export default function TaskDetailDrawer({ taskId, onClose }: Props) {
         <div className={styles.emptyHint}>Task not found.</div>
       ) : task ? (
         <ScrollArea className={styles.scroll}>
-          <TaskDrawerBody task={task} />
+          <TaskExpanderBody task={task} />
         </ScrollArea>
       ) : null}
-    </Drawer>
+    </div>
   );
 }
 
-function TaskDrawerBody({ task }: { task: TaskDetail }) {
+function TaskExpanderBody({ task }: { task: TaskDetail }) {
   const stepIdx = getStateStepIndex(task.status);
   const isCancelled = task.status === "cancelled";
 
@@ -106,7 +104,7 @@ function TaskDrawerBody({ task }: { task: TaskDetail }) {
         {task.donna_managed && <Pill variant="accent">Donna-managed</Pill>}
       </div>
 
-      {/* State timeline (no AntD Steps) */}
+      {/* State timeline */}
       <section className={styles.section} aria-label="State timeline">
         <div className={styles.eyebrow}>State timeline</div>
         <ol className={styles.timeline}>
@@ -132,7 +130,7 @@ function TaskDrawerBody({ task }: { task: TaskDetail }) {
         )}
       </section>
 
-      {/* Core fields (<dl> replaces AntD Descriptions) */}
+      {/* Core fields */}
       <section className={styles.section} aria-label="Task details">
         <div className={styles.eyebrow}>Details</div>
         <dl className={styles.fields}>
@@ -214,7 +212,7 @@ function TaskDrawerBody({ task }: { task: TaskDetail }) {
         </section>
       )}
 
-      {/* Subtasks (<ul> replaces AntD Tree) */}
+      {/* Subtasks */}
       {task.subtasks.length > 0 && (
         <section className={styles.section} aria-label="Subtasks">
           <div className={styles.eyebrow}>Subtasks ({task.subtasks.length})</div>

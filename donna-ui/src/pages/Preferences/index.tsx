@@ -6,7 +6,7 @@ import { Switch } from "../../primitives/Switch";
 import RefreshButton from "../../components/RefreshButton";
 import RulesTable from "./RulesTable";
 import CorrectionsTable from "./CorrectionsTable";
-import RuleDetailDrawer from "./RuleDetailDrawer";
+import RuleDetailExpander from "./RuleDetailExpander";
 import {
   fetchPreferenceRules,
   fetchCorrections,
@@ -51,9 +51,8 @@ export default function PreferencesPage() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [voiceLoading, setVoiceLoading] = useState(false);
 
-  // Drawer
+  // Expander
   const [selectedRule, setSelectedRule] = useState<PreferenceRule | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const doFetch = useCallback(async () => {
     setRulesLoading(true);
@@ -99,7 +98,6 @@ export default function PreferencesPage() {
 
   const handleRuleClick = (rule: PreferenceRule) => {
     setSelectedRule(rule);
-    setDrawerOpen(true);
   };
 
   const hasRules = rules.length > 0 || rulesLoading;
@@ -221,11 +219,12 @@ export default function PreferencesPage() {
         </>
       )}
 
-      <RuleDetailDrawer
-        rule={selectedRule}
-        open={drawerOpen}
-        onOpenChange={setDrawerOpen}
-      />
+      {selectedRule && (
+        <RuleDetailExpander
+          rule={selectedRule}
+          onClose={() => setSelectedRule(null)}
+        />
+      )}
     </div>
   );
 }

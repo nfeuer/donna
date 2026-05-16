@@ -1,0 +1,56 @@
+.expanderContainer {
+  padding: var(--space-4);
+  background: var(--color-inset);
+  border: 1px solid var(--color-accent-border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+}
+
+.expanderHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.collapseBtn {
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  font-size: var(--text-label);
+  cursor: pointer;
+}
+.collapseBtn:hover { color: var(--color-text); border-color: var(--color-accent-border); }
+
+.dlGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.dlLabel {
+  color: var(--color-text-muted);
+  font-size: var(--text-small);
+}
+
+.dlValue {
+  color: var(--color-text);
+}
+
+.dlPre {
+  margin: 0;
+  font-size: var(--text-small);
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+.subheading {
+  font-family: var(--font-display);
+  font-weight: 300;
+  font-size: var(--text-section);
+  color: var(--color-text);
+  margin-bottom: var(--space-3);
+}

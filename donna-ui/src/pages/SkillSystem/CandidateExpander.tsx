@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Drawer } from "../../primitives/Drawer";
 import { Button } from "../../primitives/Button";
 import { Pill } from "../../primitives/Pill";
 import { Skeleton } from "../../primitives/Skeleton";
@@ -10,19 +9,21 @@ import {
   fetchSkillCandidates,
   type SkillCandidate,
 } from "../../api/skillSystem";
-import styles from "./SkillSystem.module.css";
+import styles from "./CandidateExpander.module.css";
 
 interface Props {
-  candidateId: string | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  candidateId: string;
+  onClose: () => void;
   onMutated: () => void;
 }
 
-export default function CandidateDrawer({
+/**
+ * Inline expansion panel for skill candidate details. Renders directly
+ * below the candidates table instead of in a drawer overlay.
+ */
+export default function CandidateExpander({
   candidateId,
-  open,
-  onOpenChange,
+  onClose,
   onMutated,
 }: Props) {
   const [row, setRow] = useState<SkillCandidate | null>(null);
@@ -32,10 +33,6 @@ export default function CandidateDrawer({
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      if (!open || !candidateId) {
-        setRow(null);
-        return;
-      }
       setLoading(true);
       try {
         // No per-id endpoint; fetch a wide list and filter client-side.
@@ -52,25 +49,27 @@ export default function CandidateDrawer({
     return () => {
       cancelled = true;
     };
-  }, [open, candidateId]);
+  }, [candidateId]);
 
-  const handleDismiss = async () => {
-    if (!candidateId) return;
+  const handleClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  const handleDismiss = useCallback(async () => {
     setBusy(true);
     try {
       await dismissCandidate(candidateId);
       toast.success("Candidate dismissed");
       onMutated();
-      onOpenChange(false);
+      onClose();
     } catch {
       toast.error("Dismiss failed");
     } finally {
       setBusy(false);
     }
-  };
+  }, [candidateId, onMutated, onClose]);
 
-  const handleDraftNow = async () => {
-    if (!candidateId) return;
+  const handleDraftNow = useCallback(async () => {
     setBusy(true);
     try {
       const resp = await draftCandidateNow(candidateId);
@@ -78,7 +77,7 @@ export default function CandidateDrawer({
         description: `manual_draft_at=${resp.manual_draft_at}`,
       });
       onMutated();
-      onOpenChange(false);
+      onClose();
     } catch (err: unknown) {
       const msg =
         typeof err === "object" &&
@@ -93,23 +92,28 @@ export default function CandidateDrawer({
     } finally {
       setBusy(false);
     }
-  };
+  }, [candidateId, onMutated, onClose]);
+
+  const title = row ? (row.capability_name ?? "Candidate") : "Candidate";
 
   return (
-    <Drawer
-      open={open}
-      onOpenChange={onOpenChange}
-      title={row ? (row.capability_name ?? "Candidate") : "Candidate"}
-    >
-      <div className={styles.drawerBody}>
+    <div className={styles.expanderContainer}>
+      <div className={styles.expanderHeader}>
+        <span>{title}</span>
+        <button className={styles.collapseBtn} onClick={handleClose}>
+          Collapse
+        </button>
+      </div>
+
+      <div className={styles.body}>
         {loading && !row ? (
           <Skeleton width="100%" height={160} />
         ) : !row ? (
-          <p className={styles.kvValue}>Candidate not found.</p>
+          <p className={styles.notFound}>Candidate not found.</p>
         ) : (
           <>
-            <section className={styles.drawerSection}>
-              <h3 className={styles.drawerSectionTitle}>Details</h3>
+            <section className={styles.detailSection}>
+              <h3 className={styles.sectionTitle}>Details</h3>
               <div className={styles.kv}>
                 <span className={styles.kvKey}>Status</span>
                 <span className={styles.kvValue}>
@@ -143,8 +147,8 @@ export default function CandidateDrawer({
                 </span>
               </div>
             </section>
-            <section className={styles.drawerSection}>
-              <h3 className={styles.drawerSectionTitle}>Actions</h3>
+            <section className={styles.detailSection}>
+              <h3 className={styles.sectionTitle}>Actions</h3>
               <div className={styles.actions}>
                 <Button
                   onClick={handleDraftNow}
@@ -164,6 +168,6 @@ export default function CandidateDrawer({
           </>
         )}
       </div>
-    </Drawer>
+    </div>
   );
 }

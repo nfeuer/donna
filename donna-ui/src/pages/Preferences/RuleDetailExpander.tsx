@@ -1,27 +1,28 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Drawer } from "../../primitives/Drawer";
 import { Pill } from "../../primitives/Pill";
 import { DataTable } from "../../primitives/DataTable";
 import { fetchCorrections, type PreferenceRule, type CorrectionEntry } from "../../api/preferences";
-import styles from "./Preferences.module.css";
+import styles from "./RuleDetailExpander.module.css";
 
 interface Props {
-  rule: PreferenceRule | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  rule: PreferenceRule;
+  onClose: () => void;
 }
 
 function formatTs(ts: string): string {
   return ts.replace("T", " ").substring(0, 19);
 }
 
-export default function RuleDetailDrawer({ rule, open, onOpenChange }: Props) {
+/**
+ * Inline expansion panel for preference rule details. Renders directly
+ * below the rules table instead of in a drawer overlay.
+ */
+export default function RuleDetailExpander({ rule, onClose }: Props) {
   const [corrections, setCorrections] = useState<CorrectionEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!rule || !open) return;
     if (rule.supporting_corrections.length === 0) {
       setCorrections([]);
       return;
@@ -32,7 +33,11 @@ export default function RuleDetailDrawer({ rule, open, onOpenChange }: Props) {
       .then((resp) => setCorrections(resp.corrections))
       .catch(() => setCorrections([]))
       .finally(() => setLoading(false));
-  }, [rule, open]);
+  }, [rule.id, rule.supporting_corrections.length]);
+
+  const handleClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
 
   const correctionColumns = useMemo<ColumnDef<CorrectionEntry>[]>(
     () => [
@@ -67,14 +72,15 @@ export default function RuleDetailDrawer({ rule, open, onOpenChange }: Props) {
     [],
   );
 
-  if (!rule) return null;
-
   return (
-    <Drawer
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Rule Details"
-    >
+    <div className={styles.expanderContainer}>
+      <div className={styles.expanderHeader}>
+        <span>Rule Details</span>
+        <button className={styles.collapseBtn} onClick={handleClose}>
+          Collapse
+        </button>
+      </div>
+
       <dl className={styles.dlGrid}>
         <dt className={styles.dlLabel}>Type</dt>
         <dd><Pill variant="accent">{rule.rule_type}</Pill></dd>
@@ -109,7 +115,7 @@ export default function RuleDetailDrawer({ rule, open, onOpenChange }: Props) {
         <dd className={styles.dlValue}>{rule.disabled_at?.substring(0, 10) ?? "—"}</dd>
       </dl>
 
-      <h4 className={styles.drawerSubheading}>
+      <h4 className={styles.subheading}>
         Supporting Corrections ({rule.supporting_corrections.length})
       </h4>
 
@@ -121,6 +127,6 @@ export default function RuleDetailDrawer({ rule, open, onOpenChange }: Props) {
         pageSize={100}
         emptyState="No supporting corrections found"
       />
-    </Drawer>
+    </div>
   );
 }
