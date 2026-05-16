@@ -9,6 +9,7 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
 export { Tooltip } from "./Tooltip";
 export { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter, type DialogSize } from "./Dialog";
 export { Drawer } from "./Drawer";
+export { CenterDialog } from "./CenterDialog";
 export {
   DropdownMenu,
   DropdownMenuTrigger,
