@@ -27,7 +27,6 @@ from discord import app_commands
 
 from donna.integrations.discord_pending_drafts import PendingDraft
 from donna.orchestrator.input_parser import InputParser
-from donna.preferences.correction_logger import log_correction
 from donna.tasks.database import Database, TaskRow
 from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain
 from donna.tasks.dedup import DuplicateDetectedError
@@ -962,13 +961,17 @@ class DonnaBot(discord.Client):
         # Capture original value before update.
         original_value = str(getattr(task, field, "") or "")
 
-        # Apply the update.
+        # Apply the update — source tag triggers event-driven correction logging.
         try:
             if field == "priority":
-                await self._database.update_task(task.id, priority=int(new_value))
+                await self._database.update_task(
+                    task.id, source="discord_command", priority=int(new_value),
+                )
             elif field == "domain":
                 domain_enum = TaskDomain(new_value.upper())
-                await self._database.update_task(task.id, domain=domain_enum)
+                await self._database.update_task(
+                    task.id, source="discord_command", domain=domain_enum,
+                )
             else:
                 log.warning("field_update_unsupported_field", field=field)
                 return
@@ -978,21 +981,6 @@ class DonnaBot(discord.Client):
                 f"Couldn't update {field} to '{new_value}'. Check the value and try again."
             )
             return
-
-        # Log the correction.
-        try:
-            await log_correction(
-                db=self._database,
-                user_id=user_id,
-                task_id=task.id,
-                task_type="discord_command",
-                field=field,
-                original=original_value,
-                corrected=new_value,
-                input_text=raw_text,
-            )
-        except Exception:
-            log.exception("correction_log_failed", field=field)
 
         log.info(
             "field_update_applied",
