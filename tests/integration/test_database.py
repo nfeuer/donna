@@ -403,7 +403,7 @@ class TestUpdateTaskEvent:
         assert len(received) == 1
         assert received[0]["source"] is None
 
-    async def test_no_change_no_event(self, db: Database) -> None:
+    async def test_same_value_emits_empty_diff(self, db: Database) -> None:
         bus = TaskEventBus()
         db.set_event_bus(bus)
 
