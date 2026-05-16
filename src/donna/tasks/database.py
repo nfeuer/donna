@@ -514,7 +514,15 @@ class Database:
         return _row_to_task(row)
 
     async def update_task(self, task_id: str, *, source: str | None = None, **fields: Any) -> TaskRow | None:
-        """Update specific fields on a task. Returns updated row or None."""
+        """Update specific fields on a task. Returns updated row or None.
+
+        Args:
+            task_id: The task UUID to update.
+            source: Optional origin tag (e.g. ``"api"``, ``"discord_modal"``).
+                When non-None, the emitted ``task_updated`` event signals a
+                user-initiated change that downstream subscribers (such as
+                :class:`CorrectionSubscriber`) may log for preference learning.
+        """
         if not fields:
             return await self.get_task(task_id)
 
