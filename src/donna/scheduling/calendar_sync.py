@@ -173,6 +173,7 @@ class CalendarSync:
         new_count = (task.reschedule_count or 0) + 1
         await self._db.update_task(
             task_id,
+            source="calendar_sync",
             scheduled_start=new_start,
             reschedule_count=new_count,
         )
@@ -184,13 +185,6 @@ class CalendarSync:
             old_start=old_start.isoformat(),
             new_start=new_start.isoformat(),
             reschedule_count=new_count,
-        )
-
-        await self._log_correction(
-            task_id=task_id,
-            field="scheduled_start",
-            original=old_start.isoformat(),
-            corrected=new_start.isoformat(),
         )
 
     async def _handle_conflict(
@@ -342,38 +336,6 @@ class CalendarSync:
             for row in rows
             if row[1] is not None  # scheduled_start must be set
         ]
-
-    async def _log_correction(
-        self,
-        task_id: str,
-        field: str,
-        original: str,
-        corrected: str,
-    ) -> None:
-        """Write a correction_log row for preference learning."""
-        import uuid
-
-        conn = self._db.connection
-        await conn.execute(
-            """
-            INSERT INTO correction_log
-                (id, timestamp, user_id, task_type, task_id, input_text,
-                 field_corrected, original_value, corrected_value)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                str(uuid.uuid4()),
-                datetime.now(tz=UTC).isoformat(),
-                self._user_id,
-                "calendar_sync",
-                task_id,
-                "calendar_event_time_change",
-                field,
-                original,
-                corrected,
-            ),
-        )
-        await conn.commit()
 
 
 # ------------------------------------------------------------------

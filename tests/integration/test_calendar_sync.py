@@ -91,6 +91,15 @@ async def db(tmp_path, sm):
     engine = create_engine(f"sqlite:///{db_path}")
     Base.metadata.create_all(engine)
     engine.dispose()
+
+    from donna.preferences.correction_subscriber import CorrectionSubscriber
+    from donna.tasks.events import TaskEventBus
+
+    bus = TaskEventBus()
+    database.set_event_bus(bus)
+    subscriber = CorrectionSubscriber(database)
+    bus.subscribe("task_updated", subscriber.on_task_updated)
+
     yield database
     await database.close()
 
