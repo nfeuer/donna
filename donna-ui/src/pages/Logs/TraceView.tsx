@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Drawer } from "../../primitives/Drawer";
+import { CenterDialog } from "../../primitives/CenterDialog";
 import { Pill } from "../../primitives/Pill";
 import { ScrollArea } from "../../primitives/ScrollArea";
 import { Skeleton } from "../../primitives/Skeleton";
@@ -45,7 +45,7 @@ export default function TraceView({ correlationId, onClose }: Props) {
       : 0;
 
   return (
-    <Drawer
+    <CenterDialog
       open={!!correlationId}
       onOpenChange={(open) => !open && onClose()}
       title={correlationId ? `Trace · ${correlationId.slice(0, 12)}…` : "Trace"}
@@ -114,6 +114,6 @@ export default function TraceView({ correlationId, onClose }: Props) {
           ))}
         </ol>
       )}
-    </Drawer>
+    </CenterDialog>
   );
 }

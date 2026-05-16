@@ -1,4 +1,4 @@
-import { Drawer } from "../../primitives/Drawer";
+import { CenterDialog } from "../../primitives/CenterDialog";
 import { Pill, type PillVariant } from "../../primitives/Pill";
 import type { ShadowComparison } from "../../api/shadow";
 import styles from "./ComparisonDrawer.module.css";
@@ -32,7 +32,7 @@ export default function ComparisonDrawer({ comparison, open, onOpenChange }: Pro
   const outcome = outcomeLabel(quality_delta);
 
   return (
-    <Drawer
+    <CenterDialog
       open={open}
       onOpenChange={onOpenChange}
       title="Comparison Detail"
@@ -95,6 +95,6 @@ export default function ComparisonDrawer({ comparison, open, onOpenChange }: Pro
           </span>
         </div>
       </div>
-    </Drawer>
+    </CenterDialog>
   );
 }
