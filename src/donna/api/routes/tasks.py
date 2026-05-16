@@ -167,7 +167,7 @@ async def update_task(
     if not updates:
         return TaskResponse.from_row(existing)
 
-    row = await db.update_task(task_id, **updates)
+    row = await db.update_task(task_id, source="api", **updates)
     return TaskResponse.from_row(row)
 
 
