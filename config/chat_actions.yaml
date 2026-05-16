@@ -1,0 +1,225 @@
+actions:
+  # ── Tasks ──────────────────────────────────────────
+  query_tasks:
+    description: "List or search tasks by status, priority, or domain"
+    domain: tasks
+    safety: read
+    handler: donna.chat.actions.tasks.query_tasks
+    parameters:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [backlog, scheduled, in_progress, blocked, waiting_input, paused, done, cancelled]
+        priority:
+          type: string
+          enum: [P0, P1, P2, P3]
+        domain:
+          type: string
+          enum: [personal, work, family]
+      required: []
+
+  get_task:
+    description: "Get details of a specific task by ID or title"
+    domain: tasks
+    safety: read
+    handler: donna.chat.actions.tasks.get_task
+    parameters:
+      type: object
+      properties:
+        task_id:
+          type: string
+        title_search:
+          type: string
+      required: []
+
+  create_task:
+    description: "Create a new task"
+    domain: tasks
+    safety: write
+    handler: donna.chat.actions.tasks.create_task
+    parameters:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [P0, P1, P2, P3]
+        domain:
+          type: string
+          enum: [personal, work, family]
+      required: [title]
+
+  update_task:
+    description: "Update a task's status, priority, or notes"
+    domain: tasks
+    safety: write
+    handler: donna.chat.actions.tasks.update_task
+    parameters:
+      type: object
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+        priority:
+          type: string
+        notes:
+          type: string
+      required: [task_id]
+
+  reschedule_task:
+    description: "Reschedule a task to a new date"
+    domain: tasks
+    safety: write
+    handler: donna.chat.actions.tasks.reschedule_task
+    parameters:
+      type: object
+      properties:
+        task_id:
+          type: string
+        scheduled_start:
+          type: string
+          description: "ISO 8601 date or datetime"
+      required: [task_id, scheduled_start]
+
+  # ── Vault ──────────────────────────────────────────
+  read_vault_file:
+    description: "Read a file from the vault"
+    domain: vault
+    safety: read
+    handler: donna.chat.actions.vault.read_vault_file
+    parameters:
+      type: object
+      properties:
+        path:
+          type: string
+          description: "Relative path within the vault"
+      required: [path]
+
+  create_vault_note:
+    description: "Create a new note file in the vault"
+    domain: vault
+    safety: write
+    handler: donna.chat.actions.vault.create_vault_note
+    parameters:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        folder:
+          type: string
+          description: "Subfolder within vault (optional)"
+      required: [title, content]
+
+  list_vault_files:
+    description: "List files in the vault, optionally within a folder"
+    domain: vault
+    safety: read
+    handler: donna.chat.actions.vault.list_vault_files
+    parameters:
+      type: object
+      properties:
+        folder:
+          type: string
+      required: []
+
+  # ── Skills ─────────────────────────────────────────
+  execute_skill:
+    description: "Run a skill and report results"
+    domain: skills
+    safety: confirm
+    handler: donna.chat.actions.skills.execute_skill
+    parameters:
+      type: object
+      properties:
+        skill_name:
+          type: string
+        input_data:
+          type: object
+      required: [skill_name]
+
+  list_skills:
+    description: "List available skills"
+    domain: skills
+    safety: read
+    handler: donna.chat.actions.skills.list_skills
+    parameters:
+      type: object
+      properties: {}
+      required: []
+
+  create_skill_draft:
+    description: "Draft a new skill definition"
+    domain: skills
+    safety: write
+    handler: donna.chat.actions.skills.create_skill_draft
+    parameters:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        steps:
+          type: array
+          items:
+            type: string
+      required: [name, description]
+
+  # ── Automations ────────────────────────────────────
+  create_automation:
+    description: "Create a new automation rule"
+    domain: automations
+    safety: confirm
+    handler: donna.chat.actions.automations.create_automation
+    parameters:
+      type: object
+      properties:
+        name:
+          type: string
+        trigger:
+          type: string
+        action:
+          type: string
+        skill_name:
+          type: string
+      required: [name, trigger, skill_name]
+
+  list_automations:
+    description: "List active automations"
+    domain: automations
+    safety: read
+    handler: donna.chat.actions.automations.list_automations
+    parameters:
+      type: object
+      properties: {}
+      required: []
+
+  # ── Debug ──────────────────────────────────────────
+  get_debug_data:
+    description: "System status, queue depth, recent errors"
+    domain: debug
+    safety: read
+    handler: donna.chat.actions.debug.get_debug_data
+    parameters:
+      type: object
+      properties: {}
+      required: []
+
+  get_agent_status:
+    description: "Agent run history and current status"
+    domain: debug
+    safety: read
+    handler: donna.chat.actions.debug.get_agent_status
+    parameters:
+      type: object
+      properties:
+        agent_name:
+          type: string
+      required: []
