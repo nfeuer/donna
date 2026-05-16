@@ -38,6 +38,7 @@ export interface ChatMessage {
 
 export interface ChatResponse {
   text: string;
+  session_id: string | null;
   needs_escalation: boolean;
   escalation_reason?: string;
   estimated_cost?: number;
@@ -61,6 +62,13 @@ export interface SessionWithMessages {
 // ---------------------------------------------------------------------------
 // API functions
 // ---------------------------------------------------------------------------
+
+export async function listSessions(
+  params: { status?: string; channel?: string; limit?: number } = {},
+): Promise<{ sessions: ChatSession[] }> {
+  const { data } = await client.get("/chat/sessions", { params });
+  return data;
+}
 
 export async function sendMessage(
   sessionId: string,

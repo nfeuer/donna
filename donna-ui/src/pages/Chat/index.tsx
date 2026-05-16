@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { PageHeader } from "../../primitives/PageHeader";
 import { Button } from "../../primitives/Button";
 import {
@@ -6,6 +6,7 @@ import {
   fetchSession,
   fetchContextStatus,
   escalateSession,
+  listSessions,
   type ChatSession,
   type ChatMessage,
   type ChatResponse,
@@ -18,12 +19,25 @@ import ContextMeter from "./ContextMeter";
 import styles from "./Chat.module.css";
 
 export default function ChatPage() {
-  const [sessions] = useState<ChatSession[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [lastResponse, setLastResponse] = useState<ChatResponse | null>(null);
   const [contextStatus, setContextStatus] = useState<ContextStatus | null>(null);
   const [sending, setSending] = useState(false);
+
+  const refreshSessions = useCallback(async () => {
+    try {
+      const result = await listSessions({ limit: 50 });
+      setSessions(result.sessions);
+    } catch {
+      // Error toast handled by global interceptor
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshSessions();
+  }, [refreshSessions]);
 
   const loadSession = useCallback(async (sessionId: string) => {
     try {
@@ -45,15 +59,13 @@ export default function ChatPage() {
       try {
         const resp = await sendMessage(sid, text);
         setLastResponse(resp);
-        if (sid === "new") {
-          const now = new Date().toISOString();
-          setMessages((prev) => [
-            ...prev,
-            { id: `temp-${Date.now()}`, role: "user" as const, content: text, created_at: now },
-            { id: `temp-${Date.now() + 1}`, role: "assistant" as const, content: resp.text, created_at: now },
-          ]);
-        } else {
-          await loadSession(sid);
+        const resolvedId = resp.session_id ?? (sid !== "new" ? sid : null);
+        if (resolvedId) {
+          if (!activeSessionId) {
+            setActiveSessionId(resolvedId);
+          }
+          await loadSession(resolvedId);
+          await refreshSessions();
         }
       } catch {
         // Error toast handled by global interceptor
@@ -61,7 +73,7 @@ export default function ChatPage() {
         setSending(false);
       }
     },
-    [activeSessionId, loadSession],
+    [activeSessionId, loadSession, refreshSessions],
   );
 
   const handleEscalate = useCallback(async () => {
