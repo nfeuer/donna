@@ -27,6 +27,7 @@ from donna.models.types import CompletionMetadata
 from donna.resilience.retry import CircuitBreaker, TaskCategory, resilient_call
 
 if TYPE_CHECKING:
+    from donna.collection.payload_writer import PayloadWriter
     from donna.cost.budget import BudgetGuard
     from donna.cost.escalation_gate import EscalationGate
     from donna.logging.invocation_logger import InvocationLogger
@@ -125,6 +126,7 @@ class ModelRouter:
         | None = None,
         escalation_gate: EscalationGate | None = None,
         invocation_logger: InvocationLogger | None = None,
+        payload_writer: PayloadWriter | None = None,
     ) -> None:
         self._models_config = models_config
         self._task_types_config = task_types_config
@@ -133,6 +135,7 @@ class ModelRouter:
         self._on_shadow_complete = on_shadow_complete
         self._escalation_gate = escalation_gate
         self._invocation_logger = invocation_logger
+        self._payload_writer = payload_writer
         self._circuit_breaker = CircuitBreaker()
 
         # Instantiate one provider instance per unique provider name in config.
@@ -524,11 +527,12 @@ class ModelRouter:
             )
 
         # Auto-log every successful LLM call to invocation_log.
+        invocation_id: str | None = None
         if self._invocation_logger is not None:
             from donna.logging.invocation_logger import InvocationMetadata
 
             try:
-                await self._invocation_logger.log(
+                invocation_id = await self._invocation_logger.log(
                     InvocationMetadata(
                         task_type=task_type,
                         model_alias=alias,
@@ -547,6 +551,53 @@ class ModelRouter:
                 )
             except Exception:
                 logger.warning("invocation_log_write_failed", task_type=task_type)
+
+        # Write request/response payload to disk for forensic inspection.
+        if self._payload_writer is not None and invocation_id is not None:
+            import hashlib
+
+            request_payload = {
+                "messages": messages or [{"role": "user", "content": prompt}],
+                "model": model_id,
+                "tools": tools,
+                "max_tokens": call_kwargs.get("max_tokens"),
+            }
+            response_payload = {
+                "content": result,
+                "usage": {
+                    "input_tokens": enriched_metadata.tokens_in,
+                    "output_tokens": enriched_metadata.tokens_out,
+                },
+                "stop_reason": "end_turn",
+                "model_actual": enriched_metadata.model_actual,
+            }
+
+            system_text = prompt
+            if messages:
+                system_parts = [
+                    m.get("content", "")
+                    for m in messages
+                    if m.get("role") == "system"
+                ]
+                if system_parts:
+                    system_text = "\n".join(str(p) for p in system_parts)
+            input_hash = hashlib.sha256(system_text.encode()).hexdigest()[:16]
+
+            try:
+                rel_path = await self._payload_writer.write(
+                    invocation_id=invocation_id,
+                    request=request_payload,
+                    response=response_payload,
+                )
+                if rel_path and self._invocation_logger is not None:
+                    conn = self._invocation_logger._conn
+                    await conn.execute(
+                        "UPDATE invocation_log SET payload_path = ?, input_hash = ? WHERE id = ?",
+                        (rel_path, input_hash, invocation_id),
+                    )
+                    await conn.commit()
+            except Exception:
+                logger.warning("payload_write_failed", task_type=task_type)
 
         # Shadow mode: fire secondary model in parallel if configured.
         routing = self._models_config.routing.get(task_type)
