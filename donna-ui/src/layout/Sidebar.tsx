@@ -14,6 +14,7 @@ import {
   Network,
   AlertOctagon,
   SlidersHorizontal,
+  Microscope,
   BookOpen,
   BookMarked,
   ExternalLink,
@@ -46,6 +47,7 @@ const NAV_ITEMS: NavEntry[] = [
   { path: "/preferences", label: "Preferences", icon: <Lightbulb size={18} /> },
   { path: "/llm-gateway", label: "LLM Gateway", icon: <Radio size={18} /> },
   { path: "/skill-system", label: "Skill System", icon: <Network size={18} /> },
+  { path: "/claude", label: "Claude", icon: <Microscope size={18} /> },
   { path: "/escalations", label: "Escalations", icon: <AlertOctagon size={18} /> },
   {
     path: "/escalation-settings",

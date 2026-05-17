@@ -17,6 +17,7 @@ import EscalationSettingsPage from "./pages/EscalationSettings";
 import ChatPage from "./pages/Chat";
 import VaultPage from "./pages/Vault";
 import CalendarPage from "./pages/Calendar";
+import ClaudeInspector from "./pages/ClaudeInspector";
 import DevPrimitivesPage from "./pages/DevPrimitives";
 import { useTheme } from "./hooks/useTheme";
 import { Skeleton } from "./primitives";
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="/skill-system" element={<ErrorBoundary><SkillSystemPage /></ErrorBoundary>} />
           <Route path="/escalations" element={<ErrorBoundary><EscalationsPage /></ErrorBoundary>} />
           <Route path="/escalations/:correlation_id" element={<ErrorBoundary><EscalationDetail /></ErrorBoundary>} />
+          <Route path="/claude" element={<ErrorBoundary><ClaudeInspector /></ErrorBoundary>} />
           <Route path="/escalation-settings" element={<ErrorBoundary><EscalationSettingsPage /></ErrorBoundary>} />
         </Route>
       </Routes>
