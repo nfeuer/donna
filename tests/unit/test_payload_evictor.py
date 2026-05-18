@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from datetime import date
 from pathlib import Path
 
 import aiosqlite
@@ -110,7 +108,9 @@ async def test_evicts_oldest_first(writer: PayloadWriter, db: aiosqlite.Connecti
 
 
 @pytest.mark.asyncio
-async def test_evicts_multiple_dirs_if_needed(writer: PayloadWriter, db: aiosqlite.Connection) -> None:
+async def test_evicts_multiple_dirs_if_needed(
+    writer: PayloadWriter, db: aiosqlite.Connection,
+) -> None:
     """Multiple directories are evicted to reach target."""
     base = writer.base_dir
 
@@ -141,7 +141,9 @@ async def test_evicts_multiple_dirs_if_needed(writer: PayloadWriter, db: aiosqli
 
 
 @pytest.mark.asyncio
-async def test_db_updated_for_evicted_dates(writer: PayloadWriter, db: aiosqlite.Connection) -> None:
+async def test_db_updated_for_evicted_dates(
+    writer: PayloadWriter, db: aiosqlite.Connection,
+) -> None:
     """payload_path is set to NULL in invocation_log for evicted dates."""
     base = writer.base_dir
 
@@ -209,7 +211,9 @@ async def test_current_bytes_decremented(writer: PayloadWriter, db: aiosqlite.Co
 
 
 @pytest.mark.asyncio
-async def test_ignores_non_date_directories(writer: PayloadWriter, db: aiosqlite.Connection) -> None:
+async def test_ignores_non_date_directories(
+    writer: PayloadWriter, db: aiosqlite.Connection,
+) -> None:
     """Non-date-formatted directories are not evicted."""
     base = writer.base_dir
     base.mkdir(parents=True, exist_ok=True)

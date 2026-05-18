@@ -360,8 +360,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.calendar_ids = cal_ids
 
     # Claude Inspector — payload collection + eviction
-    from donna.collection.payload_writer import PayloadWriter
     from donna.collection.payload_evictor import PayloadEvictor
+    from donna.collection.payload_writer import PayloadWriter
 
     payload_dir = Path(os.environ.get("DONNA_PAYLOAD_DIR", "data/payloads"))
     payload_writer = PayloadWriter(base_dir=payload_dir)
@@ -370,7 +370,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.payload_writer = payload_writer
 
     async def _eviction_loop() -> None:
-        evictor = PayloadEvictor(writer=payload_writer, conn=db.connection)
+        evictor = PayloadEvictor(writer=payload_writer, db=db.connection)
         while True:
             await asyncio.sleep(3600)
             await payload_writer.sync_size_from_disk()

@@ -163,7 +163,7 @@ async def get_payload(
         raise HTTPException(status_code=404, detail="Payload file not found on disk")
 
     content = full_path.read_text(encoding="utf-8")
-    return json.loads(content)
+    return dict(json.loads(content))
 
 
 @router.get("/claude/insights")

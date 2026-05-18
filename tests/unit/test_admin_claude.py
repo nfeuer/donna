@@ -283,7 +283,8 @@ class TestGetInsights:
         fake_engine.compute_insights = mock_compute
 
         import sys
-        with patch.dict(sys.modules, {"donna.insights": MagicMock(), "donna.insights.engine": fake_engine}):
+        modules = {"donna.insights": MagicMock(), "donna.insights.engine": fake_engine}
+        with patch.dict(sys.modules, modules):
             result = await get_insights(request, days=14)
 
         assert result == expected
