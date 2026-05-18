@@ -37,12 +37,23 @@
   flex: 1;
 }
 
+.newBtn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+.newBtn:hover { color: var(--color-accent); }
+
 .closeBtn {
   background: transparent;
   border: none;
   color: var(--color-text-muted);
   cursor: pointer;
   padding: 4px;
+  transition: color var(--duration-fast) var(--ease-out);
 }
 .closeBtn:hover { color: var(--color-accent); }
 
