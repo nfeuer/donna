@@ -8,11 +8,13 @@ See docs/superpowers/specs/archive/2026-04-12-chat-interface-design.md.
 from __future__ import annotations
 
 import json
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
+import uuid6
 
 from donna.chat.actions import ActionRegistry
 from donna.chat.config import ChatConfig
@@ -21,6 +23,7 @@ from donna.chat.context import (
     build_session_context,
     render_chat_prompt,
 )
+from donna.chat.tools import ToolContext, ToolRegistry, truncate_result
 from donna.chat.types import ActionContext, ActionResult, ChatIntent, ChatResponse
 
 if TYPE_CHECKING:
@@ -45,12 +48,14 @@ class ConversationEngine:
         config: ChatConfig,
         project_root: Path,
         action_registry: ActionRegistry | None = None,
+        tool_registry: ToolRegistry | None = None,
     ) -> None:
         self._db = db
         self._router = router
         self._config = config
         self._project_root = project_root
         self._action_registry = action_registry
+        self._tool_registry = tool_registry
 
     async def handle_message(
         self,
@@ -59,10 +64,13 @@ class ConversationEngine:
         text: str,
         channel: str,
         dashboard_context: dict[str, Any] | None = None,
+        force_new: bool = False,
     ) -> ChatResponse:
         """Process a chat message and return a response.
 
         If session_id is None, resumes the active session or creates one.
+        When force_new is True, always creates a new session instead of
+        looking up an existing active session.
         """
         log = logger.bind(user_id=user_id, channel=channel)
 
@@ -70,7 +78,7 @@ class ConversationEngine:
         session = None
         if session_id:
             session = await self._db.get_chat_session(session_id)
-        if session is None:
+        if session is None and not force_new:
             session = await self._db.get_active_chat_session(user_id, channel)
         if session is None:
             session = await self._db.create_chat_session(
@@ -92,6 +100,15 @@ class ConversationEngine:
         await self._db.add_chat_message(
             session_id=session.id, role="user", content=text
         )
+
+        # Route to tool loop when tool_registry is available
+        if self._tool_registry is not None:
+            return await self._run_tool_loop(
+                session=session,
+                user_id=user_id,
+                text=text,
+                dashboard_context=dashboard_context,
+            )
 
         # Classify intent
         intent_result = await self._classify_intent(text, user_id)
@@ -506,6 +523,336 @@ class ConversationEngine:
         )
 
         return ChatResponse(text=response_text, session_id=session_id)
+
+    # ── Tool-use agent loop ────────────────────────────
+
+    _TOOL_LOOP_MAX_CALLS = 10
+    _TOOL_LOOP_TIMEOUT_S = 300  # 5 minutes wall-clock
+
+    async def _run_tool_loop(
+        self,
+        session: Any,
+        user_id: str,
+        text: str,
+        dashboard_context: dict[str, Any] | None,
+    ) -> ChatResponse:
+        """Run the tool-use agent loop instead of classify-dispatch-respond.
+
+        The loop calls the LLM repeatedly. Each iteration, the LLM either
+        returns a final text response or a tool_call. Read tools are executed
+        inline and results fed back. Write tools pause the loop for
+        confirmation. The loop terminates on text response, write-tool
+        confirmation, max tool calls, wall-clock timeout, or consecutive
+        malformed responses.
+        """
+        assert self._tool_registry is not None
+
+        trace_id = str(uuid6.uuid7())
+        log = logger.bind(trace_id=trace_id, session_id=session.id)
+
+        # Build page context hint
+        page_context = self._build_page_context(dashboard_context)
+
+        # Load conversation history
+        history = await self._db.list_chat_messages(session.id)
+        history_text = "\n".join(
+            f"{'User' if m.role == 'user' else 'Assistant'}: {m.content}"
+            for m in history
+        )
+
+        # Load and render system prompt
+        template_path = self._project_root / "prompts" / "chat" / "tool_agent_system.md"
+        if template_path.exists():
+            template = template_path.read_text()
+        else:
+            template = (
+                "You are a helpful assistant with tool access.\n"
+                "{{ tool_schemas }}\n{{ conversation_history }}"
+            )
+
+        tool_schemas = self._tool_registry.schemas_for_prompt()
+        system_prompt = render_chat_prompt(
+            template=template,
+            user_input=text,
+            user_name="Nick",
+            conversation_history=history_text,
+            page_context=page_context,
+            tool_schemas=tool_schemas,
+        )
+
+        # Loop state
+        loop_context: list[str] = []
+        invocation_ids: list[str] = []
+        tool_call_count = 0
+        consecutive_malformed = 0
+        start_time = time.monotonic()
+
+        while True:
+            # Wall-clock timeout check
+            elapsed = time.monotonic() - start_time
+            if elapsed > self._TOOL_LOOP_TIMEOUT_S:
+                log.warning("chat.tool_loop_timeout", elapsed_s=elapsed)
+                return self._tool_loop_fallback(
+                    session, trace_id, invocation_ids,
+                    "I ran out of time processing your request. Could you try again?",
+                )
+
+            # Max tool calls check
+            if tool_call_count >= self._TOOL_LOOP_MAX_CALLS:
+                log.warning(
+                    "chat.tool_loop_max_calls",
+                    tool_call_count=tool_call_count,
+                )
+                return self._tool_loop_fallback(
+                    session, trace_id, invocation_ids,
+                    "I've used all available tool calls for this request. "
+                    "Here's what I found so far — could you narrow your question?",
+                )
+
+            # Build full prompt with accumulated tool results
+            full_prompt = system_prompt
+            if loop_context:
+                full_prompt += "\n\n## Tool Results\n" + "\n".join(loop_context)
+
+            # Call LLM
+            response_data, metadata = await self._router.complete(
+                prompt=full_prompt,
+                task_type="chat_respond",
+                user_id=user_id,
+            )
+
+            inv_id = getattr(metadata, "invocation_id", None)
+            if inv_id:
+                invocation_ids.append(str(inv_id))
+
+            log.info(
+                "chat.tool_loop_turn",
+                turn=tool_call_count,
+                tokens_in=getattr(metadata, "tokens_in", None),
+                tokens_out=getattr(metadata, "tokens_out", None),
+                cost_usd=getattr(metadata, "cost_usd", None),
+            )
+
+            # Parse response
+            parsed = self._parse_tool_response(response_data)
+
+            if parsed is None:
+                consecutive_malformed += 1
+                if consecutive_malformed >= 2:
+                    log.warning("chat.tool_loop_malformed_limit")
+                    return self._tool_loop_fallback(
+                        session, trace_id, invocation_ids,
+                        "I'm having trouble processing this request. "
+                        "Could you rephrase your question?",
+                    )
+                # Append a retry hint to loop context
+                loop_context.append(
+                    "[System: Your previous response was malformed. "
+                    "Respond with valid JSON: "
+                    '{"type": "text", "response_text": "..."} or '
+                    '{"type": "tool_call", "tool": "...", "params": {...}}]'
+                )
+                continue
+
+            # Valid response resets malformed counter
+            consecutive_malformed = 0
+
+            resp_type = parsed.get("type")
+
+            # ── Text response ──
+            if resp_type == "text":
+                response_text = parsed.get("response_text", "")
+                await self._db.add_chat_message(
+                    session_id=session.id,
+                    role="assistant",
+                    content=response_text,
+                    trace_id=trace_id,
+                    invocation_ids=json.dumps(invocation_ids),
+                )
+                self._log_loop_complete(
+                    log, trace_id, tool_call_count, invocation_ids, start_time,
+                )
+                return ChatResponse(
+                    text=response_text,
+                    session_id=session.id,
+                    trace_id=trace_id,
+                    session_pinned_task_id=getattr(session, "pinned_task_id", None),
+                )
+
+            # ── Tool call ──
+            if resp_type == "tool_call":
+                tool_name = parsed.get("tool", "")
+                params = parsed.get("params", {})
+
+                # Validate tool exists
+                tool_def = self._tool_registry.get(tool_name)
+                if tool_def is None:
+                    loop_context.append(
+                        f"[System: Unknown tool '{tool_name}'. "
+                        f"Available tools: "
+                        f"{', '.join(t.name for t in self._tool_registry.list_tools())}]"
+                    )
+                    continue
+
+                # Validate params
+                validation_error = self._tool_registry.validate_params(tool_name, params)
+                if validation_error:
+                    loop_context.append(
+                        f"[System: Parameter validation failed for {tool_name}: "
+                        f"{validation_error}]"
+                    )
+                    continue
+
+                # Check read vs write
+                if not self._tool_registry.is_read_tool(tool_name):
+                    # Write tool — pause loop, store pending action, return confirmation
+                    pending = json.dumps({
+                        "tool": tool_name,
+                        "params": params,
+                        "trace_id": trace_id,
+                    })
+                    await self._db.update_chat_session(
+                        session.id, pending_action=pending,
+                    )
+                    desc = tool_def.description
+                    param_summary = ", ".join(
+                        f"{k}={v}" for k, v in params.items() if v
+                    )
+                    confirmation_text = (
+                        f"I'd like to {desc.lower()}"
+                        f"{' (' + param_summary + ')' if param_summary else ''}. "
+                        f"Go ahead?"
+                    )
+                    await self._db.add_chat_message(
+                        session_id=session.id,
+                        role="assistant",
+                        content=confirmation_text,
+                        trace_id=trace_id,
+                        invocation_ids=json.dumps(invocation_ids),
+                    )
+                    self._log_loop_complete(
+                        log, trace_id, tool_call_count, invocation_ids,
+                        start_time, paused_for_confirmation=True,
+                    )
+                    return ChatResponse(
+                        text=confirmation_text,
+                        session_id=session.id,
+                        trace_id=trace_id,
+                        session_pinned_task_id=getattr(session, "pinned_task_id", None),
+                    )
+
+                # Execute read tool
+                tool_call_count += 1
+                ctx = ToolContext(
+                    db=self._db,
+                    user_id=user_id,
+                    session_id=session.id,
+                )
+                result = await self._tool_registry.execute(tool_name, params, ctx)
+                result_json, was_truncated = truncate_result(result)
+
+                loop_context.append(
+                    f"### Tool: {tool_name}({json.dumps(params)})\n"
+                    f"Result:\n{result_json}"
+                )
+
+                log.info(
+                    "chat.tool_executed",
+                    tool=tool_name,
+                    result_count=result.total_count,
+                    truncated=was_truncated,
+                )
+                continue
+
+            # Unknown type — treat as malformed
+            consecutive_malformed += 1
+            if consecutive_malformed >= 2:
+                log.warning("chat.tool_loop_malformed_limit")
+                return self._tool_loop_fallback(
+                    session, trace_id, invocation_ids,
+                    "I'm having trouble processing this request. "
+                    "Could you rephrase your question?",
+                )
+            loop_context.append(
+                f"[System: Unrecognized response type '{resp_type}'. "
+                f"Use 'text' or 'tool_call'.]"
+            )
+
+    def _parse_tool_response(self, response_data: Any) -> dict[str, Any] | None:
+        """Parse an LLM response into a recognized structure.
+
+        Handles:
+        - dict with "type" key → return as-is
+        - dict with "response_text" but no "type" → wrap as text
+        - JSON string → parse and recurse
+        - Anything else → None (malformed)
+        """
+        if isinstance(response_data, dict):
+            if "type" in response_data:
+                return response_data
+            if "response_text" in response_data:
+                return {"type": "text", "response_text": response_data["response_text"]}
+            return None
+
+        if isinstance(response_data, str):
+            try:
+                parsed = json.loads(response_data)
+                if isinstance(parsed, dict):
+                    return self._parse_tool_response(parsed)
+            except (json.JSONDecodeError, ValueError):
+                pass
+            return None
+
+        return None
+
+    def _build_page_context(self, dashboard_context: dict[str, Any] | None) -> str:
+        """Render a page context hint from dashboard_context."""
+        if not dashboard_context:
+            return ""
+        page = dashboard_context.get("page", "unknown")
+        selected = dashboard_context.get("selected_item")
+        if selected:
+            return (
+                f"User is on the {page.title()} page, viewing "
+                f"{selected.get('type', 'item')} '{selected.get('label', '')}' "
+                f"(id: {selected.get('id', '')})."
+            )
+        return f"User is on the {page.title()} page."
+
+    def _tool_loop_fallback(
+        self,
+        session: Any,
+        trace_id: str,
+        invocation_ids: list[str],
+        text: str,
+    ) -> ChatResponse:
+        """Return a fallback ChatResponse when the tool loop terminates abnormally."""
+        return ChatResponse(
+            text=text,
+            session_id=session.id,
+            trace_id=trace_id,
+            session_pinned_task_id=getattr(session, "pinned_task_id", None),
+        )
+
+    def _log_loop_complete(
+        self,
+        log: Any,
+        trace_id: str,
+        tool_call_count: int,
+        invocation_ids: list[str],
+        start_time: float,
+        paused_for_confirmation: bool = False,
+    ) -> None:
+        """Emit the summary structured log event for a completed tool loop."""
+        elapsed = time.monotonic() - start_time
+        log.info(
+            "chat.tool_loop_complete",
+            trace_id=trace_id,
+            tool_calls=tool_call_count,
+            invocations=len(invocation_ids),
+            elapsed_s=round(elapsed, 3),
+            paused_for_confirmation=paused_for_confirmation,
+        )
 
     async def _classify_intent(
         self, text: str, user_id: str
