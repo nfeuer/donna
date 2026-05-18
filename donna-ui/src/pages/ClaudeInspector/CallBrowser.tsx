@@ -13,14 +13,15 @@ interface Props {
   loading: boolean;
   params: ClaudeCallsParams;
   onParamsChange: (params: Partial<ClaudeCallsParams>) => void;
+  initialExpandId?: string | null;
 }
 
 type SortField = "timestamp" | "task_type" | "model_alias" | "tokens_in" | "tokens_out" | "cost_usd" | "quality_score" | "latency_ms";
 
 const PAGE_SIZE = 25;
 
-export default function CallBrowser({ data, loading, params, onParamsChange }: Props) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+export default function CallBrowser({ data, loading, params, onParamsChange, initialExpandId }: Props) {
+  const [expandedId, setExpandedId] = useState<string | null>(initialExpandId ?? null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
 
   const handleSort = useCallback((field: SortField) => {
