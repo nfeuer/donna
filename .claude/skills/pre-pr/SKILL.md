@@ -1,7 +1,6 @@
 ---
 name: pre-pr
 description: Run full pre-PR checklist — tests, lint, typecheck, spec citations, migration heads, UI build
-disable-model-invocation: true
 ---
 
 # Pre-PR Checklist
@@ -56,17 +55,20 @@ cd donna-ui && npm run build && cd ..
 cd donna-ui && npx tsc --noEmit && cd ..
 ```
 
-### 7. Spec Check
+### 7. Documentation Update
+Dispatch the `docs-updater` agent (from `~/.claude/agents/docs-updater.md`) to check if docs need updating based on this branch's changes. The agent reads the documentation standard, diffs the branch against main, updates affected pages, and reports what changed. Review its output before continuing.
+
+### 8. Spec Check
 Identify changed modules and their spec sections:
 ```bash
 git diff main...HEAD --name-only | grep "^src/donna/"
 ```
 Cross-reference with `spec_v3.md`. Check if any changed behavior needs a spec update. Use the `spec-check` skill for a detailed audit.
 
-### 8. Followups Check
+### 9. Followups Check
 Review `docs/superpowers/specs/followups.md` for items related to this branch's work that should be closed or updated.
 
-### 9. Uncommitted Changes
+### 10. Uncommitted Changes
 ```bash
 git status
 git diff --stat
@@ -85,6 +87,7 @@ Report results as:
 - [x] Migration heads: 1 (abc123)
 - [x] UI build: clean (or N/A)
 - [x] UI types: clean (or N/A)
+- [x] Docs: updated domain/chat.md, changelog.md (or: no docs affected)
 - [ ] Spec: §X.Y may need update — <reason>
 - [x] Followups: none to close (or: closed X)
 - [x] Working tree: clean

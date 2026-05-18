@@ -34,8 +34,8 @@ existing tasks, persists the row, schedules reminders, and replies.
 5. **Schema validation.** The structured output is validated against
    [`schemas/task_parse_output.json`](../schemas/task_parse_output.md).
 6. **Dedup.**
-   [`donna.skills`](../reference/donna/skills/index.md) runs the
-   `dedup_check` skill (`spec_v3.md §5.3` — fuzzy title match + LLM
+   [`donna.tasks.dedup`](../reference/donna/tasks/index.md) runs
+   deduplication (`spec_v3.md §5.3` — fuzzy title match + LLM
    semantic comparison).
 7. **State machine.**
    [`donna.tasks.state_machine`](../reference/donna/tasks/index.md)

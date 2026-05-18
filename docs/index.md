@@ -16,12 +16,16 @@ eventually doing the work for you.
 
 | If you want to… | Go to |
 |---|---|
+| See all capabilities at a glance | [Feature Map](feature-map.md) |
 | Get it running locally | [Start Here → Install](start-here/install.md) |
 | Understand the big picture | [Architecture → Overview](architecture/overview.md) |
 | Walk through a concrete flow | [Workflows](workflows/index.md) |
 | Read per-subsystem specs | [Domain](domain/index.md) |
 | Jump into the code | [API Reference](reference/) |
 | Inspect runtime configuration | [Config](config/) |
+| Fix something broken | [Troubleshooting](troubleshooting.md) |
+| Look up a Donna-specific term | [Glossary](glossary.md) |
+| See what changed recently | [Changelog](changelog.md) |
 | See the authoritative spec | [Canonical Specs → spec_v3.md](reference-specs/spec-v3.md) |
 
 ## Canonical Reference

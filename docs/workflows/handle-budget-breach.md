@@ -34,7 +34,7 @@ flowchart LR
 
 ## What Happens When the Gate Trips (current)
 
-1. [`donna.cost.budget_guard`](../reference/donna/cost/index.md) rejects
+1. [`donna.cost.budget.BudgetGuard`](../reference/donna/cost/index.md) rejects
    the call before it hits a provider.
 2. Autonomous paths short-circuit; interactive paths surface a message.
 3. A Discord DM summarizes spend and tells Nick what got paused.
@@ -57,5 +57,5 @@ flowchart LR
 ## Related
 
 - [Operations → Budget & Cost](../operations/budget-and-cost.md)
-- [`donna.cost.budget_guard`](../reference/donna/cost/index.md)
+- [`donna.cost.budget.BudgetGuard`](../reference/donna/cost/index.md)
 - [`donna.logging.invocation_logger`](../reference/donna/logging/invocation_logger.md)

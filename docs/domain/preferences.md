@@ -80,12 +80,21 @@ Example extracted rule:
 
 ## Preference Application
 
-Applied **after** initial model processing as a post-processing step:
+Applied **after** initial model processing as a post-processing step. Implemented in `src/donna/preferences/rule_applier.py` as `PreferenceApplier`.
 
-1. Model produces structured output (first draft)
-2. Preference engine checks applicable rules
-3. Matching rules override relevant fields
-4. Orchestrator uses final output for scheduling/routing
+1. Model produces structured `TaskParseResult` (first draft)
+2. `PreferenceApplier.apply_for_user(result, user_id)` loads active rules from `learned_preferences` table (with a 60-second in-process TTL cache)
+3. Rules are evaluated in confidence-descending order. For each rule, the condition is checked against the task's title + description (keyword substring match), domain (exact match), and task_type. The first matching rule per output field wins.
+4. Matching rules override the corresponding field on the `TaskParseResult`
+5. Orchestrator uses the final output for scheduling/routing
+
+### Matching logic
+
+| Condition type | How it matches |
+|---------------|----------------|
+| `keywords` | Case-insensitive substring match against `title + description` |
+| `domain` | Exact match against the task's domain |
+| `task_type` | Always matches `"parse_task"` at input time; other values skip |
 
 ## Transparency & Control
 
@@ -109,3 +118,12 @@ System-level only:
 - Few-shot example accumulation
 
 **Not** model fine-tuning. All learned preferences must be transparent, editable, and reversible.
+
+## Module Reference
+
+| Module | Role |
+|--------|------|
+| `correction_logger.py` | `log_correction()` — writes a row to the `correction_log` table when a learnable field changes. |
+| `correction_subscriber.py` | `CorrectionSubscriber` — listens for `task_updated` events on the `TaskEventBus` and calls `log_correction()` for user-initiated changes to learnable fields. |
+| `rule_extractor.py` | Batches recent corrections, sends to Claude for pattern analysis, and outputs structured `learned_preferences` rows. |
+| `rule_applier.py` | `PreferenceApplier` — loads active rules for a user (with TTL cache), evaluates conditions against the task text, and overrides fields on `TaskParseResult`. Called in the input-parsing pipeline after the LLM produces its first draft. See [Preference Application](#preference-application). |
