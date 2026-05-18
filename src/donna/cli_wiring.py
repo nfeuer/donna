@@ -1231,9 +1231,17 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
 
     # Initialise model layer and input parser
     invocation_logger = InvocationLogger(db.connection)
+
+    from donna.collection.payload_writer import PayloadWriter
+
+    payload_dir = Path(os.environ.get("DONNA_PAYLOAD_DIR", "data/payloads"))
+    payload_writer = PayloadWriter(base_dir=payload_dir)
+    await payload_writer.sync_size_from_disk()
+
     router = ModelRouter(
         models_config, task_types_config, project_root,
         invocation_logger=invocation_logger,
+        payload_writer=payload_writer,
     )
     input_parser = InputParser(router, invocation_logger, project_root, tz=user_tz)
 
@@ -2062,6 +2070,7 @@ async def wire_skill_system(
     subsystem_router = ModelRouter(
         ctx.models_config, ctx.task_types_config, ctx.project_root,
         invocation_logger=ctx.invocation_logger,
+        payload_writer=ctx.router._payload_writer,
     )
 
     # CostTracker is constructed here (rather than later, inside the

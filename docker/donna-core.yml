@@ -12,6 +12,7 @@ services:
     environment:
       - DONNA_DATA_PATH=/donna
       - DONNA_DB_PATH=/donna/db/donna_tasks.db
+      - DONNA_PAYLOAD_DIR=/donna/db/payloads
       - DONNA_WORKSPACE_PATH=/donna/workspace
       - DONNA_BACKUP_PATH=/donna/backups
       - DONNA_LOG_PATH=/donna/logs

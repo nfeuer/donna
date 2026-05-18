@@ -215,6 +215,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Start worker as background task
     worker_task = asyncio.create_task(queue_worker.run())
 
+    # Claude Inspector — payload collection (created early so chat engine can use it)
+    from donna.collection.payload_writer import PayloadWriter
+
+    payload_dir = Path(os.environ.get("DONNA_PAYLOAD_DIR", "data/payloads"))
+    payload_writer = PayloadWriter(base_dir=payload_dir)
+    await payload_writer.sync_size_from_disk()
+    app.state.payload_dir = payload_dir
+    app.state.payload_writer = payload_writer
+
     # Chat engine
     chat_config = get_chat_config(config_dir)
     chat_engine = None
@@ -228,7 +237,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             m_cfg = load_models_config(config_dir)
             t_cfg = load_task_types_config(config_dir)
             project_root = Path(os.environ.get("DONNA_PROJECT_ROOT", "."))
-            chat_router = ModelRouter(m_cfg, t_cfg, project_root)
+            chat_router = ModelRouter(
+                m_cfg, t_cfg, project_root,
+                payload_writer=payload_writer,
+            )
             action_registry = ActionRegistry.from_yaml(config_dir / "chat_actions.yaml")
             chat_engine = ConversationEngine(
                 db=db, router=chat_router, config=chat_config,
@@ -359,15 +371,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.calendar_timezone = cal_timezone
     app.state.calendar_ids = cal_ids
 
-    # Claude Inspector — payload collection + eviction
+    # Claude Inspector — hourly eviction
     from donna.collection.payload_evictor import PayloadEvictor
-    from donna.collection.payload_writer import PayloadWriter
-
-    payload_dir = Path(os.environ.get("DONNA_PAYLOAD_DIR", "data/payloads"))
-    payload_writer = PayloadWriter(base_dir=payload_dir)
-    await payload_writer.sync_size_from_disk()
-    app.state.payload_dir = payload_dir
-    app.state.payload_writer = payload_writer
 
     async def _eviction_loop() -> None:
         evictor = PayloadEvictor(writer=payload_writer, db=db.connection)
