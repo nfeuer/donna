@@ -39,6 +39,7 @@ class ChatResponse:
     suggested_actions: list[str] = dataclasses.field(default_factory=list)
     session_pinned_task_id: str | None = None
     pin_suggestion: dict[str, str] | None = None
+    trace_id: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -69,6 +70,10 @@ class ChatMessage:
     created_at: str
     intent: str | None = None
     tokens_used: int | None = None
+    action_name: str | None = None
+    action_result: str | None = None
+    trace_id: str | None = None
+    invocation_ids: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
