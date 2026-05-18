@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react";
+import { Bug } from "lucide-react";
 import { Pill } from "../../primitives/Pill";
 import type { ChatMessage, ChatResponse } from "../../api/chat";
 import styles from "./Chat.module.css";
@@ -26,6 +27,17 @@ export default function MessageThread({ messages, lastResponse, onEscalate, onAc
               <Pill variant={msg.role === "user" ? "accent" : "muted"}>{msg.role}</Pill>
               {msg.intent && <Pill variant="muted">{msg.intent}</Pill>}
               <span className={styles.msgTime}>{new Date(msg.created_at).toLocaleTimeString()}</span>
+              {msg.role === "assistant" && msg.trace_id && (
+                <a
+                  href={`/claude-inspector?trace_id=${msg.trace_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.debugLink}
+                  title="View in Inspector"
+                >
+                  <Bug size={12} />
+                </a>
+              )}
             </div>
             <div className={styles.msgContent}>{msg.content}</div>
           </div>

@@ -242,6 +242,22 @@
   color: var(--color-text-muted);
 }
 
+.debugLink {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.debugLink:hover {
+  color: var(--color-accent);
+}
+
+.msgHeader:hover .debugLink {
+  opacity: 1;
+}
+
 .msgContent {
   padding: var(--space-3);
   background: var(--color-surface);
