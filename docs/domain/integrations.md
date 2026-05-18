@@ -26,31 +26,52 @@ MCP via FastMCP 3.x when agents need dynamic tool discovery during reasoning (Re
 |------------|---------|-----------|
 | Google Calendar API | Direct API (Python client) | Orchestrator calls with known params. No discovery needed. |
 | SQLite Task DB | Direct API (aiosqlite) | Internal data store. MCP wrapper = pure overhead. |
-| Discord Bot | Direct API (discord.py) | Bidirectional messaging. Bot framework handles natively. |
+| Discord Bot | Direct API (discord.py) | Bidirectional messaging. Bot framework handles natively. Modular: commands, views, agent feed, drafts. |
 | Gmail API | Direct API (Python client) | Orchestrator reads/drafts with known scopes. |
-| Twilio SMS/Voice | Direct API (Python client) | Outbound notifications with fixed parameters. |
-| Supabase Sync | Direct API (supabase-py) | Background sync with fixed schema. |
-| GitHub | MCP (FastMCP) | Coding Agent explores repos/issues dynamically. |
-| Web Search | MCP (FastMCP) | Research Agent discovers and invokes search dynamically. |
-| Filesystem (sandboxed) | MCP (FastMCP) | Agents discover and navigate files dynamically. |
-| Notes (Local Markdown) | MCP (FastMCP) | Agents discover and read notes dynamically. |
+| Email Parser | Direct API (Python) | Forwarded-email parsing and task creation pipeline. |
+| Twilio SMS | Direct API (Python client) | Outbound SMS with rate limiting and blackout hours. |
+| Twilio Voice | Direct API (Python client) | Outbound TTS phone calls for Tier 4 escalation. Rate-limited to 1/day. |
+| SMS Router | Direct API (Python) | Inbound SMS conversation routing with context TTL. |
+| Supabase Sync | Direct API (supabase-py) | Background write-through sync with recovery queue. |
+| Obsidian Vault | Direct API (Python) | Read/write markdown notes with git-backed audit trail. |
+| Git Repo | Direct API (subprocess) | Vault commit/revert via git subprocess — no GitPython dependency. |
 
 ## Integration Modules
 
 ```
 src/donna/integrations/
-├── calendar.py      ← Google Calendar (read-write personal, read all)
-├── gmail.py         ← Gmail (read + draft; send behind feature flag)
-├── github.py        ← GitHub (MCP-wrapped, read-write feature branches only)
-├── filesystem.py    ← Sandboxed to /donna/workspace/
-├── discord_bot.py   ← Send/read in Donna channels
-├── twilio_sms.py    ← SMS and voice (outbound only)
-├── notes.py         ← Local markdown notes
-├── search.py        ← Web search (SearXNG or API)
-└── mcp_wrapper.py   ← FastMCP Streamable HTTP for external clients
+├── __init__.py
+├── calendar.py              ← Google Calendar (read-write personal, read all)
+├── gmail.py                 ← Gmail (read + draft; send behind feature flag)
+├── email_parser.py          ← Forwarded-email parser → InputParser pipeline
+├── discord_bot.py           ← Core DonnaBot: message listener, outbound, overdue routing
+├── discord_commands.py      ← Slash commands: /tasks, /done, /cancel, /reschedule, /edit, etc.
+├── discord_views.py         ← Interactive UI: buttons, dropdowns, modals (TaskEditModal, approvals)
+├── discord_agent_feed.py    ← Agent activity embeds → #donna-agents channel
+├── discord_pending_drafts.py← In-memory draft registry (task/automation, 30-min TTL)
+├── discord_submit_command.py← /donna submit slash command for chat-mode escalation answers
+├── twilio_sms.py            ← Outbound SMS (rate-limited, blackout hours)
+├── twilio_voice.py          ← Outbound TTS phone calls (Tier 4 escalation, 1/day limit)
+├── sms_router.py            ← Inbound SMS routing: context lookup, disambiguation, new-task fallback
+├── supabase_sync.py         ← Async write-through sync to Supabase Postgres
+├── vault.py                 ← Obsidian-compatible vault (VaultClient read, VaultWriter mutate)
+└── git_repo.py              ← Subprocess git wrapper for vault audit trail (commit, revert, log)
 ```
 
 Each module: centralized auth, audit logging to logging DB, rate limiting, access control per agent via task type config.
+
+### Discord Module Breakdown
+
+Discord is no longer a single file. The bot is split into six modules:
+
+| Module | Purpose |
+|--------|---------|
+| `discord_bot.py` | Core `DonnaBot` class — message listener, outbound messaging, overdue thread routing |
+| `discord_commands.py` | Guild-registered slash commands with autocomplete (`/tasks`, `/done`, `/cancel`, `/reschedule`, `/next`, `/today`, `/tomorrow`, `/edit`, `/status`) |
+| `discord_views.py` | Interactive UI components — `TaskEditModal`, `TaskListPaginationView`, `AgentApprovalView`, buttons, dropdowns |
+| `discord_agent_feed.py` | `AgentActivityFeed` — posts agent start/complete/failure embeds to #donna-agents with approval buttons for approvable actions |
+| `discord_pending_drafts.py` | `PendingDraftRegistry` — per-user in-memory map of task/automation partial drafts (thread-id keyed, 30-min TTL) |
+| `discord_submit_command.py` | `/donna submit` command for chat-mode escalation answer submission (min 50 chars, owner-only, validates via `escalation_submit_service`) |
 
 ## FastMCP Server (Python)
 
@@ -68,15 +89,16 @@ Design principles:
 | Service | Access Level | Pattern | Tools/Methods |
 |---------|-------------|---------|---------------|
 | Gmail | Read-only (send behind flag) | Direct API | `email_read`, `email_search`, `draft_create` |
+| Email Parser | Read (forwarded inbox) | Direct API | Forwarded-email detection → InputParser pipeline |
 | Google Calendar | Read-Write (personal); Read (work, family) | Direct API | `calendar_read`, `calendar_write`, `calendar_delete` |
-| GitHub | Read-Write (feature branches only) | MCP (FastMCP) | `github_read`, `github_write`, `github_issues` |
-| Notes | Read-Write | MCP (FastMCP) | `notes_read`, `notes_write` |
-| Filesystem | Read-Write (sandboxed to `/donna/workspace/`) | MCP (FastMCP) | `fs_read`, `fs_write`, `fs_list` |
-| Discord | Read-Write (Donna channels + DMs) | Direct API | `discord_send`, `discord_read`, `discord_dm`, thread management |
-| Twilio | Write (outbound only) | Direct API | `sms_send`, `phone_call` |
-| Web Search | Read | MCP (FastMCP) | `search_web` (SearXNG or API) |
+| Discord | Read-Write (Donna channels + DMs) | Direct API | `discord_send`, `discord_read`, `discord_dm`, thread management, slash commands, interactive views |
+| Twilio SMS | Write (outbound only) | Direct API | `sms_send` (rate-limited, blackout hours) |
+| Twilio Voice | Write (outbound only) | Direct API | `phone_call` (Tier 4 escalation, 1/day) |
+| SMS Router | Read-Write (inbound routing) | Direct API | Context lookup, disambiguation, new-task fallback (24h sliding + 72h hard TTL) |
+| Obsidian Vault | Read-Write | Direct API | `vault_read`, `vault_write`, `vault_list`, `vault_link`, `vault_undo_last` |
+| Git Repo | Write (vault audit trail) | Direct API | `commit`, `revert`, `log` — subprocess-based, no GitPython |
 | SQLite Task DB | Read-Write | Direct API | Internal orchestrator access |
-| Supabase | Write (sync replica) | Direct API | Background write-through sync |
+| Supabase | Write (sync replica) | Direct API | Background write-through sync with recovery queue |
 
 ## Adopt Before Building
 

@@ -134,6 +134,7 @@ extra:
 
 nav:
   - Home: index.md
+  - Feature Map: feature-map.md
   - Start Here:
       - start-here/index.md
       - Install: start-here/install.md
@@ -147,16 +148,25 @@ nav:
   - Domain:
       - domain/index.md
       - Task System: domain/task-system.md
+      - Orchestrator: domain/orchestrator.md
       - Model Layer: domain/model-layer.md
+      - LLM Gateway: domain/llm.md
       - Skill System: domain/skill-system.md
       - Agents: domain/agents.md
+      - Chat: domain/chat.md
+      - Replies: domain/replies.md
       - Scheduling: domain/scheduling.md
       - Integrations: domain/integrations.md
       - Memory Vault: domain/memory-vault.md
       - Notifications: domain/notifications.md
       - Preferences: domain/preferences.md
+      - Cost: domain/cost.md
+      - Collection: domain/collection.md
+      - Insights: domain/insights.md
       - Observability: domain/observability.md
       - Resilience: domain/resilience.md
+      - API & Auth: domain/api.md
+      - Setup: domain/setup.md
       - Management GUI: domain/management-gui.md
   - Workflows:
       - workflows/index.md
@@ -182,6 +192,9 @@ nav:
       - Backup & Recovery: operations/backup-recovery.md
       - Budget & Cost: operations/budget-and-cost.md
       - Vault Sync: operations/vault-sync.md
+  - Troubleshooting: troubleshooting.md
+  - Changelog: changelog.md
+  - Glossary: glossary.md
   - Canonical Specs:
       - reference-specs/index.md
       - spec_v3.md: reference-specs/spec-v3.md

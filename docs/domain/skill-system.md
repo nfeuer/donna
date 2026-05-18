@@ -1,7 +1,7 @@
 # Skill System Setup Notes (Phase 1 + Phase 2 + Phase 3)
 
 > **For Nick, to remember when activating this on the deployment machine.**
-> Last updated: 2026-04-16
+> Last updated: 2026-05-18
 > Related spec: `docs/superpowers/specs/archive/2026-04-15-skill-system-and-challenger-refactor-design.md`
 > Related plans: `docs/superpowers/plans/archive/2026-04-15-skill-system-phase-1-foundation.md`, `docs/superpowers/plans/archive/2026-04-15-skill-system-phase-2-execution.md`, `docs/superpowers/plans/archive/2026-04-16-skill-system-phase-3-lifecycle-and-shadow.md`
 
@@ -424,12 +424,16 @@ Phase 3 adds the following admin routes (all under the `/admin` prefix):
 | `POST` | `/admin/skills/{id}/flags/requires_human_gate` | Toggle the `requires_human_gate` flag |
 | `GET` | `/admin/skill-runs/{id}/divergence` | Fetch the `skill_divergence` row for a run |
 
-These routes are registered in `src/donna/api/routes/admin_skills.py` and must be mounted on the FastAPI app in `src/donna/server.py`:
+These routes are split across four route modules:
 
-```python
-from donna.api.routes.admin_skills import router as admin_skills_router
-app.include_router(admin_skills_router)
-```
+| Module | Scope |
+|--------|-------|
+| `src/donna/api/routes/skills.py` | Skill CRUD, state transitions, human-gate toggle |
+| `src/donna/api/routes/skill_candidates.py` | Candidate listing, dismiss, draft-now |
+| `src/donna/api/routes/skill_drafts.py` | Draft listing |
+| `src/donna/api/routes/skill_runs.py` | Run and step-result queries, divergence |
+
+All four routers are mounted on the FastAPI app via `include_router()` at startup.
 
 ---
 
@@ -621,6 +625,120 @@ All under `/admin/automations`:
 - Automation sharing across users (OOS-7).
 - Dashboard UI (JSON routes only this phase).
 - Discord natural-language creation ("watch URL daily") — requires challenger refactor, tracked separately.
+
+## Module Reference
+
+The `src/donna/skills/` package contains the following modules, grouped by subsystem.
+
+### Core data model
+
+| Module | Role |
+|--------|------|
+| `models.py` | Dataclasses and row mappers for `skill` and `skill_version` tables. |
+| `runs.py` | Dataclasses and row mappers for `skill_run` and `skill_step_result` tables. |
+| `state.py` | `StateObject` — dict-of-dicts container that holds inter-step state during a skill run. |
+| `database.py` | `SkillDatabase` — skill/version CRUD, state-transition writes. |
+| `run_persistence.py` | `SkillRunRepository` — skill-run and step-result persistence. |
+
+### Execution pipeline
+
+| Module | Role |
+|--------|------|
+| `executor.py` | `SkillExecutor` — multi-step skill runner. Drives LLM steps, tool dispatches, and output validation. |
+| `tool_dispatch.py` | `ToolDispatcher` — resolves `ToolInvocationSpec` from step YAML and dispatches via the `ToolRegistry`. |
+| `tool_registry.py` | `ToolRegistry` — name-to-callable mapping for skill tools, with allowlist enforcement. |
+| `tool_schemas.py` | JSON Schema definitions that constrain tool arguments at dispatch time. |
+| `dsl.py` | Flow-control DSL — `expand_for_each` primitive that fans a tool invocation across a list. |
+| `_render.py` | Shared Jinja2 rendering helper for DSL expressions and tool-arg templates. Uses `StrictUndefined` and wraps dicts for dotted-path access. |
+| `triage.py` | `TriageAgent` — decides whether a matched capability should be handled by the skill path or escalated to `claude_native`. |
+
+### Capabilities and matching
+
+| Module | Role |
+|--------|------|
+| `seed_capabilities.py` | `SeedCapabilityLoader` — reads `config/capabilities.yaml`, UPSERTs rows into the `capability` table at startup. Idempotent. |
+| `schema_inference.py` | `json_to_schema()` — infers a structural JSON Schema from an example value, used to generate `expected_output_shape` for captured-run fixtures. |
+
+### Lifecycle and shadow sampling
+
+| Module | Role |
+|--------|------|
+| `lifecycle.py` | `SkillLifecycleManager` — automated promotion/demotion gates (sandbox to shadow_primary to trusted). |
+| `shadow.py` | `ShadowSampler` — post-run sampling of trusted skills to detect drift. |
+| `equivalence.py` | `EquivalenceJudge` — Claude-based comparison of skill output vs. claude_native output. |
+| `divergence.py` | `SkillDivergenceRepository` — persistence for `skill_divergence` rows. |
+| `degradation.py` | `DegradationDetector` — Wilson-score CI computation to flag degraded skills. |
+| `correction_cluster.py` | `CorrectionClusterDetector` — fast-path scan of recent user corrections to flag skills. |
+
+### Auto-drafting and evolution
+
+| Module | Role |
+|--------|------|
+| `detector.py` | `SkillCandidateDetector` — scans `skill_run` for high-frequency `claude_native` patterns. |
+| `candidate_report.py` | `SkillCandidateRepository` — CRUD for `skill_candidate_report` rows. |
+| `auto_drafter.py` | `AutoDrafter` — asks Claude to generate skill YAML from candidates, validates against fixtures. |
+| `evolution.py` | `Evolver` — single-skill evolution attempt orchestrator. |
+| `evolution_input.py` | `EvolutionInputBuilder` — assembles divergence cases, fixtures, and current YAML for evolution. |
+| `evolution_gates.py` | `EvolutionGates` — four validation gates (syntax, targeted-case pass, fixture regression, recent-success). |
+| `evolution_scheduler.py` | `EvolutionScheduler` — iterates degraded skills and calls `Evolver`, respecting daily cap. |
+| `evolution_log.py` | `SkillEvolutionLogRepository` — reads/writes `skill_evolution_log` rows. |
+
+### Validation and testing infrastructure
+
+| Module | Role |
+|--------|------|
+| `validation.py` | Schema and output validation utilities for skill step results. |
+| `validation_executor.py` | `ValidationExecutor` — offline executor for fixture validation. Constructs a `MockToolRegistry` per fixture so no real tools are dispatched. Never writes to production tables. |
+| `validation_run_sink.py` | `ValidationRunSink` — in-memory sink implementing the `SkillRunRepository` protocol. Absorbs persistence calls without writing to disk. Used by `ValidationExecutor`. |
+| `mock_tool_registry.py` | `MockToolRegistry` — `ToolRegistry` subclass that dispatches from a precomputed mock map. Raises `UnmockedToolError` if a fixture lacks a mock for a dispatched tool. |
+| `mock_synthesis.py` | `cache_to_mocks()` — re-keys a `skill_run.tool_result_cache` into fingerprint-keyed mocks for `MockToolRegistry`. |
+| `tool_fingerprint.py` | `fingerprint()` — deterministic tool-invocation fingerprinting. Per-tool rules select identity-relevant args (e.g., `web_fetch` keys only on `url`). Fallback: canonical sorted-JSON of all args. |
+| `tool_test_kit.py` | `is_inert_at_import()` — test helper for tool-build branches (slice 22). Asserts a tool module triggers no network/disk I/O at import time. |
+| `fixtures.py` | Fixture loading and `validate_against_fixtures` runner. |
+
+### Startup, wiring, and scheduling
+
+| Module | Role |
+|--------|------|
+| `startup.py` | `initialize_skill_system()` — generates embeddings, loads seed skills, builds and returns a `ToolRegistry`. |
+| `startup_wiring.py` | `assemble_skill_system()` — lifespan helper that constructs all Phase 3+4 components and returns a `SkillSystemBundle`. |
+| `loader.py` | Skill YAML loader — reads skill definitions from disk into the DB. |
+| `crons/scheduler.py` | `AsyncCronScheduler` — fires `run_nightly_tasks` daily. Runs as an `asyncio.create_task` background task. |
+| `crons/nightly.py` | `run_nightly_tasks()` — orchestrates the five nightly sub-jobs (detection, evolution, drafting, degradation, correction clusters). |
+
+### Pollers and ingestion
+
+| Module | Role |
+|--------|------|
+| `manual_draft_poller.py` | `ManualDraftPoller` — polls `skill_candidate_report` for rows with `manual_draft_at` set (triggered by the `POST /admin/skill-candidates/{id}/draft-now` API) and runs `AutoDrafter.draft_one`. Clears the column on completion or failure. |
+| `chat_escalation_ingestion_poller.py` | Polls `escalation_request` rows where `mode='chat' AND status='submitted'`. Reads the answer from the `result` JSON envelope, appends it to the originating task's notes, transitions the task to `done`, and marks the row `status='validated'`. Tick interval: 30s. |
+
+### Registered skill tools
+
+Tools live in `src/donna/skills/tools/` and are registered into the `ToolRegistry` at startup via `register_default_tools()`.
+
+| Tool | Dependency | Always registered? |
+|------|------------|--------------------|
+| `web_fetch` | None | Yes |
+| `rss_fetch` | None | Yes |
+| `html_extract` | None | Yes |
+| `browser_extract_text` | None | Yes |
+| `browser_screenshot` | None | Yes |
+| `clean_html` | None | Not registered by `register_default_tools` — module exists but must be registered explicitly if needed |
+| `gmail_search` | `GmailClient` | Only when client provided |
+| `gmail_get_message` | `GmailClient` | Only when client provided |
+| `email_read` | `GmailClient` | Only when client provided |
+| `calendar_read` | Calendar client | Only when client provided |
+| `task_db_read` | Task DB | Only when client provided |
+| `cost_summary` | Cost tracker | Only when client provided |
+| `vault_read` | Vault client | Only when client provided |
+| `vault_list` | Vault client | Only when client provided |
+| `vault_link` | Vault client | Only when client provided |
+| `vault_write` | Vault writer | Only when writer provided |
+| `vault_undo_last` | Vault writer | Only when writer provided |
+| `memory_search` | Memory store | Only when store provided |
+
+---
 
 ## Manual Escalation (drafting under budget pressure)
 

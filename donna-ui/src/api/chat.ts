@@ -33,6 +33,8 @@ export interface ChatMessage {
   content: string;
   intent?: ChatIntent;
   tokens_used?: number;
+  trace_id?: string;
+  invocation_ids?: string;
   created_at: string;
 }
 
@@ -45,6 +47,7 @@ export interface ChatResponse {
   suggested_actions: string[];
   pin_suggestion?: Record<string, string>;
   session_pinned_task_id?: string;
+  trace_id?: string;
 }
 
 export interface ContextStatus {

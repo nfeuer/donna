@@ -16,6 +16,7 @@ def mock_engine() -> AsyncMock:
     engine.handle_message.return_value = ChatResponse(
         text="Hey there!",
         suggested_actions=["schedule_task"],
+        trace_id="trace-abc123",
     )
     engine.handle_escalation.return_value = ChatResponse(
         text="Here's my analysis...",
@@ -73,13 +74,17 @@ class TestPostMessage:
         data = resp.json()
         assert data["text"] == "Hey there!"
         assert data["suggested_actions"] == ["schedule_task"]
+        assert data["trace_id"] == "trace-abc123"
 
-    def test_send_message_without_session(self, client: TestClient) -> None:
+    def test_send_message_without_session(self, client: TestClient, mock_engine: AsyncMock) -> None:
         resp = client.post(
             "/chat/sessions/new/messages",
             json={"text": "Hello Donna"},
         )
         assert resp.status_code == 200
+        mock_engine.handle_message.assert_called_once()
+        call_kwargs = mock_engine.handle_message.call_args.kwargs
+        assert call_kwargs.get("force_new") is True
 
 
 class TestGetSession:

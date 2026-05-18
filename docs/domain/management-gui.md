@@ -108,33 +108,99 @@ This is a note, not a plan — implementation is deferred until the tool leaves 
 | `GET /admin/claude/calls/{invocation_id}/payload` | Full request/response JSON from disk |
 | `GET /admin/claude/insights?days=7` | Computed waste-pattern insights (cost centers, prompt duplication, quality-cost mismatches, token bloat) |
 
+### Escalations
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/escalations?status=&limit=50&offset=0` | List escalations with status filter |
+| `GET /admin/escalations/{correlation_id}` | Escalation detail with full prompt, timeline, validation results |
+| `POST /admin/escalations/{correlation_id}/submit` | Submit chat-mode answer for an open escalation |
+| `POST /admin/escalations/{correlation_id}/validate` | Validate a submitted answer |
+
+### Escalation Settings
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/escalation-settings` | All escalation settings with current values and slider cap |
+| `PUT /admin/escalation-settings/{key:path}` | Update a single setting (optimistic locking via `expected_updated_at`) |
+| `PUT /admin/escalation-settings/task-types/{task_type}` | Set per-task-type override (Auto / Force-API / Force-Manual / Disabled) |
+
+### LLM Gateway
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/llm/analytics?days=7` | Per-caller analytics, queue stats, health data |
+| `GET /admin/llm/queue/{item_id}/prompt` | Queue item prompt preview |
+
+### Vault
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/vault/status` | Vault stats (note count, total size, last commit) |
+| `GET /admin/vault/notes?folder=` | List notes with optional folder filter |
+| `GET /admin/vault/notes/{path}` | Read a single note with frontmatter |
+| `GET /admin/vault/history?limit=50` | Git commit history |
+
+### Health
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/health` | Admin health check (DB, services, queue status) |
+
 ## Pages
 
-### Session 1 (Implemented)
+### Core Pages
+
 | Route | Page | Description |
 |-------|------|-------------|
 | `/` | Dashboard | 4 KPI sections: Parse Accuracy, Agent Performance, Task Throughput, Cost Analytics |
+| `/chat` | Chat | Conversational interface with session list, message thread, context meter, and escalation support |
+| `/calendar` | Calendar | Weekly calendar grid showing tasks and calendar events. Week navigation, refresh. Uses `fetchCalendarWeek` API |
+| `/vault` | Vault | Obsidian vault browser — note list by folder, note viewer with markdown rendering, commit history panel. Stats cards |
 | `/logs` | Log Viewer | Event type tree filter, level/service filters, correlation trace drawer, entity links |
 
-### Session 2 (Implemented)
-| Route | Page | Description |
-|-------|------|-------------|
-| `/configs` | Config Editor | Structured form editing for agents/models/task_types/states YAML. Raw YAML tab with Monaco editor. Diff view before save. |
-| `/prompts` | Prompt Editor | Monaco markdown editor with live preview. Template variable inspector. Schema link from task_types.yaml. |
-| `/agents` | Agent Details | Card grid with metrics. Detail view: config, latency chart, tool usage chart, cost summary, recent invocations. |
-| `/tasks` | Task Browser | Filterable table (status/domain/priority/agent/search). Detail view with state timeline, linked invocations/nudges/corrections/subtasks. |
+### Configuration & Editing Pages
 
-### Session 3 (Implemented)
 | Route | Page | Description |
 |-------|------|-------------|
-| `/shadow` | Shadow Scoring | Side-by-side diff of primary vs shadow model outputs. Quality score scatter plot + trend chart. Spot-check queue. Filter by task_type/days. |
-| `/preferences` | Preference Manager | Learned rules table with confidence scores, enable/disable toggle. Correction history with filters. Rule provenance drawer. Stats cards. |
-| Polish | UX Refinements | Keyboard shortcuts (`g`+key nav, `r` refresh, `Esc` close), saved filter presets (Log Viewer), CSV export on all tables, anomaly toast notifications on dashboard refresh. |
+| `/configs` | Config Editor | Structured form editing for agents/models/task_types/states YAML. Raw YAML tab with Monaco editor. Diff view before save |
+| `/prompts` | Prompt Editor | Monaco markdown editor with live preview. Template variable inspector. Schema link from task_types.yaml |
 
-### Session 4 (Implemented)
+### Agent & Task Pages
+
 | Route | Page | Description |
 |-------|------|-------------|
-| `/claude` | Claude Inspector | LLM call forensics dashboard. Insights panel (top cost centers, prompt duplication, quality-cost mismatches, token bloat outliers). Sortable/filterable call browser with expandable detail view showing full request/response JSON. Side-by-side compare view. Deep-link support via URL query params (`?task_type=X&id=Y`). Payload data stored on filesystem with 1GB FIFO eviction. |
+| `/agents` | Agent Details | Card grid with metrics. Detail view: config, latency chart, tool usage chart, cost summary, recent invocations |
+| `/tasks` | Task Browser | Filterable table (status/domain/priority/agent/search). Detail view with state timeline, linked invocations/nudges/corrections/subtasks |
+
+### Model & Evaluation Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/shadow` | Shadow Scoring | Side-by-side diff of primary vs shadow model outputs. Quality score scatter plot + trend chart. Spot-check queue. Filter by task_type/days |
+| `/llm-gateway` | LLM Gateway | Health dashboard, per-caller analytics with bar charts, live queue stream, queue item prompt preview. Range selector (7/14/30d) |
+| `/claude` | Claude Inspector | LLM call forensics dashboard. Insights panel (top cost centers, prompt duplication, quality-cost mismatches, token bloat outliers). Sortable/filterable call browser with expandable detail view showing full request/response JSON. Side-by-side compare view. Deep-link support via URL query params (`?task_type=X&id=Y`). Payload data stored on filesystem with 1GB FIFO eviction |
+
+### Preference & Escalation Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/preferences` | Preference Manager | Learned rules table with confidence scores, enable/disable toggle. Correction history with filters. Rule provenance drawer. Stats cards |
+| `/escalations` | Escalations | List view of open/resolved escalations with status filter. Detail view per `correlation_id` with full prompt, chat-mode answer textarea, "Mark as built" modal, status timeline, validation result panel. Supports `tool_request_fulfillment` rows |
+| `/escalation-settings` | Escalation Settings | Master kill switch, per-mode toggles (chat / claude_code), budget-extension allow + max-daily slider, per-task-type override grid (Auto / Force-API / Force-Manual / Disabled). Optimistic locking with 409 conflict handling |
+
+### Skill System Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/skill-system` | Skill System | Tabbed view: Skills, Candidates, Drafts, Runs, Automations. GPU status card. Skill drawer, candidate expander, run drawer, automation drawer. State transition form |
+
+### Dev Tools
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/dev/primitives` | Dev Primitives | Component storybook — showcases all design primitives (Button, Card, Pill, Input, Select, Checkbox, Switch, Tabs, Tooltip, Dialog, Drawer, DropdownMenu, Popover, Skeleton, DataTable, etc.) |
+
+### UX Features (Cross-cutting)
+- Keyboard shortcuts (`g`+key nav, `r` refresh, `Esc` close)
+- Saved filter presets (Log Viewer)
+- CSV export on all tables
+- Anomaly toast notifications on dashboard refresh
 
 ## Design Decisions Made
 
@@ -173,7 +239,16 @@ donna-ui/
 │   │   ├── tasks.ts                      # Task list/detail fetchers
 │   │   ├── shadow.ts                     # Shadow scoring fetchers
 │   │   ├── preferences.ts               # Preference rules/corrections fetchers
-│   │   └── claude.ts                     # Claude Inspector: calls, payloads, insights
+│   │   ├── claude.ts                     # Claude Inspector: calls, payloads, insights
+│   │   ├── calendar.ts                   # Calendar week fetcher
+│   │   ├── chat.ts                       # Chat sessions, messages, context, escalation
+│   │   ├── escalations.ts               # Escalation list/detail/submit/validate
+│   │   ├── escalationSettings.ts        # Escalation settings GET/PUT, task-type overrides
+│   │   ├── health.ts                     # Admin health check
+│   │   ├── llmGateway.ts                # LLM gateway analytics, queue item prompts
+│   │   ├── promptStats.ts               # Prompt statistics
+│   │   ├── skillSystem.ts               # Skills, candidates, drafts, runs, automations, transitions
+│   │   └── vault.ts                      # Vault notes, status, history
 │   ├── components/
 │   │   ├── Layout.tsx                    # App shell: sidebar + header + content
 │   │   ├── PageShell.tsx                 # Placeholder for unbuilt pages
@@ -229,6 +304,55 @@ donna-ui/
 │       │   ├── RulesTable.tsx             # Rules with confidence bar, enable toggle
 │       │   ├── CorrectionsTable.tsx        # Paginated correction history
 │       │   └── RuleDetailDrawer.tsx        # Rule provenance with supporting corrections
+│       ├── Calendar/
+│       │   ├── index.tsx                  # Week navigation, event/task fetch
+│       │   ├── CalendarGrid.tsx           # Weekly grid layout
+│       │   └── CalendarGrid.module.css    # Grid styles
+│       ├── Chat/
+│       │   ├── index.tsx                  # Session management, message send/receive
+│       │   ├── SessionList.tsx            # Sidebar session list
+│       │   ├── MessageThread.tsx          # Message display area
+│       │   ├── MessageInput.tsx           # Input with submit
+│       │   ├── ContextMeter.tsx           # Context window usage indicator
+│       │   └── Chat.module.css            # Page styles
+│       ├── Escalations/
+│       │   ├── index.tsx                  # Status filter, list view
+│       │   ├── EscalationsTable.tsx       # Escalation rows with status badges
+│       │   ├── EscalationDetail.tsx       # Full prompt, answer textarea, timeline, validation
+│       │   ├── MarkAsBuiltModal.tsx       # claude_code completion modal
+│       │   └── Escalations.module.css     # Page styles
+│       ├── EscalationSettings/
+│       │   ├── index.tsx                  # Kill switch, toggles, slider, override grid
+│       │   └── EscalationSettings.module.css # Page styles
+│       ├── LLMGateway/
+│       │   ├── index.tsx                  # Health + analytics + live queue stream
+│       │   └── LLMGateway.module.css      # Page styles
+│       ├── Vault/
+│       │   ├── index.tsx                  # Folder browser, stats, note/commit tabs
+│       │   ├── NoteViewer.tsx             # Markdown note renderer
+│       │   ├── CommitHistory.tsx          # Git commit log display
+│       │   └── Vault.module.css           # Page styles
+│       ├── SkillSystem/
+│       │   ├── index.tsx                  # Tabbed layout: skills/candidates/drafts/runs/automations
+│       │   ├── SkillsTab.tsx              # Skills list
+│       │   ├── SkillDrawer.tsx            # Skill detail drawer
+│       │   ├── SkillDetailPanel.tsx       # Skill metadata panel
+│       │   ├── SkillDetailPanel.module.css
+│       │   ├── CandidatesTab.tsx          # Candidate list
+│       │   ├── CandidateExpander.tsx      # Candidate detail expander
+│       │   ├── CandidateExpander.module.css
+│       │   ├── DraftsTab.tsx              # Draft list
+│       │   ├── RunsTab.tsx               # Run history
+│       │   ├── RunDrawer.tsx             # Run detail drawer
+│       │   ├── AutomationsTab.tsx        # Automation list
+│       │   ├── AutomationDrawer.tsx      # Automation detail drawer
+│       │   ├── GpuStatusCard.tsx         # GPU health/status display
+│       │   ├── StateTransitionForm.tsx   # Skill state transition form
+│       │   └── SkillSystem.module.css    # Page styles
+│       ├── DevPrimitives/
+│       │   ├── index.tsx                  # Component storybook with all primitives
+│       │   ├── StorySection.tsx           # Section wrapper for stories
+│       │   └── DevPrimitives.module.css   # Page styles
 │       └── ClaudeInspector/
 │           ├── index.tsx                  # Insights fetch + filter state, URL param sync
 │           ├── InsightsPanel.tsx           # 4-card grid: cost, duplication, mismatch, bloat
@@ -242,22 +366,42 @@ donna-ui/
 
 ```
 src/donna/api/routes/
-├── admin_dashboard.py      # 4 dashboard KPI endpoints
-├── admin_logs.py           # Log query + trace endpoints
-├── admin_invocations.py    # Invocation log browse/detail
-├── admin_tasks.py          # Extended task list/detail
-├── admin_config.py         # Config/prompt file CRUD (read + write)
-├── admin_agents.py         # Agent list/detail with merged metrics
-├── admin_shadow.py         # Shadow scoring comparisons, stats, spot-checks
-├── admin_preferences.py    # Preference rules CRUD, corrections, stats
-└── admin_claude.py         # Claude Inspector: call browser, payload retrieval, insights
+├── admin_dashboard.py            # 4 dashboard KPI endpoints
+├── admin_logs.py                 # Log query + trace endpoints
+├── admin_invocations.py          # Invocation log browse/detail
+├── admin_tasks.py                # Extended task list/detail
+├── admin_config.py               # Config/prompt file CRUD (read + write)
+├── admin_agents.py               # Agent list/detail with merged metrics
+├── admin_shadow.py               # Shadow scoring comparisons, stats, spot-checks
+├── admin_preferences.py          # Preference rules CRUD, corrections, stats
+├── admin_claude.py               # Claude Inspector: call browser, payload retrieval, insights
+├── admin_escalations.py          # Escalation workspace: list, detail, submit, validate
+├── admin_escalation_settings.py  # Escalation settings: kill switch, toggles, overrides
+├── admin_health.py               # Admin health check endpoint
+├── admin_llm.py                  # LLM gateway analytics, queue status
+├── admin_vault.py                # Vault notes, status, history
+├── admin_access.py               # IP / device / caller tables (auth infrastructure)
+├── calendar_week.py              # Calendar week endpoint for UI grid
+├── chat.py                       # Chat sessions, messages, context status, escalation
+├── schedule.py                   # Schedule management
+├── skills.py                     # Skill CRUD
+├── skill_candidates.py           # Skill candidate management
+├── skill_drafts.py               # Skill draft management
+├── skill_runs.py                 # Skill run history and capture
+├── automations.py                # Automation CRUD
+├── llm.py                        # LLM queue and routing (non-admin)
+├── capabilities.py               # Capability listing
+├── auth_flow.py                  # OAuth flow endpoints
+├── health.py                     # General health check
+├── agents.py                     # Agent activity SQL patterns
+└── tasks.py                      # Task CRUD (non-admin)
 
 src/donna/collection/
-├── payload_writer.py       # Fire-and-forget JSON writer for LLM request/response payloads
-└── payload_evictor.py      # FIFO eviction: deletes oldest date dirs when over 1GB cap
+├── payload_writer.py             # Fire-and-forget JSON writer for LLM request/response payloads
+└── payload_evictor.py            # FIFO eviction: deletes oldest date dirs when over 1GB cap
 
 src/donna/insights/
-└── engine.py               # SQL-based insights: cost centers, prompt groups, mismatches, bloat
+└── engine.py                     # SQL-based insights: cost centers, prompt groups, mismatches, bloat
 ```
 
 ## Reused Existing Code
@@ -278,35 +422,24 @@ src/donna/insights/
 | donna-api | 8200 | `docker/donna-app.yml` (existing) |
 | donna-loki | 3100 | `docker/donna-monitoring.yml` (existing) |
 
-## Progress Tracking
+## Build History
 
-### Session 1 — Status: COMPLETE
-- [x] Backend admin API routes (5 files)
-- [x] Register routes in FastAPI app
-- [x] Frontend project scaffold (React + Vite + Ant Design dark theme)
-- [x] API client layer (Axios + typed fetchers)
-- [x] Dashboard page (4 KPI cards: Parse Accuracy, Agent Performance, Task Throughput, Cost Analytics)
-- [x] Log Viewer (event type tree filter, level/service filters, paginated table, correlation trace drawer)
-- [x] Page shells (6 placeholders with feature descriptions for sessions 2-3)
-- [x] Docker files (Dockerfile, nginx.conf, donna-ui.yml compose)
+All sessions below are complete. The page list above in [Pages](#pages) is the authoritative reference for what exists today.
 
-### Session 2 — Status: COMPLETE
-- [x] Config editor pages (structured YAML editing for agents/models/task_types/states + raw YAML fallback)
-- [x] Prompt editor with Monaco markdown editor, live preview, template variable inspector
-- [x] Agent detail views (card grid + detail with charts and invocation feed)
-- [x] Task browser with filterable table, detail view, state timeline, linked entities
-- [x] PUT endpoints for config/prompt editing (YAML validation, atomic writes)
-- [x] Agent API endpoints (GET /admin/agents, GET /admin/agents/{name})
-- [x] Save diff modal with Monaco diff editor
-- [x] @monaco-editor/react for YAML/markdown editing
-- [x] CSS/SVG state machine diagram for task_states.yaml
+### Session 1 — Dashboard + Log Viewer
+Backend admin API routes (5 files), frontend scaffold (React + Vite + Ant Design dark theme), API client layer, Dashboard (4 KPI cards), Log Viewer, page shells, Docker files.
 
-### Session 3 — Status: COMPLETE
-- [x] Shadow scoring comparison view (side-by-side diff, scatter plot, trend chart, spot-check queue)
-- [x] Preference rules manager (rules table with toggle, correction history, rule provenance drawer, stats)
-- [x] UX polish (keyboard shortcuts, saved filter presets, CSV export on all tables, empty states)
-- [x] Anomaly notifications (daily cost, parse accuracy, overdue tasks)
-- [x] Backend: `admin_shadow.py` (3 endpoints), `admin_preferences.py` (4 endpoints)
+### Session 2 — Config/Prompt Editors, Agents, Tasks
+Config editor (structured YAML + raw YAML + diff modal), Prompt editor (Monaco + live preview + variable inspector), Agent detail views, Task browser with state timeline.
+
+### Session 3 — Shadow Scoring, Preferences, UX Polish
+Shadow scoring comparison view, Preference rules manager, keyboard shortcuts, filter presets, CSV export, anomaly notifications.
+
+### Session 4 — Claude Inspector
+LLM call forensics dashboard with insights panel, call browser, payload viewer, compare view. PayloadWriter + PayloadEvictor backend.
+
+### Post-Session — Additional Pages
+Calendar, Chat, Escalations, EscalationSettings, LLMGateway, Vault, SkillSystem, DevPrimitives added across subsequent slices (slices 12, 15, 19, 22, 23, and others). Backend routes expanded from 9 to 30 files.
 
 ## Manual Escalation Surfaces (slices 19 + 22 + 23)
 

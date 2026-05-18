@@ -235,6 +235,10 @@ class InvocationLog(Base):
     )
     # Payload forensics (alembic add_payload_path_to_invocation_log).
     payload_path: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Tool loop trace correlation (alembic add_trace_id_columns).
+    trace_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True
+    )
 
 
 class CorrectionLog(Base):
@@ -405,6 +409,8 @@ class ChatMessageModel(Base):
     tokens_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
     action_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     action_result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    invocation_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )

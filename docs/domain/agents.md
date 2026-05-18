@@ -6,14 +6,67 @@
 
 The Orchestrator (core process, not a sub-agent) receives all tasks and determines routing.
 
-| Agent | Responsibilities | Tool Access | Autonomy Level |
-|-------|-----------------|-------------|----------------|
-| **Scheduler** | Calendar management, time slots, rescheduling, reminders, weekly planning | Google Calendar (read-write), Task DB (read-write) | High — auto-schedules priority 1–3 |
-| **Research / Prep** | Web research, info compilation, resource gathering before flagged tasks | Web search (MCP), Gmail (read-only), Filesystem (MCP read), GitHub (MCP read) | High — runs autonomously when prep flagged |
-| **Project Manager** | Task decomposition, requirements assessment, interrogation, work packaging | Task DB (read-write), all agents (dispatch) | Medium — can decompose and route, must confirm requirements with user |
-| **Coding** | Code generation, file editing, project scaffolding | Filesystem (MCP sandboxed read-write), GitHub (MCP read-write), Claude Code CLI | Low — output for review only. Never pushes to main. Never deletes. |
-| **Communication / Drafting** | Email drafts, message drafts, document creation | Gmail (draft only; send behind feature flag), Docs/markdown (write), Discord/Slack (specific channels only) | Low — always drafts. Never sends without explicit approval. |
-| **Challenger** | Task quality evaluation, follow-up questions on vague tasks | Task DB (read-only) | Medium — probes task quality, returns questions to user via Discord thread |
+| Agent | File | Responsibilities | Tool Access | Autonomy Level |
+|-------|------|-----------------|-------------|----------------|
+| **Scheduler** | `scheduler_agent.py` | Calendar management, time slots, rescheduling, reminders, weekly planning | `calendar_read`, `calendar_write`, `task_db_read`, `task_db_write` | High — auto-schedules priority 1–3. 2-min timeout. |
+| **Research / Prep** | `prep_agent.py` | Web research, info compilation, resource gathering before flagged tasks | Web search (MCP), Gmail (read-only), Filesystem (MCP read), GitHub (MCP read) | High — runs autonomously when prep flagged |
+| **Project Manager** | `pm_agent.py` | Task assessment, requirements evaluation, agent routing recommendation | `task_db_read`, `task_db_write` | Medium — can assess and route, must confirm requirements with user. 5-min timeout. |
+| **Challenger** | `challenger_agent.py` | Capability matching, intent extraction, task quality evaluation, follow-up questions | Task DB (read-only), `CapabilityMatcher` | Medium — probes task quality, returns questions to user via Discord thread |
+| **ClaudeNoveltyJudge** | `claude_novelty_judge.py` | Evaluates no-capability-match messages via Claude. Returns structured `NoveltyVerdict` with intent, schedule, skill candidate assessment | Model router (Claude API) | Medium — called by DiscordIntentDispatcher on `escalate_to_claude` status |
+| **DecompositionService** | `decomposition.py` | Breaks complex tasks into subtasks via LLM. Two-pass insert resolves dependency indices to UUIDs. Persists subtasks as real Task rows | Model router, Task DB (read-write) | Medium — decomposes autonomously, surfaces `missing_information` and `deadline_feasible` assessment |
+| **ToolRegistry** | `tool_registry.py` | Validates and executes tool calls proposed by LLM agents. Enforces per-task-type tool allowlists from `task_types.yaml` | All registered tool handlers | N/A — infrastructure component, not an autonomous agent |
+| **Coding** | _No source file_ | Code generation, file editing, project scaffolding | Filesystem (MCP sandboxed read-write), GitHub (MCP read-write), Claude Code CLI | Low — output for review only. Never pushes to main. Never deletes. **Not yet implemented.** |
+| **Communication / Drafting** | _No source file_ | Email drafts, message drafts, document creation | Gmail (draft only; send behind feature flag), Docs/markdown (write), Discord/Slack (specific channels only) | Low — always drafts. Never sends without explicit approval. **Not yet implemented.** |
+
+## Agent Source Files
+
+```
+src/donna/agents/
+├── __init__.py              # Exports: DecomposeResult, DecompositionService, PrepAgent
+├── base.py                  # AgentContext, AgentResult, ToolCallRecord, Agent protocol
+├── pm_agent.py              # PMAgent — assessment, requirements, agent routing
+├── challenger_agent.py      # ChallengerAgent — capability matching, intent extraction
+├── claude_novelty_judge.py  # ClaudeNoveltyJudge — no-match escalation via Claude API
+├── scheduler_agent.py       # SchedulerAgent — calendar slots, task scheduling
+├── prep_agent.py            # PrepAgent — research/prep execution for flagged tasks
+├── decomposition.py         # DecompositionService — task → subtask breakdown
+└── tool_registry.py         # ToolRegistry — tool validation and execution layer
+```
+
+### Agent Base Types (`base.py`)
+
+All agents implement the `Agent` protocol:
+
+| Type | Purpose |
+|------|---------|
+| `Agent` | Runtime-checkable protocol: `name`, `allowed_tools`, `timeout_seconds`, `execute(task, context)` |
+| `AgentContext` | Execution context: `router`, `db`, `user_id`, `project_root`, `tool_registry` |
+| `AgentResult` | Outcome: `status` (complete/failed/needs_input/escalated), `output`, `tool_calls_made`, `duration_ms`, `error`, `questions` |
+| `ToolCallRecord` | Record of a single tool call: `tool_name`, `params`, `result`, `allowed` |
+
+### ClaudeNoveltyJudge
+
+Called by `DiscordIntentDispatcher` when `ChallengerAgent` emits `status=escalate_to_claude`. Returns a `NoveltyVerdict` dataclass containing:
+
+- `intent_kind`, `trigger_type`, `extracted_inputs`
+- `schedule`, `deadline`, `alert_conditions`, `polling_interval_suggestion`
+- `skill_candidate` (bool) + `skill_candidate_reasoning`
+- `clarifying_question`, `notification_channels`
+
+Uses the `claude_novelty` task type, validates output via `validate_output`, and consults the `CapabilityMatcher` for context.
+
+### DecompositionService
+
+Breaks a complex task into subtasks via the `task_decompose` prompt. Returns a `DecomposeResult` with `subtask_ids`, `total_estimated_hours`, `missing_information`, and `deadline_feasible`. Uses a two-pass insert: first creates all subtask rows, then resolves integer dependency indices from LLM output to real UUIDs.
+
+### ToolRegistry
+
+Infrastructure component (not an autonomous agent). Validates and executes tool calls proposed by LLM agents:
+
+1. Agent model outputs a tool call request.
+2. `ToolRegistry.is_allowed(task_type, tool_name)` checks against `task_types.yaml` allowlist.
+3. If allowed, `ToolRegistry.execute(tool_name, params)` runs the registered async handler.
+4. Raises `ToolNotAllowedError` or `ToolNotRegisteredError` on violations.
 
 ## Agent Execution Flow
 

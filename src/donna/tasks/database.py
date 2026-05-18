@@ -1117,3 +1117,21 @@ class Database:
         rows = await cursor.fetchall()
         description = cursor.description
         return [self._row_to_chat_message(row, description) for row in rows]
+
+    async def execute_sql(
+        self, sql: str, params: list[Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Execute raw SQL and return rows as dicts.
+
+        Args:
+            sql: SQL query string with ``?`` placeholders.
+            params: Positional bind parameters.
+
+        Returns:
+            List of row dicts keyed by column name.
+        """
+        conn = self.connection
+        cursor = await conn.execute(sql, params or [])
+        columns = [desc[0] for desc in cursor.description] if cursor.description else []
+        rows = await cursor.fetchall()
+        return [dict(zip(columns, row, strict=False)) for row in rows]

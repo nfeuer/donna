@@ -73,6 +73,7 @@ from donna.api.routes import (
 from donna.chat.actions import ActionRegistry
 from donna.chat.config import get_chat_config
 from donna.chat.engine import ConversationEngine
+from donna.chat.tools import ToolRegistry
 from donna.config import load_state_machine_config
 from donna.llm.alerter import GatewayAlerter
 from donna.llm.queue import LLMQueueWorker
@@ -242,10 +243,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 payload_writer=payload_writer,
             )
             action_registry = ActionRegistry.from_yaml(config_dir / "chat_actions.yaml")
+            tool_registry = ToolRegistry.from_yaml(config_dir / "chat_tools.yaml")
             chat_engine = ConversationEngine(
                 db=db, router=chat_router, config=chat_config,
                 project_root=project_root,
                 action_registry=action_registry,
+                tool_registry=tool_registry,
             )
         except Exception:
             logger.warning("chat_engine_init_failed", exc_info=True)

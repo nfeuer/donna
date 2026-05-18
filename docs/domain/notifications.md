@@ -116,7 +116,7 @@ Escalation resets on any acknowledgment on any channel. "Busy, will handle later
 1. Receive raw text + metadata (source, timestamp, user context)
 2. LLM parses into structured task fields
 3. Preference engine applies learned rules
-4. Deduplication check (see `docs/task-system.md`)
+4. Deduplication check (see [task-system.md](task-system.md))
 5. Complexity assessment → auto-schedule or route for interrogation
 6. Confirmation on same channel: "Got it. 'Oil change' scheduled for Saturday 10am. Priority 2."
 
@@ -200,6 +200,51 @@ Discord username), `discord_id`, and `name`. `immich_user_id` and `email` are
 
 ## Proactive Task Capture
 
-- **End-of-meeting prompt:** Calendar shows meeting just ended → "Any new tasks or action items?"
-- **Evening check-in:** Configurable (e.g., 7pm) → "Anything to capture before tomorrow?"
-- **Stale task detection:** Backlog 7+ days, no scheduled time → "Schedule it or archive it?"
+Implemented in `src/donna/notifications/proactive_prompts.py`. Four background loops, each running as an `asyncio.create_task`:
+
+| Class | Trigger | Channel | Description |
+|-------|---------|---------|-------------|
+| `PostMeetingCapture` | Every 5 min, checks `calendar_mirror` for ended meetings | `#donna-tasks` | "Any new tasks or action items?" after a meeting ends. Deduplicates by event ID. |
+| `EveningCheckin` | Daily at 7 PM local (configurable) | `#donna-tasks` | "Anything to capture before tomorrow?" Includes a preview of tomorrow's first task. |
+| `StaleTaskDetector` | Daily (configurable interval) | `#donna-tasks` | Flags backlog tasks >7 days old with no scheduled time. "Schedule it or archive it?" |
+| `AfternoonInactivityCheck` | Daily at 2 PM local (configurable) | `#donna-tasks` | Nudges if no tasks were started, added, or completed today. |
+
+All four use the same sleep-until-fire-time pattern as `MorningDigest`.
+
+## End-of-Day Digest
+
+Implemented in `src/donna/notifications/eod_digest.py`. The `EodDigest` class runs at 5:30 PM local time on weekdays (configurable via `EmailConfig.digest`). Assembles tasks completed today, still-open tasks, and cost summary, then posts to Discord `#donna-digest` and creates an email draft via `GmailClient` if configured.
+
+## Escalation Subsystem
+
+### Tier state machine
+
+Implemented in `src/donna/notifications/escalation.py`. The `EscalationManager` drives multi-tier escalation when a task goes overdue and the user does not respond:
+
+| Tier | Channel | Wait time |
+|------|---------|-----------|
+| 1 | Discord message | 30 min (configurable) |
+| 2 | SMS text | 1 hour (configurable) |
+| 3 | Email | Deferred to slice 8 |
+| 4 | Phone TTS | Priority 5 / budget emergencies only |
+
+Escalation state is persisted in the `escalation_state` table. Acknowledgment on any channel resets the tier. "Busy" reply backs off for a configurable number of hours.
+
+### Delivery loop
+
+Implemented in `src/donna/notifications/escalation_delivery_loop.py`. The `EscalationDeliveryLoop` class polls `escalation_request` rows every 60 seconds. It retries Discord delivery for open escalations whose first post failed and sweeps timed-out escalations. On timeout, the row resolves with `mode='pause'`, `resolved_by='timeout'`; the task transitions to `paused`; if priority is high enough (default >= 4), the `EscalationManager` is invoked at SMS tier-2.
+
+## Module Reference
+
+| Module | Role |
+|--------|------|
+| `service.py` | `NotificationService` — central dispatch for channel/DM/thread messages. Enforces blackout and quiet-hours gating. |
+| `bot_protocol.py` | `BotProtocol` — interface defining `send_message`, `send_embed`, `send_to_thread`, `send_dm`. |
+| `digest.py` | `MorningDigest` — morning summary (6:30 AM) to Discord and email. |
+| `eod_digest.py` | `EodDigest` — end-of-day summary (5:30 PM weekdays) to Discord and email. |
+| `weekly_digest.py` | `WeeklyDigest` — Sunday 7 PM efficiency digest. |
+| `reminders.py` | Task reminder scheduling (15 min before start). |
+| `overdue.py` | `OverdueDetector` — fires nudges 30 min after a task's scheduled end. |
+| `escalation.py` | `EscalationManager` — multi-tier escalation state machine. |
+| `escalation_delivery_loop.py` | `EscalationDeliveryLoop` — background poller for delivery retries and timeout sweeps. |
+| `proactive_prompts.py` | `PostMeetingCapture`, `EveningCheckin`, `StaleTaskDetector`, `AfternoonInactivityCheck`. |

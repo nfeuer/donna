@@ -18,6 +18,64 @@ Metadata always includes: `latency_ms`, `tokens_in`, `tokens_out`, `cost_usd`, `
 
 Two implementations: `AnthropicProvider` (Claude API) and `OllamaProvider` (local LLM). A third can be added without changing calling code.
 
+### Source Files
+
+```
+src/donna/models/
+├── __init__.py
+├── router.py              # ModelRouter — config-driven routing, escalation, overflow handling
+├── types.py               # CompletionMetadata dataclass
+├── tokens.py              # estimate_tokens() — character-based heuristic (len // 4)
+├── validation.py          # validate_output() — JSON Schema (draft-07) validation
+├── quality.py             # Spot-check quality monitoring (Claude-as-judge)
+└── providers/
+    ├── __init__.py        # ModelProvider protocol
+    ├── anthropic.py       # AnthropicProvider — Claude API
+    ├── ollama.py          # OllamaProvider — local LLM
+    └── _parsing.py        # parse_json_response() — strip markdown fences from LLM output
+```
+
+### ModelRouter (`router.py`)
+
+The `ModelRouter` class is the central dispatch point. It loads routing configuration from `donna_models.yaml` and `task_types.yaml`, resolves `task_type` to `model_alias` to provider, and dispatches completions through the resilience layer (circuit breaker, retry).
+
+Key error types raised by `ModelRouter.complete()`:
+
+| Error | When Raised |
+|-------|-------------|
+| `EscalationDecisionError` | Over-budget gate resolves to a terminal mode (`pause`, `cancel`, `claude_code`, `chat`). Carries `mode`, `escalation_request_id`, `correlation_id`. |
+| `TokenLimitReachedError` | Provider truncated output at extension-derived token cap. Caller should re-estimate and re-offer escalation. |
+| `ContextOverflowError` | Prompt exceeds local model budget (`num_ctx - output_reserve`) and no fallback configured. |
+| `RoutingError` | Task type has no routing entry in config. |
+
+### CompletionMetadata (`types.py`)
+
+Returned alongside every LLM completion:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `latency_ms` | int | Wall clock time |
+| `tokens_in` | int | Input tokens consumed |
+| `tokens_out` | int | Output tokens generated |
+| `cost_usd` | float | Computed cost |
+| `model_actual` | str | Resolved provider + model name |
+| `is_shadow` | bool | Shadow run flag |
+| `estimated_tokens_in` | int? | Pre-dispatch token estimate (for drift tracking) |
+| `overflow_escalated` | bool | True if request fell back from local to cloud due to context overflow |
+| `token_limited` | bool | True if provider truncated output at extension cap |
+
+### Token Estimation (`tokens.py`)
+
+`estimate_tokens(text)` uses `len(text) // 4` — zero dependencies, constant-time. Accuracy is tracked on the LLM Gateway dashboard via the `estimated_tokens_in` column. Upgrade trigger: swap for Ollama's `/api/tokenize` when `context_overflow_escalation` rate exceeds 10%.
+
+### Output Validation (`validation.py`)
+
+`validate_output(data, schema)` validates LLM JSON output against a JSON Schema (draft-07). On mismatch, raises `ValidationError` with a list of error messages. Used by agents and the orchestrator to enforce structured output contracts.
+
+### Response Parsing (`providers/_parsing.py`)
+
+`parse_json_response(text)` extracts clean JSON from LLM text responses, stripping markdown code fences if present. Shared by both `AnthropicProvider` and `OllamaProvider`.
+
 ## Routing Configuration
 
 The routing table in `config/donna_models.yaml` maps model aliases to providers and defines per-task-type behavior. This is the primary control surface.
@@ -49,6 +107,15 @@ Every model call is logged to the `invocation_log` table:
 | eval_session_id | UUID? | Groups invocations from a single eval run |
 | spot_check_queued | Boolean | Queued for Claude-as-judge review |
 | user_id | String | User who triggered the call |
+| queue_wait_ms | Int? | Time spent in LLM queue before dispatch |
+| interrupted | Boolean | True if the call was interrupted before completion |
+| chain_id | String? | Groups related calls in a multi-step chain |
+| caller | String? | Identifies the calling module/agent |
+| estimated_tokens_in | Int? | Pre-dispatch token estimate (for drift tracking vs actual `tokens_in`) |
+| overflow_escalated | Boolean | True if request fell back from local to cloud due to context overflow |
+| skill_id | String? | Associated skill if the call was skill-triggered |
+| escalation_request_id | Int? | Links to an escalation request when the call is budget-gated |
+| payload_path | String(300)? | Filesystem path to full request/response JSON (written by `PayloadWriter`, evicted by `PayloadEvictor`) |
 
 ## Shadow Mode (Production Monitoring)
 

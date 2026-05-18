@@ -20,17 +20,60 @@ All Python services use `structlog` with JSON output and `contextvars` for async
 | ERROR | Operation failed but system continues. | API failed after retries, schema validation rejected, agent timeout |
 | CRITICAL | System-level failure, immediate attention. | Circuit breaker activated, DB corruption, orchestrator crash, NVMe full |
 
-## Logging Database
+## Logging Implementation (current)
+
+The `src/donna/logging/` package contains two modules:
+
+### `setup.py` — Structured logging configuration
+
+`setup_logging(log_level, json_output)` configures `structlog` with JSON output and `contextvars` for async context propagation. All services call this at startup. Four context variables are injected into every log entry:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `correlation_id` | `""` | Traces a single request across all services |
+| `user_id` | `"system"` | User who triggered the action |
+| `channel` | `""` | `discord`, `sms`, `email`, `app`, `system` |
+| `task_id` | `""` | Associated task UUID |
+
+Non-empty values are automatically added to every log entry via the `add_context_vars` processor.
+
+### `invocation_logger.py` — LLM call tracking
+
+`InvocationLogger` writes to the `invocation_log` table in `donna_tasks.db` (the main database, not a separate logging database). Every LLM API call is tracked per CLAUDE.md. Fields captured per invocation:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `task_type` | str | What kind of LLM call (e.g., `parse_task`, `escalation_lifecycle`) |
+| `model_alias` / `model_actual` | str | Routing alias and resolved model name |
+| `input_hash` | str | Hash of the prompt for deduplication |
+| `latency_ms` | int | Wall-clock latency |
+| `tokens_in` / `tokens_out` | int | Token counts |
+| `cost_usd` | float | Computed cost |
+| `user_id` | str | Requesting user |
+| `task_id` | str? | Associated task |
+| `is_shadow` | bool | Whether this was a shadow-mode call |
+| `skill_id` | str? | Skill that triggered the call |
+| `escalation_request_id` | int? | Escalation that triggered the call |
+| `chain_id` | str? | Multi-step chain correlation |
+| `caller` | str? | Calling module for attribution |
+| `queue_wait_ms` | int? | Time spent in the request queue |
+| `overflow_escalated` | bool | Whether the call triggered overflow escalation |
+
+This is the primary observability data for cost analysis, evaluation, and budget enforcement. Invocation log rows are permanent.
+
+## Logging Database (aspirational)
+
+> **Status:** The dedicated `donna_logs.db` described below is a design target from spec v3.0 (sections 14-15) and is **not yet implemented**. Current logging routes through structlog to stdout (captured by Docker `json-file` driver and shipped to Loki via Promtail). LLM invocation tracking uses the `invocation_log` table in the main `donna_tasks.db`. The schema, retention policy, and nightly pruning below represent the planned design.
 
 Dedicated `donna_logs.db` on NVMe. Separate from task DB to avoid contention.
 
-### Log Table Schema
+### Log Table Schema (planned)
 
 | Field | Type | Purpose |
 |-------|------|---------|
 | id | INTEGER PK | Auto-incrementing |
 | timestamp | TEXT ISO 8601 | When (UTC) |
-| level | TEXT | DEBUG–CRITICAL |
+| level | TEXT | DEBUG-CRITICAL |
 | service | TEXT | orchestrator, mcp_server, discord_bot, scheduler, notification, agent_worker, sync |
 | component | TEXT | input_parser, calendar_sync, state_machine, preference_engine, etc. |
 | event_type | TEXT | Machine-readable: `task.created`, `api.call.failed`, `agent.timeout` |
@@ -48,7 +91,7 @@ Dedicated `donna_logs.db` on NVMe. Separate from task DB to avoid contention.
 
 Indexes on: timestamp, level, service, event_type, correlation_id, task_id, error_type. WAL mode.
 
-### Retention Policy
+### Retention Policy (planned)
 
 | Level | Retention |
 |-------|-----------|
@@ -72,12 +115,14 @@ Nightly cron prunes expired logs. Weekly VACUUM reclaims disk space.
 - `cost.*`: daily_threshold, monthly_warning, agent_paused, budget_increase
 - `sync.*`: supabase.push, supabase.failed, keepalive.sent
 
-## Log Pipeline (Phase 1 — Dual Write)
+## Log Pipeline (current state)
 
-1. Each service writes structured JSON to **stdout**. Docker captures via `json-file` log driver.
-2. **Promtail** (in donna-monitoring.yml) tails Docker logs → ships to **Loki**.
+1. Each service writes structured JSON to **stdout** via `structlog` (configured by `src/donna/logging/setup.py`). Docker captures via `json-file` log driver.
+2. **Promtail** (in donna-monitoring.yml) tails Docker logs and ships to **Loki**.
 3. **Grafana** queries Loki for real-time dashboard.
-4. Simultaneously, lightweight log collector in orchestrator writes to SQLite log DB for programmatic access and retention management.
+4. LLM invocation data is written to the `invocation_log` table in `donna_tasks.db` by `InvocationLogger` (`src/donna/logging/invocation_logger.py`).
+
+> **Note:** Step 4 in the original spec described a lightweight log collector writing general structured logs to a dedicated SQLite log DB (`donna_logs.db`). This collector is not yet implemented. The `invocation_log` table in the main database covers LLM call tracking; all other structured log data is accessed via Loki/Grafana.
 
 ## Dashboard Panels
 
