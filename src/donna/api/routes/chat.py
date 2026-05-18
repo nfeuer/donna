@@ -58,9 +58,11 @@ async def send_message(
 
     if session_id == "new":
         sid = None
+        force_new = True
     else:
         await _require_session_owner(db, session_id, user_id)
         sid = session_id
+        force_new = False
 
     resp: ChatResponse = await engine.handle_message(
         session_id=sid,
@@ -68,6 +70,7 @@ async def send_message(
         text=text,
         channel=channel,
         dashboard_context=context,
+        force_new=force_new,
     )
 
     return {
@@ -79,6 +82,7 @@ async def send_message(
         "suggested_actions": resp.suggested_actions,
         "pin_suggestion": resp.pin_suggestion,
         "session_pinned_task_id": resp.session_pinned_task_id,
+        "trace_id": resp.trace_id,
     }
 
 
@@ -182,6 +186,8 @@ async def get_session(
                 "intent": m.intent,
                 "tokens_used": m.tokens_used,
                 "created_at": m.created_at,
+                "trace_id": getattr(m, "trace_id", None),
+                "invocation_ids": getattr(m, "invocation_ids", None),
             }
             for m in messages
         ],
@@ -208,6 +214,8 @@ async def list_messages(
                 "intent": m.intent,
                 "tokens_used": m.tokens_used,
                 "created_at": m.created_at,
+                "trace_id": getattr(m, "trace_id", None),
+                "invocation_ids": getattr(m, "invocation_ids", None),
             }
             for m in messages
         ],
