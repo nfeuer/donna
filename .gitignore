@@ -60,6 +60,10 @@ workspace/
 # Superpowers brainstorming mockups
 .superpowers/
 
-# Claude Code local state (worktrees, per-user settings)
-.claude/
+# Claude Code — ignore local state, track shared config
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+!.claude/agents/
+.claude/settings.local.json
 .claire/

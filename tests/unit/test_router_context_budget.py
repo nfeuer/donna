@@ -107,6 +107,7 @@ def _build_router(
     router._prompt_cache = {}
     router._schema_cache = {}
     router._invocation_logger = None
+    router._payload_writer = None
     from donna.resilience.retry import CircuitBreaker
     router._circuit_breaker = CircuitBreaker()
     router._shadow_tasks = set()

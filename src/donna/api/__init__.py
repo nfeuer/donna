@@ -26,6 +26,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 
 from donna.api.routes import (
     admin_access,
+    admin_claude,
     admin_config,
     admin_dashboard,
     admin_escalation_settings,
@@ -358,8 +359,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.calendar_timezone = cal_timezone
     app.state.calendar_ids = cal_ids
 
+    # Claude Inspector — payload collection + eviction
+    from donna.collection.payload_evictor import PayloadEvictor
+    from donna.collection.payload_writer import PayloadWriter
+
+    payload_dir = Path(os.environ.get("DONNA_PAYLOAD_DIR", "data/payloads"))
+    payload_writer = PayloadWriter(base_dir=payload_dir)
+    await payload_writer.sync_size_from_disk()
+    app.state.payload_dir = payload_dir
+    app.state.payload_writer = payload_writer
+
+    async def _eviction_loop() -> None:
+        evictor = PayloadEvictor(writer=payload_writer, db=db.connection)
+        while True:
+            await asyncio.sleep(3600)
+            await payload_writer.sync_size_from_disk()
+            await evictor.evict()
+
+    eviction_task = asyncio.create_task(_eviction_loop())
+
     logger.info("donna_api_started", db_path=str(db_path), port=8200)
     yield
+
+    eviction_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await eviction_task
 
     sync_task_state = getattr(app.state, "auth_sync_task", None)
     if sync_task_state:
@@ -417,6 +441,7 @@ def create_app() -> FastAPI:
     app.include_router(calendar_week.router, prefix="/calendar", tags=["calendar"])
     app.include_router(agents.router, prefix="/agents", tags=["agents"])
 
+    app.include_router(admin_claude.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_dashboard.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_logs.router, prefix="/admin", tags=["admin"])
     app.include_router(admin_invocations.router, prefix="/admin", tags=["admin"])

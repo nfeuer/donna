@@ -56,6 +56,15 @@ export default function ChatPage() {
     async (text: string) => {
       const sid = activeSessionId || "new";
       setSending(true);
+
+      const optimisticMsg: ChatMessage = {
+        id: `optimistic-${Date.now()}`,
+        role: "user",
+        content: text,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, optimisticMsg]);
+
       try {
         const resp = await sendMessage(sid, text);
         setLastResponse(resp);

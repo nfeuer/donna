@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect } from "react";
-import { X } from "lucide-react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { X, Plus } from "lucide-react";
 import {
   sendMessage,
+  fetchSession,
   fetchContextStatus,
   type ChatMessage,
   type ChatResponse,
@@ -11,6 +12,37 @@ import { useDashboardContext } from "../context/DashboardContext";
 import MessageThread from "../pages/Chat/MessageThread";
 import MessageInput from "../pages/Chat/MessageInput";
 import styles from "./QuickChatPanel.module.css";
+
+const STORAGE_KEY = "donna_quick_chat_sessions";
+
+function getPageSession(page: string): string | null {
+  try {
+    const map = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
+    return map[page] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function setPageSession(page: string, sessionId: string): void {
+  try {
+    const map = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
+    map[page] = sessionId;
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // storage full or unavailable
+  }
+}
+
+function clearPageSession(page: string): void {
+  try {
+    const map = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "{}");
+    delete map[page];
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // storage full or unavailable
+  }
+}
 
 interface Props {
   open: boolean;
@@ -24,19 +56,61 @@ export default function QuickChatPanel({ open, onClose }: Props) {
   const [lastResponse, setLastResponse] = useState<ChatResponse | null>(null);
   const [contextStatus, setContextStatus] = useState<ContextStatus | null>(null);
   const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const restoredPageRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    if (restoredPageRef.current === currentPage) return;
+    restoredPageRef.current = currentPage;
+
+    const saved = getPageSession(currentPage);
+    if (saved) {
+      setSessionId(saved);
+      setLoading(true);
+      fetchSession(saved)
+        .then((s) => {
+          setMessages(s.messages);
+          return fetchContextStatus(saved);
+        })
+        .then((ctx) => setContextStatus(ctx))
+        .catch(() => {
+          clearPageSession(currentPage);
+          setSessionId(null);
+          setMessages([]);
+          setContextStatus(null);
+        })
+        .finally(() => setLoading(false));
+    } else {
+      setSessionId(null);
+      setMessages([]);
+      setLastResponse(null);
+      setContextStatus(null);
+    }
+  }, [open, currentPage]);
+
+  const handleNewSession = useCallback(() => {
+    clearPageSession(currentPage);
+    restoredPageRef.current = currentPage;
     setSessionId(null);
     setMessages([]);
     setLastResponse(null);
     setContextStatus(null);
-  }, [open]);
+  }, [currentPage]);
 
   const handleSend = useCallback(
     async (text: string) => {
       const sid = sessionId || "new";
       setSending(true);
+
+      const optimisticMsg: ChatMessage = {
+        id: `optimistic-${Date.now()}`,
+        role: "user",
+        content: text,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, optimisticMsg]);
+
       try {
         const context = {
           page: currentPage,
@@ -47,16 +121,15 @@ export default function QuickChatPanel({ open, onClose }: Props) {
         const resp = await sendMessage(sid, text, "dashboard_quick", context);
         setLastResponse(resp);
 
-        if (resp.session_id && !sessionId) {
-          setSessionId(resp.session_id);
-        }
-
-        const loadId = resp.session_id || sessionId;
-        if (loadId) {
-          const { fetchSession } = await import("../api/chat");
-          const session = await fetchSession(loadId);
+        const resolvedId = resp.session_id || sessionId;
+        if (resolvedId) {
+          if (!sessionId) {
+            setSessionId(resolvedId);
+          }
+          setPageSession(currentPage, resolvedId);
+          const session = await fetchSession(resolvedId);
           setMessages(session.messages);
-          const ctx = await fetchContextStatus(loadId);
+          const ctx = await fetchContextStatus(resolvedId);
           setContextStatus(ctx);
         }
       } catch {
@@ -104,6 +177,15 @@ export default function QuickChatPanel({ open, onClose }: Props) {
       <div className={styles.panel}>
         <div className={styles.header}>
           <span className={styles.headerTitle}>Quick Chat</span>
+          <button
+            type="button"
+            className={styles.newBtn}
+            onClick={handleNewSession}
+            aria-label="New session"
+            title="New session"
+          >
+            <Plus size={16} />
+          </button>
           <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
@@ -116,7 +198,9 @@ export default function QuickChatPanel({ open, onClose }: Props) {
           {tokenLabel && <span className={styles.tokenCount}>{tokenLabel}</span>}
         </div>
         <div className={styles.body}>
-          {messages.length > 0 ? (
+          {loading ? (
+            <div className={styles.emptyState}>Loading session...</div>
+          ) : messages.length > 0 ? (
             <MessageThread
               messages={messages}
               lastResponse={lastResponse}
@@ -129,7 +213,7 @@ export default function QuickChatPanel({ open, onClose }: Props) {
             </div>
           )}
           <div className={styles.inputWrap}>
-            <MessageInput onSend={handleSend} disabled={sending} />
+            <MessageInput onSend={handleSend} disabled={sending || loading} />
           </div>
         </div>
       </div>

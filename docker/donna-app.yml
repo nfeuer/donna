@@ -11,6 +11,7 @@ services:
     env_file: .env
     environment:
       - DONNA_DB_PATH=/donna/db/donna_tasks.db
+      - DONNA_PAYLOAD_DIR=/donna/db/payloads
     volumes:
       - ${DONNA_DB_PATH}:/donna/db
       - ${DONNA_VAULT_PATH}:/donna/vault:ro

@@ -233,6 +233,8 @@ class InvocationLog(Base):
     overflow_escalated: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )
+    # Payload forensics (alembic add_payload_path_to_invocation_log).
+    payload_path: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
 
 class CorrectionLog(Base):
