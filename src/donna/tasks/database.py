@@ -1134,4 +1134,4 @@ class Database:
         cursor = await conn.execute(sql, params or [])
         columns = [desc[0] for desc in cursor.description] if cursor.description else []
         rows = await cursor.fetchall()
-        return [dict(zip(columns, row)) for row in rows]
+        return [dict(zip(columns, row, strict=False)) for row in rows]

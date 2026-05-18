@@ -106,7 +106,7 @@ async def query_invocations(
     limit_raw = params.get("limit", _DEFAULT_LIMIT)
     limit = min(int(limit_raw), _MAX_LIMIT)
 
-    data_params = list(bind_params) + [limit]
+    data_params = [*list(bind_params), limit]
 
     # Safe: sort_col and sort_dir come from allowlists; user values go through bind_params
     data_rows = await ctx.db.execute_sql(
