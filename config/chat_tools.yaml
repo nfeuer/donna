@@ -1,0 +1,384 @@
+# config/chat_tools.yaml
+# Tool schemas for the chat tool-use agent loop.
+# Each tool is auto-discovered by ToolRegistry at startup.
+# See docs/superpowers/specs/2026-05-17-quick-chat-tool-agent-design.md §3 and §14.
+
+tools:
+  # ── Invocations & Logs ────────────────────────────────
+  query_invocations:
+    description: "Search the invocation log for LLM calls by date, model, cost, or error status"
+    domain: invocations
+    type: read
+    handler: donna.chat.tools.invocations.query_invocations
+    parameters:
+      type: object
+      properties:
+        date_from:
+          type: string
+          description: "ISO date (YYYY-MM-DD) start filter"
+        date_to:
+          type: string
+          description: "ISO date end filter"
+        task_type:
+          type: string
+          description: "Exact match on task_type"
+        model:
+          type: string
+          description: "Model alias or actual model ID"
+        min_cost:
+          type: number
+          description: "Minimum cost_usd"
+        min_latency:
+          type: integer
+          description: "Minimum latency_ms"
+        has_error:
+          type: boolean
+          description: "Filter to errored invocations"
+        sort:
+          type: string
+          enum: [cost, latency, timestamp, tokens_in]
+          default: timestamp
+        sort_dir:
+          type: string
+          enum: [asc, desc]
+          default: desc
+        limit:
+          type: integer
+          default: 25
+          maximum: 100
+      required: []
+
+  get_invocation_detail:
+    description: "Get full details for a single LLM invocation by ID"
+    domain: invocations
+    type: read
+    handler: donna.chat.tools.invocations.get_invocation_detail
+    parameters:
+      type: object
+      properties:
+        invocation_id:
+          type: string
+      required: [invocation_id]
+
+  query_invocation_stats:
+    description: "Get aggregated invocation statistics grouped by task_type, model, or date"
+    domain: invocations
+    type: read
+    handler: donna.chat.tools.invocations.query_invocation_stats
+    parameters:
+      type: object
+      properties:
+        group_by:
+          type: string
+          enum: [task_type, model, date]
+        date_from:
+          type: string
+          description: "ISO date start"
+        date_to:
+          type: string
+          description: "ISO date end"
+      required: [group_by]
+
+  # ── Tasks ─────────────────────────────────────────────
+  query_tasks:
+    description: "Search tasks by status, priority, domain, or title keyword"
+    domain: tasks
+    type: read
+    handler: donna.chat.tools.tasks.query_tasks
+    parameters:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Filter by task status"
+        priority:
+          type: integer
+          description: "Filter by priority (0-3)"
+        domain:
+          type: string
+          description: "Filter by domain"
+        title_search:
+          type: string
+          description: "Substring match on title"
+        created_after:
+          type: string
+          description: "ISO date"
+        updated_after:
+          type: string
+          description: "ISO date"
+        sort:
+          type: string
+          enum: [priority, created_at, updated_at, deadline]
+          default: priority
+        limit:
+          type: integer
+          default: 25
+          maximum: 100
+      required: []
+
+  get_task_detail:
+    description: "Get full details for a single task by ID"
+    domain: tasks
+    type: read
+    handler: donna.chat.tools.tasks.get_task_detail
+    parameters:
+      type: object
+      properties:
+        task_id:
+          type: string
+      required: [task_id]
+
+  # ── Automations ───────────────────────────────────────
+  query_automations:
+    description: "List automations, optionally filtered to active only or by skill"
+    domain: automations
+    type: read
+    handler: donna.chat.tools.automations.query_automations
+    parameters:
+      type: object
+      properties:
+        active_only:
+          type: boolean
+          default: true
+        skill_name:
+          type: string
+          description: "Filter by associated skill"
+        limit:
+          type: integer
+          default: 25
+          maximum: 100
+      required: []
+
+  get_automation_detail:
+    description: "Get full config and recent run history for an automation"
+    domain: automations
+    type: read
+    handler: donna.chat.tools.automations.get_automation_detail
+    parameters:
+      type: object
+      properties:
+        automation_id:
+          type: string
+      required: [automation_id]
+
+  # ── Skills ────────────────────────────────────────────
+  query_skills:
+    description: "List skills by status with run counts and quality scores"
+    domain: skills
+    type: read
+    handler: donna.chat.tools.skills.query_skills
+    parameters:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, candidate, shadow, draft]
+        limit:
+          type: integer
+          default: 25
+          maximum: 100
+      required: []
+
+  get_skill_detail:
+    description: "Get full config and recent runs for a skill"
+    domain: skills
+    type: read
+    handler: donna.chat.tools.skills.get_skill_detail
+    parameters:
+      type: object
+      properties:
+        skill_name:
+          type: string
+      required: [skill_name]
+
+  query_skill_candidates:
+    description: "List candidate skills with confidence scores and recommendations"
+    domain: skills
+    type: read
+    handler: donna.chat.tools.skills.query_skill_candidates
+    parameters:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        limit:
+          type: integer
+          default: 25
+          maximum: 100
+      required: []
+
+  # ── Vault ─────────────────────────────────────────────
+  list_vault_files:
+    description: "List files in the vault, optionally within a folder"
+    domain: vault
+    type: read
+    handler: donna.chat.tools.vault.list_vault_files
+    parameters:
+      type: object
+      properties:
+        folder:
+          type: string
+      required: []
+
+  read_vault_file:
+    description: "Read a file from the vault by path"
+    domain: vault
+    type: read
+    handler: donna.chat.tools.vault.read_vault_file
+    parameters:
+      type: object
+      properties:
+        path:
+          type: string
+          description: "Relative path within the vault"
+      required: [path]
+
+  # ── System ────────────────────────────────────────────
+  get_system_health:
+    description: "Get system status overview including queue depth, errors, and uptime"
+    domain: system
+    type: read
+    handler: donna.chat.tools.system.get_system_health
+    parameters:
+      type: object
+      properties: {}
+      required: []
+
+  query_preferences:
+    description: "List learned preference rules by type"
+    domain: system
+    type: read
+    handler: donna.chat.tools.system.query_preferences
+    parameters:
+      type: object
+      properties:
+        rule_type:
+          type: string
+          description: "Filter by type (scheduling, priority, etc.)"
+        enabled_only:
+          type: boolean
+          default: true
+        limit:
+          type: integer
+          default: 25
+          maximum: 100
+      required: []
+
+  # ── Write tools (existing action handlers) ────────────
+  create_task:
+    description: "Create a new task"
+    domain: tasks
+    type: write
+    handler: donna.chat.actions.tasks.create_task
+    parameters:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [P0, P1, P2, P3]
+        domain:
+          type: string
+          enum: [personal, work, family]
+      required: [title]
+
+  update_task:
+    description: "Update a task's status, priority, or notes"
+    domain: tasks
+    type: write
+    handler: donna.chat.actions.tasks.update_task
+    parameters:
+      type: object
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+        priority:
+          type: string
+        notes:
+          type: string
+      required: [task_id]
+
+  reschedule_task:
+    description: "Reschedule a task to a new date"
+    domain: tasks
+    type: write
+    handler: donna.chat.actions.tasks.reschedule_task
+    parameters:
+      type: object
+      properties:
+        task_id:
+          type: string
+        scheduled_start:
+          type: string
+          description: "ISO 8601 date or datetime"
+      required: [task_id, scheduled_start]
+
+  create_vault_note:
+    description: "Create a new note file in the vault"
+    domain: vault
+    type: write
+    handler: donna.chat.actions.vault.create_vault_note
+    parameters:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        folder:
+          type: string
+      required: [title, content]
+
+  create_automation:
+    description: "Create a new automation rule"
+    domain: automations
+    type: write
+    handler: donna.chat.actions.automations.create_automation
+    parameters:
+      type: object
+      properties:
+        name:
+          type: string
+        trigger:
+          type: string
+        skill_name:
+          type: string
+      required: [name, trigger, skill_name]
+
+  execute_skill:
+    description: "Run a skill and report results"
+    domain: skills
+    type: write
+    handler: donna.chat.actions.skills.execute_skill
+    parameters:
+      type: object
+      properties:
+        skill_name:
+          type: string
+        input_data:
+          type: object
+      required: [skill_name]
+
+  create_skill_draft:
+    description: "Draft a new skill definition"
+    domain: skills
+    type: write
+    handler: donna.chat.actions.skills.create_skill_draft
+    parameters:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        steps:
+          type: array
+          items:
+            type: string
+      required: [name, description]
