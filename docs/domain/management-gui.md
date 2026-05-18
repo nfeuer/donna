@@ -101,6 +101,13 @@ This is a note, not a plan — implementation is deferred until the tool leaves 
 | `GET /admin/preferences/corrections?field=&task_type=&limit=50&offset=0` | Paginated correction log |
 | `GET /admin/preferences/stats` | Aggregate preference and correction statistics |
 
+### Claude Inspector
+| Endpoint | Description |
+|----------|-------------|
+| `GET /admin/claude/calls?task_type=&model=&date_from=&date_to=&min_cost=&min_tokens_in=&quality_score_below=&sort=&sort_dir=&limit=25&offset=0` | Paginated call browser with filters |
+| `GET /admin/claude/calls/{invocation_id}/payload` | Full request/response JSON from disk |
+| `GET /admin/claude/insights?days=7` | Computed waste-pattern insights (cost centers, prompt duplication, quality-cost mismatches, token bloat) |
+
 ## Pages
 
 ### Session 1 (Implemented)
@@ -123,6 +130,11 @@ This is a note, not a plan — implementation is deferred until the tool leaves 
 | `/shadow` | Shadow Scoring | Side-by-side diff of primary vs shadow model outputs. Quality score scatter plot + trend chart. Spot-check queue. Filter by task_type/days. |
 | `/preferences` | Preference Manager | Learned rules table with confidence scores, enable/disable toggle. Correction history with filters. Rule provenance drawer. Stats cards. |
 | Polish | UX Refinements | Keyboard shortcuts (`g`+key nav, `r` refresh, `Esc` close), saved filter presets (Log Viewer), CSV export on all tables, anomaly toast notifications on dashboard refresh. |
+
+### Session 4 (Implemented)
+| Route | Page | Description |
+|-------|------|-------------|
+| `/claude` | Claude Inspector | LLM call forensics dashboard. Insights panel (top cost centers, prompt duplication, quality-cost mismatches, token bloat outliers). Sortable/filterable call browser with expandable detail view showing full request/response JSON. Side-by-side compare view. Deep-link support via URL query params (`?task_type=X&id=Y`). Payload data stored on filesystem with 1GB FIFO eviction. |
 
 ## Design Decisions Made
 
@@ -160,7 +172,8 @@ donna-ui/
 │   │   ├── agents.ts                     # Agent list/detail fetchers
 │   │   ├── tasks.ts                      # Task list/detail fetchers
 │   │   ├── shadow.ts                     # Shadow scoring fetchers
-│   │   └── preferences.ts               # Preference rules/corrections fetchers
+│   │   ├── preferences.ts               # Preference rules/corrections fetchers
+│   │   └── claude.ts                     # Claude Inspector: calls, payloads, insights
 │   ├── components/
 │   │   ├── Layout.tsx                    # App shell: sidebar + header + content
 │   │   ├── PageShell.tsx                 # Placeholder for unbuilt pages
@@ -211,11 +224,18 @@ donna-ui/
 │       │   ├── ComparisonTable.tsx        # Side-by-side diff, expandable rows
 │       │   ├── SpotCheckTable.tsx         # Flagged invocations with quality bars
 │       │   └── ShadowCharts.tsx           # Scatter plot + trend line chart
-│       └── Preferences/
-│           ├── index.tsx                  # Stats cards, rules/corrections tabs
-│           ├── RulesTable.tsx             # Rules with confidence bar, enable toggle
-│           ├── CorrectionsTable.tsx        # Paginated correction history
-│           └── RuleDetailDrawer.tsx        # Rule provenance with supporting corrections
+│       ├── Preferences/
+│       │   ├── index.tsx                  # Stats cards, rules/corrections tabs
+│       │   ├── RulesTable.tsx             # Rules with confidence bar, enable toggle
+│       │   ├── CorrectionsTable.tsx        # Paginated correction history
+│       │   └── RuleDetailDrawer.tsx        # Rule provenance with supporting corrections
+│       └── ClaudeInspector/
+│           ├── index.tsx                  # Insights fetch + filter state, URL param sync
+│           ├── InsightsPanel.tsx           # 4-card grid: cost, duplication, mismatch, bloat
+│           ├── CallBrowser.tsx             # Filter bar, sortable table, pagination
+│           ├── CallDetail.tsx              # Expandable request/response JSON viewer
+│           ├── CallCompare.tsx             # Side-by-side payload comparison
+│           └── claude-inspector.module.css # Page styles
 ```
 
 ## Backend Files
@@ -229,7 +249,15 @@ src/donna/api/routes/
 ├── admin_config.py         # Config/prompt file CRUD (read + write)
 ├── admin_agents.py         # Agent list/detail with merged metrics
 ├── admin_shadow.py         # Shadow scoring comparisons, stats, spot-checks
-└── admin_preferences.py    # Preference rules CRUD, corrections, stats
+├── admin_preferences.py    # Preference rules CRUD, corrections, stats
+└── admin_claude.py         # Claude Inspector: call browser, payload retrieval, insights
+
+src/donna/collection/
+├── payload_writer.py       # Fire-and-forget JSON writer for LLM request/response payloads
+└── payload_evictor.py      # FIFO eviction: deletes oldest date dirs when over 1GB cap
+
+src/donna/insights/
+└── engine.py               # SQL-based insights: cost centers, prompt groups, mismatches, bloat
 ```
 
 ## Reused Existing Code

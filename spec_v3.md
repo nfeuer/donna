@@ -2676,10 +2676,13 @@ task_id, error_type. WAL mode enabled for concurrent read/write.
 higher-priority request preempted this call), `chain_id` (groups
 multi-step skill chains), `caller` (free-form tag: `skill`,
 `agent`, `orchestrator`), `estimated_tokens_in`, `overflow_escalated`
-(whether a local-LLM call escalated to Claude), and `skill_id` (FK
-to `skill` when emitted from a skill step). Free-form service logs
-(info/warning/error messages, event_type breadcrumbs) never reach
-SQLite and are queried in Loki via Grafana.
+(whether a local-LLM call escalated to Claude), `skill_id` (FK
+to `skill` when emitted from a skill step), and `payload_path`
+(relative filesystem path to the full request/response JSON
+captured by `PayloadWriter`; NULL when the payload has been evicted
+or was never captured). Free-form service logs (info/warning/error
+messages, event_type breadcrumbs) never reach SQLite and are queried
+in Loki via Grafana.
 
 **14.3.2 Retention Policy**
 
