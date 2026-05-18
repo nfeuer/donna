@@ -335,7 +335,7 @@ export default function AutomationDrawer({
                   if (mode !== "edit" || automation?.capability_name !== "product_watch") return null;
                   const watchUrl = typeof automation.inputs?.url === "string" ? automation.inputs.url : null;
                   if (!watchUrl) return null;
-                  const base = import.meta.env.VITE_GALLERY_BASE_URL || `http://${window.location.hostname}:3100`;
+                  const base = import.meta.env.VITE_GALLERY_BASE_URL || `http://${window.location.hostname}:3101`;
                   return (
                     <a
                       href={`${base}/gallery?url=${encodeURIComponent(watchUrl)}`}

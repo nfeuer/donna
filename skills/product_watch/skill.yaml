@@ -59,7 +59,6 @@ steps:
     kind: llm
     prompt: steps/extract_with_triage.md
     output_schema: schemas/extract_product_info_v1.json
-    model: parser
     condition: "state.triage_for_claude.success and not (state.try_local_extract.success or state.try_vision_extract.success)"
     on_failure: continue
 
@@ -67,12 +66,12 @@ steps:
     kind: llm
     prompt: steps/extract_via_claude.md
     output_schema: schemas/extract_product_info_v1.json
-    model: parser
     condition: "not (state.try_local_extract.success or state.try_vision_extract.success or state.claude_with_triage.success)"
 
   - name: format_output
     kind: llm
     prompt: steps/format_output.md
     output_schema: schemas/format_output_v1.json
+    model: local_parser
 
 final_output: "{{ state.format_output }}"

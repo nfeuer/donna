@@ -11,10 +11,12 @@ MissingToolError so the caller can DM an actionable error.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 
+from donna.automations.cron import CronScheduleCalculator
 from donna.automations.repository import AlreadyExistsError
 from donna.orchestrator.discord_intent_dispatcher import DraftAutomation
 
@@ -121,6 +123,16 @@ class AutomationCreationPath:
             "discord_dm"
         ]
 
+        next_run_at: datetime | None = None
+        schedule_expr = draft.active_cadence_cron or draft.schedule_cron
+        if schedule_expr:
+            try:
+                next_run_at = CronScheduleCalculator().next_run(
+                    expression=schedule_expr, after=datetime.now(UTC),
+                )
+            except Exception:
+                logger.exception("automation_creation_next_run_calc_failed")
+
         try:
             automation_id = await self._repo.create(
                 user_id=draft.user_id,
@@ -137,6 +149,7 @@ class AutomationCreationPath:
                 created_via="discord",
                 target_cadence_cron=draft.target_cadence_cron,
                 active_cadence_cron=draft.active_cadence_cron,
+                next_run_at=next_run_at,
             )
             logger.info(
                 "automation_created_via_discord",

@@ -17,6 +17,8 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import os
+
 import jinja2
 import structlog
 import yaml
@@ -224,6 +226,8 @@ class SkillExecutor:
                         step_name=step_name,
                         condition=condition,
                     )
+                    if step_name not in state:
+                        state[step_name] = {"success": False, "skipped": True}
                     idx += 1
                     continue
 
@@ -287,7 +291,7 @@ class SkillExecutor:
                         await self._finish_run_if_repo(skill_run_id, result)
                         return result
 
-                    schema = version.output_schemas.get(step_name, {})
+                    schema = self._resolve_step_schema(step, step_name, version.output_schemas)
                     validate_output(llm_output, schema)
                     if isinstance(llm_output, dict):
                         llm_output["success"] = True
@@ -324,7 +328,7 @@ class SkillExecutor:
                         await self._finish_run_if_repo(skill_run_id, result)
                         return result
 
-                    schema = version.output_schemas.get(step_name, {})
+                    schema = self._resolve_step_schema(step, step_name, version.output_schemas)
                     validate_output(llm_output, schema)
                     if isinstance(llm_output, dict):
                         llm_output["success"] = True
@@ -570,6 +574,18 @@ class SkillExecutor:
 
         return result
 
+    @staticmethod
+    def _resolve_step_schema(
+        step: dict[str, Any], step_name: str, output_schemas: dict[str, Any],
+    ) -> dict[str, Any]:
+        schema_ref = step.get("output_schema", "")
+        if schema_ref:
+            schema_key = os.path.splitext(os.path.basename(schema_ref))[0]
+            schema = output_schemas.get(schema_key, {})
+            if schema:
+                return schema
+        return output_schemas.get(step_name, {})
+
     async def _persist_step_if_repo(
         self, skill_run_id: str | None, record: StepResultRecord,
     ) -> None:
@@ -620,7 +636,12 @@ class SkillExecutor:
         state: StateObject, inputs: dict[str, Any], user_id: str, skill: SkillRow,
         prompt_additions: str | None = None,
     ) -> tuple[Any, str | None, float]:
-        prompt_template = version.step_content.get(step_name, "")
+        prompt_ref = step.get("prompt", "")
+        if prompt_ref:
+            content_key = os.path.splitext(os.path.basename(prompt_ref))[0]
+            prompt_template = version.step_content.get(content_key) or version.step_content.get(step_name, "")
+        else:
+            prompt_template = version.step_content.get(step_name, "")
         rendered = self._jinja.from_string(prompt_template).render(
             inputs=inputs, state=state.to_dict(),
         )

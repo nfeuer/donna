@@ -1,9 +1,11 @@
-"""Tests for conditional step execution, on_failure=continue, and success tracking.
+"""Tests for conditional step execution, on_failure=continue, success tracking,
+and output_schema resolution.
 
 Covers Task 9 features:
 - Condition field on steps (Jinja expression gating)
 - on_failure=continue (absorb errors, set success=False in state)
 - success=True injected on successful step outputs
+- output_schema: path-based schema resolution (schema key != step name)
 """
 
 from datetime import UTC, datetime
@@ -162,8 +164,8 @@ final_output: "{{ state.step_c }}"
     )
 
     assert result.status == "succeeded"
-    # step_b was skipped so it should NOT be in state
-    assert "step_b" not in result.state
+    # step_b was skipped — present in state with success=False, skipped=True
+    assert result.state["step_b"] == {"success": False, "skipped": True}
     assert result.state["step_c"]["final"] is True
     # Only 2 LLM calls (step_a + step_c), step_b skipped
     assert router.complete.call_count == 2
@@ -453,3 +455,154 @@ final_output: "{{ state.report }}"
     # report ran
     assert result.state["report"]["summary"] == "Price is $29.99"
     assert router.complete.call_count == 3
+
+
+# --------------------------------------------------------------------------- #
+# Feature 4: output_schema path-based resolution
+# --------------------------------------------------------------------------- #
+
+
+async def test_output_schema_resolved_by_ref_not_step_name():
+    """When a step has output_schema: schemas/foo.json, the executor should
+    look up the schema under key 'foo' in output_schemas, not step_name.
+    Invalid output should trigger SchemaValidationError + on_failure=continue."""
+    yaml_backbone = """
+capability_name: test_schema_ref
+version: 1
+steps:
+  - name: extract
+    kind: llm
+    prompt: steps/extract.md
+    output_schema: schemas/product_info.json
+    on_failure: continue
+  - name: fallback
+    kind: llm
+    prompt: steps/fallback.md
+    output_schema: schemas/product_info.json
+    condition: "not state.extract.success"
+final_output: "{{ state.fallback }}"
+"""
+    version = _make_version(
+        yaml_backbone,
+        step_content={
+            "extract": "Extract product info",
+            "fallback": "Fallback extraction",
+        },
+        output_schemas={
+            "product_info": {
+                "type": "object",
+                "properties": {
+                    "price": {"type": "number"},
+                    "title": {"type": "string"},
+                },
+                "required": ["price", "title"],
+            },
+        },
+    )
+
+    router = AsyncMock()
+    router.complete.side_effect = [
+        # extract returns invalid output (missing required 'price' and 'title')
+        ({"garbage": True}, _mock_meta(invocation_id="i1")),
+        # fallback returns valid output
+        ({"price": 29.99, "title": "Test Product"}, _mock_meta(invocation_id="i2")),
+    ]
+
+    executor = SkillExecutor(router)
+    result = await executor.execute(
+        skill=_make_skill(), version=version,
+        inputs={}, user_id="nick",
+    )
+
+    assert result.status == "succeeded"
+    assert result.state["extract"]["success"] is False
+    assert "error" in result.state["extract"]
+    assert result.state["fallback"]["price"] == 29.99
+    assert result.state["fallback"]["title"] == "Test Product"
+    assert result.state["fallback"]["success"] is True
+
+
+async def test_prompt_resolved_by_ref_not_step_name():
+    """When a step has prompt: steps/foo.md, the executor should look up
+    the template under key 'foo' in step_content, not step_name."""
+    yaml_backbone = """
+capability_name: test_prompt_ref
+version: 1
+steps:
+  - name: my_extract
+    kind: llm
+    prompt: steps/shared_extractor.md
+    output_schema: schemas/extract.json
+final_output: "{{ state.my_extract }}"
+"""
+    version = _make_version(
+        yaml_backbone,
+        step_content={
+            "shared_extractor": "Extract from: {{ inputs.text }}",
+        },
+        output_schemas={
+            "extract": {
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+                "required": ["value"],
+            },
+        },
+    )
+
+    router = AsyncMock()
+    router.complete.return_value = (
+        {"value": "extracted"}, _mock_meta(invocation_id="i1"),
+    )
+
+    executor = SkillExecutor(router)
+    result = await executor.execute(
+        skill=_make_skill(), version=version,
+        inputs={"text": "hello world"}, user_id="nick",
+    )
+
+    assert result.status == "succeeded"
+    assert result.state["my_extract"]["value"] == "extracted"
+    # Verify the prompt was rendered with the correct template
+    call_kwargs = router.complete.call_args
+    assert "hello world" in call_kwargs.kwargs.get("prompt", call_kwargs[1].get("prompt", ""))
+
+
+async def test_output_schema_ref_validates_correctly():
+    """When output_schema resolves to a real schema, valid output should pass
+    and invalid output should fail."""
+    yaml_backbone = """
+capability_name: test_schema_ref
+version: 1
+steps:
+  - name: my_step
+    kind: llm
+    prompt: steps/my_step.md
+    output_schema: schemas/strict_schema.json
+final_output: "{{ state.my_step }}"
+"""
+    version = _make_version(
+        yaml_backbone,
+        step_content={"my_step": "Do something"},
+        output_schemas={
+            "strict_schema": {
+                "type": "object",
+                "properties": {"value": {"type": "integer"}},
+                "required": ["value"],
+            },
+        },
+    )
+
+    router = AsyncMock()
+    router.complete.return_value = (
+        {"value": 42}, _mock_meta(invocation_id="i1"),
+    )
+
+    executor = SkillExecutor(router)
+    result = await executor.execute(
+        skill=_make_skill(), version=version,
+        inputs={}, user_id="nick",
+    )
+
+    assert result.status == "succeeded"
+    assert result.state["my_step"]["value"] == 42
+    assert result.state["my_step"]["success"] is True
