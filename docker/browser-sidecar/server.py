@@ -36,6 +36,76 @@ PORT = int(os.environ.get("BROWSER_PORT", "3100"))
 _browser_semaphore = asyncio.Semaphore(3)
 
 # ---------------------------------------------------------------------------
+# Stealth / anti-detection configuration
+# ---------------------------------------------------------------------------
+
+CHROMIUM_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--disable-infobars",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-dev-shm-usage",
+    "--lang=en-US",
+]
+
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/134.0.0.0 Safari/537.36"
+)
+
+STEALTH_JS = """\
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+window.chrome = {
+    runtime: {},
+    loadTimes: function() { return {}; },
+    csi: function() { return {}; },
+    app: {
+        isInstalled: false,
+        InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+        RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+    },
+};
+
+const origQuery = window.navigator.permissions.query;
+window.navigator.permissions.query = (params) => (
+    params.name === 'notifications'
+        ? Promise.resolve({ state: Notification.permission })
+        : origQuery(params)
+);
+
+Object.defineProperty(navigator, 'plugins', {
+    get: () => {
+        const p = [
+            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+            { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+        ];
+        p.length = 3;
+        return p;
+    },
+});
+
+Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+
+const getParam = WebGLRenderingContext.prototype.getParameter;
+WebGLRenderingContext.prototype.getParameter = function(p) {
+    if (p === 37445) return 'Google Inc. (NVIDIA)';
+    if (p === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1050 Ti Direct3D11 vs_5_0 ps_5_0, D3D11)';
+    return getParam.call(this, p);
+};
+
+try {
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+    Object.defineProperty(HTMLDivElement.prototype, 'offsetHeight', {
+        ...desc,
+        get: function() { if (this.id === 'modernizr') return 1; return desc.get.apply(this); },
+    });
+} catch (e) {}
+"""
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 
@@ -59,6 +129,58 @@ def _now_iso() -> str:
 
 def _ensure_dirs() -> None:
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _is_tls_error(exc: Exception) -> bool:
+    msg = str(exc)
+    return "SSL" in msg or "CIPHER" in msg or "ERR_SSL" in msg
+
+
+async def _new_stealth_context(browser, viewport=None):
+    ctx = await browser.new_context(
+        user_agent=DEFAULT_USER_AGENT,
+        viewport=viewport or {"width": 1920, "height": 1080},
+        locale="en-US",
+        timezone_id="America/New_York",
+        extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+    )
+    return ctx
+
+
+async def _new_stealth_page(context):
+    page = await context.new_page()
+    await page.add_init_script(STEALTH_JS)
+    return page
+
+
+COOKIE_ACCEPT_SELECTORS = [
+    "button[id*='accept' i]",
+    "button[class*='accept' i]",
+    "button:has-text('Accept All')",
+    "button:has-text('Accept all')",
+    "button:has-text('ACCEPT ALL')",
+    "button:has-text('Accept Cookies')",
+    "button:has-text('Allow All')",
+    "button:has-text('Allow all')",
+    "button:has-text('I agree')",
+    "button:has-text('Got it')",
+    "[data-testid*='accept' i]",
+    "#onetrust-accept-btn-handler",
+    ".cookie-accept",
+]
+
+
+async def _dismiss_cookie_banner(page):
+    for sel in COOKIE_ACCEPT_SELECTORS:
+        try:
+            btn = page.locator(sel).first
+            if await btn.is_visible(timeout=500):
+                await btn.click(timeout=1000)
+                await page.wait_for_timeout(800)
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def _error_response(
@@ -114,18 +236,40 @@ async def handle_extract_text(request: web.Request) -> web.Response:
     try:
         async with _browser_semaphore:
             async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=True)
-                try:
-                    context = await browser.new_context()
+                for channel in ["chrome", None]:
+                    launch_kw = {"headless": True, "args": CHROMIUM_ARGS}
+                    if channel:
+                        launch_kw["channel"] = channel
+                    browser = await pw.chromium.launch(**launch_kw)
                     try:
-                        page = await context.new_page()
-                        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-                        text = await page.inner_text(selector, timeout=timeout_ms)
-                        page_title = await page.title()
+                        context = await _new_stealth_context(browser)
+                        try:
+                            page = await _new_stealth_page(context)
+                            await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                            try:
+                                await page.wait_for_load_state("load", timeout=10_000)
+                            except Exception:
+                                pass
+                            try:
+                                await page.wait_for_function(
+                                    "document.body && document.body.innerText.trim().length > 100",
+                                    timeout=8_000,
+                                )
+                            except Exception:
+                                pass
+                            await _dismiss_cookie_banner(page)
+                            text = await page.inner_text(selector, timeout=timeout_ms)
+                            page_title = await page.title()
+                            break
+                        finally:
+                            await context.close()
+                    except Exception as exc:
+                        if channel and _is_tls_error(exc):
+                            logger.info("chrome_tls_fallback", url=url)
+                            continue
+                        raise
                     finally:
-                        await context.close()
-                finally:
-                    await browser.close()
+                        await browser.close()
     except Exception as exc:
         duration_ms = (time.monotonic() - start) * 1000
         exc_name = type(exc).__name__
@@ -222,43 +366,65 @@ async def handle_screenshot(request: web.Request) -> web.Response:
     try:
         async with _browser_semaphore:
             async with async_playwright() as pw:
-                browser = await pw.chromium.launch(headless=True)
-                try:
-                    context = await browser.new_context(viewport={"width": 1280, "height": 800})
+                for channel in ["chrome", None]:
+                    launch_kw = {"headless": True, "args": CHROMIUM_ARGS}
+                    if channel:
+                        launch_kw["channel"] = channel
+                    browser = await pw.chromium.launch(**launch_kw)
                     try:
-                        page = await context.new_page()
-                        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-                        page_title = await page.title()
-
-                        _ensure_dirs()
-                        png_path = SCREENSHOTS_DIR / f"{request_id}.png"
-
-                        if selector:
-                            element = await page.query_selector(selector)
-                            if element is None:
-                                duration_ms = (time.monotonic() - start) * 1000
-                                logger.error(
-                                    "screenshot_error",
-                                    url=url,
-                                    action="screenshot",
-                                    duration_ms=round(duration_ms, 2),
-                                    response_bytes=0,
-                                    status="error",
-                                    error=f"Selector '{selector}' matched no elements",
+                        context = await _new_stealth_context(browser, viewport={"width": 1280, "height": 800})
+                        try:
+                            page = await _new_stealth_page(context)
+                            await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                            try:
+                                await page.wait_for_load_state("load", timeout=10_000)
+                            except Exception:
+                                pass
+                            try:
+                                await page.wait_for_function(
+                                    "document.body && document.body.innerText.trim().length > 100",
+                                    timeout=8_000,
                                 )
-                                return _error_response(
-                                    f"Selector '{selector}' matched no elements",
-                                    "selector_not_found",
-                                    duration_ms,
-                                    status=404,
-                                )
-                            await element.screenshot(path=str(png_path))
-                        else:
-                            await page.screenshot(path=str(png_path), full_page=True)
+                            except Exception:
+                                pass
+                            await _dismiss_cookie_banner(page)
+                            page_title = await page.title()
+
+                            _ensure_dirs()
+                            png_path = SCREENSHOTS_DIR / f"{request_id}.png"
+
+                            if selector:
+                                element = await page.query_selector(selector)
+                                if element is None:
+                                    duration_ms = (time.monotonic() - start) * 1000
+                                    logger.error(
+                                        "screenshot_error",
+                                        url=url,
+                                        action="screenshot",
+                                        duration_ms=round(duration_ms, 2),
+                                        response_bytes=0,
+                                        status="error",
+                                        error=f"Selector '{selector}' matched no elements",
+                                    )
+                                    return _error_response(
+                                        f"Selector '{selector}' matched no elements",
+                                        "selector_not_found",
+                                        duration_ms,
+                                        status=404,
+                                    )
+                                await element.screenshot(path=str(png_path))
+                            else:
+                                await page.screenshot(path=str(png_path), full_page=True)
+                            break
+                        finally:
+                            await context.close()
+                    except Exception as exc:
+                        if channel and _is_tls_error(exc):
+                            logger.info("chrome_tls_fallback", url=url)
+                            continue
+                        raise
                     finally:
-                        await context.close()
-                finally:
-                    await browser.close()
+                        await browser.close()
     except Exception as exc:
         duration_ms = (time.monotonic() - start) * 1000
         exc_name = type(exc).__name__

@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "required": ["in_stock", "available_sizes"],
+  "required": ["price_usd", "currency", "in_stock", "available_sizes", "title"],
   "properties": {
     "price_usd": {"type": ["number", "null"]},
     "currency": {"type": "string"},

@@ -33,8 +33,8 @@ services:
 
   donna-browser:
     build:
-      context: ..
-      dockerfile: docker/browser-sidecar/Dockerfile
+      context: ../docker/browser-sidecar
+      dockerfile: Dockerfile
     container_name: donna-browser
     restart: unless-stopped
     environment:
@@ -42,7 +42,7 @@ services:
     volumes:
       - browser-data:/data/browser
     ports:
-      - "3100:3100"
+      - "3101:3100"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3100/gallery"]
       interval: 30s
