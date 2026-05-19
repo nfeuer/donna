@@ -75,6 +75,9 @@ class NotificationService:
         self._digest_max_chars = digest_max_chars
         # Queue of async callables to replay after blackout ends.
         self._queue: deque[Callable[[], Awaitable[None]]] = deque()
+        # Rate-limiting state for fallback alerts: (component, error_prefix) → last sent.
+        self._fallback_alert_history: dict[tuple[str, str], datetime] = {}
+        self._alerting = False
 
     @staticmethod
     def _truncate_for_channel(content: str, max_chars: int) -> str:
@@ -261,6 +264,74 @@ class NotificationService:
         if flushed:
             logger.info("notification_queue_flushed", count=flushed)
         return flushed
+
+    async def dispatch_fallback_alert(
+        self,
+        component: str,
+        error: str,
+        fallback: str,
+        context: dict[str, Any] | None = None,
+        cooldown_seconds: int = 3600,
+    ) -> bool:
+        """Send a rate-limited alert when a component activates a fallback path.
+
+        Always logs a WARNING regardless of whether the Discord message is sent.
+        Deduplicates by (component, error_prefix) within *cooldown_seconds*.
+
+        Args:
+            component: Name of the subsystem that triggered the fallback.
+            error: Description of the original error.
+            fallback: Description of the fallback action taken.
+            context: Optional extra key/value pairs to include in the message.
+            cooldown_seconds: Minimum seconds between duplicate alerts.
+
+        Returns:
+            True if the alert was dispatched, False if suppressed or failed.
+        """
+        now = datetime.now(tz=UTC)
+        logger.warning(
+            "fallback_activated",
+            event_type="fallback_activated",
+            component=component,
+            error=error,
+            fallback=fallback,
+        )
+
+        # Dedup: suppress if an identical alert was sent recently.
+        dedup_key = (component, error[:50])
+        last_sent = self._fallback_alert_history.get(dedup_key)
+        if last_sent is not None:
+            elapsed = (now - last_sent).total_seconds()
+            if elapsed < cooldown_seconds:
+                return False
+
+        # Recursion guard: if we're already inside an alert send, bail out.
+        if self._alerting:
+            return False
+
+        self._alerting = True
+        try:
+            lines = [
+                f"**Fallback activated** in `{component}`",
+                f"**Error:** {error}",
+                f"**Fallback:** {fallback}",
+            ]
+            if context:
+                for key, value in context.items():
+                    lines.append(f"{key}: {value}")
+            message = "\n".join(lines)
+
+            await self._bot.send_message(CHANNEL_DEBUG, message)
+            self._fallback_alert_history[dedup_key] = now
+            return True
+        except Exception:
+            logger.exception(
+                "fallback_alert_send_failed",
+                component=component,
+            )
+            return False
+        finally:
+            self._alerting = False
 
     async def dispatch_sms(
         self,
