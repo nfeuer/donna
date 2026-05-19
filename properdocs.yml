@@ -9,6 +9,7 @@ docs_dir: docs
 
 exclude_docs: |
   superpowers/
+  domain/archive/
 
 validation:
   nav:

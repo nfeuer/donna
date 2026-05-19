@@ -15,7 +15,7 @@ Recent changes, summarized from commits and PRs.
 - **Domain index enhanced**: added Mermaid architecture diagram and 7-step "Start Here" reading guide to [`domain/index.md`](domain/index.md)
 - `spec_v3.md`: added §0 Implementation Status Matrix, removed 5 inline status blocks, moved Phase 6 details to appendix
 - `followups.md`: archived 28 closed items, trimmed to open items only
-- `properdocs.yml`: link validation tightened to `warn` (CI now catches broken links via `--strict`)
+- `properdocs.yml`: link validation tightened to `warn` (CI catches broken links via `--strict`)
 - Clarified distinct purposes of `open-backlog.md` (feature gaps) vs `followups.md` (spec questions)
 
 ### Fixed

@@ -120,7 +120,7 @@ When a tool build branch is submitted, `ManualValidationRouter._validate_tool` r
 
 ## Configuration
 
-**Primary config:** [`config/manual_escalation.yaml`](../config/manual_escalation.yaml)
+**Primary config:** [`config/manual_escalation.yaml`](../config/manual_escalation.md)
 
 Key sections:
 
@@ -131,7 +131,7 @@ Key sections:
 - `triggers.manual_iteration_limit` -- max resubmissions before routing to human review
 - `tool_gap.*` -- reping cooldowns, Discord channels, lint defaults
 
-**Budget thresholds:** [`config/donna_models.yaml`](../config/donna_models.yaml) under `cost`:
+**Budget thresholds:** [`config/donna_models.yaml`](../config/donna_models.md) under `cost`:
 
 - `daily_pause_threshold_usd: 20.0`
 - `monthly_budget_usd: 100.0`

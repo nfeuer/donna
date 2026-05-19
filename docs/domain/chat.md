@@ -83,7 +83,7 @@ The `render_chat_prompt` function handles template variable substitution, inject
 
 ## Configuration
 
-**Primary config:** [`config/chat.yaml`](../config/chat.yaml)
+**Primary config:** [`config/chat.yaml`](../config/chat.md)
 
 ```yaml
 chat:
@@ -103,7 +103,7 @@ chat:
     enabled: true
 ```
 
-**Action definitions:** [`config/chat_actions.yaml`](../config/chat_actions.yaml) — YAML registry of all available actions with parameter schemas, safety levels, and handler paths.
+**Action definitions:** [`config/chat_actions.yaml`](../config/chat_actions.md) — YAML registry of all available actions with parameter schemas, safety levels, and handler paths.
 
 **Prompt templates:** `prompts/chat/` — `chat_system.md` (Donna persona), `chat_system_neutral.md` (neutral persona), `classify_intent.md`, `chat_respond.md`, `extract_action_params.md`, `summarize_action_result.md`, `chat_summarize.md`.
 

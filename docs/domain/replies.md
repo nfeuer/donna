@@ -111,7 +111,7 @@ Each handler follows the signature `async def handler(db, context, params) -> st
 
 ## Configuration
 
-**Intent keywords:** [`config/reply_intents.yaml`](../config/reply_intents.yaml)
+**Intent keywords:** [`config/reply_intents.yaml`](../config/reply_intents.md)
 
 ```yaml
 fast_path:
@@ -135,7 +135,7 @@ intents:
     confirm: false
 ```
 
-**Action registry:** [`config/reply_actions.yaml`](../config/reply_actions.yaml)
+**Action registry:** [`config/reply_actions.yaml`](../config/reply_actions.md)
 
 ```yaml
 memory:

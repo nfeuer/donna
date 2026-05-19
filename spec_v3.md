@@ -76,7 +76,7 @@ Everything else in v3.0 remains canonical design intent.
 
 This matrix summarizes implementation state for every spec section.
 Sections not listed are fully shipped as specified. Backlog IDs
-reference [`open-backlog.md`](docs/superpowers/followups/open-backlog.md).
+reference `open-backlog.md`.
 
   Section                  Status            Notes                                                                       Backlog
   ------------------------ ----------------- --------------------------------------------------------------------------- ---------
@@ -2481,7 +2481,7 @@ If the user responds "busy, will handle later," the system backs off for
 > **Roadmap:** the pause-only `Daily Spend Alert` terminal is being
 > replaced by the four-button over-budget decision tree (`Approve $X
 > extension / Manual handoff / Pause / Cancel`) defined in
-> [`docs/superpowers/specs/manual-escalation.md`](docs/superpowers/specs/manual-escalation.md).
+> `docs/superpowers/specs/manual-escalation.md`.
 > The table below documents current behavior; the decision-tree
 > behavior lands per-slice (`slice_17_*` through `slice_24_*`), and
 > this section will be updated by each slice that changes the rules.
@@ -3514,7 +3514,7 @@ admin surface for inspection and control.
 
 **Phase 6: MCP, Remaining Agents, & Production UI --- NEXT**
 
-*Detailed Phase 6 deliverables: see [Appendix A](#appendix-a-phase-6--future-design) at end of document.*
+*Detailed Phase 6 deliverables: see Appendix A at end of document.*
 
 **Phase Status Summary (April 2026)**
 
@@ -3751,7 +3751,7 @@ spec §10.5). Tools have **no DB lifecycle table**; activation is
 manual merge + orchestrator restart. Slice 22 ships the data path,
 detection sites, and lint pipeline; dependent-skill regression
 re-runs are deferred to slice 24. See
-[`docs/superpowers/specs/manual-escalation.md` §7 / §10.5](../docs/superpowers/specs/manual-escalation.md).
+`docs/superpowers/specs/manual-escalation.md` §7 / §10.5.
 
 **23.4 Lifecycle: sandbox → shadow → trusted → degraded**
 
@@ -3911,7 +3911,7 @@ Grafana dashboards (`docker/grafana/dashboards/`) consume the same
 underlying data via Loki and the admin SQLite datasource; the admin
 API exposes the same information to the Flutter client and CLI. The
 Notification Dashboard panel (§15.1.5) and Preference Learning
-panel (§15.1.7) listed in v3.0 are Phase 6 items (see [Appendix A](#appendix-a-phase-6--future-design)).
+panel (§15.1.7) listed in v3.0 are Phase 6 items (see Appendix A).
 
 **28. Authentication & Access Control** *(added v3.1)*
 
@@ -4110,7 +4110,7 @@ Shipped in later slices (historical notes):
     APScheduler is still not a project dependency (home-grown
     pollers remain the idiom).
 
-Future enhancements (tracked in [open-backlog.md](docs/superpowers/followups/open-backlog.md)):
+Future enhancements (tracked in `open-backlog.md`):
 re-rendering autowritten notes when source data changes post-write,
 Supabase sync for memory tables, BM25 / hybrid retrieval, and cloud
 embedding providers.
@@ -4214,7 +4214,7 @@ memory).
 
 > The following content describes planned features that are not yet
 > implemented. It is preserved as design intent for when implementation
-> begins. See the [§0 status matrix](#0-implementation-status-v31-april-2026)
+> begins. See the §0 status matrix at the top of this document
 > for current state.
 
 *Goal: close the remaining gaps between the v3.0 design and the
