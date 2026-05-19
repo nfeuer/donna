@@ -88,6 +88,8 @@ async def db(tmp_path: Path) -> Database:
             tokens_used INTEGER,
             action_name TEXT,
             action_result TEXT,
+            trace_id TEXT,
+            invocation_ids TEXT,
             created_at TEXT NOT NULL,
             FOREIGN KEY (session_id) REFERENCES conversation_sessions(id)
         )"""

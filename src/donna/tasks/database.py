@@ -1050,6 +1050,8 @@ class Database:
         tokens_used: int | None = None,
         action_name: str | None = None,
         action_result: str | None = None,
+        trace_id: str | None = None,
+        invocation_ids: str | None = None,
     ) -> ChatMessage:
         """Insert a message and increment session message_count + last_activity."""
         conn = self.connection
@@ -1059,11 +1061,13 @@ class Database:
         await conn.execute(
             """INSERT INTO conversation_messages
                (id, session_id, role, content, intent, tokens_used,
-                action_name, action_result, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                action_name, action_result, trace_id, invocation_ids,
+                created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 message_id, session_id, role, content, intent,
-                tokens_used, action_name, action_result, now_iso,
+                tokens_used, action_name, action_result,
+                trace_id, invocation_ids, now_iso,
             ),
         )
         await conn.execute(

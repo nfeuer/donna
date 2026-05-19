@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from donna.chat.tools import ToolContext, ToolRegistry, ToolResult
+from donna.chat.tools import ToolRegistry
 
 
 @pytest.fixture
