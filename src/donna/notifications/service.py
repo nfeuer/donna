@@ -202,7 +202,8 @@ class NotificationService:
             await self._bot.send_dm(discord_id, content)
             log.info("dm_sent")
         except Exception:
-            log.exception("dm_send_failed")
+            log.exception("dm_send_failed", event_type="fallback_activated")
+            return False
         return True
 
     def _enqueue_dm(
