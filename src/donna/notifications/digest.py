@@ -14,7 +14,6 @@ See slices/slice_05_reminders_digest.md and docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import zoneinfo
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -117,8 +116,13 @@ class MorningDigest:
                     data["system_status"] = "\n".join(
                         [":warning: System warnings:"] + [f"  • {w}" for w in issues]
                     )
-            except Exception:
+            except Exception as exc:
                 logger.exception("morning_digest_self_diagnostic_failed")
+                await self._service.dispatch_fallback_alert(
+                    component="morning_digest",
+                    error=f"Self-diagnostic crashed: {type(exc).__name__}: {exc}",
+                    fallback="system_status shows 'All systems normal' (unverified)",
+                )
 
         template_text = (self._project_root / "prompts" / "morning_digest.md").read_text()
 
@@ -213,8 +217,14 @@ class MorningDigest:
                     f"- {ev.summary} ({ev.start.strftime('%H:%M')}–{ev.end.strftime('%H:%M')})"
                     for ev in events
                 ]
-            except Exception:
+            except Exception as exc:
                 logger.exception("morning_digest_calendar_failed")
+                await self._service.dispatch_fallback_alert(
+                    component="morning_digest",
+                    error=f"Calendar API failed: {type(exc).__name__}: {exc}",
+                    fallback="calendar_events shows 'No events today' (may be masking API failure)",
+                    context={"calendar_id": self._calendar_id},
+                )
 
         all_tasks = await self._db.list_tasks(user_id=self._user_id)
 
@@ -273,12 +283,28 @@ class MorningDigest:
             )).fetchone()
             if row2:
                 mtd_cost = float(row2[0])
-        except Exception:
+        except Exception as exc:
             logger.exception("morning_digest_cost_query_failed")
+            await self._service.dispatch_fallback_alert(
+                component="morning_digest",
+                error=f"Cost query failed: {type(exc).__name__}: {exc}",
+                fallback="costs showing as $0.00",
+            )
 
         monthly_budget = 100.0
-        with contextlib.suppress(Exception):
+        try:
             monthly_budget = self._router._models_config.cost.monthly_budget_usd
+        except Exception as exc:
+            logger.warning(
+                "morning_digest_config_read_failed",
+                error=str(exc),
+                event_type="fallback_activated",
+            )
+            await self._service.dispatch_fallback_alert(
+                component="morning_digest",
+                error=f"Config read failed: {type(exc).__name__}: {exc}",
+                fallback="monthly_budget defaulting to $100.00",
+            )
 
         # Slice 22 — open speculative tool-gap aggregation (high-severity
         # rows already pinged in real time).
@@ -299,8 +325,13 @@ class MorningDigest:
                         f"{blocking}, first seen "
                         f"{row.first_seen_at.strftime('%Y-%m-%d')})"
                     )
-            except Exception:
+            except Exception as exc:
                 logger.exception("morning_digest_tool_gaps_query_failed")
+                await self._service.dispatch_fallback_alert(
+                    component="morning_digest",
+                    error=f"Tool gaps query failed: {type(exc).__name__}: {exc}",
+                    fallback="tool_gaps showing as 'None.'",
+                )
 
         return {
             "current_date": today_start.strftime("%Y-%m-%d"),
