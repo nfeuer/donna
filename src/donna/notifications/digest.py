@@ -124,13 +124,34 @@ class MorningDigest:
 
         # Attempt LLM-generated digest.
         digest_text: str | None = None
+        llm_error: str | None = None
         try:
             rendered_prompt = _render_template(template_text, data)
             result, _ = await self._router.complete(rendered_prompt, task_type="generate_digest")
             digest_text = result.get("digest_text") if isinstance(result, dict) else None
+
+            if digest_text is None and isinstance(result, dict):
+                digest_text = result.get("description")
+                if digest_text:
+                    llm_error = f"LLM returned wrong keys: {sorted(result.keys())}"
+                    logger.warning(
+                        "morning_digest_schema_mismatch",
+                        keys=sorted(result.keys()),
+                    )
+                    await self._service.dispatch_fallback_alert(
+                        component="morning_digest",
+                        error=llm_error,
+                        fallback="used 'description' field as digest_text",
+                        context={"expected_key": "digest_text", "actual_keys": str(sorted(result.keys()))},
+                    )
+                else:
+                    llm_error = f"LLM returned dict without usable text key: {sorted(result.keys())}"
+            elif not isinstance(result, dict):
+                llm_error = f"LLM returned non-dict: {type(result).__name__}"
         except ContextOverflowError:
             raise
-        except Exception:
+        except Exception as exc:
+            llm_error = f"{type(exc).__name__}: {exc}"
             logger.exception("morning_digest_llm_failed")
 
         if digest_text:
@@ -149,7 +170,11 @@ class MorningDigest:
             logger.info("morning_digest_sent_llm")
             email_body = digest_text
         else:
-            # Degraded mode: plain text from raw data.
+            await self._service.dispatch_fallback_alert(
+                component="morning_digest",
+                error=llm_error or "digest_text was None after LLM call",
+                fallback="degraded plain-text digest",
+            )
             fallback_text = self._render_degraded(data)
             await self._service.dispatch(
                 notification_type=NOTIF_DIGEST,

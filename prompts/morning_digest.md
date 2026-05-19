@@ -49,6 +49,10 @@ Month-to-date: ${{ mtd_cost }} / ${{ monthly_budget }}
 ### Tool Gaps (speculative — high-blocking already pinged)
 {{ tool_gaps }}
 
-## Output
+## Output Format
 
-Generate the digest as a single message suitable for Discord embed or email. Keep it under 2000 characters for Discord compatibility.
+Return a JSON object with exactly these fields:
+
+    {"digest_text": "<the full digest message, under 2000 chars>", "task_count": <integer>, "overdue_count": <integer>}
+
+Do not use any other keys. The digest_text field contains the complete message suitable for Discord embed or email.

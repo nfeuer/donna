@@ -245,3 +245,86 @@ class TestDegradedRender:
         assert "Standup" in text
         assert "Fix bug" in text
         assert len(text) <= 2000
+
+
+# ---------------------------------------------------------------------------
+# Fallback alert — schema mismatch and degraded mode
+# ---------------------------------------------------------------------------
+
+_STANDARD_DATA = {
+    "current_date": "2026-05-19",
+    "day_of_week": "Tuesday",
+    "calendar_events": "No events today.",
+    "tasks_due_today": "None.",
+    "carryover_tasks": "None.",
+    "overdue_tasks": "None.",
+    "prep_work_results": "No prep work completed.",
+    "agent_activity": "No agent activity since last digest.",
+    "system_status": "All systems normal.",
+    "yesterday_cost": "0.0500",
+    "mtd_cost": "1.2300",
+    "monthly_budget": "100.00",
+    "tool_gaps": "None.",
+}
+
+
+class TestDigestFallbackAlert:
+    async def test_schema_mismatch_salvages_description_key(self, tmp_path: Path) -> None:
+        """When the LLM returns {description, title, color} instead of {digest_text, ...},
+        the digest should salvage the description value and fire a fallback alert."""
+        prompts_dir = tmp_path / "prompts"
+        prompts_dir.mkdir()
+        (prompts_dir / "morning_digest.md").write_text("Today: {{ current_date }}")
+
+        digest, _db, service, router, _cal = _make_digest(project_root=tmp_path)
+        service.dispatch_fallback_alert = AsyncMock()
+
+        # LLM returns wrong schema — has 'description' but not 'digest_text'
+        router.complete = AsyncMock(return_value=(
+            {"description": "Hello from Donna", "title": "Digest", "color": 123},
+            MagicMock(),
+        ))
+
+        # Bypass _assemble_data to control data exactly
+        digest._assemble_data = AsyncMock(return_value=_STANDARD_DATA)
+
+        await digest._fire(_utc(6, 30))
+
+        # Should dispatch with the salvaged description as content and with an embed
+        service.dispatch.assert_called_once()
+        kw = service.dispatch.call_args[1]
+        assert kw["content"] == "Hello from Donna"
+        assert kw["embed"] is not None
+
+        # Should also fire a fallback alert about wrong keys
+        service.dispatch_fallback_alert.assert_called_once()
+        alert_kw = service.dispatch_fallback_alert.call_args[1]
+        assert alert_kw["component"] == "morning_digest"
+        assert "wrong keys" in alert_kw["error"].lower() or "wrong keys" in str(alert_kw.get("error", "")).lower()
+
+    async def test_degraded_mode_dispatches_fallback_alert(self, tmp_path: Path) -> None:
+        """When router.complete raises RuntimeError, the digest should dispatch
+        degraded text (no embed) and fire a fallback alert mentioning 'degraded'."""
+        prompts_dir = tmp_path / "prompts"
+        prompts_dir.mkdir()
+        (prompts_dir / "morning_digest.md").write_text("Today: {{ current_date }}")
+
+        digest, _db, service, router, _cal = _make_digest(project_root=tmp_path)
+        service.dispatch_fallback_alert = AsyncMock()
+        router.complete = AsyncMock(side_effect=RuntimeError("API down"))
+
+        digest._assemble_data = AsyncMock(return_value=_STANDARD_DATA)
+
+        await digest._fire(_utc(6, 30))
+
+        # Degraded: no embed, plain text
+        service.dispatch.assert_called_once()
+        kw = service.dispatch.call_args[1]
+        assert kw.get("embed") is None
+        assert len(kw["content"]) > 0
+
+        # Fallback alert should mention degraded
+        service.dispatch_fallback_alert.assert_called_once()
+        alert_kw = service.dispatch_fallback_alert.call_args[1]
+        assert alert_kw["component"] == "morning_digest"
+        assert "degraded" in alert_kw.get("fallback", "").lower()
