@@ -3,16 +3,16 @@
 **Realizes:** [`spec_v3.md` §4.3 Structured Invocation Logging](../reference-specs/spec-v3.md)
 and the `$20/day` pause policy in [`CLAUDE.md`](../start-here/conventions.md).
 
-> The escalation decision tree (Approve / Manual / Pause / Cancel) is implemented in slices 17–24. This page documents the budget-guard behavior that triggers escalation. For the full decision tree, see [Manual Escalation](../superpowers/specs/manual-escalation.md) and [Cost](../domain/cost.md).
+> This page documents the budget-guard behavior that triggers escalation. For the full decision tree (Approve / Manual / Pause / Cancel), see [Cost & Escalation](../domain/cost.md). For the manual-build workflow, see [Handle a Claude Code Escalation](handle-claude-code-escalation.md).
 
 ## Policy
 
 - **Hard monthly cap:** $100 on Claude API.
-- **Daily soft pause:** $20/day — all autonomous agent work stops
-  (replaced by the decision tree above when slice 17 lands).
+- **Daily soft pause:** $20/day — triggers the
+  [escalation decision tree](../domain/cost.md) (Approve / Manual / Pause / Cancel).
 - Every API call is logged to `invocation_log` with cost in USD.
 
-## Detection Path (current — pause-only)
+## Detection Path
 
 ```mermaid
 flowchart LR
@@ -24,7 +24,7 @@ flowchart LR
   Pause --> Notify[notify user via Discord]
 ```
 
-## What Happens When the Gate Trips (current)
+## What Happens When the Gate Trips
 
 1. [`donna.cost.budget.BudgetGuard`](../reference/donna/cost/index.md) rejects
    the call before it hits a provider.
@@ -48,6 +48,8 @@ flowchart LR
 
 ## Related
 
+- [Workflow: Handle a Claude Code Escalation](handle-claude-code-escalation.md)
+- [Domain: Cost & Escalation](../domain/cost.md)
 - [Operations → Budget & Cost](../operations/budget-and-cost.md)
 - [`donna.cost.budget.BudgetGuard`](../reference/donna/cost/index.md)
 - [`donna.logging.invocation_logger`](../reference/donna/logging/invocation_logger.md)

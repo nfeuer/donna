@@ -11,4 +11,5 @@ links to the code via the [API Reference](../reference/).
 | [Add a New Skill](add-a-new-skill.md) | YAML + schema + fixture recipe |
 | [Run Evals](run-evals.md) | `spec_v3.md §4.5 Offline Evaluation Harness` |
 | [Handle Budget Breach](handle-budget-breach.md) | `spec_v3.md §4.3` invocation logging + budget pause |
+| [Handle a Claude Code Escalation](handle-claude-code-escalation.md) | `manual-escalation.md §5.3` claude_code mode protocol |
 | [Add a Migration](add-a-migration.md) | `spec_v3.md §3.8 Schema Migration` |

@@ -189,6 +189,7 @@ nav:
       - Add a New Skill: workflows/add-a-new-skill.md
       - Run Evals: workflows/run-evals.md
       - Handle Budget Breach: workflows/handle-budget-breach.md
+      - Handle Claude Code Escalation: workflows/handle-claude-code-escalation.md
       - Add a Migration: workflows/add-a-migration.md
   - Config: config/
   - Schemas: schemas/
