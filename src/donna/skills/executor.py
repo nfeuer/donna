@@ -12,12 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
-
-import os
 
 import jinja2
 import structlog
@@ -579,12 +578,14 @@ class SkillExecutor:
         step: dict[str, Any], step_name: str, output_schemas: dict[str, Any],
     ) -> dict[str, Any]:
         schema_ref = step.get("output_schema", "")
+        if isinstance(schema_ref, dict):
+            return dict(schema_ref)
         if schema_ref:
             schema_key = os.path.splitext(os.path.basename(schema_ref))[0]
-            schema = output_schemas.get(schema_key, {})
+            schema: dict[str, Any] = output_schemas.get(schema_key, {})
             if schema:
                 return schema
-        return output_schemas.get(step_name, {})
+        return dict(output_schemas.get(step_name, {}))
 
     async def _persist_step_if_repo(
         self, skill_run_id: str | None, record: StepResultRecord,
@@ -639,7 +640,9 @@ class SkillExecutor:
         prompt_ref = step.get("prompt", "")
         if prompt_ref:
             content_key = os.path.splitext(os.path.basename(prompt_ref))[0]
-            prompt_template = version.step_content.get(content_key) or version.step_content.get(step_name, "")
+            prompt_template = (
+                version.step_content.get(content_key) or version.step_content.get(step_name, "")
+            )
         else:
             prompt_template = version.step_content.get(step_name, "")
         rendered = self._jinja.from_string(prompt_template).render(
