@@ -146,10 +146,16 @@ class MorningDigest:
                         component="morning_digest",
                         error=llm_error,
                         fallback="used 'description' field as digest_text",
-                        context={"expected_key": "digest_text", "actual_keys": str(sorted(result.keys()))},
+                        context={
+                            "expected_key": "digest_text",
+                            "actual_keys": str(sorted(result.keys())),
+                        },
                     )
                 else:
-                    llm_error = f"LLM returned dict without usable text key: {sorted(result.keys())}"
+                    llm_error = (
+                        f"LLM returned dict without usable text key: "
+                        f"{sorted(result.keys())}"
+                    )
             elif not isinstance(result, dict):
                 llm_error = f"LLM returned non-dict: {type(result).__name__}"
         except ContextOverflowError:

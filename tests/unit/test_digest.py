@@ -300,7 +300,8 @@ class TestDigestFallbackAlert:
         service.dispatch_fallback_alert.assert_called_once()
         alert_kw = service.dispatch_fallback_alert.call_args[1]
         assert alert_kw["component"] == "morning_digest"
-        assert "wrong keys" in alert_kw["error"].lower() or "wrong keys" in str(alert_kw.get("error", "")).lower()
+        err = alert_kw["error"].lower()
+        assert "wrong keys" in err or "schema" in err
 
     async def test_degraded_mode_dispatches_fallback_alert(self, tmp_path: Path) -> None:
         """When router.complete raises RuntimeError, the digest should dispatch

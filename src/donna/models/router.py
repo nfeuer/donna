@@ -431,9 +431,17 @@ class ModelRouter:
                     try:
                         await self._fallback_alert_fn(
                             component="model_router",
-                            error=f"Context overflow: {estimated_in} tokens > {budget} budget for {alias!r}",
+                            error=(
+                                f"Context overflow: {estimated_in} tokens"
+                                f" > {budget} budget for"
+                                f" {original_alias!r}"
+                            ),
                             fallback=f"escalated to {fallback_alias!r}",
-                            context={"task_type": task_type, "from_alias": alias, "to_alias": fallback_alias},
+                            context={
+                                "task_type": task_type,
+                                "from_alias": original_alias,
+                                "to_alias": fallback_alias,
+                            },
                         )
                     except Exception:
                         logger.warning("fallback_alert_fn_failed", task_type=task_type)

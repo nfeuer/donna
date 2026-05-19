@@ -25,10 +25,7 @@ import structlog
 
 from donna.integrations.discord_bot import DonnaBot
 from donna.models.router import ContextOverflowError
-from donna.notifications.service import (
-    NOTIF_OVERDUE,
-    NotificationService,
-)
+from donna.notifications.service import NotificationService
 from donna.scheduling.scheduler import Scheduler
 from donna.tasks.database import Database
 from donna.tasks.db_models import TaskStatus
@@ -232,7 +229,10 @@ class OverdueDetector:
             logger.exception("nudge_llm_failed", task_id=getattr(task, "id", None))
             await self._service.dispatch_fallback_alert(
                 component="overdue_nudge",
-                error=f"LLM nudge failed for '{getattr(task, 'title', '?')}': {type(exc).__name__}: {exc}",
+                error=(
+                    f"LLM nudge failed for '{getattr(task, 'title', '?')}': "
+                    f"{type(exc).__name__}: {exc}"
+                ),
                 fallback="template string nudge",
                 context={"task_id": getattr(task, "id", None)},
             )
@@ -259,7 +259,10 @@ class OverdueDetector:
                 logger.exception("reply_handler_failed", task_id=task_id)
                 await self._service.dispatch_fallback_alert(
                     component="overdue_reply",
-                    error=f"Reply handler crashed for task '{task.title}': {type(exc).__name__}: {exc}",
+                    error=(
+                        f"Reply handler crashed for task '{task.title}': "
+                        f"{type(exc).__name__}: {exc}"
+                    ),
                     fallback="reply ignored",
                     context={"task_id": task_id},
                 )
