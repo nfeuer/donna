@@ -1341,6 +1341,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
                 gmail=None,
             )
             log.info("notification_service_wired")
+            router.set_fallback_alert_fn(notification_service.dispatch_fallback_alert)
         except Exception:
             log.exception("notification_service_init_failed")
 
