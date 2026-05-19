@@ -82,6 +82,7 @@ class WeeklyDigest:
 
         # Try LLM-generated digest.
         digest_text: str | None = None
+        llm_failed = False
         try:
             prompt = self._build_prompt(stats)
             result, _ = await self._router.complete(
@@ -90,8 +91,14 @@ class WeeklyDigest:
             digest_text = result.get("digest_text") if isinstance(result, dict) else None
         except ContextOverflowError:
             raise
-        except Exception:
+        except Exception as exc:
+            llm_failed = True
             logger.exception("weekly_digest_llm_failed")
+            await self._service.dispatch_fallback_alert(
+                component="weekly_digest",
+                error=f"LLM failed: {type(exc).__name__}: {exc}",
+                fallback="plain-text stats table",
+            )
 
         if digest_text:
             embed = discord.Embed(
@@ -108,6 +115,12 @@ class WeeklyDigest:
             )
             logger.info("weekly_digest_sent_llm")
         else:
+            if not llm_failed:
+                await self._service.dispatch_fallback_alert(
+                    component="weekly_digest",
+                    error="digest_text was None (wrong schema or empty response)",
+                    fallback="plain-text stats table",
+                )
             fallback = self._render_fallback(stats)
             await self._service.dispatch(
                 notification_type=NOTIF_DIGEST,

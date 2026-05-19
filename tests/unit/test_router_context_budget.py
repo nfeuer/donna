@@ -112,6 +112,7 @@ def _build_router(
     router._circuit_breaker = CircuitBreaker()
     router._shadow_tasks = set()
     router._ollama_degraded = False
+    router._fallback_alert_fn = None
 
     return router, ollama, anthropic
 

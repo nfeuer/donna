@@ -14,7 +14,6 @@ See docs/notifications.md and slices/slice_03_discord.md.
 
 from __future__ import annotations
 
-import contextlib
 import re
 import uuid
 from collections.abc import Awaitable, Callable
@@ -879,8 +878,15 @@ class DonnaBot(discord.Client):
             import json as _json
             existing_notes: list[str] = []
             if existing_task.notes:
-                with contextlib.suppress(Exception):
+                try:
                     existing_notes = _json.loads(existing_task.notes)
+                except Exception:
+                    logger.warning(
+                        "dedup_notes_parse_failed",
+                        event_type="fallback_activated",
+                        component="dedup_reply",
+                        task_id=existing_task.id,
+                    )
             merged_notes = [*existing_notes, f"[merged from: {new_title}]"]
             await self._database.update_task(existing_task.id, notes=merged_notes)
             log.info("dedup_merged", existing_task_id=existing_task.id, new_title=new_title)
