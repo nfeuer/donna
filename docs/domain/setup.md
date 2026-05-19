@@ -135,4 +135,4 @@ See also: [API Reference: donna.setup](../reference/donna/setup/)
 
 - [Domain: Observability](observability.md) -- Grafana dashboard configured in setup Phase 1
 - [Domain: Integrations](integrations.md) -- services validated during setup (Discord, Twilio, Google, Supabase)
-- [Domain: Memory Vault](memory-vault.md) -- vault path configured in setup Phase 2
+- [Domain: Memory Vault](memory-vault/index.md) -- vault path configured in setup Phase 2

@@ -3,15 +3,7 @@
 **Realizes:** [`spec_v3.md` §4.3 Structured Invocation Logging](../reference-specs/spec-v3.md)
 and the `$20/day` pause policy in [`CLAUDE.md`](../start-here/conventions.md).
 
-> **Roadmap:** the pause-only behavior described below is being replaced
-> by the four-button over-budget decision tree (`Approve $X / Manual /
-> Pause / Cancel`) defined in
-> [`docs/superpowers/specs/manual-escalation.md`](../superpowers/specs/manual-escalation.md).
-> Slices `slice_17_escalation_core.md` through
-> `slice_24_escalation_hardening.md` ship the decision tree, manual
-> handoff modes (chat / claude_code), and dashboard escalation
-> workspace. This page reflects current behavior until those slices
-> land; rows will be updated per-slice as the canonical spec dictates.
+> The escalation decision tree (Approve / Manual / Pause / Cancel) is implemented in slices 17–24. This page documents the budget-guard behavior that triggers escalation. For the full decision tree, see [Manual Escalation](../superpowers/specs/manual-escalation.md) and [Cost](../domain/cost.md).
 
 ## Policy
 

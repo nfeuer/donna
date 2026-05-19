@@ -115,5 +115,4 @@ JSON-encodes the list on upsert. The meeting-note skill in Slice 15
 consumes this column to resolve attendee wikilinks into
 `[[People/{name}]]` or `[[{name}]]`.
 
-See `docs/domain/memory-vault.md` → "Slice 15 — template writes" for
-the full skill flow.
+See `docs/domain/memory-vault/templates.md` for the full skill flow.

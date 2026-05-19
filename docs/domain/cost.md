@@ -157,6 +157,6 @@ Key sections:
 ## See Also
 
 - [Domain: Task Management](task-system.md) -- manual escalation terminal and task state transitions
-- [Domain: Skill System](skill-system.md) -- skill lifecycle states, auto-drafting, evolution
+- [Domain: Skill System](skill-system/index.md) -- skill lifecycle states, auto-drafting, evolution
 - [Domain: Orchestrator](orchestrator.md) -- dispatches tasks that may trigger escalation
 - [Domain: Observability](observability.md) -- `invocation_log` table that feeds cost tracking

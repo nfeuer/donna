@@ -16,10 +16,10 @@ validation:
     not_found: warn
     absolute_links: info
   links:
-    not_found: info
+    not_found: warn
     absolute_links: info
     unrecognized_links: info
-    anchors: info
+    anchors: warn
 
 theme:
   name: material
@@ -151,13 +151,22 @@ nav:
       - Orchestrator: domain/orchestrator.md
       - Model Layer: domain/model-layer.md
       - LLM Gateway: domain/llm.md
-      - Skill System: domain/skill-system.md
+      - Skill System:
+          - domain/skill-system/index.md
+          - Setup & Activation: domain/skill-system/setup.md
+          - Lifecycle & Shadow: domain/skill-system/lifecycle.md
+          - Evolution & Automations: domain/skill-system/evolution.md
+          - Reference: domain/skill-system/reference.md
       - Agents: domain/agents.md
       - Chat: domain/chat.md
       - Replies: domain/replies.md
       - Scheduling: domain/scheduling.md
       - Integrations: domain/integrations.md
-      - Memory Vault: domain/memory-vault.md
+      - Memory Vault:
+          - domain/memory-vault/index.md
+          - Semantic Memory: domain/memory-vault/semantic.md
+          - Episodic Sources: domain/memory-vault/episodic.md
+          - Template Writes: domain/memory-vault/templates.md
       - Notifications: domain/notifications.md
       - Preferences: domain/preferences.md
       - Cost: domain/cost.md
@@ -167,7 +176,11 @@ nav:
       - Resilience: domain/resilience.md
       - API & Auth: domain/api.md
       - Setup: domain/setup.md
-      - Management GUI: domain/management-gui.md
+      - Management GUI:
+          - domain/management-gui/index.md
+          - API Endpoints: domain/management-gui/api.md
+          - Pages: domain/management-gui/pages.md
+          - Reference: domain/management-gui/reference.md
   - Workflows:
       - workflows/index.md
       - Capture a Task: workflows/capture-a-task.md

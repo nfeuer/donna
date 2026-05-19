@@ -134,7 +134,7 @@ The orchestrator itself has minimal config -- it relies on the configurations of
 ## See Also
 
 - [Domain: Agents](agents.md) -- PM Agent, Challenger Agent, execution agents
-- [Domain: Skill System](skill-system.md) -- skill executor, capability matching, shadow evaluation
+- [Domain: Skill System](skill-system/index.md) -- skill executor, capability matching, shadow evaluation
 - [Domain: Task Management](task-system.md) -- task schema, state machine, deduplication
 - [Domain: Cost & Escalation](cost.md) -- budget enforcement that intersects with dispatch
 - [Domain: Chat](chat.md) -- chat routing for `intent_kind: chat` messages

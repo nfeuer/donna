@@ -5,7 +5,7 @@ validated, logged, multi-step call sequence.
 
 **Realizes:** the skill executor described across
 [`spec_v3.md` §4 Model Layer](../reference-specs/spec-v3.md) and the
-skill-system spec in [Domain → Skill System](../domain/skill-system.md).
+skill-system spec in [Domain → Skill System](../domain/skill-system/index.md).
 
 ## Anatomy of a Skill
 

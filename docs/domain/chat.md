@@ -124,6 +124,6 @@ The config supports hot-reload with a 5-second TTL cache via `get_chat_config()`
 ## See Also
 
 - [Domain: Task Management](task-system.md) — task schema and state machine used by task actions
-- [Domain: Skill System](skill-system.md) — skill execution triggered by chat actions
-- [Domain: Memory Vault](memory-vault.md) — vault operations exposed through chat
+- [Domain: Skill System](skill-system/index.md) — skill execution triggered by chat actions
+- [Domain: Memory Vault](memory-vault/index.md) — vault operations exposed through chat
 - [Workflow: Scheduling](scheduling.md) — calendar integration context loaded for planning intents

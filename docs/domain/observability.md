@@ -61,47 +61,9 @@ Non-empty values are automatically added to every log entry via the `add_context
 
 This is the primary observability data for cost analysis, evaluation, and budget enforcement. Invocation log rows are permanent.
 
-## Logging Database (aspirational)
+## Logging Database
 
-> **Status:** The dedicated `donna_logs.db` described below is a design target from spec v3.0 (sections 14-15) and is **not yet implemented**. Current logging routes through structlog to stdout (captured by Docker `json-file` driver and shipped to Loki via Promtail). LLM invocation tracking uses the `invocation_log` table in the main `donna_tasks.db`. The schema, retention policy, and nightly pruning below represent the planned design.
-
-Dedicated `donna_logs.db` on NVMe. Separate from task DB to avoid contention.
-
-### Log Table Schema (planned)
-
-| Field | Type | Purpose |
-|-------|------|---------|
-| id | INTEGER PK | Auto-incrementing |
-| timestamp | TEXT ISO 8601 | When (UTC) |
-| level | TEXT | DEBUG-CRITICAL |
-| service | TEXT | orchestrator, mcp_server, discord_bot, scheduler, notification, agent_worker, sync |
-| component | TEXT | input_parser, calendar_sync, state_machine, preference_engine, etc. |
-| event_type | TEXT | Machine-readable: `task.created`, `api.call.failed`, `agent.timeout` |
-| message | TEXT | Human-readable |
-| correlation_id | TEXT | Traces single request across all services |
-| task_id | TEXT? | Associated task UUID |
-| user_id | TEXT? | User who triggered |
-| agent_id | TEXT? | Agent type if from agent worker |
-| channel | TEXT? | discord, sms, email, app, system |
-| duration_ms | INTEGER? | For timed operations |
-| cost_usd | REAL? | API cost if model call |
-| error_type | TEXT? | Exception class name |
-| error_trace | TEXT? | Full stack trace |
-| extra | TEXT (JSON) | Additional structured context |
-
-Indexes on: timestamp, level, service, event_type, correlation_id, task_id, error_type. WAL mode.
-
-### Retention Policy (planned)
-
-| Level | Retention |
-|-------|-----------|
-| DEBUG | 7 days |
-| INFO | 30 days |
-| WARNING | 90 days |
-| ERROR / CRITICAL | 1 year |
-| Invocation logs | Permanent (cost analysis, evaluation, preferences) |
-
-Nightly cron prunes expired logs. Weekly VACUUM reclaims disk space.
+Logging uses structlog → stdout → Docker json-file → Promtail → Loki. LLM invocation tracking lives in the `invocation_log` table in `donna_tasks.db`. A dedicated `donna_logs.db` with SQLite-queryable structured logs is a future optimization. *Tracked as [G-13, G-25](../superpowers/followups/open-backlog.md). Schema design archived in [archive/observability-planned-logdb.md](archive/observability-planned-logdb.md).*
 
 ## Event Types (Hierarchical)
 
@@ -121,8 +83,6 @@ Nightly cron prunes expired logs. Weekly VACUUM reclaims disk space.
 2. **Promtail** (in donna-monitoring.yml) tails Docker logs and ships to **Loki**.
 3. **Grafana** queries Loki for real-time dashboard.
 4. LLM invocation data is written to the `invocation_log` table in `donna_tasks.db` by `InvocationLogger` (`src/donna/logging/invocation_logger.py`).
-
-> **Note:** Step 4 in the original spec described a lightweight log collector writing general structured logs to a dedicated SQLite log DB (`donna_logs.db`). This collector is not yet implemented. The `invocation_log` table in the main database covers LLM call tracking; all other structured log data is accessed via Loki/Grafana.
 
 ## Dashboard Panels
 

@@ -116,4 +116,4 @@ See also: [API Reference: donna.insights](../reference/donna/insights/)
 - [Domain: Payload Collection](collection.md) -- the subsystem that captures the payloads analyzed here
 - [Domain: Observability](observability.md) -- broader logging and dashboard infrastructure
 - [Domain: Model Layer](model-layer.md) -- model routing decisions that produce the invocation data
-- [Domain: Management GUI](management-gui.md) -- the Claude Inspector UI that renders these insights
+- [Domain: Management GUI](management-gui/index.md) -- the Claude Inspector UI that renders these insights
