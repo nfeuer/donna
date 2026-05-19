@@ -70,6 +70,32 @@ design intent is unchanged; substantive updates in v3.1 are:
 
 Everything else in v3.0 remains canonical design intent.
 
+---
+
+**§0 Implementation Status (v3.1, April 2026)**
+
+This matrix summarizes implementation state for every spec section.
+Sections not listed are fully shipped as specified. Backlog IDs
+reference `open-backlog.md`.
+
+  Section                  Status            Notes                                                                       Backlog
+  ------------------------ ----------------- --------------------------------------------------------------------------- ---------
+  §3.2–3.3 MCP Strategy   Deferred          Tier 1 (direct Python) only. Tier 2 (FastMCP) deferred to Phase 6.          G-20
+  §5.5.2 Priority          Partial           Deadline + workload live. Dependency-chain and user-lock flag not built.     G-10
+  §6.1.2 Conflict Res.     Partial           2 of 5 strategies implemented (overlap detect, user-reschedule).             G-11
+  §6.2 Time Constraints    Partial           6 of 8 windows live. Extended Work and Emergency Work spec-only.             G-12
+  §7.1.1 Coding Agent      Defined,disabled  Phase 6 gate — Stage 3 tools + MCP required.                                G-21
+  §7.1.1 Comms Agent       Defined,disabled  Phase 6 gate — Stage 3 tools + MCP required.                                G-22
+  §11.1 Notifications      Partial           Discord DM (tiers 1–2). Email tier 3 not implemented.                       G-14
+  §12.1 Integrations       Partial           Gmail, Calendar, Discord, Twilio, Supabase, SQLite live. Others deferred.   G-20
+  §14.3 Logging            Changed           invocation_log in donna_tasks.db + Loki. No standalone donna_logs.db.       G-25
+  §16.3.2 Backup           Partial           Local NVMe backups only. Off-server push not built.                         G-23
+  §20 Phases               1–5 complete      Phase 6 content moved to appendix.                                          —
+  §23.3 Tool Registry      Partial           Read tools live. Write tools (task_db_write, calendar_write) not in registry. —
+  §30 Memory & Vault       Partial           Slices 12–15 shipped. Re-rendering, Supabase sync, BM25 deferred.           G-18
+
+---
+
 **1. Executive Summary**
 
 Donna is an AI-powered personal assistant system designed to solve a
@@ -236,15 +262,6 @@ the sole tool integration layer. Industry developments in early 2026
 have revealed significant trade-offs with an MCP-only approach. Donna
 adopts a hybrid architecture that uses the right integration pattern for
 each use case.
-
-> **v3.1 Implementation Status:** Only Tier 1 (direct Python API) is
-> in production. Tier 2 (FastMCP server) and all MCP-wrapped
-> integrations (GitHub, Filesystem, Notes, Web Search) are deferred
-> to Phase 6. Production LLM tool access is instead provided by a
-> small, internal tool-registry layer inside the Skills subsystem
-> (see §23.3). The MCP design in §3.2.1--3.2.5 is retained as the
-> target architecture for when Coding/Communication agents come
-> online.
 
 **3.2.1 The MCP Context Cost Problem**
 
@@ -1762,15 +1779,6 @@ Calendar:
   a task                auto-find next slot       same channel
   --------------------- ------------------------- -----------------------
 
-> **v3.1 Implementation Status:** Only the first and last rows are
-> fully implemented. `scheduling/scheduler.find_next_slot()` detects
-> overlap and returns the next available slot; the state machine
-> handles user-triggered rescheduling. The three middle rows
-> (dual-invite disambiguation, priority displacement inside a slot,
-> cascade-shifting on overrun) are **not implemented** and deferred
-> to Phase 6. Conflicts that the simple algorithm cannot resolve are
-> surfaced to the user via the standard notification channel.
-
 **6.2 Time Constraints**
 
   ---------------- ------------------------ ------------------------------
@@ -1806,13 +1814,6 @@ Calendar:
   Quiet Hours      8:00 PM -- 6:00 AM       No new scheduling. Urgent
                    (default)                (priority 5) only.
   ---------------- ------------------------ ------------------------------
-
-> **v3.1 Implementation Status:** Six of the eight windows are live
-> in `config/calendar.yaml` (Work, Personal, Weekend, Blackout, Quiet
-> Hours; Baby Time and Food come from the user's Google Calendar as
-> non-Donna blocks). *Extended Work* and *Emergency Work* are
-> defined in spec only; the YAML `time_windows` schema already
-> supports them and they can be enabled without code changes.
 
 **6.3 Scheduling Algorithm**
 
@@ -1910,14 +1911,6 @@ Claude API fallback.
                   is reusable as a new                   handled ad-hoc.
                   skill candidate.                       
   --------------- ---------------------- ---------------- -----------------------
-
-> **v3.1 Implementation Status:** Scheduler, Research/Prep, PM,
-> Challenger, and Novelty Judge are enabled (see `config/agents.yaml`).
-> **Coding Agent** and **Communication / Drafting Agent** are defined
-> in config but `enabled: false` --- they are deferred to Phase 6 and
-> gated on Stage 3 tool-use progression (§8.3) and the MCP
-> rollout (§3.2.3). The safety constraints in §7.3 remain their
-> intended contract.
 
 **7.2 Agent Execution Flow**
 
@@ -2488,7 +2481,7 @@ If the user responds "busy, will handle later," the system backs off for
 > **Roadmap:** the pause-only `Daily Spend Alert` terminal is being
 > replaced by the four-button over-budget decision tree (`Approve $X
 > extension / Manual handoff / Pause / Cancel`) defined in
-> [`docs/superpowers/specs/manual-escalation.md`](docs/superpowers/specs/manual-escalation.md).
+> `docs/superpowers/specs/manual-escalation.md`.
 > The table below documents current behavior; the decision-tree
 > behavior lands per-slice (`slice_17_*` through `slice_24_*`), and
 > this section will be updated by each slice that changes the rules.
@@ -2603,14 +2596,6 @@ across services.
   ----------- --------------------- ----------------------------------------
 
 **14.3 Logging Database**
-
-> **v3.1 Implementation Status:** The standalone `donna_logs.db`
-> described in v3.0 was not built. Per-invocation structured data
-> lives in the `invocation_log` table inside `donna_tasks.db`
-> (WAL-mode SQLite); all other service logs stream over stdout →
-> Docker json-file → Promtail → Loki, and are queried via Grafana.
-> The table schema in §14.3.1 below is kept for reference; production
-> `invocation_log` columns are listed after the spec table.
 
 Dedicated SQLite database (donna_logs.db) on NVMe, target design:
 separate from the task database to avoid contention between
@@ -3529,30 +3514,7 @@ admin surface for inspection and control.
 
 **Phase 6: MCP, Remaining Agents, & Production UI --- NEXT**
 
-*Goal: close the remaining gaps between the v3.0 design and the
-running system.*
-
--   Build the FastMCP server and wire GitHub, Filesystem (sandboxed
-    `/donna/workspace/`), Notes, and Web Search (SearXNG or API)
-    (§3.2.3--3.2.4).
-
--   Enable **Coding Agent** and **Communication / Drafting Agent**
-    with Stage 3 write tools under guardrails (§7.1.1, §8.3).
-
--   Dependency-chain priority escalation and `priority_locked` flag
-    (§5.5.2).
-
--   Full conflict-resolution matrix (§6.1.2), including dual-invite
-    disambiguation and cascade-shifting.
-
--   Extended Work and Emergency Work time windows (§6.2).
-
--   Off-server backup push to GCS/Backblaze (§16.3.2).
-
--   Flutter production UI as daily driver.
-
--   Onboard second user (dad): per-user preferences, persona config,
-    calendar, notifications.
+*Detailed Phase 6 deliverables: see Appendix A at end of document.*
 
 **Phase Status Summary (April 2026)**
 
@@ -3769,8 +3731,7 @@ The tool registry enforces per-step allowlists (raises
 equivalent of the Phase 6 FastMCP server (§3.2.3). Current
 registered tools include `calendar_read`, `task_db_read`, and a
 small `web_fetch`; write tools (`task_db_write`, `calendar_write`)
-are declared in configs but not yet implemented in the registry and
-are gated on the Stage 3 tool-use work (§8.3).
+are declared in configs and gated on the Stage 3 tool-use work (§8.3).
 
 **Tool gaps.** When a capability requires a tool that doesn't exist,
 Donna does not auto-draft it (security, dependencies, credentials,
@@ -3790,7 +3751,7 @@ spec §10.5). Tools have **no DB lifecycle table**; activation is
 manual merge + orchestrator restart. Slice 22 ships the data path,
 detection sites, and lint pipeline; dependent-skill regression
 re-runs are deferred to slice 24. See
-[`docs/superpowers/specs/manual-escalation.md` §7 / §10.5](../docs/superpowers/specs/manual-escalation.md).
+`docs/superpowers/specs/manual-escalation.md` §7 / §10.5.
 
 **23.4 Lifecycle: sandbox → shadow → trusted → degraded**
 
@@ -3950,8 +3911,7 @@ Grafana dashboards (`docker/grafana/dashboards/`) consume the same
 underlying data via Loki and the admin SQLite datasource; the admin
 API exposes the same information to the Flutter client and CLI. The
 Notification Dashboard panel (§15.1.5) and Preference Learning
-panel (§15.1.7) listed in v3.0 are **not yet built** and are Phase
-6 items.
+panel (§15.1.7) listed in v3.0 are Phase 6 items (see Appendix A).
 
 **28. Authentication & Access Control** *(added v3.1)*
 
@@ -4150,16 +4110,10 @@ Shipped in later slices (historical notes):
     APScheduler is still not a project dependency (home-grown
     pollers remain the idiom).
 
-Still deferred:
-
--   Re-rendering autowritten notes when source data changes
-    post-write (e.g., calendar event moves after the meeting note
-    is written) → slice 17+.
--   Supabase sync for `memory_documents` / `memory_chunks` and
-    the `calendar_mirror.attendees` column → slice 17.
--   BM25 / hybrid retrieval and eval harness → slice 17.
--   Cloud embedding providers — Protocol supports them, no wiring
-    shipped.
+Future enhancements (tracked in `open-backlog.md`):
+re-rendering autowritten notes when source data changes post-write,
+Supabase sync for memory tables, BM25 / hybrid retrieval, and cloud
+embedding providers.
 
 **30.8 Template Writes (slice 15)**
 
@@ -4253,5 +4207,39 @@ wikilinks + prior-meeting backlinks mean Donna's own writes flow
 back into `memory_search` (closed loop: Donna's writes become
 memory).
 -   Attachment indexing (images, PDFs). V1 is `.md` only.
+
+---
+
+**Appendix A: Phase 6 --- Future Design**
+
+> The following content describes planned features that are not yet
+> implemented. It is preserved as design intent for when implementation
+> begins. See the §0 status matrix at the top of this document
+> for current state.
+
+*Goal: close the remaining gaps between the v3.0 design and the
+running system.*
+
+-   Build the FastMCP server and wire GitHub, Filesystem (sandboxed
+    `/donna/workspace/`), Notes, and Web Search (SearXNG or API)
+    (§3.2.3--3.2.4).
+
+-   Enable **Coding Agent** and **Communication / Drafting Agent**
+    with Stage 3 write tools under guardrails (§7.1.1, §8.3).
+
+-   Dependency-chain priority escalation and `priority_locked` flag
+    (§5.5.2).
+
+-   Full conflict-resolution matrix (§6.1.2), including dual-invite
+    disambiguation and cascade-shifting.
+
+-   Extended Work and Emergency Work time windows (§6.2).
+
+-   Off-server backup push to GCS/Backblaze (§16.3.2).
+
+-   Flutter production UI as daily driver.
+
+-   Onboard second user (dad): per-user preferences, persona config,
+    calendar, notifications.
 
 *--- End of Specification ---*

@@ -43,7 +43,7 @@ config-driven.
     ```
 
 8. **Document.** Add a brief page under
-   [Domain → Skill System](../domain/skill-system.md) if the skill
+   [Domain → Skill System](../domain/skill-system/index.md) if the skill
    introduces a new subsystem behavior.
 
 ## Where the Code Lives

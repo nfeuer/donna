@@ -1,6 +1,6 @@
 # Memory Vault — Reference Spec
 
-> Design spec for the Obsidian vault plumbing (slice 12), the semantic memory layer (slice 13), the episodic ingestion sources (slice 14), and the template-driven vault writes (slice 15). Companion to `docs/domain/memory-vault.md` (narrative) and `slices/slice_12_*` / `slice_13_*` / `slice_14_*` / `slice_15_*` briefs. Authoritative for config schema, write protocol, error taxonomy, memory schema, retrieval contract, and template-write contract.
+> Design spec for the Obsidian vault plumbing (slice 12), the semantic memory layer (slice 13), the episodic ingestion sources (slice 14), and the template-driven vault writes (slice 15). Companion to `docs/domain/memory-vault/index.md` (narrative) and `slices/slice_12_*` / `slice_13_*` / `slice_14_*` / `slice_15_*` briefs. Authoritative for config schema, write protocol, error taxonomy, memory schema, retrieval contract, and template-write contract.
 
 ## 1. Configuration schema (`config/memory.yaml`)
 

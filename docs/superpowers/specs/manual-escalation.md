@@ -88,9 +88,9 @@ a different surfacing protocol.
 | `spec_v3.md §3.2` / `§23.3` (Tool registry) | Forward-link to §7 of this spec. |
 | `spec_v3.md §16.1` (Schemas) | Forward-link to §8 of this spec for the new tables. |
 | `docs/workflows/handle-budget-breach.md` | Forward-link to the new decision tree. |
-| `docs/domain/skill-system.md` | "Manual escalation" subsection — references this spec. |
+| `docs/domain/skill-system/reference.md` | "Manual escalation" subsection — references this spec. |
 | `docs/domain/task-system.md` | Reference to escalation as a task lifecycle terminal. |
-| `docs/domain/management-gui.md` | Description of new dashboard surfaces (toggle panel + escalation workspace). |
+| `docs/domain/management-gui/pages.md` | Description of new dashboard surfaces (toggle panel + escalation workspace). |
 
 PR descriptions for any implementation slice MUST cite the relevant `§` of this spec.
 

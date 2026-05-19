@@ -1,7 +1,7 @@
 # Vault Sync (WebDAV)
 
 > Slice 12 — operator guide for the Obsidian vault and its WebDAV sync
-> channel. See `docs/domain/memory-vault.md` for the narrative and
+> channel. See `docs/domain/memory-vault/index.md` for the narrative and
 > `docs/reference-specs/memory-vault-spec.md` for the design spec.
 
 ## Overview

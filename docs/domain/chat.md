@@ -83,7 +83,7 @@ The `render_chat_prompt` function handles template variable substitution, inject
 
 ## Configuration
 
-**Primary config:** [`config/chat.yaml`](../config/chat.yaml)
+**Primary config:** [`config/chat.yaml`](../config/chat.md)
 
 ```yaml
 chat:
@@ -103,7 +103,7 @@ chat:
     enabled: true
 ```
 
-**Action definitions:** [`config/chat_actions.yaml`](../config/chat_actions.yaml) — YAML registry of all available actions with parameter schemas, safety levels, and handler paths.
+**Action definitions:** [`config/chat_actions.yaml`](../config/chat_actions.md) — YAML registry of all available actions with parameter schemas, safety levels, and handler paths.
 
 **Prompt templates:** `prompts/chat/` — `chat_system.md` (Donna persona), `chat_system_neutral.md` (neutral persona), `classify_intent.md`, `chat_respond.md`, `extract_action_params.md`, `summarize_action_result.md`, `chat_summarize.md`.
 
@@ -124,6 +124,6 @@ The config supports hot-reload with a 5-second TTL cache via `get_chat_config()`
 ## See Also
 
 - [Domain: Task Management](task-system.md) — task schema and state machine used by task actions
-- [Domain: Skill System](skill-system.md) — skill execution triggered by chat actions
-- [Domain: Memory Vault](memory-vault.md) — vault operations exposed through chat
+- [Domain: Skill System](skill-system/index.md) — skill execution triggered by chat actions
+- [Domain: Memory Vault](memory-vault/index.md) — vault operations exposed through chat
 - [Workflow: Scheduling](scheduling.md) — calendar integration context loaded for planning intents

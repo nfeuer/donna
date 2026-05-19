@@ -22,7 +22,16 @@ repo root under
 | 12 | Vault plumbing — Obsidian-compatible git-backed markdown vault, WebDAV, `vault_*` tools |
 | 13 | Memory store — `MemoryStore`, sqlite-vec, `VaultSource`, `memory_search` |
 | 14 | Episodic sources — `ChatSource` / `TaskSource` / `CorrectionSource`, `donna memory backfill` CLI |
-| 15 | Template writes + meeting notes — *brief only (in flight)* |
+| 15 | Template writes + meeting notes |
+| 16 | Autowrite cadences (daily reflection, commitment log, weekly review, person profile), person stubs, rename reconciliation |
+| 17 | Escalation core — `escalation_request` table, `EscalationGate`, budget-breach decision tree |
+| 18 | Budget extension — token-limit and cost-limit extension grants with time-boxed approval |
+| 19 | Dashboard escalation workspace — timeline view, action buttons, resolution flow |
+| 20 | Chat mode — conversational escalation resolution via Discord thread |
+| 21 | Claude Code mode — worktree-based manual skill drafting under budget pressure |
+| 22 | Tool gap surfacing — detection sites, Discord notification, `tool_request` table, build path |
+| 23 | Dashboard runtime overrides — live config toggles for cost thresholds, agent pausing |
+| 24 | Escalation hardening — iteration caps, depth limits, validation tightening, observability panels |
 
 Each slice file contains narrative + acceptance bullets. The
 `VERIFICATION_REPORT.md` at the repo root audits delivery.

@@ -1,7 +1,9 @@
-# Skill System — Open Backlog
+# Open Backlog
 
-**Date:** 2026-04-21 (revised)
-**Scope:** Only genuinely-open items. Closed/shipped follow-ups (including Waves 1, 3, 4, and 5 from prior revisions) live in the archived historical tracker: `docs/superpowers/followups/archive/2026-04-16-skill-system-followups.md`.
+**Date:** 2026-05-18 (revised)
+**Purpose:** Canonical tracker for missing or incomplete features across all Donna subsystems. Each gap has a stable ID (G-\*) referenced from domain docs.
+**Scope:** Only genuinely-open items. Closed/shipped follow-ups live in the archived historical tracker: `docs/superpowers/followups/archive/2026-04-16-skill-system-followups.md`.
+**Related:** [`followups.md`](../specs/followups.md) tracks spec-level cross-slice follow-ups (implementation questions, spec drift, deferred decisions). This file tracks *feature gaps*; that file tracks *spec questions*.
 
 All remaining items are deferred with explicit trigger conditions — don't build speculatively. When a trigger fires, open a new wave.
 
@@ -16,6 +18,48 @@ All remaining items are deferred with explicit trigger conditions — don't buil
 
 ---
 
+## Gaps extracted from documentation audit (2026-05-18)
+
+Items below were inline callouts in domain docs, now tracked here as the canonical gap list. Each has a stable ID (G-\*) referenced from the source doc.
+
+### Critical — blocks a feature
+
+| ID | Feature | Current State | What's Blocking | Source Doc | Spec § |
+|----|---------|--------------|-----------------|-----------|--------|
+| G-1 | GmailClient wiring | Not wired into orchestrator boot | email_triage automation can't run | domain/agents.md | §12.1 |
+| G-2 | SkillSystemConfig runtime wiring | Pydantic model exists, fields not read by runtime | Thresholds hardcoded as module constants | domain/skill-system/setup.md | §23 |
+
+### Partial — shipped with gaps
+
+| ID | Feature | What's Shipped | What's Missing | Source Doc | Spec § |
+|----|---------|---------------|---------------|-----------|--------|
+| G-10 | Priority escalation | Deadline + workload pressure | Dependency-chain, user-lock flag | domain/task-system.md | §5.5.2 |
+| G-11 | Scheduling conflict resolution | Basic overlap detection | Priority displacement, cascade-shift, dual-invite | domain/scheduling.md | §6.2 |
+| G-12 | Time windows | 6 of 8 live | Extended Work, Emergency Work not configured | domain/scheduling.md | §6.1.2 |
+| G-13 | Observability DB | invocation_log in donna_tasks.db + Loki | Dedicated donna_logs.db not implemented | domain/observability.md | §14.3.1 |
+| G-14 | Notification tiers | Discord DM (tier 1-2) | Email tier 3 | domain/notifications.md | §11.1 |
+| G-15 | Budget breach handling | Pause-only + escalation decision tree (slices 17-24) | Pause-only path still active as fallback | workflows/handle-budget-breach.md | §18 |
+| G-16 | MorningDigest production wiring | Construction code exists | No production call site in orchestrator | domain/management-gui/index.md | §22 |
+| G-17 | Tool gap queue UI | Data model + Discord ping shipped (slice 22) | Standalone dashboard queue surface | domain/management-gui/index.md | §22 |
+| G-18 | Task soft-delete path | MemoryStore.delete() ready | No soft-delete on tasks table or Database API | domain/memory-vault/episodic.md | §30 |
+
+### Deferred / Phase 6 — not started, by design
+
+| ID | Feature | Rationale | Trigger Condition | Spec § |
+|----|---------|-----------|-------------------|--------|
+| G-20 | MCP Tier 2 (FastMCP) | Only Tier 1 needed currently | User needs GitHub/Notes/SearXNG integration | §3.2 |
+| G-21 | Coding Agent | Safety gate: Phase 6 | Code generation use case arises | §7.1.1 |
+| G-22 | Communication Agent | Safety gate: Phase 6 | Email/message drafting use case arises | §7.1.1 |
+| G-23 | Off-server backup (GCS/Backblaze) | Local NVMe sufficient | Disaster recovery requirement | §16.3.2 |
+| G-24 | Flutter app | API shipped, UI in sibling repo | Mobile use case prioritized | §20 |
+| G-25 | donna_logs.db dedicated log DB | Loki pipeline works | Need SQLite-queryable structured logs | §14.3.1 |
+| G-26 | Per-task-type compaction strategies | Heuristic token estimation sufficient | Context overflow rate > 10% | §4 |
+| G-27 | pgvector brain on Supabase | Not needed for current scale | Long-history retrieval required | §4 |
+| G-28 | Exact tokenization (Ollama /api/tokenize) | Heuristic sufficient | Token estimation drift causes problems | §4 |
+| G-29 | Per-alias daily caps on overflow | No overflow pattern observed | Overflow escalation rate > threshold | §4 |
+
+---
+
 ## Triggered — don't build speculatively
 
 | ID | Trigger | One-liner |
@@ -25,7 +69,7 @@ All remaining items are deferred with explicit trigger conditions — don't buil
 | **F-W4-A** | User asks to scan all inbound mail instead of sender allowlist | `email_triage` unbounded-sender mode — different privacy + token cost profile. |
 | **F-W1-A fix** | A production skill exhibits the drift pattern the Wave 2 test documents | Add correction-cluster fast path + EOD digest mechanism; or replace Wilson CI on binarized scores with a continuous-score drift detector. |
 | **Dashboard threshold tune** | ≥30 days of live data in `invocation_log` post-production enablement | Tune `quality_score.{critical,warning}_threshold` in `config/dashboard.yaml`. |
-| **Admin auth** | `/admin/*` is ever exposed outside the loopback | Implement the auth note documented in `docs/domain/management-gui.md:36`. |
+| **Admin auth** | `/admin/*` is ever exposed outside the loopback | Implement the auth note documented in `docs/domain/management-gui/index.md`. |
 | **Wave 1 sub-items** | | |
 | • `web_search` | Productionize `prep_research` against real tasks | Deferred tool for `prep_research` capability. |
 | • `notes_read` | A notes storage module exists | Deferred tool for `extract_preferences` capability. |
@@ -60,6 +104,9 @@ Slice 11 (Flutter Web + Android app) is tracked separately in `slices/slice_11_f
 
 | Bucket | Items | Priority |
 |---|---|---|
+| Critical gaps | 2 items (G-1, G-2) | P1 |
+| Partial implementations | 9 items (G-10 – G-18) | P2 |
+| Deferred / Phase 6 | 10 items (G-20 – G-29) | P2 |
 | Triggered (deferred) | 9 items | P2 |
 | OOS (triggered by spec) | 12 items | P2 |
 

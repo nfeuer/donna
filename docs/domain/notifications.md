@@ -225,7 +225,7 @@ Implemented in `src/donna/notifications/escalation.py`. The `EscalationManager` 
 |------|---------|-----------|
 | 1 | Discord message | 30 min (configurable) |
 | 2 | SMS text | 1 hour (configurable) |
-| 3 | Email | Deferred to slice 8 |
+| 3 | Email | *Planned — [G-14](../superpowers/followups/open-backlog.md)* |
 | 4 | Phone TTS | Priority 5 / budget emergencies only |
 
 Escalation state is persisted in the `escalation_state` table. Acknowledgment on any channel resets the tier. "Busy" reply backs off for a configurable number of hours.

@@ -14,11 +14,11 @@ This document is the **procedural companion to `spec_v3.md`**. The spec is canon
 
 **Related docs:**
 
-- [`spec_v3.md`](spec_v3.md) — canonical design (v3.1 synced to production in commit `47a1a5f`).
-- [`SETUP.md`](SETUP.md) — hands-on install walkthrough with third-party signup steps.
-- [`INSTALL_DAY.md`](INSTALL_DAY.md) — hour-by-hour playbook for hardware install day.
-- [`CLAUDE.md`](CLAUDE.md) — contributor conventions and budget rules.
-- [`docs/architecture/overview.md`](docs/architecture/overview.md) — narrative architecture tour.
+- `spec_v3.md` — canonical design (v3.1 synced to production in commit `47a1a5f`).
+- `SETUP.md` — hands-on install walkthrough with third-party signup steps.
+- `INSTALL_DAY.md` — hour-by-hour playbook for hardware install day.
+- `CLAUDE.md` — contributor conventions and budget rules.
+- `docs/architecture/overview.md` — narrative architecture tour.
 
 ---
 
@@ -48,7 +48,7 @@ sudo usermod -aG docker $USER && newgrp docker
 
 ### 0.3 External Accounts
 
-The table lists what each service unlocks and which phase first needs it. Full signup walkthroughs live in [`SETUP.md`](SETUP.md) — do not duplicate them here.
+The table lists what each service unlocks and which phase first needs it. Full signup walkthroughs live in `SETUP.md` — do not duplicate them here.
 
 | Service | Unlocks | First needed | Cost |
 |---------|---------|--------------|------|
@@ -76,7 +76,7 @@ cd donna
 
 ### 1.2 Create Storage Directories
 
-Paths match `DONNA_DATA_PATH` defaults (see [`docker/.env.example`](docker/.env.example)).
+Paths match `DONNA_DATA_PATH` defaults (see `docker/.env.example`).
 
 ```bash
 sudo mkdir -p /donna/{db,workspace,backups/{daily,weekly,monthly,offsite},logs/archive,config,prompts,fixtures,models}
@@ -232,7 +232,7 @@ docker compose -f docker/donna-monitoring.yml --env-file docker/.env up -d
 | `donna-promtail` | `grafana/promtail:2.9.0` | (internal) |
 | `donna-grafana` | `grafana/grafana:10.2.0` | 3000 |
 
-Visit `http://localhost:3000` (user `admin`, password from `GRAFANA_ADMIN_PASSWORD`). Four dashboards auto-provision: **Cost**, **Health**, **Pipeline**, **Errors** (provisioning files live under [`docker/grafana/`](docker/grafana/)).
+Visit `http://localhost:3000` (user `admin`, password from `GRAFANA_ADMIN_PASSWORD`). Four dashboards auto-provision: **Cost**, **Health**, **Pipeline**, **Errors** (provisioning files live under `docker/grafana/`).
 
 ### 1.10 Run Tests
 
@@ -255,7 +255,7 @@ pytest tests/integration/
 
 ## Phase 2: External Integrations (Recommended)
 
-Each integration is independently optional — the orchestrator degrades gracefully if its env vars are unset. Signup steps live in [`SETUP.md`](SETUP.md); this section covers only the wiring.
+Each integration is independently optional — the orchestrator degrades gracefully if its env vars are unset. Signup steps live in `SETUP.md`; this section covers only the wiring.
 
 ### 2.1 Google Calendar
 
@@ -273,11 +273,11 @@ GOOGLE_CALENDAR_WORK_ID=<calendar-id>
 GOOGLE_CALENDAR_FAMILY_ID=<calendar-id>
 ```
 
-First run opens a browser for consent; the cached token lands at `/donna/config/google_token.json`. Behaviour (polling, time-window rules, blackout/quiet/work/personal/weekend) is tuned in [`config/calendar.yaml`](config/calendar.yaml).
+First run opens a browser for consent; the cached token lands at `/donna/config/google_token.json`. Behaviour (polling, time-window rules, blackout/quiet/work/personal/weekend) is tuned in `config/calendar.yaml`.
 
 ### 2.2 Gmail
 
-Uses the same Google credentials. The Gmail API must be enabled in the Google Cloud project. Access is **read + draft-only by default** (per the safety-first principle in `CLAUDE.md`). Configure digests, forwarding alias, and draft caps in [`config/email.yaml`](config/email.yaml).
+Uses the same Google credentials. The Gmail API must be enabled in the Google Cloud project. Access is **read + draft-only by default** (per the safety-first principle in `CLAUDE.md`). Configure digests, forwarding alias, and draft caps in `config/email.yaml`.
 
 ### 2.3 Twilio SMS/Voice
 
@@ -290,7 +290,7 @@ DONNA_USER_PHONE=+1XXXXXXXXXX
 
 Point the Twilio inbound-message webhook at `http://<your-server>:8100/webhooks/sms`.
 
-Escalation policy lives in [`config/sms.yaml`](config/sms.yaml): rate limit 10/day, escalation ladder (30 min SMS → 60 min email → 120 min phone), blackout hours.
+Escalation policy lives in `config/sms.yaml`: rate limit 10/day, escalation ladder (30 min SMS → 60 min email → 120 min phone), blackout hours.
 
 ### 2.4 Supabase Cloud Replica
 
@@ -314,7 +314,7 @@ Donna-owned markdown vault (slice 12) plus a sqlite-vec-backed semantic index ov
 - If `config/memory.yaml` is absent or the vault root is unreachable, the vault skill tools simply aren't registered.
 - If `sqlite-vec` fails to load (wheel missing on the host platform), `Database.vec_available` stays `False`, the memory store isn't built, and `memory_search` stays off the tool registry — every other subsystem keeps booting.
 
-See [`docs/domain/memory-vault.md`](docs/domain/memory-vault.md) for the narrative and [`docs/reference-specs/memory-vault-spec.md`](docs/reference-specs/memory-vault-spec.md) for the design spec.
+See [`docs/domain/memory-vault.md`](../domain/memory-vault/index.md) for the narrative and [`docs/reference-specs/memory-vault-spec.md`](memory-vault-spec.md) for the design spec.
 
 **Create the vault root on the host:**
 
@@ -353,7 +353,7 @@ curl -u "$CADDY_VAULT_USER:<plaintext>" -X PROPFIND http://localhost:8500/
 
 On first boot with slice 13 installed, the `VaultSource.backfill` task walks the vault root and ingests every `.md` — expect `~N seconds` for N notes the first time (chunking + embedding). Subsequent boots only re-embed files whose mtime advanced past the stored `memory_documents.updated_at`, so the steady-state cost is near-zero.
 
-**Obsidian clients:** operator guide at [`docs/operations/vault-sync.md`](docs/operations/vault-sync.md).
+**Obsidian clients:** operator guide at [`docs/operations/vault-sync.md`](../operations/vault-sync.md).
 
 **Episodic sources (slice 14).** With slice 14 installed, three additional `MemorySource` modules observe the source-of-truth write paths and upsert into the same `memory_documents` / `memory_chunks` tables — no schema change:
 
@@ -361,7 +361,7 @@ On first boot with slice 13 installed, the `VaultSource.backfill` task walks the
 - **`TaskSource`** upserts on `create_task` / `update_task`; a content hash over `title + description + notes + status + domain + deadline` short-circuits no-op updates, and a transition into `done` / `cancelled` (per `sources.task.reindex_on_status`) forces a re-embed so the final-state context lands in the index. The `"delete"` branch is dormant until a soft-delete API lands on `Database`.
 - **`CorrectionSource`** writes one chunk per `correction_log` row via a module-level observer registry, keyed by the row id.
 
-Wiring is done by `cli_wiring._build_episodic_sources()`: it builds a `_CombinedDbObserver`, attaches it to `Database` via `set_memory_observer(...)`, and registers `CorrectionSource.observe` with `donna.memory.observers.dispatch("correction", ...)`. Observer exceptions are logged (`memory_ingest_failed`) and swallowed so a memory-layer failure can never unwind the source-of-truth write. Rationale for staying off the `MemoryIngestQueue` path is in [`docs/domain/memory-vault.md#why-episodic-sources-skip-the-ingest-queue`](docs/domain/memory-vault.md).
+Wiring is done by `cli_wiring._build_episodic_sources()`: it builds a `_CombinedDbObserver`, attaches it to `Database` via `set_memory_observer(...)`, and registers `CorrectionSource.observe` with `donna.memory.observers.dispatch("correction", ...)`. Observer exceptions are logged (`memory_ingest_failed`) and swallowed so a memory-layer failure can never unwind the source-of-truth write. Rationale for staying off the `MemoryIngestQueue` path is in [`docs/domain/memory-vault.md#why-episodic-sources-skip-the-ingest-queue`](../domain/memory-vault/index.md).
 
 **Backfill CLI.** To (re-)populate the index from existing data:
 
@@ -441,7 +441,7 @@ docker exec donna-ollama nvidia-smi  # verify GPU visible inside the container
 
 ### 3.3 Pull Model
 
-The production model is `qwen2.5:32b-instruct-q6_K` (per `CLAUDE.md` and [`config/donna_models.yaml`](config/donna_models.yaml)). Higher quantization than q4_K_M; larger VRAM footprint; better output quality.
+The production model is `qwen2.5:32b-instruct-q6_K` (per `CLAUDE.md` and `config/donna_models.yaml`). Higher quantization than q4_K_M; larger VRAM footprint; better output quality.
 
 ```bash
 docker exec donna-ollama ollama pull qwen2.5:32b-instruct-q6_K
@@ -480,7 +480,7 @@ Restrict to one tier with `--tier 1`.
 
 ### 3.6 Shadow Mode (1–2 Weeks)
 
-Edit [`config/donna_models.yaml`](config/donna_models.yaml) — add a `shadow` block so the local model runs in parallel with Claude but outputs aren't used:
+Edit `config/donna_models.yaml` — add a `shadow` block so the local model runs in parallel with Claude but outputs aren't used:
 
 ```yaml
 models:
@@ -543,7 +543,7 @@ DONNA_CORS_ORIGINS=https://donna.yourdomain.tld
 - `DONNA_BOOTSTRAP_ADMIN_EMAIL` — the first user to successfully verify this email gets auto-promoted to admin.
 - `DONNA_CORS_ORIGINS` — **concrete allowlist** (comma-separated). A wildcard `*` is rejected at startup because auth uses cookies.
 
-Immich URLs, token lifetimes, and proxy settings live in [`config/auth.yaml`](config/auth.yaml):
+Immich URLs, token lifetimes, and proxy settings live in `config/auth.yaml`:
 
 - IP-trust ladder: 24h / 7d / 30d (default) / 90d
 - Magic-link expiry: 15 minutes
@@ -553,7 +553,7 @@ Immich URLs, token lifetimes, and proxy settings live in [`config/auth.yaml`](co
 
 ### 4.2 Auth Flow (Summary)
 
-Routes live in [`src/donna/api/routes/auth_flow.py`](src/donna/api/routes/auth_flow.py); implementation modules under `src/donna/api/auth/` (Immich client, IP gate, email allowlist, magic-link tokens, device tokens, trusted proxies).
+Routes live in `src/donna/api/routes/auth_flow.py`; implementation modules under `src/donna/api/auth/` (Immich client, IP gate, email allowlist, magic-link tokens, device tokens, trusted proxies).
 
 1. `POST /auth/request-access` — email → magic link (15 min expiry) sent via the configured mailer.
 2. `POST /auth/verify` — burns the magic-link token, marks the IP trusted for the default window, issues a device-token cookie.
@@ -584,7 +584,7 @@ The UI container builds from the sibling repo at `../donna-ui` and serves static
 
 ### 4.5 Put Caddy in Front
 
-Caddy is not part of the repo Compose — run it as your own service (the Dockerised-homelab pattern). An example Caddyfile is shipped at [`docker/caddy/donna.Caddyfile.example`](docker/caddy/donna.Caddyfile.example) and terminates TLS, routing:
+Caddy is not part of the repo Compose — run it as your own service (the Dockerised-homelab pattern). An example Caddyfile is shipped at `docker/caddy/donna.Caddyfile.example` and terminates TLS, routing:
 
 - `/api/*` → `donna-api:8200`
 - `/` → `donna-ui:8400`
@@ -621,7 +621,7 @@ The automations subsystem (`src/donna/automations/`, `spec_v3.md §25`) cron-sch
 
 ### 5.2 Runtime Settings (Source-Level Defaults)
 
-These live in [`src/donna/config.py`](src/donna/config.py) and are read at boot:
+These live in `src/donna/config.py` and are read at boot:
 
 | Setting | Default | Meaning |
 |---------|---------|---------|
@@ -632,7 +632,7 @@ These live in [`src/donna/config.py`](src/donna/config.py) and are read at boot:
 
 ### 5.3 Cadence Policy
 
-Minimum intervals by skill lifecycle class, from [`config/automations.yaml`](config/automations.yaml):
+Minimum intervals by skill lifecycle class, from `config/automations.yaml`:
 
 | Class | `min_interval_seconds` |
 |-------|------------------------|
@@ -673,7 +673,7 @@ Rows include: user, skill name, cron expression, cadence overrides, active flag,
 
 ### A. CLI Reference
 
-All flags verified against [`src/donna/cli.py`](src/donna/cli.py).
+All flags verified against `src/donna/cli.py`.
 
 **`donna run`** — start the orchestrator.
 
@@ -717,7 +717,7 @@ All flags verified against [`src/donna/cli.py`](src/donna/cli.py).
 
 ### B. Config Files
 
-All 17 live under [`config/`](config/).
+All 17 live under `config/`.
 
 | File | Purpose |
 |------|---------|
@@ -754,11 +754,11 @@ Eight services across six compose files. All attach to the external `homelab` ne
 | `donna-api` | `docker/donna-app.yml` | 8200 | 4 | `Dockerfile.api` (read-only SQLite) |
 | `donna-ui` | `docker/donna-ui.yml` | 8400 | 4 | built from sibling repo `../donna-ui` |
 
-Caddy is run outside this repo; see [`docker/caddy/donna.Caddyfile.example`](docker/caddy/donna.Caddyfile.example).
+Caddy is run outside this repo; see `docker/caddy/donna.Caddyfile.example`.
 
 ### D. Alembic Migrations
 
-34 migrations in [`alembic/versions/`](alembic/versions/). `alembic upgrade head` applies them all. Grouped by area:
+34 migrations in `alembic/versions/`. `alembic upgrade head` applies them all. Grouped by area:
 
 | Area | Count | Representative files |
 |------|------:|----------------------|
@@ -845,12 +845,12 @@ mypy src/donna/
 
 ### H. Further Reading
 
-- [`spec_v3.md`](spec_v3.md) — canonical design
-- [`SETUP.md`](SETUP.md) — install walkthrough
-- [`INSTALL_DAY.md`](INSTALL_DAY.md) — hardware install-day playbook
-- [`RECOVERY.md`](RECOVERY.md) — backup and disaster recovery
-- [`CLAUDE.md`](CLAUDE.md) — contributor conventions
-- [`docs/architecture/overview.md`](docs/architecture/overview.md) — architecture tour
-- [`docs/domain/`](docs/domain/) — per-subsystem narrative (task system, skills, notifications, etc.)
-- [`docs/workflows/`](docs/workflows/) — how-tos (add a skill, run evals, handle a budget breach)
-- [`docs/operations/`](docs/operations/) — day-two operations (backup, migrations, Docker, budget)
+- `spec_v3.md` — canonical design
+- `SETUP.md` — install walkthrough
+- `INSTALL_DAY.md` — hardware install-day playbook
+- `RECOVERY.md` — backup and disaster recovery
+- `CLAUDE.md` — contributor conventions
+- `docs/architecture/overview.md` — architecture tour
+- `docs/domain/` — per-subsystem narrative (task system, skills, notifications, etc.)
+- `docs/workflows/` — how-tos (add a skill, run evals, handle a budget breach)
+- `docs/operations/` — day-two operations (backup, migrations, Docker, budget)

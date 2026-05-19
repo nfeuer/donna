@@ -230,14 +230,10 @@ Before dispatching to a local alias, `ModelRouter` estimates prompt tokens (`len
 
 Every call to an Ollama alias records `invocation_log.estimated_tokens_in` alongside the actual `tokens_in` reported by Ollama. The LLM Gateway dashboard surfaces mean absolute error as a gauge for when to upgrade the estimator to exact tokenization.
 
-### Future extensions (explicitly deferred)
+### Future Enhancements
 
-The following are documented as deferred in `docs/superpowers/specs/archive/2026-04-12-local-llm-context-strategy-design.md`:
-
-- Per-task-type compaction strategies (rolling summary, map-reduce, RAG).
-- `pgvector` "brain" on Supabase for long-history retrieval.
-- Exact tokenization via Ollama `/api/tokenize`.
-- Per-alias daily caps on overflow escalations.
+Documented in [`archive/2026-04-12-local-llm-context-strategy-design.md`](../superpowers/specs/archive/2026-04-12-local-llm-context-strategy-design.md):
+per-task-type compaction strategies, `pgvector` brain on Supabase, exact tokenization via Ollama, and per-alias daily caps on overflow escalations. *Tracked as [G-26 – G-29](../superpowers/followups/open-backlog.md).*
 
 ## Cost Tracking Scope
 

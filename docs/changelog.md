@@ -7,13 +7,29 @@ Recent changes, summarized from commits and PRs.
 ### Added
 - **Documentation system**: global `update-docs` skill and `docs-updater` agent for bootstrapping, updating, and auditing docs across projects ([Domain](domain/index.md))
 
+### Changed
+- **Documentation cleanup**: extracted all inline "not implemented" / "deferred" / "obsolete" callouts from 11 domain docs into [`open-backlog.md`](superpowers/followups/open-backlog.md) with stable gap IDs (G-1 through G-29)
+- **Skill System docs refactored**: split 769-line `skill-system.md` into 5 focused subpages (index, setup, lifecycle, evolution, reference) under `domain/skill-system/`
+- **Memory Vault docs refactored**: split 312-line `memory-vault.md` into 4 focused subpages (index, semantic, episodic, templates) under `domain/memory-vault/`
+- **Management GUI docs refactored**: split 495-line `management-gui.md` into 4 focused subpages (index, api, pages, reference) under `domain/management-gui/`
+- **Domain index enhanced**: added Mermaid architecture diagram and 7-step "Start Here" reading guide to [`domain/index.md`](domain/index.md)
+- `spec_v3.md`: added §0 Implementation Status Matrix, removed 5 inline status blocks, moved Phase 6 details to appendix
+- `followups.md`: archived 28 closed items, trimmed to open items only
+- `properdocs.yml`: link validation tightened to `warn` (CI catches broken links via `--strict`)
+- Clarified distinct purposes of `open-backlog.md` (feature gaps) vs `followups.md` (spec questions)
+
 ### Fixed
 - PayloadWriter correctly wired into all ModelRouter instances
+- Removed copy-paste error in `cost.md` (contained skill-system.md content)
+- Fixed `backup-recovery.md` stub with proper intro text
+- Updated stale "in flight" marker on slice 15 in `slices.md`
+- Trimmed planned `donna_logs.db` schema from `observability.md` (archived to `archive/`)
+- Expanded `slices.md` with slices 16–24 (escalation, budget, dashboard, chat, tool gaps)
 
 ## 2026-05-17
 
 ### Added
-- **Claude Inspector**: full forensics UI for browsing LLM calls, comparing payloads, and analyzing cost/performance insights ([Insights](domain/insights.md), [Management GUI](domain/management-gui.md))
+- **Claude Inspector**: full forensics UI for browsing LLM calls, comparing payloads, and analyzing cost/performance insights ([Insights](domain/insights.md), [Management GUI](domain/management-gui/index.md))
 - **Payload collection subsystem**: `PayloadWriter` captures full request/response payloads; `PayloadEvictor` enforces disk budget ([Collection](domain/collection.md))
 - Claude Inspector API endpoints for call browsing, payload retrieval, and insights queries
 - Deep-link query parameter support on Claude Inspector page
@@ -63,7 +79,7 @@ Recent changes, summarized from commits and PRs.
 ## 2026-05-13
 
 ### Added
-- **Calendar page**: week view with time slots, data fetching, week navigation, completed task styling ([Management GUI](domain/management-gui.md))
+- **Calendar page**: week view with time slots, data fetching, week navigation, completed task styling ([Management GUI](domain/management-gui/index.md))
 - Calendar added to sidebar navigation and routing
 
 ### Fixed

@@ -151,7 +151,7 @@ See also: [API Reference: donna.api](../reference/donna/api/)
 
 ## See Also
 
-- [Domain: Management GUI](management-gui.md)
+- [Domain: Management GUI](management-gui/index.md)
 - [Domain: Observability](observability.md)
 - [Domain: Insights Engine](insights.md)
 - [Start Here: Install](../start-here/install.md)

@@ -112,10 +112,10 @@ The `InputParser` is a standalone pipeline for the specific `parse_task` task ty
 
 The orchestrator itself has minimal config -- it relies on the configurations of the subsystems it orchestrates:
 
-- **Agent definitions:** [`config/agents.yaml`](../config/agents.yaml) -- agent names, timeout seconds, model assignments.
-- **Task types:** [`config/task_types.yaml`](../config/task_types.yaml) -- prompt templates, output schemas, model routing, tool dependencies. The `manual_escalation` block per task type controls which escalation modes are available.
-- **Capabilities:** [`config/capabilities.yaml`](../config/capabilities.yaml) -- capability registry for the Challenger Agent.
-- **Skills:** [`config/skills.yaml`](../config/skills.yaml) -- `enabled` flag controls whether the skill shadow path runs.
+- **Agent definitions:** [`config/agents.yaml`](../config/agents.md) -- agent names, timeout seconds, model assignments.
+- **Task types:** [`config/task_types.yaml`](../config/task_types.md) -- prompt templates, output schemas, model routing, tool dependencies. The `manual_escalation` block per task type controls which escalation modes are available.
+- **Capabilities:** [`config/capabilities.yaml`](../config/capabilities.md) -- capability registry for the Challenger Agent.
+- **Skills:** [`config/skills.yaml`](../config/skills.md) -- `enabled` flag controls whether the skill shadow path runs.
 - **Prompt templates:** `prompts/parse_task.md` -- Jinja2 template for task parsing.
 - **Output schemas:** `schemas/task_parse_output_v2.json` -- JSON Schema for parse result validation.
 
@@ -134,7 +134,7 @@ The orchestrator itself has minimal config -- it relies on the configurations of
 ## See Also
 
 - [Domain: Agents](agents.md) -- PM Agent, Challenger Agent, execution agents
-- [Domain: Skill System](skill-system.md) -- skill executor, capability matching, shadow evaluation
+- [Domain: Skill System](skill-system/index.md) -- skill executor, capability matching, shadow evaluation
 - [Domain: Task Management](task-system.md) -- task schema, state machine, deduplication
 - [Domain: Cost & Escalation](cost.md) -- budget enforcement that intersects with dispatch
 - [Domain: Chat](chat.md) -- chat routing for `intent_kind: chat` messages

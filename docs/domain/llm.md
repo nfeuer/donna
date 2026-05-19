@@ -120,7 +120,7 @@ The `RateLimiter` implements per-caller sliding window rate limiting:
 
 ## Configuration
 
-**Primary config:** [`config/llm_gateway.yaml`](../config/llm_gateway.yaml)
+**Primary config:** [`config/llm_gateway.yaml`](../config/llm_gateway.md)
 
 ```yaml
 scheduling:
