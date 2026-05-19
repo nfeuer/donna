@@ -9,7 +9,6 @@ See docs/notifications.md and the discord interaction expansion plan.
 
 from __future__ import annotations
 
-import contextlib
 from datetime import UTC
 from typing import TYPE_CHECKING, Any
 
@@ -1119,8 +1118,14 @@ class _ToolGapFileRequestButton(discord.ui.Button[discord.ui.View]):
                 f"Tool request already {row.status}.", ephemeral=True
             )
             _disable_all(view)
-            with contextlib.suppress(Exception):
+            try:
                 await interaction.message.edit(view=view)  # type: ignore[union-attr]
+            except Exception:
+                logger.warning(
+                    "discord_view_edit_failed",
+                    event_type="fallback_activated",
+                    component="tool_gap_view",
+                )
             view.stop()
             return
 
@@ -1149,8 +1154,14 @@ class _ToolGapFileRequestButton(discord.ui.Button[discord.ui.View]):
             escalation_request_id=esc_row.id,
         )
         _disable_all(view)
-        with contextlib.suppress(Exception):
+        try:
             await interaction.message.edit(view=view)  # type: ignore[union-attr]
+        except Exception:
+            logger.warning(
+                "discord_view_edit_failed",
+                event_type="fallback_activated",
+                component="tool_gap_view",
+            )
 
         await interaction.response.send_message(
             (
@@ -1215,13 +1226,25 @@ class _ToolGapSnoozeButton(discord.ui.Button[discord.ui.View]):
                 "Tool request is no longer open.", ephemeral=True
             )
             _disable_all(view)
-            with contextlib.suppress(Exception):
+            try:
                 await interaction.message.edit(view=view)  # type: ignore[union-attr]
+            except Exception:
+                logger.warning(
+                    "discord_view_edit_failed",
+                    event_type="fallback_activated",
+                    component="tool_gap_view",
+                )
             view.stop()
             return
         _disable_all(view)
-        with contextlib.suppress(Exception):
+        try:
             await interaction.message.edit(view=view)  # type: ignore[union-attr]
+        except Exception:
+            logger.warning(
+                "discord_view_edit_failed",
+                event_type="fallback_activated",
+                component="tool_gap_view",
+            )
         hours = self._snooze_seconds // 3600
         await interaction.response.send_message(
             f"Snoozed `{view.tool_name}` for {hours}h.", ephemeral=True
