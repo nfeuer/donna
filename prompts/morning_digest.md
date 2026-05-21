@@ -51,4 +51,15 @@ Month-to-date: ${{ mtd_cost }} / ${{ monthly_budget }}
 
 ## Output
 
-Generate the digest as a single message suitable for Discord embed or email. Keep it under 2000 characters for Discord compatibility.
+Respond with a JSON object containing these fields:
+
+```json
+{
+  "digest_text": "<the full digest message as a single string, suitable for Discord embed or email, under 2000 characters>",
+  "task_count": <total number of tasks for today>,
+  "overdue_count": <number of overdue tasks>,
+  "carryover_count": <number of tasks carried over from yesterday>
+}
+```
+
+The `digest_text` field is required. Write the digest message directly into it as plain text with markdown formatting.

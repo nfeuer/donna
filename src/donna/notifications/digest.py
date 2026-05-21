@@ -128,6 +128,11 @@ class MorningDigest:
             rendered_prompt = _render_template(template_text, data)
             result, _ = await self._router.complete(rendered_prompt, task_type="generate_digest")
             digest_text = result.get("digest_text") if isinstance(result, dict) else None
+            if isinstance(result, dict) and not digest_text:
+                logger.warning(
+                    "morning_digest_missing_key",
+                    keys=list(result.keys()),
+                )
         except ContextOverflowError:
             raise
         except Exception:
