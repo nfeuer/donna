@@ -26,8 +26,8 @@ services:
       - ${DONNA_LOG_PATH}:/donna/logs
       - ${DONNA_VAULT_PATH}:/donna/vault
       - ../config:/donna/config
-      - ../prompts:/donna/prompts:ro
-      - ../schemas:/donna/schemas:ro
+      - ../prompts:/app/prompts:ro
+      - ../schemas:/app/schemas:ro
       - browser-data:/data/browser
     ports:
       - "8100:8100"    # Health endpoint
