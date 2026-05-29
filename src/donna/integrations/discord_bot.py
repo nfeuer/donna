@@ -783,6 +783,7 @@ class DonnaBot(discord.Client):
         default_min_interval = getattr(
             self, "_automation_default_min_interval_seconds", 300
         )
+        skill_repo = getattr(self, "_skill_candidate_repo", None)
         creation = AutomationCreationPath(
             repository=self._automation_repo,
             default_min_interval_seconds=default_min_interval,
@@ -792,6 +793,7 @@ class DonnaBot(discord.Client):
             capability_default_alerts_lookup=getattr(
                 self, "_automation_default_alerts_lookup", None,
             ),
+            skill_candidate_writer=skill_repo.create if skill_repo else None,
         )
         try:
             automation_id = await creation.approve(view.draft, name=view.name)

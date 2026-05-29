@@ -37,6 +37,7 @@ class MissingToolError(Exception):
 CapabilityToolLookup = Callable[[str], Awaitable[list[str]]]
 CapabilityInputSchemaLookup = Callable[[str], Awaitable[dict[str, Any]]]
 CapabilityDefaultAlertsLookup = Callable[[str], Awaitable[dict[str, Any] | None]]
+SkillCandidateWriter = Callable[..., Awaitable[str]]
 
 
 class AutomationCreationPath:
@@ -49,15 +50,15 @@ class AutomationCreationPath:
         capability_tool_lookup: CapabilityToolLookup | None = None,
         capability_input_schema_lookup: CapabilityInputSchemaLookup | None = None,
         capability_default_alerts_lookup: CapabilityDefaultAlertsLookup | None = None,
+        skill_candidate_writer: SkillCandidateWriter | None = None,
     ) -> None:
         self._repo = repository
-        # Sourced from config/automations.yaml in production wiring; keeps
-        # the 300-second default so existing unit tests keep working.
         self._default_min_interval_seconds = default_min_interval_seconds
         self._tool_registry = tool_registry
         self._capability_tool_lookup = capability_tool_lookup
         self._capability_input_schema_lookup = capability_input_schema_lookup
         self._capability_default_alerts_lookup = capability_default_alerts_lookup
+        self._skill_candidate_writer = skill_candidate_writer
 
     async def approve(self, draft: DraftAutomation, *, name: str) -> str | None:
         """Create the automation row. Returns its id or ``None`` on duplicate."""
@@ -159,6 +160,27 @@ class AutomationCreationPath:
                 target_cadence=draft.target_cadence_cron,
                 active_cadence=draft.active_cadence_cron,
             )
+            if draft.skill_candidate and self._skill_candidate_writer is not None:
+                try:
+                    candidate_id = await self._skill_candidate_writer(
+                        capability_name,
+                        None,
+                        0.0,
+                        1,
+                        None,
+                        draft.skill_candidate_reasoning,
+                    )
+                    logger.info(
+                        "skill_candidate_queued_from_automation",
+                        automation_id=automation_id,
+                        candidate_id=candidate_id,
+                        reasoning=draft.skill_candidate_reasoning,
+                    )
+                except Exception:
+                    logger.exception(
+                        "skill_candidate_queue_failed",
+                        automation_id=automation_id,
+                    )
             return str(automation_id) if automation_id is not None else None
         except AlreadyExistsError:
             logger.info(

@@ -73,6 +73,7 @@ class SkillCandidateRepository:
         expected_savings_usd: float,
         volume_30d: int,
         variance_score: float | None,
+        reasoning: str | None = None,
     ) -> str:
         """Create a new candidate report row with status='new'; return the new id."""
         candidate_id = str(uuid6.uuid7())
@@ -86,7 +87,7 @@ class SkillCandidateRepository:
             (
                 candidate_id, capability_name, task_pattern_hash,
                 expected_savings_usd, volume_30d, variance_score,
-                "new", now, None, None,
+                "new", now, None, reasoning,
             ),
         )
         await self._conn.commit()

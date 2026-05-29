@@ -168,3 +168,73 @@ async def test_approve_defaults_alert_channels_to_discord_dm() -> None:
     await flow.approve(draft, name="watch")
     row = repo.created[0]
     assert row["alert_channels"] == ["discord_dm"]
+
+
+@pytest.mark.asyncio
+async def test_approve_queues_skill_candidate_when_flagged() -> None:
+    repo = _FakeRepo()
+    candidate_reports: list[dict] = []
+
+    async def _fake_writer(
+        capability_name, task_pattern_hash,
+        expected_savings_usd, volume_30d, variance_score,
+        reasoning=None,
+    ):
+        candidate_reports.append({
+            "capability_name": capability_name,
+            "reasoning": reasoning,
+        })
+        return "cand-1"
+
+    flow = AutomationCreationPath(
+        repository=repo,
+        skill_candidate_writer=_fake_writer,
+    )
+    draft = DraftAutomation(
+        user_id="u1",
+        capability_name=None,
+        inputs={"time": "3pm", "message": "call dentist"},
+        schedule_cron="0 15 * * *",
+        schedule_human="daily at 3pm",
+        alert_conditions=None,
+        target_cadence_cron="0 15 * * *",
+        active_cadence_cron="0 15 * * *",
+        skill_candidate=True,
+        skill_candidate_reasoning="Reminders are a common pattern worth a dedicated skill",
+    )
+    await flow.approve(draft, name="dentist reminder")
+    assert len(candidate_reports) == 1
+    assert candidate_reports[0]["capability_name"] == "claude_native"
+    assert "Reminders" in candidate_reports[0]["reasoning"]
+
+
+@pytest.mark.asyncio
+async def test_approve_does_not_queue_candidate_when_not_flagged() -> None:
+    repo = _FakeRepo()
+    candidate_reports: list[dict] = []
+
+    async def _fake_writer(
+        capability_name, task_pattern_hash,
+        expected_savings_usd, volume_30d, variance_score,
+        reasoning=None,
+    ):
+        candidate_reports.append({})
+        return "cand-1"
+
+    flow = AutomationCreationPath(
+        repository=repo,
+        skill_candidate_writer=_fake_writer,
+    )
+    draft = DraftAutomation(
+        user_id="u1",
+        capability_name="product_watch",
+        inputs={"url": "https://x.com/shirt"},
+        schedule_cron="0 12 * * *",
+        schedule_human="daily at noon",
+        alert_conditions=None,
+        target_cadence_cron="0 12 * * *",
+        active_cadence_cron="0 12 * * *",
+        skill_candidate=False,
+    )
+    await flow.approve(draft, name="watch shirt")
+    assert len(candidate_reports) == 0
