@@ -363,14 +363,24 @@ class EodDigest:
             )).fetchone()
             if row:
                 today_cost = float(row[0])
-        except Exception:
+        except Exception as exc:
             logger.exception("eod_digest_cost_query_failed")
+            await self._service.dispatch_fallback_alert(
+                component="eod_digest",
+                error=f"Cost query failed: {type(exc).__name__}: {exc}",
+                fallback="today_cost showing as $0.00",
+            )
 
         skill_system = {}
         try:
             skill_system = await self._assemble_skill_system_data(now)
-        except Exception:
+        except Exception as exc:
             logger.exception("eod_digest_skill_system_query_failed")
+            await self._service.dispatch_fallback_alert(
+                component="eod_digest",
+                error=f"Skill system query failed: {type(exc).__name__}: {exc}",
+                fallback="skill system section omitted from digest",
+            )
 
         return {
             "current_date": today_start.strftime("%Y-%m-%d"),

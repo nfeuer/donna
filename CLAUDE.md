@@ -60,6 +60,7 @@ The user forgets to capture tasks, rarely checks task lists, and doesn't schedul
 - SQLite access via `aiosqlite` — single connection, WAL mode.
 - All task state transitions go through the state machine (loaded from `config/task_states.yaml`).
 - Schema changes require an Alembic migration — never modify tables manually.
+- Every `try/except` that falls back to a default or degraded behavior must call `dispatch_fallback_alert()` (or log with `event_type="fallback_activated"` if `NotificationService` is unavailable). Never use `contextlib.suppress(Exception)`.
 
 ## Documentation
 - Narrative docs are hand-written markdown under `docs/`.

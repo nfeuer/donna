@@ -13,6 +13,7 @@ import discord
 
 from donna.config import TimeWindowConfig, TimeWindowsConfig
 from donna.notifications.service import (
+    CHANNEL_DEBUG,
     CHANNEL_TASKS,
     NOTIF_REMINDER,
     NotificationService,
@@ -202,3 +203,112 @@ class TestDispatchVariants:
 
         bot.send_to_thread.assert_called_once_with(99999, "nudge")
         bot.send_message.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Fallback alert tests
+# ---------------------------------------------------------------------------
+
+
+class TestFallbackAlert:
+    async def test_dispatches_to_debug_channel(self) -> None:
+        service, bot = _make_service()
+
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(10)
+            result = await service.dispatch_fallback_alert(
+                component="llm_router",
+                error="Claude API timeout",
+                fallback="switched to local model",
+            )
+
+        assert result is True
+        bot.send_message.assert_called_once()
+        call_args = bot.send_message.call_args
+        assert call_args[0][0] == CHANNEL_DEBUG
+        message = call_args[0][1]
+        assert "llm_router" in message
+        assert "Claude API timeout" in message
+        assert "switched to local model" in message
+
+    async def test_includes_context_in_message(self) -> None:
+        service, bot = _make_service()
+
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(10)
+            await service.dispatch_fallback_alert(
+                component="scheduler",
+                error="cron missed",
+                fallback="manual retry",
+                context={"task_id": "abc123", "attempt": "3"},
+            )
+
+        message = bot.send_message.call_args[0][1]
+        assert "task_id: abc123" in message
+        assert "attempt: 3" in message
+
+    async def test_dedup_within_cooldown(self) -> None:
+        service, bot = _make_service()
+
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(10)
+            r1 = await service.dispatch_fallback_alert(
+                component="llm_router", error="timeout", fallback="local",
+            )
+            mock_dt.now.return_value = _utc(10, 30)  # 30 min later, within 1h cooldown
+            r2 = await service.dispatch_fallback_alert(
+                component="llm_router", error="timeout", fallback="local",
+            )
+
+        assert r1 is True
+        assert r2 is False
+        assert bot.send_message.call_count == 1
+
+    async def test_different_component_not_deduped(self) -> None:
+        service, bot = _make_service()
+
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(10)
+            r1 = await service.dispatch_fallback_alert(
+                component="llm_router", error="timeout", fallback="local",
+            )
+            r2 = await service.dispatch_fallback_alert(
+                component="scheduler", error="timeout", fallback="local",
+            )
+
+        assert r1 is True
+        assert r2 is True
+        assert bot.send_message.call_count == 2
+
+    async def test_cooldown_expires(self) -> None:
+        service, bot = _make_service()
+
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(10)
+            r1 = await service.dispatch_fallback_alert(
+                component="llm_router", error="timeout", fallback="local",
+                cooldown_seconds=1800,  # 30 min cooldown
+            )
+            mock_dt.now.return_value = _utc(11)  # 1h later, past 30m cooldown
+            r2 = await service.dispatch_fallback_alert(
+                component="llm_router", error="timeout", fallback="local",
+                cooldown_seconds=1800,
+            )
+
+        assert r1 is True
+        assert r2 is True
+        assert bot.send_message.call_count == 2
+
+    async def test_recursion_guard_on_send_failure(self) -> None:
+        service, bot = _make_service()
+        bot.send_message = AsyncMock(side_effect=RuntimeError("Discord down"))
+
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(10)
+            result = await service.dispatch_fallback_alert(
+                component="notifier", error="send failed", fallback="logged only",
+            )
+
+        assert result is False
+        # Verify _alerting flag was reset (no lingering recursion guard)
+        assert service._alerting is False

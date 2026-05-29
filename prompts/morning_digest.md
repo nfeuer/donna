@@ -49,17 +49,10 @@ Month-to-date: ${{ mtd_cost }} / ${{ monthly_budget }}
 ### Tool Gaps (speculative — high-blocking already pinged)
 {{ tool_gaps }}
 
-## Output
+## Output Format
 
-Respond with a JSON object containing these fields:
+Return a JSON object with exactly these fields:
 
-```json
-{
-  "digest_text": "<the full digest message as a single string, suitable for Discord embed or email, under 2000 characters>",
-  "task_count": <total number of tasks for today>,
-  "overdue_count": <number of overdue tasks>,
-  "carryover_count": <number of tasks carried over from yesterday>
-}
-```
+    {"digest_text": "<the full digest message, under 2000 chars>", "task_count": <integer>, "overdue_count": <integer>}
 
-The `digest_text` field is required. Write the digest message directly into it as plain text with markdown formatting.
+Do not use any other keys. The digest_text field contains the complete message suitable for Discord embed or email.

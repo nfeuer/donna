@@ -25,11 +25,7 @@ import structlog
 
 from donna.integrations.discord_bot import DonnaBot
 from donna.models.router import ContextOverflowError
-from donna.notifications.service import (
-    CHANNEL_DEBUG,
-    NOTIF_OVERDUE,
-    NotificationService,
-)
+from donna.notifications.service import NotificationService
 from donna.scheduling.scheduler import Scheduler
 from donna.tasks.database import Database
 from donna.tasks.db_models import TaskStatus
@@ -84,18 +80,6 @@ class OverdueDetector:
         self._nudged: set[str] = set()
         self._nudged_date: str = ""
 
-    async def _alert_debug(self, message: str) -> None:
-        """Send an error/warning to #donna-debug so failures aren't silent."""
-        try:
-            await self._service.dispatch(
-                notification_type=NOTIF_OVERDUE,
-                content=f"⚠️ {message}",
-                channel=CHANNEL_DEBUG,
-                priority=5,
-            )
-        except Exception:
-            logger.exception("debug_alert_dispatch_failed")
-
     async def run(self) -> None:
         """Loop forever, checking for overdue tasks every 15 minutes."""
         logger.info(
@@ -117,8 +101,10 @@ class OverdueDetector:
                 await self._check_and_nudge(now)
             except Exception as exc:
                 logger.exception("overdue_check_failed")
-                await self._alert_debug(
-                    f"Overdue check failed: {type(exc).__name__}: {exc}",
+                await self._service.dispatch_fallback_alert(
+                    component="overdue_detector",
+                    error=f"Overdue check failed: {type(exc).__name__}: {exc}",
+                    fallback="skipped this check cycle",
                 )
 
             await asyncio.sleep(CHECK_INTERVAL_SECONDS)
@@ -241,9 +227,14 @@ class OverdueDetector:
             raise
         except Exception as exc:
             logger.exception("nudge_llm_failed", task_id=getattr(task, "id", None))
-            await self._alert_debug(
-                f"LLM nudge failed for '{getattr(task, 'title', '?')}': "
-                f"{type(exc).__name__}: {exc}",
+            await self._service.dispatch_fallback_alert(
+                component="overdue_nudge",
+                error=(
+                    f"LLM nudge failed for '{getattr(task, 'title', '?')}': "
+                    f"{type(exc).__name__}: {exc}"
+                ),
+                fallback="template string nudge",
+                context={"task_id": getattr(task, "id", None)},
             )
 
         return fallback, False
@@ -266,9 +257,14 @@ class OverdueDetector:
                 )
             except Exception as exc:
                 logger.exception("reply_handler_failed", task_id=task_id)
-                await self._alert_debug(
-                    f"Reply handler crashed for task '{task.title}': "
-                    f"{type(exc).__name__}: {exc}",
+                await self._service.dispatch_fallback_alert(
+                    component="overdue_reply",
+                    error=(
+                        f"Reply handler crashed for task '{task.title}': "
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                    fallback="reply ignored",
+                    context={"task_id": task_id},
                 )
                 return None
             logger.info(

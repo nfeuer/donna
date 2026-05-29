@@ -127,6 +127,7 @@ class ModelRouter:
         escalation_gate: EscalationGate | None = None,
         invocation_logger: InvocationLogger | None = None,
         payload_writer: PayloadWriter | None = None,
+        fallback_alert_fn: Callable[..., Awaitable[bool]] | None = None,
     ) -> None:
         self._models_config = models_config
         self._task_types_config = task_types_config
@@ -136,6 +137,7 @@ class ModelRouter:
         self._escalation_gate = escalation_gate
         self._invocation_logger = invocation_logger
         self._payload_writer = payload_writer
+        self._fallback_alert_fn = fallback_alert_fn
         self._circuit_breaker = CircuitBreaker()
 
         # Instantiate one provider instance per unique provider name in config.
@@ -182,6 +184,16 @@ class ModelRouter:
         is built earlier in the boot sequence.
         """
         self._escalation_gate = gate
+
+    def set_fallback_alert_fn(
+        self, fn: Callable[..., Awaitable[bool]] | None
+    ) -> None:
+        """Late-bind the fallback alert callback.
+
+        The notification service is constructed after the router in the
+        boot sequence, so this is wired once the service exists.
+        """
+        self._fallback_alert_fn = fn
 
     def _lookup_routing_entry(self, task_type: str) -> Any | None:
         """Lookup routing config by exact key, then longest-prefix match."""
@@ -415,6 +427,25 @@ class ModelRouter:
                         to_alias=fallback_alias,
                     )
 
+                if self._fallback_alert_fn is not None:
+                    try:
+                        await self._fallback_alert_fn(
+                            component="model_router",
+                            error=(
+                                f"Context overflow: {estimated_in} tokens"
+                                f" > {budget} budget for"
+                                f" {original_alias!r}"
+                            ),
+                            fallback=f"escalated to {fallback_alias!r}",
+                            context={
+                                "task_type": task_type,
+                                "from_alias": original_alias,
+                                "to_alias": fallback_alias,
+                            },
+                        )
+                    except Exception:
+                        logger.warning("fallback_alert_fn_failed", task_type=task_type)
+
         # Compute token limit so total spend (input + output) cannot exceed
         # the approved extension. §10.6 row 1 says "extension_amount × token_rate";
         # in practice both prompt input and generated output are billed, so we
@@ -503,6 +534,16 @@ class ModelRouter:
                 event_type="system.ollama_recovered",
                 task_type=task_type,
             )
+            if self._fallback_alert_fn is not None:
+                try:
+                    await self._fallback_alert_fn(
+                        component="model_router",
+                        error="Ollama recovered — no longer falling back to cloud",
+                        fallback="resuming local model routing",
+                        context={"task_type": task_type},
+                    )
+                except Exception:
+                    logger.warning("fallback_alert_fn_failed_recovery", task_type=task_type)
 
         enriched_metadata = CompletionMetadata(
             latency_ms=metadata.latency_ms,

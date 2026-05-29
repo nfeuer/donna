@@ -14,7 +14,6 @@ See slices/slice_05_reminders_digest.md and docs/notifications.md.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import zoneinfo
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -117,25 +116,52 @@ class MorningDigest:
                     data["system_status"] = "\n".join(
                         [":warning: System warnings:"] + [f"  • {w}" for w in issues]
                     )
-            except Exception:
+            except Exception as exc:
                 logger.exception("morning_digest_self_diagnostic_failed")
+                await self._service.dispatch_fallback_alert(
+                    component="morning_digest",
+                    error=f"Self-diagnostic crashed: {type(exc).__name__}: {exc}",
+                    fallback="system_status shows 'All systems normal' (unverified)",
+                )
 
         template_text = (self._project_root / "prompts" / "morning_digest.md").read_text()
 
         # Attempt LLM-generated digest.
         digest_text: str | None = None
+        llm_error: str | None = None
         try:
             rendered_prompt = _render_template(template_text, data)
             result, _ = await self._router.complete(rendered_prompt, task_type="generate_digest")
             digest_text = result.get("digest_text") if isinstance(result, dict) else None
-            if isinstance(result, dict) and not digest_text:
-                logger.warning(
-                    "morning_digest_missing_key",
-                    keys=list(result.keys()),
-                )
+
+            if digest_text is None and isinstance(result, dict):
+                digest_text = result.get("description")
+                if digest_text:
+                    llm_error = f"LLM returned wrong keys: {sorted(result.keys())}"
+                    logger.warning(
+                        "morning_digest_schema_mismatch",
+                        keys=sorted(result.keys()),
+                    )
+                    await self._service.dispatch_fallback_alert(
+                        component="morning_digest",
+                        error=llm_error,
+                        fallback="used 'description' field as digest_text",
+                        context={
+                            "expected_key": "digest_text",
+                            "actual_keys": str(sorted(result.keys())),
+                        },
+                    )
+                else:
+                    llm_error = (
+                        f"LLM returned dict without usable text key: "
+                        f"{sorted(result.keys())}"
+                    )
+            elif not isinstance(result, dict):
+                llm_error = f"LLM returned non-dict: {type(result).__name__}"
         except ContextOverflowError:
             raise
-        except Exception:
+        except Exception as exc:
+            llm_error = f"{type(exc).__name__}: {exc}"
             logger.exception("morning_digest_llm_failed")
 
         if digest_text:
@@ -154,7 +180,11 @@ class MorningDigest:
             logger.info("morning_digest_sent_llm")
             email_body = digest_text
         else:
-            # Degraded mode: plain text from raw data.
+            await self._service.dispatch_fallback_alert(
+                component="morning_digest",
+                error=llm_error or "digest_text was None after LLM call",
+                fallback="degraded plain-text digest",
+            )
             fallback_text = self._render_degraded(data)
             await self._service.dispatch(
                 notification_type=NOTIF_DIGEST,
@@ -193,8 +223,14 @@ class MorningDigest:
                     f"- {ev.summary} ({ev.start.strftime('%H:%M')}–{ev.end.strftime('%H:%M')})"
                     for ev in events
                 ]
-            except Exception:
+            except Exception as exc:
                 logger.exception("morning_digest_calendar_failed")
+                await self._service.dispatch_fallback_alert(
+                    component="morning_digest",
+                    error=f"Calendar API failed: {type(exc).__name__}: {exc}",
+                    fallback="calendar_events shows 'No events today' (may be masking API failure)",
+                    context={"calendar_id": self._calendar_id},
+                )
 
         all_tasks = await self._db.list_tasks(user_id=self._user_id)
 
@@ -253,12 +289,28 @@ class MorningDigest:
             )).fetchone()
             if row2:
                 mtd_cost = float(row2[0])
-        except Exception:
+        except Exception as exc:
             logger.exception("morning_digest_cost_query_failed")
+            await self._service.dispatch_fallback_alert(
+                component="morning_digest",
+                error=f"Cost query failed: {type(exc).__name__}: {exc}",
+                fallback="costs showing as $0.00",
+            )
 
         monthly_budget = 100.0
-        with contextlib.suppress(Exception):
+        try:
             monthly_budget = self._router._models_config.cost.monthly_budget_usd
+        except Exception as exc:
+            logger.warning(
+                "morning_digest_config_read_failed",
+                error=str(exc),
+                event_type="fallback_activated",
+            )
+            await self._service.dispatch_fallback_alert(
+                component="morning_digest",
+                error=f"Config read failed: {type(exc).__name__}: {exc}",
+                fallback="monthly_budget defaulting to $100.00",
+            )
 
         # Slice 22 — open speculative tool-gap aggregation (high-severity
         # rows already pinged in real time).
@@ -279,8 +331,13 @@ class MorningDigest:
                         f"{blocking}, first seen "
                         f"{row.first_seen_at.strftime('%Y-%m-%d')})"
                     )
-            except Exception:
+            except Exception as exc:
                 logger.exception("morning_digest_tool_gaps_query_failed")
+                await self._service.dispatch_fallback_alert(
+                    component="morning_digest",
+                    error=f"Tool gaps query failed: {type(exc).__name__}: {exc}",
+                    fallback="tool_gaps showing as 'None.'",
+                )
 
         return {
             "current_date": today_start.strftime("%Y-%m-%d"),

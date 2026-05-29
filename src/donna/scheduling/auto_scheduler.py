@@ -78,8 +78,15 @@ class AutoScheduler:
         except NoSlotFoundError:
             logger.warning("auto_scheduler_no_slot", task_id=task.id)
             return
-        except Exception:
+        except Exception as exc:
             logger.exception("auto_scheduler_failed", task_id=task.id)
+            if self._notification_service is not None:
+                await self._notification_service.dispatch_fallback_alert(
+                    component="auto_scheduler",
+                    error=f"Scheduling failed: {type(exc).__name__}: {exc}",
+                    fallback="task left in backlog",
+                    context={"task_id": task.id},
+                )
             return
 
         if slot is None:

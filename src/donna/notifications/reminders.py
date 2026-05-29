@@ -183,8 +183,14 @@ class ReminderScheduler:
             logger.warning("reminder_llm_empty_response", task_id=task.id)
         except ContextOverflowError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.exception("reminder_llm_failed", task_id=task.id)
+            await self._service.dispatch_fallback_alert(
+                component="reminder",
+                error=f"LLM failed: {type(exc).__name__}: {exc}",
+                fallback="template string reminder",
+                context={"task_id": task.id, "task_title": task.title},
+            )
 
         return fallback, False
 
