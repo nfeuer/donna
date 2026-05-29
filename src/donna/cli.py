@@ -135,6 +135,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Notification priority (1-5)",
     )
 
+    # donna test-digest
+    td_parser = subparsers.add_parser(
+        "test-digest",
+        help="Fire the morning digest once through the live LLM and Discord",
+    )
+    td_parser.add_argument("--config-dir", default="config")
+
     # donna memory backfill (slice 14)
     memory_parser = subparsers.add_parser(
         "memory",
@@ -182,6 +189,8 @@ def main() -> None:
         asyncio.run(_setup(args))
     elif args.command == "test-notification":
         asyncio.run(_test_notification(args))
+    elif args.command == "test-digest":
+        asyncio.run(_test_digest(args))
     elif args.command == "memory":
         if args.memory_command == "backfill":
             sys.exit(asyncio.run(_run_memory_backfill(args)))
@@ -658,6 +667,92 @@ async def _test_notification(args: argparse.Namespace) -> None:
     print(f"dispatched={sent}")
     await bot.close()
     await bot_task
+
+
+async def _test_digest(args: argparse.Namespace) -> None:
+    """Fire the morning digest once through the live LLM and Discord, then exit."""
+    import zoneinfo
+    from datetime import UTC, datetime
+    from pathlib import Path
+
+    from donna.config import (
+        load_calendar_config,
+        load_models_config,
+        load_state_machine_config,
+        load_task_types_config,
+    )
+    from donna.integrations.discord_bot import DonnaBot
+    from donna.logging.setup import setup_logging
+    from donna.models.router import ModelRouter
+    from donna.notifications.digest import MorningDigest
+    from donna.notifications.service import NotificationService
+    from donna.tasks.database import Database
+    from donna.tasks.state_machine import StateMachine
+
+    setup_logging(log_level="INFO", json_output=False)
+
+    config_dir = Path(args.config_dir)
+    project_root = Path.cwd()
+
+    token = os.environ["DISCORD_BOT_TOKEN"]
+    tasks_channel_id = int(os.environ["DISCORD_TASKS_CHANNEL_ID"])
+    debug_channel_id_env = os.environ.get("DISCORD_DEBUG_CHANNEL_ID")
+    agents_channel_id_env = os.environ.get("DISCORD_AGENTS_CHANNEL_ID")
+    digest_channel_id_env = os.environ.get("DISCORD_DIGEST_CHANNEL_ID")
+    guild_id_env = os.environ.get("DISCORD_GUILD_ID")
+    user_id = os.environ.get("DONNA_USER_ID", "nick")
+    db_path = os.environ.get("DONNA_DB_PATH", "donna_tasks.db")
+    tz_name = os.environ.get("TZ", "America/New_York")
+    tz = zoneinfo.ZoneInfo(tz_name)
+
+    sm_config = load_state_machine_config(config_dir)
+    state_machine = StateMachine(sm_config)
+    db = Database(db_path, state_machine)
+    await db.connect()
+
+    models_config = load_models_config(config_dir)
+    task_types_config = load_task_types_config(config_dir)
+    router = ModelRouter(models_config, task_types_config, project_root)
+
+    bot = DonnaBot(
+        input_parser=cast(Any, None),
+        database=cast(Any, None),
+        tasks_channel_id=tasks_channel_id,
+        debug_channel_id=int(debug_channel_id_env) if debug_channel_id_env else None,
+        agents_channel_id=int(agents_channel_id_env) if agents_channel_id_env else None,
+        digest_channel_id=int(digest_channel_id_env) if digest_channel_id_env else None,
+        guild_id=int(guild_id_env) if guild_id_env else None,
+    )
+    bot_task = asyncio.create_task(bot.start(token))
+    if hasattr(bot, "ready_event"):
+        await bot.ready_event.wait()
+    else:
+        await asyncio.wait_for(bot.wait_until_ready(), timeout=30)
+
+    notification_service = NotificationService(
+        bot=bot,
+        calendar_config=load_calendar_config(config_dir),
+        user_id=user_id,
+    )
+
+    digest = MorningDigest(
+        db=db,
+        service=notification_service,
+        router=router,
+        calendar_client=None,
+        calendar_id="primary",
+        user_id=user_id,
+        project_root=project_root,
+        tz=tz,
+    )
+
+    print("Firing test digest...")
+    await digest._fire(datetime.now(tz=UTC))
+    print("Done.")
+
+    await bot.close()
+    await bot_task
+    await db.close()
 
 
 async def _run_memory_backfill(args: argparse.Namespace) -> int:
