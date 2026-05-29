@@ -2436,6 +2436,8 @@ async def wire_discord(
         # AutomationConfirmationView approval coordinator.
         ctx.bot._intent_dispatcher = intent_dispatcher
         ctx.bot._automation_repo = automation_h.repository
+        if skill_h.bundle is not None:
+            ctx.bot._skill_candidate_repo = skill_h.bundle.candidate_repo
         # Wave 4: wire capability-availability guard into AutomationCreationPath.
         from donna.capabilities.tool_requirements import SkillToolRequirementsLookup
         from donna.skills import tools as _skill_tools_module
