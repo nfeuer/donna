@@ -3,13 +3,23 @@
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
-        "command": "file=\"$CLAUDE_FILE_PATH\"; [[ \"$file\" == *.py ]] && ruff check --fix --quiet \"$file\" 2>/dev/null && ruff format --quiet \"$file\" 2>/dev/null; true"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=\"$CLAUDE_FILE_PATH\"; [[ \"$file\" == *.py ]] && ruff check --fix --quiet \"$file\" 2>/dev/null && ruff format --quiet \"$file\" 2>/dev/null; true"
+          }
+        ]
       }
     ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write",
-        "command": "file=\"$CLAUDE_FILE_PATH\"; case \"$file\" in *.env|*credentials*.json|*token.json|*.pem|*.key) echo 'BLOCKED: refusing to edit secrets/credential file' >&2; exit 2;; esac"
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=\"$CLAUDE_FILE_PATH\"; case \"$file\" in *.env|*credentials*.json|*token.json|*.pem|*.key) echo 'BLOCKED: refusing to edit secrets/credential file' >&2; exit 2;; esac"
+          }
+        ]
       }
     ]
   }
