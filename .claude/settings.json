@@ -1,5 +1,15 @@
 {
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /mnt/donna/donna/scripts/hooks/prune-merged-worktrees.sh"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
@@ -7,6 +17,15 @@
           {
             "type": "command",
             "command": "file=\"$CLAUDE_FILE_PATH\"; [[ \"$file\" == *.py ]] && ruff check --fix --quiet \"$file\" 2>/dev/null && ruff format --quiet \"$file\" 2>/dev/null; true"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /mnt/donna/donna/scripts/hooks/post-merge-prune.sh"
           }
         ]
       }
@@ -18,6 +37,10 @@
           {
             "type": "command",
             "command": "file=\"$CLAUDE_FILE_PATH\"; case \"$file\" in *.env|*credentials*.json|*token.json|*.pem|*.key) echo 'BLOCKED: refusing to edit secrets/credential file' >&2; exit 2;; esac"
+          },
+          {
+            "type": "command",
+            "command": "bash /mnt/donna/donna/scripts/hooks/require-worktree.sh"
           }
         ]
       }
