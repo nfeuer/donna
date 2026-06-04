@@ -70,6 +70,8 @@ class DonnaBot(discord.Client):
         intent_dispatcher: Any | None = None,
         automation_repo: Any | None = None,
         event_bus: Any | None = None,
+        owner_discord_id: int | None = None,
+        owner_user_id: str | None = None,
     ) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -89,6 +91,11 @@ class DonnaBot(discord.Client):
         self._intent_dispatcher = intent_dispatcher
         self._automation_repo = automation_repo
         self._event_bus = event_bus
+        # Configured owner identity — lets the onboarding gate link the owner's
+        # Discord account to their existing user row instead of forking a new
+        # username-derived identity (Bug 2).
+        self._owner_discord_id = owner_discord_id
+        self._owner_user_id = owner_user_id
         # Command tree for slash commands (may fail if Client not fully initialized).
         try:
             self.tree = app_commands.CommandTree(self)
@@ -317,37 +324,65 @@ class DonnaBot(discord.Client):
         # --- Onboarding gate: challenge unknown Discord users for their name ---
         discord_id_raw = str(message.author.id)
         if await self._database.resolve_user_id(discord_id_raw) is None:
-            raw_text = message.content.strip()
-            if discord_id_raw not in self._pending_onboarding:
-                self._pending_onboarding[discord_id_raw] = raw_text
+            # Owner self-heal: if this is the configured owner, link their
+            # Discord ID to the existing owner user row rather than minting a
+            # forked identity (Bug 2). Falls through so resolve_user_id below
+            # returns the real donna_user_id.
+            if (
+                self._owner_discord_id is not None
+                and self._owner_user_id is not None
+                and discord_id_raw == str(self._owner_discord_id)
+            ):
+                linked = await self._database.link_owner_discord_id(
+                    self._owner_user_id, discord_id_raw
+                )
+                if linked:
+                    logger.info(
+                        "owner_discord_linked_on_message",
+                        discord_id=discord_id_raw,
+                        user_id=self._owner_user_id,
+                    )
+                else:
+                    logger.warning(
+                        "owner_discord_link_failed",
+                        event_type="fallback_activated",
+                        discord_id=discord_id_raw,
+                        user_id=self._owner_user_id,
+                    )
+            else:
+                raw_text = message.content.strip()
+                if discord_id_raw not in self._pending_onboarding:
+                    self._pending_onboarding[discord_id_raw] = raw_text
+                    await message.channel.send(
+                        "Hey! I'm Donna. I don't think we've met — what's your name?"
+                    )
+                    return
+                # User is replying with their name.
+                if not raw_text:
+                    await message.channel.send(
+                        "I still need your name first! Just type your first name."
+                    )
+                    return
+                try:
+                    await self._database.create_discord_user(
+                        discord_id=discord_id_raw,
+                        name=raw_text,
+                        discord_username=message.author.name,
+                    )
+                except Exception:
+                    logger.exception(
+                        "onboarding_create_user_failed", discord_id=discord_id_raw
+                    )
+                    await message.channel.send(
+                        "Something went wrong setting up your profile. Try again in a moment."
+                    )
+                    return
+                stashed = self._pending_onboarding.pop(discord_id_raw)
                 await message.channel.send(
-                    "Hey! I'm Donna. I don't think we've met — what's your name?"
+                    f"Nice to meet you, {raw_text}! Let me handle that for you."
                 )
-                return
-            # User is replying with their name.
-            if not raw_text:
-                await message.channel.send(
-                    "I still need your name first! Just type your first name."
-                )
-                return
-            try:
-                await self._database.create_discord_user(
-                    discord_id=discord_id_raw,
-                    name=raw_text,
-                    discord_username=message.author.name,
-                )
-            except Exception:
-                logger.exception("onboarding_create_user_failed", discord_id=discord_id_raw)
-                await message.channel.send(
-                    "Something went wrong setting up your profile. Try again in a moment."
-                )
-                return
-            stashed = self._pending_onboarding.pop(discord_id_raw)
-            await message.channel.send(
-                f"Nice to meet you, {raw_text}! Let me handle that for you."
-            )
-            # Replay the stashed message through the normal pipeline.
-            message.content = stashed
+                # Replay the stashed message through the normal pipeline.
+                message.content = stashed
             # Fall through to the rest of on_message — resolve_user_id
             # will now return the new donna_user_id on the next lookup below.
 

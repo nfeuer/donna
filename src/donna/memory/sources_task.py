@@ -203,14 +203,17 @@ class TaskSource:
         )
         if force_reindex:
             # Bust the content-hash short-circuit so the upsert fully
-            # re-embeds even if the notes/title text is identical.
+            # re-embeds even if the notes/title text is identical. Hold the
+            # store's write lock so this write serializes with every other
+            # writer on the shared connection.
             conn = self._store._conn  # intentional access — same package
-            await conn.execute(
-                "UPDATE memory_documents SET content_hash='' "
-                "WHERE user_id=? AND source_type=? AND source_id=?",
-                (user_id, SOURCE_TYPE, task_id),
-            )
-            await conn.commit()
+            async with self._store._write_lock:  # intentional access — same package
+                await conn.execute(
+                    "UPDATE memory_documents SET content_hash='' "
+                    "WHERE user_id=? AND source_type=? AND source_id=?",
+                    (user_id, SOURCE_TYPE, task_id),
+                )
+                await conn.commit()
         return await self._store.upsert(doc)
 
 

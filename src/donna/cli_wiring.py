@@ -182,7 +182,13 @@ async def _try_build_memory_store(
             max_tokens=cfg.embedding.max_tokens,
             overlap_tokens=cfg.embedding.chunk_overlap,
         )
-        store = MemoryStore(db.connection, provider, chunker, cfg.retrieval)
+        store = MemoryStore(
+            db.connection,
+            provider,
+            chunker,
+            cfg.retrieval,
+            write_lock=db.write_lock,
+        )
         queue = MemoryIngestQueue(store)
         source: Any | None = None
         if cfg.sources.vault.enabled and vault_client is not None:
@@ -1315,7 +1321,16 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             agents_channel_id=int(agents_channel_id_str) if agents_channel_id_str else None,
             guild_id=int(guild_id_str) if guild_id_str else None,
             event_bus=event_bus,
+            owner_discord_id=owner_discord_id,
+            owner_user_id=user_id,
         )
+
+        # Boot-time reconcile (Bug 2): link the configured owner's Discord ID
+        # to their existing user row so Discord messages are attributed to the
+        # real donna_user_id instead of a forked username-derived identity.
+        # Self-healing — runs every boot and is idempotent once linked.
+        if owner_discord_id is not None:
+            await db.link_owner_discord_id(user_id, str(owner_discord_id))
 
         # Wave 1 (F-6 Step 6a): construct NotificationService with the live bot.
         from donna.config import load_calendar_config

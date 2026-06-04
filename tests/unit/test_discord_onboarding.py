@@ -125,6 +125,57 @@ class TestOnboardingGate:
         assert USER_DISCORD_ID in bot._pending_onboarding
 
 
+class TestOwnerDiscordLink:
+    """Bug 2: the configured owner's first Discord message links to the
+    existing owner user row instead of triggering the name-challenge flow."""
+
+    async def test_owner_links_to_existing_user_without_name_challenge(self):
+        db = AsyncMock()
+        # First lookup (gate) returns None; after linking it resolves to nick.
+        db.resolve_user_id = AsyncMock(side_effect=[None, "nick"])
+        db.link_owner_discord_id = AsyncMock(return_value=True)
+        parser = AsyncMock()
+        with patch.object(discord.Client, "__init__", return_value=None):
+            bot = DonnaBot(
+                input_parser=parser,
+                database=db,
+                tasks_channel_id=TASKS_CHANNEL_ID,
+                owner_discord_id=int(USER_DISCORD_ID),
+                owner_user_id="nick",
+            )
+
+        msg = _make_message(content="Buy milk")
+        await bot.on_message(msg)
+
+        db.link_owner_discord_id.assert_called_once_with("nick", USER_DISCORD_ID)
+        # Owner is never asked for their name and is never queued for onboarding.
+        assert USER_DISCORD_ID not in bot._pending_onboarding
+        for call in msg.channel.send.call_args_list:
+            assert "what's your name" not in str(call).lower()
+
+    async def test_non_owner_unknown_user_still_gets_name_challenge(self):
+        db = AsyncMock()
+        db.resolve_user_id = AsyncMock(return_value=None)
+        db.link_owner_discord_id = AsyncMock(return_value=True)
+        parser = AsyncMock()
+        with patch.object(discord.Client, "__init__", return_value=None):
+            bot = DonnaBot(
+                input_parser=parser,
+                database=db,
+                tasks_channel_id=TASKS_CHANNEL_ID,
+                owner_discord_id=12345,  # different from USER_DISCORD_ID
+                owner_user_id="nick",
+            )
+
+        msg = _make_message(content="Track my package")
+        await bot.on_message(msg)
+
+        db.link_owner_discord_id.assert_not_called()
+        sent = msg.channel.send.call_args[0][0]
+        assert "name" in sent.lower()
+        assert USER_DISCORD_ID in bot._pending_onboarding
+
+
 class TestSendDm:
     async def test_send_dm_fetches_user_and_sends(self):
         bot = _make_bot()

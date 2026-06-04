@@ -207,6 +207,14 @@ class Database:
         # propagate; see ``_fire_memory_observer`` below.
         self._memory_observer = memory_observer
         self._event_bus: TaskEventBus | None = None
+        # Serializes every transaction on the shared aiosqlite connection.
+        # The same lock is handed to :class:`MemoryStore` (which opens
+        # explicit ``BEGIN`` transactions) so task writes and memory
+        # writes can never interleave their transactions — otherwise the
+        # memory store's ``BEGIN`` can land while a task write's implicit
+        # transaction is still open and raise "cannot start a transaction
+        # within a transaction".
+        self._write_lock = asyncio.Lock()
 
     def set_memory_observer(self, observer: Any | None) -> None:
         """Attach the slice-14 memory observer post-construction.
@@ -348,12 +356,13 @@ class Database:
             donna_user_id = f"{base_id}_{suffix}"
             suffix += 1
 
-        await conn.execute(
-            """INSERT INTO users (donna_user_id, immich_user_id, email, name, discord_id, role)
-               VALUES (?, NULL, NULL, ?, ?, 'user')""",
-            (donna_user_id, name, discord_id),
-        )
-        await conn.commit()
+        async with self._write_lock:
+            await conn.execute(
+                """INSERT INTO users (donna_user_id, immich_user_id, email, name, discord_id, role)
+                   VALUES (?, NULL, NULL, ?, ?, 'user')""",
+                (donna_user_id, name, discord_id),
+            )
+            await conn.commit()
         logger.info(
             "discord_user_created",
             donna_user_id=donna_user_id,
@@ -361,6 +370,73 @@ class Database:
             name=name,
         )
         return donna_user_id
+
+    async def link_owner_discord_id(
+        self, donna_user_id: str, discord_id: str
+    ) -> bool:
+        """Attach a Discord ID to an existing user row (e.g. the owner).
+
+        Unlike :meth:`create_discord_user`, this never mints a new identity —
+        it links a Discord account to a user that already exists (seeded by
+        the setup wizard from ``DONNA_USER_ID``). This is how the configured
+        owner's Discord messages get attributed to their real ``donna_user_id``
+        instead of a forked username-derived row.
+
+        Args:
+            donna_user_id: The existing user to link the Discord ID onto.
+            discord_id: Discord snowflake ID to attach.
+
+        Returns:
+            True if the row is now linked to ``discord_id`` (newly linked or
+            already linked). False if no such user exists, or if ``discord_id``
+            already belongs to a different user (a conflict left untouched).
+        """
+        conn = self.connection
+        owner = await (
+            await conn.execute(
+                "SELECT discord_id FROM users WHERE donna_user_id = ?",
+                (donna_user_id,),
+            )
+        ).fetchone()
+        if owner is None:
+            logger.warning(
+                "owner_discord_link_no_user",
+                event_type="fallback_activated",
+                donna_user_id=donna_user_id,
+                discord_id=discord_id,
+            )
+            return False
+        if owner[0] == discord_id:
+            return True  # idempotent — already linked
+
+        holder = await (
+            await conn.execute(
+                "SELECT donna_user_id FROM users WHERE discord_id = ?",
+                (discord_id,),
+            )
+        ).fetchone()
+        if holder is not None:
+            logger.warning(
+                "owner_discord_link_conflict",
+                event_type="fallback_activated",
+                donna_user_id=donna_user_id,
+                discord_id=discord_id,
+                held_by=holder[0],
+            )
+            return False
+
+        async with self._write_lock:
+            await conn.execute(
+                "UPDATE users SET discord_id = ? WHERE donna_user_id = ?",
+                (discord_id, donna_user_id),
+            )
+            await conn.commit()
+        logger.info(
+            "owner_discord_linked",
+            donna_user_id=donna_user_id,
+            discord_id=discord_id,
+        )
+        return True
 
     async def get_discord_id(self, donna_user_id: str) -> str | None:
         """Look up discord_id from a donna_user_id."""
@@ -379,6 +455,16 @@ class Database:
         if self._conn is None:
             raise RuntimeError("Database not connected. Call connect() first.")
         return self._conn
+
+    @property
+    def write_lock(self) -> asyncio.Lock:
+        """Serializes transactions on the shared connection.
+
+        Pass this to any other component (e.g. :class:`MemoryStore`) that
+        writes through :attr:`connection`, so their transactions can't
+        interleave with task writes on the single shared connection.
+        """
+        return self._write_lock
 
     @property
     def vec_available(self) -> bool:
@@ -443,46 +529,47 @@ class Database:
         task_id = str(uuid6.uuid7())
         now = datetime.utcnow().isoformat()
 
-        await conn.execute(
-            f"INSERT INTO tasks ({_SELECT_COLUMNS}) "
-            f"VALUES ({', '.join('?' for _ in _TASK_COLUMNS)})",
-            (
-                task_id,
-                user_id,
-                title,
-                description,
-                domain.value,
-                priority,
-                status.value,
-                estimated_duration,
-                deadline.isoformat() if deadline else None,
-                deadline_type.value,
-                scheduled_start.isoformat() if scheduled_start else None,
-                None,  # actual_start
-                None,  # completed_at
-                None,  # recurrence
-                json.dumps(dependencies) if dependencies else None,
-                parent_task,
-                prep_work_flag,
-                prep_work_instructions,
-                agent_eligible,
-                None,  # assigned_agent
-                None,  # agent_status
-                json.dumps(tags) if tags else None,
-                json.dumps(notes) if notes else None,
-                0,  # reschedule_count
-                now,
-                created_via.value,
-                estimated_cost,
-                None,  # calendar_event_id
-                False,  # donna_managed
-                0,  # nudge_count
-                None,  # quality_score
-                capability_name,
-                json.dumps(inputs) if inputs else None,
-            ),
-        )
-        await conn.commit()
+        async with self._write_lock:
+            await conn.execute(
+                f"INSERT INTO tasks ({_SELECT_COLUMNS}) "
+                f"VALUES ({', '.join('?' for _ in _TASK_COLUMNS)})",
+                (
+                    task_id,
+                    user_id,
+                    title,
+                    description,
+                    domain.value,
+                    priority,
+                    status.value,
+                    estimated_duration,
+                    deadline.isoformat() if deadline else None,
+                    deadline_type.value,
+                    scheduled_start.isoformat() if scheduled_start else None,
+                    None,  # actual_start
+                    None,  # completed_at
+                    None,  # recurrence
+                    json.dumps(dependencies) if dependencies else None,
+                    parent_task,
+                    prep_work_flag,
+                    prep_work_instructions,
+                    agent_eligible,
+                    None,  # assigned_agent
+                    None,  # agent_status
+                    json.dumps(tags) if tags else None,
+                    json.dumps(notes) if notes else None,
+                    0,  # reschedule_count
+                    now,
+                    created_via.value,
+                    estimated_cost,
+                    None,  # calendar_event_id
+                    False,  # donna_managed
+                    0,  # nudge_count
+                    None,  # quality_score
+                    capability_name,
+                    json.dumps(inputs) if inputs else None,
+                ),
+            )
+            await conn.commit()
 
         logger.info("task_created", task_id=task_id, title=title, user_id=user_id)
         task_row = await self.get_task(task_id)
@@ -556,11 +643,12 @@ class Database:
         set_clause = ", ".join(f"{col} = ?" for col in processed)
         values = [*list(processed.values()), task_id]
 
-        cursor = await conn.execute(
-            f"UPDATE tasks SET {set_clause} WHERE id = ?",
-            values,
-        )
-        await conn.commit()
+        async with self._write_lock:
+            cursor = await conn.execute(
+                f"UPDATE tasks SET {set_clause} WHERE id = ?",
+                values,
+            )
+            await conn.commit()
 
         if cursor.rowcount == 0:
             return None
@@ -644,11 +732,12 @@ class Database:
             task.status, new_status.value
         )
 
-        await conn.execute(
-            "UPDATE tasks SET status = ? WHERE id = ?",
-            (new_status.value, task_id),
-        )
-        await conn.commit()
+        async with self._write_lock:
+            await conn.execute(
+                "UPDATE tasks SET status = ? WHERE id = ?",
+                (new_status.value, task_id),
+            )
+            await conn.commit()
 
         logger.info(
             "task_state_transitioned",
@@ -673,11 +762,12 @@ class Database:
     async def increment_nudge_count(self, task_id: str) -> None:
         """Atomically increment nudge_count on a task."""
         conn = self.connection
-        await conn.execute(
-            "UPDATE tasks SET nudge_count = nudge_count + 1 WHERE id = ?",
-            (task_id,),
-        )
-        await conn.commit()
+        async with self._write_lock:
+            await conn.execute(
+                "UPDATE tasks SET nudge_count = nudge_count + 1 WHERE id = ?",
+                (task_id,),
+            )
+            await conn.commit()
 
     async def record_nudge_event(
         self,
@@ -696,24 +786,25 @@ class Database:
         conn = self.connection
         event_id = str(uuid6.uuid7())
         now = datetime.utcnow().isoformat()
-        await conn.execute(
-            """INSERT INTO nudge_events
-               (id, user_id, task_id, nudge_type, channel, escalation_tier,
-                message_text, llm_generated, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                event_id,
-                user_id,
-                task_id,
-                nudge_type,
-                channel,
-                escalation_tier,
-                message_text,
-                llm_generated,
-                now,
-            ),
-        )
-        await conn.commit()
+        async with self._write_lock:
+            await conn.execute(
+                """INSERT INTO nudge_events
+                   (id, user_id, task_id, nudge_type, channel, escalation_tier,
+                    message_text, llm_generated, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    event_id,
+                    user_id,
+                    task_id,
+                    nudge_type,
+                    channel,
+                    escalation_tier,
+                    message_text,
+                    llm_generated,
+                    now,
+                ),
+            )
+            await conn.commit()
         logger.info(
             "nudge_event_recorded",
             event_id=event_id, task_id=task_id, nudge_type=nudge_type,
@@ -902,13 +993,15 @@ class Database:
         now_iso = now.isoformat()
         expires_iso = (now + timedelta(minutes=ttl_minutes)).isoformat()
 
-        await conn.execute(
-            """INSERT INTO conversation_sessions
-               (id, user_id, channel, status, created_at, last_activity, expires_at, message_count)
-               VALUES (?, ?, ?, 'active', ?, ?, ?, 0)""",
-            (session_id, user_id, channel, now_iso, now_iso, expires_iso),
-        )
-        await conn.commit()
+        async with self._write_lock:
+            await conn.execute(
+                """INSERT INTO conversation_sessions
+                   (id, user_id, channel, status, created_at,
+                    last_activity, expires_at, message_count)
+                   VALUES (?, ?, ?, 'active', ?, ?, ?, 0)""",
+                (session_id, user_id, channel, now_iso, now_iso, expires_iso),
+            )
+            await conn.commit()
 
         logger.info(
             "chat_session_created",
@@ -1009,11 +1102,12 @@ class Database:
         set_clause = ", ".join(f"{col} = ?" for col in kwargs)
         values = [*list(kwargs.values()), session_id]
 
-        await conn.execute(
-            f"UPDATE conversation_sessions SET {set_clause} WHERE id = ?",
-            values,
-        )
-        await conn.commit()
+        async with self._write_lock:
+            await conn.execute(
+                f"UPDATE conversation_sessions SET {set_clause} WHERE id = ?",
+                values,
+            )
+            await conn.commit()
 
         new_status = kwargs.get("status")
         if new_status in ("expired", "closed"):
@@ -1058,25 +1152,26 @@ class Database:
         message_id = str(uuid6.uuid7())
         now_iso = datetime.utcnow().isoformat()
 
-        await conn.execute(
-            """INSERT INTO conversation_messages
-               (id, session_id, role, content, intent, tokens_used,
-                action_name, action_result, trace_id, invocation_ids,
-                created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                message_id, session_id, role, content, intent,
-                tokens_used, action_name, action_result,
-                trace_id, invocation_ids, now_iso,
-            ),
-        )
-        await conn.execute(
-            """UPDATE conversation_sessions
-               SET message_count = message_count + 1, last_activity = ?
-               WHERE id = ?""",
-            (now_iso, session_id),
-        )
-        await conn.commit()
+        async with self._write_lock:
+            await conn.execute(
+                """INSERT INTO conversation_messages
+                   (id, session_id, role, content, intent, tokens_used,
+                    action_name, action_result, trace_id, invocation_ids,
+                    created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    message_id, session_id, role, content, intent,
+                    tokens_used, action_name, action_result,
+                    trace_id, invocation_ids, now_iso,
+                ),
+            )
+            await conn.execute(
+                """UPDATE conversation_sessions
+                   SET message_count = message_count + 1, last_activity = ?
+                   WHERE id = ?""",
+                (now_iso, session_id),
+            )
+            await conn.commit()
 
         logger.info(
             "chat_message_added",

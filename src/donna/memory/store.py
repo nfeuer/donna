@@ -26,6 +26,7 @@ by ``retrieval.min_score``.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import hashlib
 import json
@@ -118,11 +119,21 @@ class MemoryStore:
         *,
         query_task_type: str = "embed_memory_query",
         task_type_map: dict[str, str] | None = None,
+        write_lock: asyncio.Lock | None = None,
     ) -> None:
         self._conn = conn
         self._provider = provider
         self._chunker = chunker
         self._retrieval_cfg = retrieval_cfg
+        # Serializes every write that opens a transaction on the shared
+        # aiosqlite connection. Embeddings are computed *before* the lock
+        # is taken, so the slow network call never holds it. When the
+        # connection is shared with the task ``Database`` (the production
+        # wiring), the same lock instance must be passed in so memory
+        # writes and task writes can't interleave their transactions —
+        # otherwise an explicit ``BEGIN`` here can land mid-transaction
+        # and raise "cannot start a transaction within a transaction".
+        self._write_lock = write_lock or asyncio.Lock()
         self._query_task_type = query_task_type
         self._task_type_map = dict(_DEFAULT_TASK_TYPE_MAP)
         if task_type_map:
@@ -188,29 +199,33 @@ class MemoryStore:
         out_ids: list[str] = []
         vec_cursor = 0
         now = datetime.utcnow()
-        await self._conn.execute("BEGIN")
-        try:
-            for doc, content_hash, prev_id, mode, planned_chunks in plan:
-                if mode == "touch":
-                    assert prev_id is not None
-                    await self._touch_document(prev_id, doc, now)
-                    out_ids.append(prev_id)
-                    continue
-                assert planned_chunks is not None
-                chunk_vectors = vectors[vec_cursor : vec_cursor + len(planned_chunks)]
-                vec_cursor += len(planned_chunks)
-                doc_id = prev_id or str(uuid.uuid4())
-                await self._write_document(
-                    doc_id, doc, content_hash, now, is_insert=prev_id is None
-                )
-                await self._replace_chunks(
-                    doc_id, doc, planned_chunks, chunk_vectors, now,
-                )
-                out_ids.append(doc_id)
-            await self._conn.commit()
-        except Exception:
-            await self._conn.rollback()
-            raise
+        # No explicit BEGIN — see :meth:`_upsert` for why. The lock keeps
+        # this batch's writes atomic against other memory writes.
+        async with self._write_lock:
+            try:
+                for doc, content_hash, prev_id, mode, planned_chunks in plan:
+                    if mode == "touch":
+                        assert prev_id is not None
+                        await self._touch_document(prev_id, doc, now)
+                        out_ids.append(prev_id)
+                        continue
+                    assert planned_chunks is not None
+                    chunk_vectors = vectors[
+                        vec_cursor : vec_cursor + len(planned_chunks)
+                    ]
+                    vec_cursor += len(planned_chunks)
+                    doc_id = prev_id or str(uuid.uuid4())
+                    await self._write_document(
+                        doc_id, doc, content_hash, now, is_insert=prev_id is None
+                    )
+                    await self._replace_chunks(
+                        doc_id, doc, planned_chunks, chunk_vectors, now,
+                    )
+                    out_ids.append(doc_id)
+                await self._conn.commit()
+            except Exception:
+                await self._conn.rollback()
+                raise
         return out_ids
 
     async def _upsert(self, doc: Document, *, allow_existing: bool) -> str:
@@ -223,7 +238,8 @@ class MemoryStore:
                 f"source={doc.source_type}:{doc.source_id}"
             )
         if row is not None and row[1] == content_hash:
-            await self._touch_document(row[0], doc, now)
+            async with self._write_lock:
+                await self._touch_document(row[0], doc, now)
             return row[0]
 
         chunks = self._chunker.chunk(doc.content)
@@ -235,16 +251,23 @@ class MemoryStore:
             )
 
         doc_id = row[0] if row is not None else str(uuid.uuid4())
-        await self._conn.execute("BEGIN")
-        try:
-            await self._write_document(
-                doc_id, doc, content_hash, now, is_insert=row is None
-            )
-            await self._replace_chunks(doc_id, doc, chunks, vectors, now)
-            await self._conn.commit()
-        except Exception:
-            await self._conn.rollback()
-            raise
+        # No explicit BEGIN: the shared connection is also written by the
+        # task Database and the invocation logger, which use aiosqlite's
+        # implicit transactions. An explicit BEGIN here can land while one
+        # of those is mid-transaction and raise "cannot start a
+        # transaction within a transaction". The write lock serializes our
+        # own multi-statement write so the document + chunks + vector rows
+        # still commit atomically.
+        async with self._write_lock:
+            try:
+                await self._write_document(
+                    doc_id, doc, content_hash, now, is_insert=row is None
+                )
+                await self._replace_chunks(doc_id, doc, chunks, vectors, now)
+                await self._conn.commit()
+            except Exception:
+                await self._conn.rollback()
+                raise
         return doc_id
 
     async def _fetch_existing(self, doc: Document) -> tuple[str, str] | None:
@@ -392,14 +415,15 @@ class MemoryStore:
     ) -> bool:
         """Soft-delete a document. Returns True if any row was affected."""
         now = datetime.utcnow()
-        cur = await self._conn.execute(
-            "UPDATE memory_documents "
-            "SET deleted_at=?, updated_at=? "
-            "WHERE user_id=? AND source_type=? AND source_id=? "
-            "  AND deleted_at IS NULL",
-            (now, now, user_id, source_type, source_id),
-        )
-        await self._conn.commit()
+        async with self._write_lock:
+            cur = await self._conn.execute(
+                "UPDATE memory_documents "
+                "SET deleted_at=?, updated_at=? "
+                "WHERE user_id=? AND source_type=? AND source_id=? "
+                "  AND deleted_at IS NULL",
+                (now, now, user_id, source_type, source_id),
+            )
+            await self._conn.commit()
         changed = cur.rowcount > 0
         if changed:
             logger.info(
@@ -449,11 +473,12 @@ class MemoryStore:
             # upsert will still observe the caller's real content via
             # chunks, but the document row's hash must differ for the
             # short-circuit to miss.
-            await self._conn.execute(
-                "UPDATE memory_documents SET content_hash='' WHERE id=?",
-                (_id,),
-            )
-            await self._conn.commit()
+            async with self._write_lock:
+                await self._conn.execute(
+                    "UPDATE memory_documents SET content_hash='' WHERE id=?",
+                    (_id,),
+                )
+                await self._conn.commit()
             await self.upsert(dataclasses.replace(doc, content=content))
             count += 1
         return count

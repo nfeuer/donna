@@ -317,12 +317,19 @@ class DiscordIntentDispatcher:
         self._drafts.discard(existing.thread_id)
         if result.status == "ready":
             if result.intent_kind == "task":
-                # Use extracted title from the LLM, not msg.content (which
-                # is just the clarification reply like "nick").
+                # Use the extracted task text, not msg.content (which is just
+                # the clarification reply like "Friday"). The parse_task
+                # capability stores the text under "raw_text", not "title", so
+                # check both. Never fall back to merged_message — that is the
+                # internal LLM prompt and leaks strings like
+                # 'Previous context (capability=...): {...}' into task titles.
+                extracted = result.extracted_inputs or {}
                 title = (
-                    (result.extracted_inputs or {}).get("title")
-                    or (existing_inputs.get("title"))
-                    or merged_message
+                    extracted.get("title")
+                    or extracted.get("raw_text")
+                    or existing_inputs.get("title")
+                    or existing_inputs.get("raw_text")
+                    or msg.content
                 )
 
                 class _ResumedMsg:

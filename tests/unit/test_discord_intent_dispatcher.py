@@ -186,6 +186,82 @@ async def test_resume_path_passes_structured_context_and_recreates_task() -> Non
 
 
 @pytest.mark.asyncio
+async def test_resume_path_titles_task_from_raw_text_not_internal_prompt() -> None:
+    """Regression (Bug 1): a task created via a clarification thread must be
+    titled with the actual task text. The parse_task capability stores that
+    text under 'raw_text', not 'title', so the resume path must read it there
+    and never fall back to the internal merged-context prompt string.
+    """
+    followup_ready = ChallengerMatchResult(
+        status="ready",
+        intent_kind="task",
+        extracted_inputs={"raw_text": "Bring car to mechanic Friday"},
+        confidence=0.95,
+    )
+    registry = PendingDraftRegistry(ttl_seconds=1800)
+    registry.set(PendingDraft(
+        user_id="u1",
+        thread_id=77,
+        draft_kind="task",
+        partial={
+            "extracted_inputs": {"raw_text": "bring car to mechanic"},
+            "missing_fields": ["deadline"],
+        },
+        capability_name="parse_task",
+    ))
+    tasks = _FakeTasksDb()
+    dispatcher = DiscordIntentDispatcher(
+        challenger=_FakeChallenger(followup_ready),
+        novelty_judge=_FakeNovelty(None),
+        pending_drafts=registry,
+        tasks_db=tasks,
+    )
+
+    out = await dispatcher.dispatch(_Msg(content="Friday", thread_id=77))
+
+    assert out.kind == "task_created"
+    title = tasks.tasks[0]["title"]
+    assert not title.startswith("Previous context")
+    assert title == "Bring car to mechanic Friday"
+
+
+@pytest.mark.asyncio
+async def test_resume_path_title_falls_back_to_user_reply_not_internal_prompt() -> None:
+    """Regression (Bug 1): when neither extracted nor prior inputs carry a
+    usable title, the task title falls back to the user's reply text — never
+    the internal merged-context prompt string.
+    """
+    followup_ready = ChallengerMatchResult(
+        status="ready",
+        intent_kind="task",
+        extracted_inputs={"deadline": "friday"},  # no title / raw_text
+        confidence=0.95,
+    )
+    registry = PendingDraftRegistry(ttl_seconds=1800)
+    registry.set(PendingDraft(
+        user_id="u1",
+        thread_id=88,
+        draft_kind="task",
+        partial={"extracted_inputs": {"deadline": "x"}, "missing_fields": []},
+        capability_name="parse_task",
+    ))
+    tasks = _FakeTasksDb()
+    dispatcher = DiscordIntentDispatcher(
+        challenger=_FakeChallenger(followup_ready),
+        novelty_judge=_FakeNovelty(None),
+        pending_drafts=registry,
+        tasks_db=tasks,
+    )
+
+    out = await dispatcher.dispatch(_Msg(content="call the mechanic friday", thread_id=88))
+
+    assert out.kind == "task_created"
+    title = tasks.tasks[0]["title"]
+    assert not title.startswith("Previous context")
+    assert title == "call the mechanic friday"
+
+
+@pytest.mark.asyncio
 async def test_escalate_with_clarifying_question_stores_flattened_partial() -> None:
     """Escalate path: when novelty judge asks a clarifying question, the
     stored draft must be in the common shape expected by _resume.
