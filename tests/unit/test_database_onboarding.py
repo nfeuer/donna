@@ -85,6 +85,46 @@ class TestCreateDiscordUser:
         assert user_id == "charlie"
 
 
+class TestLinkOwnerDiscordId:
+    """Bug 2: link a Discord ID to an existing owner row instead of forking
+    a brand-new identity via create_discord_user."""
+
+    async def _insert_owner(self, db, *, discord_id=None):
+        await db.connection.execute(
+            "INSERT INTO users (donna_user_id, email, name, role, discord_id)"
+            " VALUES (?, ?, ?, ?, ?)",
+            ("nick", "nick@x.com", "Nick", "admin", discord_id),
+        )
+        await db.connection.commit()
+
+    async def test_links_discord_id_to_existing_owner(self, db):
+        await self._insert_owner(db)
+        linked = await db.link_owner_discord_id("nick", "209121227925618688")
+        assert linked is True
+        assert await db.resolve_user_id("209121227925618688") == "nick"
+
+    async def test_idempotent_when_already_linked(self, db):
+        await self._insert_owner(db, discord_id="209121227925618688")
+        linked = await db.link_owner_discord_id("nick", "209121227925618688")
+        assert linked is True
+        assert await db.resolve_user_id("209121227925618688") == "nick"
+
+    async def test_returns_false_when_owner_row_missing(self, db):
+        linked = await db.link_owner_discord_id("nobody", "123")
+        assert linked is False
+
+    async def test_does_not_steal_discord_id_from_another_user(self, db):
+        # A forked user already owns this discord_id.
+        await db.create_discord_user(
+            discord_id="555", name="Forked", discord_username="forked"
+        )
+        await self._insert_owner(db)
+        linked = await db.link_owner_discord_id("nick", "555")
+        assert linked is False
+        # The forked row keeps ownership; the owner row stays unlinked.
+        assert await db.resolve_user_id("555") == "forked"
+
+
 class TestGetDiscordId:
     async def test_returns_discord_id_for_known_user(self, db):
         await db.create_discord_user(

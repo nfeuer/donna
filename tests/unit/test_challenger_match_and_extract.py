@@ -18,10 +18,12 @@ def _cap(name: str, schema: dict | None = None) -> CapabilityRow:
 
 
 async def test_high_confidence_match_with_complete_inputs():
+    # parse_task requires only raw_text; user_id is known from the author and
+    # is never an extracted field (see migration c8e1f2a3b4d5).
     cap = _cap("parse_task", {
         "type": "object",
-        "properties": {"raw_text": {"type": "string"}, "user_id": {"type": "string"}},
-        "required": ["raw_text", "user_id"],
+        "properties": {"raw_text": {"type": "string"}},
+        "required": ["raw_text"],
     })
 
     matcher = AsyncMock()
@@ -30,15 +32,45 @@ async def test_high_confidence_match_with_complete_inputs():
         candidates=[(cap, 0.9)],
     )
     extractor = AsyncMock()
-    extractor.extract.return_value = {"raw_text": "draft the review", "user_id": "nick"}
+    extractor.extract.return_value = {"raw_text": "draft the review"}
 
     challenger = ChallengerAgent(matcher=matcher, input_extractor=extractor)
     result = await challenger.match_and_extract(user_message="draft the review", user_id="nick")
 
     assert result.status == "ready"
     assert result.capability.name == "parse_task"
-    assert result.extracted_inputs == {"raw_text": "draft the review", "user_id": "nick"}
+    assert result.extracted_inputs == {"raw_text": "draft the review"}
     assert result.missing_fields == []
+
+
+async def test_parse_task_ready_without_user_id_does_not_clarify():
+    """Regression: parse_task must not fire a clarification just because no
+    user_id was extracted. user_id is no longer a required input, so a plain
+    task message resolves straight to 'ready' with no clarifying question."""
+    cap = _cap("parse_task", {
+        "type": "object",
+        "properties": {"raw_text": {"type": "string"}},
+        "required": ["raw_text"],
+    })
+
+    matcher = AsyncMock()
+    matcher.match.return_value = MatchResult(
+        confidence=MatchConfidence.HIGH, best_match=cap, best_score=0.9,
+        candidates=[(cap, 0.9)],
+    )
+    extractor = AsyncMock()
+    # Extractor returns only raw_text — no user_id, as expected post-fix.
+    extractor.extract.return_value = {"raw_text": "send invoices to Kevin tomorrow"}
+
+    challenger = ChallengerAgent(matcher=matcher, input_extractor=extractor)
+    result = await challenger.match_and_extract(
+        user_message="send invoices to Kevin tomorrow", user_id="nick"
+    )
+
+    assert result.status == "ready"
+    assert result.missing_fields == []
+    assert result.clarifying_question is None
+    assert "user_id" not in result.extracted_inputs
 
 
 async def test_high_confidence_match_with_missing_inputs():

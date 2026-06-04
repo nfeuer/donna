@@ -21,7 +21,8 @@ services:
               device_ids: ["${DONNA_OLLAMA_GPU_ID}"]
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      # The ollama image ships neither curl nor wget; use the bundled CLI.
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
