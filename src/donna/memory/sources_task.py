@@ -207,7 +207,7 @@ class TaskSource:
             # store's write lock so this write serializes with every other
             # writer on the shared connection.
             conn = self._store._conn  # intentional access — same package
-            async with self._store._write_lock:  # noqa: SLF001 — same package
+            async with self._store._write_lock:  # intentional access — same package
                 await conn.execute(
                     "UPDATE memory_documents SET content_hash='' "
                     "WHERE user_id=? AND source_type=? AND source_id=?",

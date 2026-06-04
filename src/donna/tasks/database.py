@@ -996,7 +996,8 @@ class Database:
         async with self._write_lock:
             await conn.execute(
                 """INSERT INTO conversation_sessions
-                   (id, user_id, channel, status, created_at, last_activity, expires_at, message_count)
+                   (id, user_id, channel, status, created_at,
+                    last_activity, expires_at, message_count)
                    VALUES (?, ?, ?, 'active', ?, ?, ?, 0)""",
                 (session_id, user_id, channel, now_iso, now_iso, expires_iso),
             )
