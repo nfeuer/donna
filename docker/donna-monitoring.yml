@@ -78,6 +78,10 @@ services:
       dockerfile: docker/Dockerfile.healthwatch
     container_name: donna-healthwatch
     restart: unless-stopped
+    # Read access to the Docker socket (root:docker, gid 984 on this host).
+    # Keeps the watcher non-root while granting the docker group.
+    group_add:
+      - "${DOCKER_GID:-984}"
     environment:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - DISCORD_DEBUG_CHANNEL_ID=${DISCORD_DEBUG_CHANNEL_ID}
