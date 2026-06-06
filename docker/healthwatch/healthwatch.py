@@ -9,6 +9,16 @@ runtime failure modes with the orchestrator it watches.
 """
 from __future__ import annotations
 
+from typing import TypedDict
+
+
+class ContainerRecord(TypedDict):
+    """Normalized container record consumed by :func:`classify`."""
+    name: str
+    state: str
+    health: str | None
+
+
 # --- Status constants -------------------------------------------------------
 OK = "OK"
 UNHEALTHY = "UNHEALTHY"
@@ -18,7 +28,7 @@ MISSING = "MISSING"
 _RUNNING_BAD_HEALTH = {"unhealthy"}
 
 
-def classify(record: dict) -> str:
+def classify(record: ContainerRecord) -> str:
     """Map a normalized container record to a status constant.
 
     Args:
@@ -27,7 +37,9 @@ def classify(record: dict) -> str:
             ``healthy``/``unhealthy``/``starting``/``None``.
 
     Returns:
-        One of ``OK``, ``UNHEALTHY``, ``DOWN``.
+        One of ``OK``, ``UNHEALTHY``, ``DOWN``. Never returns ``MISSING`` —
+        that status is set by ``poll()`` for containers absent from the
+        Docker list.
     """
     state = record.get("state")
     if state == "running":

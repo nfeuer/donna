@@ -1,3 +1,4 @@
+import pytest
 import healthwatch as hw
 
 
@@ -30,6 +31,6 @@ def test_restarting_is_down():
     assert hw.classify(rec("donna-ui", "restarting", None)) == hw.DOWN
 
 
-def test_paused_and_created_and_dead_are_down():
-    for s in ("paused", "created", "dead"):
-        assert hw.classify(rec("x", s, None)) == hw.DOWN
+@pytest.mark.parametrize("state", ["paused", "created", "dead"])
+def test_non_running_states_are_down(state):
+    assert hw.classify(rec("x", state, None)) == hw.DOWN
