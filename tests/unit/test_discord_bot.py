@@ -50,6 +50,11 @@ def _make_task_row(**overrides: object) -> MagicMock:
     row.title = "Buy milk"
     row.domain = "personal"
     row.priority = 1
+    # Fields required by the slot-aware confirmation path.
+    row.time_intent_json = None
+    row.scheduled_start = None
+    row.estimated_duration = 30
+    row.status = "backlog"
     for key, val in overrides.items():
         setattr(row, key, val)
     return row
@@ -81,6 +86,9 @@ def _make_bot(
     # Ensure resolve_user_id returns a known user so the onboarding gate is bypassed.
     # Without this, on_message would challenge every message sender for their name.
     db.resolve_user_id = AsyncMock(return_value=USER_ID)
+    # Slot-aware confirmation path calls get_task to re-fetch after create_task.
+    # Return a well-typed mock so TimeIntent.from_json doesn't see a MagicMock.
+    db.get_task = AsyncMock(return_value=_make_task_row())
     # Patch discord.Client.__init__ so we can instantiate without a real token.
     with patch.object(discord.Client, "__init__", return_value=None):
         bot = DonnaBot(
@@ -114,9 +122,9 @@ class TestDonnaBotOnMessage:
         db.create_task.assert_called_once()
         message.channel.send.assert_called_once()
         sent: str = message.channel.send.call_args[0][0]
-        assert "Got it." in sent
+        # The persona-voice confirmation always includes the task title.
+        # (Was: "Got it. '...' — ..., Scheduled: pending." — updated for slot-aware copy.)
         assert "Buy milk" in sent
-        assert "pending" in sent
 
     async def test_ignores_bot_messages(self) -> None:
         parser = AsyncMock()
