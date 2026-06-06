@@ -9,7 +9,7 @@ runtime failure modes with the orchestrator it watches.
 """
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 
 class ContainerRecord(TypedDict):
@@ -26,6 +26,36 @@ DOWN = "DOWN"
 MISSING = "MISSING"
 
 _RUNNING_BAD_HEALTH = {"unhealthy"}
+
+
+class Event(NamedTuple):
+    name: str
+    kind: str   # "bad" | "recovered"
+    status: str
+
+
+def _is_ok(status: str) -> bool:
+    return status == OK
+
+
+def diff(prev: dict[str, str], cur: dict[str, str]) -> list[Event]:
+    """Compute edge-triggered transition events between two status maps.
+
+    Emits ``bad`` when a container moves OK->not-OK (or is first seen not-OK),
+    ``recovered`` when not-OK->OK. No event while a status is unchanged or moves
+    between two non-OK states. Events are sorted by name for deterministic output.
+    """
+    events: list[Event] = []
+    for name in sorted(cur):
+        new = cur[name]
+        old = prev.get(name)
+        was_ok = old is None or _is_ok(old)
+        now_ok = _is_ok(new)
+        if was_ok and not now_ok:
+            events.append(Event(name, "bad", new))
+        elif old is not None and not _is_ok(old) and now_ok:
+            events.append(Event(name, "recovered", new))
+    return events
 
 
 def classify(record: ContainerRecord) -> str:
