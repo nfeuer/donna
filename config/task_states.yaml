@@ -7,6 +7,7 @@
 states:
   - backlog
   - scheduled
+  - needs_scheduling
   - in_progress
   - blocked
   - waiting_input
@@ -23,6 +24,25 @@ transitions:
     side_effects:
       - create_calendar_event
       - set_donna_managed_true
+
+  - from: backlog
+    to: needs_scheduling
+    trigger: scheduler_no_slot_found
+    side_effects:
+      - open_negotiation
+
+  - from: needs_scheduling
+    to: scheduled
+    trigger: alternative_or_rearrange_accepted
+    side_effects:
+      - create_calendar_event
+      - set_donna_managed_true
+
+  - from: needs_scheduling
+    to: backlog
+    trigger: user_declines_scheduling
+    side_effects:
+      - resurface_in_weekly_plan
 
   - from: scheduled
     to: in_progress
