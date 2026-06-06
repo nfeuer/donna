@@ -72,6 +72,25 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  donna-healthwatch:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.healthwatch
+    container_name: donna-healthwatch
+    restart: unless-stopped
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_DEBUG_CHANNEL_ID=${DISCORD_DEBUG_CHANNEL_ID}
+      - HEALTHWATCH_POLL_SECONDS=${HEALTHWATCH_POLL_SECONDS:-30}
+      - HEALTHWATCH_WATCH_PREFIX=${HEALTHWATCH_WATCH_PREFIX:-donna-}
+      - HEALTHWATCH_WATCH_EXTRA=${HEALTHWATCH_WATCH_EXTRA:-caddy}
+      - HEALTHWATCH_HEARTBEAT_PATH=/var/run/healthwatch/heartbeat
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/donna/healthwatch:/var/run/healthwatch
+    networks:
+      - homelab
+
 volumes:
   donna-loki-data:
   donna-grafana-data:
