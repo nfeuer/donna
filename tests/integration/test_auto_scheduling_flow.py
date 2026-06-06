@@ -61,7 +61,8 @@ async def db(tmp_path: Path, state_machine: StateMachine) -> Database:
             nudge_count INTEGER DEFAULT 0,
             quality_score REAL,
             capability_name TEXT,
-            inputs_json TEXT
+            inputs_json TEXT,
+            time_intent_json TEXT
         )
     """)
     yield database
