@@ -44,10 +44,26 @@ class AutoScheduler:
         self._notification_service = notification_service
 
     async def on_task_created(self, task: TaskRow, **context: Any) -> None:
-        if context.get("challenger_pending", False):
-            logger.info("auto_scheduler_deferred_challenger", task_id=task.id)
+        from donna.scheduling.routing_gate import Route, route
+        from donna.scheduling.time_intent import TimeIntent
+
+        ti = TimeIntent.from_json(getattr(task, "time_intent_json", None))
+        decision = route(ti, priority=task.priority or 2)
+
+        if decision.route is Route.SCHEDULER:
+            # Time-bound: ALWAYS schedule now, regardless of the Challenger.
+            # This is the strand-bug fix.
+            await self._schedule(task)
             return
-        await self._schedule(task)
+
+        if decision.route is Route.AUTOMATION:
+            # Recurring intents are owned by the automation/cron pipeline.
+            logger.info("auto_scheduler_skip_recurring", task_id=task.id)
+            return
+
+        # Route.BACKLOG: no time pressure. Leave it in backlog for the weekly
+        # planner / Challenger to surface — do NOT auto-place an undated task.
+        logger.info("auto_scheduler_backlog_no_time", task_id=task.id)
 
     async def on_challenger_resolved(self, task: TaskRow, **context: Any) -> None:
         fresh = await self._db.get_task(task.id)
