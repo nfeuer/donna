@@ -10,6 +10,7 @@ runtime failure modes with the orchestrator it watches.
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -116,6 +117,56 @@ def notify(
         time.sleep(min(retry_after, 30.0))
         status, text = poster(url, headers, body)
     return 200 <= status < 300
+
+
+_HEALTH_RE = re.compile(r"\((?:health: )?(healthy|unhealthy|starting)\)")
+
+
+def _name_of(container: dict) -> str:
+    names = container.get("Names") or [""]
+    return names[0].lstrip("/")
+
+
+def _health_from_status(status_text: str) -> str | None:
+    """Extract health from the Docker ``Status`` string, or None if absent."""
+    match = _HEALTH_RE.search(status_text or "")
+    return match.group(1) if match else None
+
+
+def resolve_watch_set(
+    containers: list[dict], prefix: str, extras: list[str]
+) -> set[str]:
+    """Names to watch: anything starting with prefix, plus configured extras."""
+    watched = {n for c in containers if (n := _name_of(c)).startswith(prefix)}
+    watched.update(e for e in extras if e)
+    return watched
+
+
+def poll(fetch, prefix: str, extras: list[str]) -> dict[str, str]:
+    """Query Docker and return ``{name: status}`` for the watch set.
+
+    Args:
+        fetch: ``Callable[[str], list[dict]]`` returning parsed JSON for a path.
+            Injected for testability; production passes a Docker-socket fetcher.
+        prefix: container-name prefix to watch (e.g. ``donna-``).
+        extras: explicit extra names to watch (e.g. ``["caddy"]``).
+    """
+    containers = fetch("/containers/json?all=1")
+    by_name = {_name_of(c): c for c in containers}
+    watched = resolve_watch_set(containers, prefix, extras)
+    result: dict[str, str] = {}
+    for name in watched:
+        container = by_name.get(name)
+        if container is None:
+            result[name] = MISSING
+            continue
+        record = {
+            "name": name,
+            "state": container.get("State"),
+            "health": _health_from_status(container.get("Status", "")),
+        }
+        result[name] = classify(record)
+    return result
 
 
 def classify(record: ContainerRecord) -> str:
