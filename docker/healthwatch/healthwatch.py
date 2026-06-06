@@ -178,7 +178,9 @@ def poll(fetch: Callable[[str], list[dict]], prefix: str, extras: list[str]) -> 
 
 def write_heartbeat(path: str) -> None:
     """Atomically write the current UTC ISO-8601 timestamp to *path*."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
     tmp = f"{path}.tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         fh.write(datetime.now(tz=UTC).isoformat())
@@ -220,6 +222,33 @@ def _env(name: str, default: str | None = None) -> str:
     return value
 
 
+def process_cycle(
+    prev: dict[str, str],
+    cur: dict[str, str],
+    send: Callable[[Event], bool],
+) -> dict[str, str]:
+    """Notify on transitions and return the new stored state.
+
+    A name's stored status advances to its current status only when its
+    transition was sent successfully; a name whose send FAILED keeps its prior
+    stored status so the transition re-fires next cycle. Currently-OK names with
+    no failed send are recorded as OK (the steady-state baseline).
+    """
+    new_state = dict(prev)
+    failed: set[str] = set()
+    for event in diff(prev, cur):
+        if send(event):
+            new_state[event.name] = event.status
+            log.info("alerted %s -> %s (%s)", event.name, event.status, event.kind)
+        else:
+            failed.add(event.name)
+            log.warning("notify_failed %s -> %s; will retry", event.name, event.status)
+    for name, status in cur.items():
+        if status == OK and name not in failed:
+            new_state[name] = OK
+    return new_state
+
+
 def main() -> None:
     socket_path = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
     token = _env("DISCORD_BOT_TOKEN")
@@ -248,17 +277,7 @@ def main() -> None:
             time.sleep(interval)
             continue
 
-        for event in diff(state, cur):
-            if notify(event, channel_id, token, host):
-                state[event.name] = event.status  # advance only on success
-                log.info("alerted %s -> %s (%s)", event.name, event.status, event.kind)
-            else:
-                log.warning("notify_failed %s -> %s; will retry", event.name, event.status)
-        # Names with no event keep their prior stored status; refresh OK ones.
-        for name, status in cur.items():
-            if status == OK:
-                state[name] = OK
-
+        state = process_cycle(state, cur, lambda event: notify(event, channel_id, token, host))
         write_heartbeat(heartbeat_path)
         time.sleep(interval)
 
