@@ -28,6 +28,10 @@ def is_stale(
 
     Returns:
         True if missing or older than the threshold, else False.
+
+    This is the datetime-based companion to :class:`HeartbeatMonitor`'s internal
+    age-in-seconds check, available to callers that track the last beat as a
+    timestamp rather than an age.
     """
     if last_beat is None:
         return True
@@ -77,7 +81,13 @@ class HeartbeatMonitor:
         self._stale = False  # last reported state
 
     async def check_once(self) -> None:
-        """Check the heartbeat once and emit an edge-triggered alert if needed."""
+        """Check the heartbeat once and emit an edge-triggered alert.
+
+        Posts a stale alert the first time the heartbeat exceeds the threshold
+        (or is missing), and a recovery alert the first time it becomes fresh
+        again. Stays silent while the state is unchanged, so each stale/recovery
+        transition produces exactly one message.
+        """
         age = self._read_age()
         stale_now = age is None or age > self._threshold
         if stale_now and not self._stale:
@@ -92,7 +102,12 @@ class HeartbeatMonitor:
             self._stale = False
 
     async def run(self) -> None:
-        """Run the check loop forever, sleeping *interval_seconds* between checks."""
+        """Run :meth:`check_once` forever, sleeping *interval_seconds* between checks.
+
+        Exceptions from a single check are logged and swallowed so the loop keeps
+        running; the sleep always occurs, preventing a tight spin on repeated
+        failure.
+        """
         logger.info("healthwatch_heartbeat_monitor_started", threshold_s=self._threshold)
         while True:
             try:
