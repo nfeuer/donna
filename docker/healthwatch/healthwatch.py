@@ -13,6 +13,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import NamedTuple, TypedDict
 
@@ -93,7 +94,7 @@ def notify(
     channel_id: str,
     token: str,
     host: str,
-    poster=_http_post,
+    poster: Callable[[str, dict[str, str], str], tuple[int, str]] = _http_post,
 ) -> bool:
     """Post a transition event to the Discord channel. Returns success.
 
@@ -110,7 +111,7 @@ def notify(
         retry_after = 1.0
         try:
             retry_after = float(json.loads(text).get("retry_after", 1.0))
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
             pass
         time.sleep(min(retry_after, 30.0))
         status, text = poster(url, headers, body)
