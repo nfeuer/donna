@@ -137,3 +137,11 @@
 ```
 
 Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
+
+---
+
+- **2026-06-06 — Container health watcher.** Added `donna-healthwatch` sidecar
+  + reciprocal orchestrator heartbeat monitor (observability). Not yet reflected
+  in `spec_v3.md`; reconcile the observability section to mention container
+  health alerting and the heartbeat contract. Design doc:
+  `docs/superpowers/specs/2026-06-05-container-health-watcher-design.md`.
