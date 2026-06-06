@@ -9,14 +9,21 @@ runtime failure modes with the orchestrator it watches.
 """
 from __future__ import annotations
 
+import http.client
 import json
+import logging
+import os
 import re
+import socket
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import NamedTuple, TypedDict
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("healthwatch")
 
 
 class ContainerRecord(TypedDict):
@@ -142,7 +149,7 @@ def resolve_watch_set(
     return watched
 
 
-def poll(fetch, prefix: str, extras: list[str]) -> dict[str, str]:
+def poll(fetch: Callable[[str], list[dict]], prefix: str, extras: list[str]) -> dict[str, str]:
     """Query Docker and return ``{name: status}`` for the watch set.
 
     Args:
@@ -167,6 +174,97 @@ def poll(fetch, prefix: str, extras: list[str]) -> dict[str, str]:
         }
         result[name] = classify(record)
     return result
+
+
+def write_heartbeat(path: str) -> None:
+    """Atomically write the current UTC ISO-8601 timestamp to *path*."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(datetime.now(tz=UTC).isoformat())
+    os.replace(tmp, path)
+
+
+class _UnixHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, socket_path: str):
+        super().__init__("localhost")
+        self._socket_path = socket_path
+
+    def connect(self):
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(10)
+        sock.connect(self._socket_path)
+        self.sock = sock
+
+
+def make_docker_fetch(socket_path: str):
+    """Return a ``fetch(path) -> parsed json`` bound to the Docker unix socket."""
+    def fetch(path: str):
+        conn = _UnixHTTPConnection(socket_path)
+        try:
+            conn.request("GET", path)
+            resp = conn.getresponse()
+            data = resp.read()
+            if resp.status != 200:
+                raise RuntimeError(f"docker GET {path} -> {resp.status}")
+            return json.loads(data)
+        finally:
+            conn.close()
+    return fetch
+
+
+def _env(name: str, default: str | None = None) -> str:
+    value = os.environ.get(name, default)
+    if value is None:
+        raise SystemExit(f"missing required env var: {name}")
+    return value
+
+
+def main() -> None:
+    socket_path = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
+    token = _env("DISCORD_BOT_TOKEN")
+    channel_id = _env("DISCORD_DEBUG_CHANNEL_ID")
+    prefix = os.environ.get("HEALTHWATCH_WATCH_PREFIX", "donna-")
+    extras = [
+        e.strip()
+        for e in os.environ.get("HEALTHWATCH_WATCH_EXTRA", "caddy").split(",")
+        if e.strip()
+    ]
+    interval = int(os.environ.get("HEALTHWATCH_POLL_SECONDS", "30"))
+    heartbeat_path = os.environ.get(
+        "HEALTHWATCH_HEARTBEAT_PATH", "/var/run/healthwatch/heartbeat"
+    )
+    host = os.environ.get("HOSTNAME", socket.gethostname())
+
+    fetch = make_docker_fetch(socket_path)
+    state: dict[str, str] = {}
+    log.info("healthwatch_started prefix=%s extras=%s interval=%ss", prefix, extras, interval)
+
+    while True:
+        try:
+            cur = poll(fetch, prefix, extras)
+        except Exception as exc:  # docker unreachable: skip cycle, do NOT heartbeat
+            log.warning("poll_failed: %s", exc)
+            time.sleep(interval)
+            continue
+
+        for event in diff(state, cur):
+            if notify(event, channel_id, token, host):
+                state[event.name] = event.status  # advance only on success
+                log.info("alerted %s -> %s (%s)", event.name, event.status, event.kind)
+            else:
+                log.warning("notify_failed %s -> %s; will retry", event.name, event.status)
+        # Names with no event keep their prior stored status; refresh OK ones.
+        for name, status in cur.items():
+            if status == OK:
+                state[name] = OK
+
+        write_heartbeat(heartbeat_path)
+        time.sleep(interval)
+
+
+if __name__ == "__main__":
+    main()
 
 
 def classify(record: ContainerRecord) -> str:

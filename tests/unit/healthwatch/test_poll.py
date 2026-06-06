@@ -43,3 +43,14 @@ def test_parse_health_from_status_string():
     assert hw._health_from_status("Up 2 hours (unhealthy)") == "unhealthy"
     assert hw._health_from_status("Up 2 hours (health: starting)") == "starting"
     assert hw._health_from_status("Up 2 hours") is None
+
+
+def test_write_heartbeat_is_atomic_and_iso(tmp_path):
+    path = tmp_path / "sub" / "heartbeat"
+    hw.write_heartbeat(str(path))
+    assert path.exists()
+    # Parses as an ISO-8601 timestamp.
+    from datetime import datetime
+    datetime.fromisoformat(path.read_text().strip())
+    # No leftover temp file in the directory.
+    assert [p.name for p in path.parent.iterdir()] == ["heartbeat"]
