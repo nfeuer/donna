@@ -14,10 +14,10 @@ See docs/notifications.md and slices/slice_03_discord.md.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from collections.abc import Awaitable, Callable
-import json
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 

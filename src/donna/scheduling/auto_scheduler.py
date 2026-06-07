@@ -48,6 +48,22 @@ class AutoScheduler:
         from donna.scheduling.time_intent import TimeIntent
 
         ti = TimeIntent.from_json(getattr(task, "time_intent_json", None))
+        # Back-compat: a task may carry a bare deadline without a time_intent
+        # (older rows, app-created tasks, or an LLM that emitted only `deadline`).
+        # Treat any concrete deadline as a time-bound intent so it schedules
+        # immediately rather than stranding in backlog.
+        if ti.kind == "none" and task.deadline:
+            from datetime import datetime as _dt
+
+            try:
+                due = _dt.fromisoformat(task.deadline)
+            except (TypeError, ValueError):
+                due = None
+            if due is not None:
+                strictness = (
+                    task.deadline_type if task.deadline_type in ("hard", "soft") else "soft"
+                )
+                ti = TimeIntent(kind="exact", due_at=due, strictness=strictness)
         decision = route(ti, priority=task.priority or 2)
 
         if decision.route is Route.SCHEDULER:
@@ -92,7 +108,11 @@ class AutoScheduler:
                 )
                 logger.info("auto_scheduler_fallback_mode", task_id=task.id)
         except NoSlotFoundError:
+            # No slot before the deadline. Surface it explicitly instead of
+            # leaving the task silently in backlog — the negotiation/rearrange
+            # loop (Plan 2) picks up from needs_scheduling.
             logger.warning("auto_scheduler_no_slot", task_id=task.id)
+            await self._db.transition_task_state(task.id, TaskStatus.NEEDS_SCHEDULING)
             return
         except Exception as exc:
             logger.exception("auto_scheduler_failed", task_id=task.id)

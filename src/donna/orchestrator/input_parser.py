@@ -63,7 +63,7 @@ def _render_template(
     )
 
 
-def json_safe(ti: "Any") -> dict:
+def _json_safe(ti: Any) -> dict:
     """Round-trip a TimeIntent into a plain JSON-safe dict for TaskParseResult."""
     import json as _json
 
@@ -156,7 +156,7 @@ class InputParser:
             if fallback.kind != "none":
                 import dataclasses as _dc
 
-                result = _dc.replace(result, time_intent=json_safe(fallback))
+                result = _dc.replace(result, time_intent=_json_safe(fallback))
                 logger.warning(
                     "task_parse_time_intent_fallback",
                     kind=fallback.kind,

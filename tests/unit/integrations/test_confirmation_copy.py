@@ -44,3 +44,13 @@ def test_no_slot_offers_to_rearrange():
         time_intent=TimeIntent(kind="exact"), slot=None, no_slot=True,
     )
     assert "move something" in msg.lower() or "rearrange" in msg.lower()
+
+
+def test_dated_task_without_slot_never_reports_no_deadline():
+    # Defensive: a time-bound task with no slot must not fall to the backlog copy.
+    msg = capture_confirmation(
+        title="Invoices", domain="personal", priority=3,
+        time_intent=TimeIntent(kind="exact"), slot=None, no_slot=False,
+    )
+    assert "no deadline" not in msg.lower()
+    assert "couldn't find a slot" in msg.lower()

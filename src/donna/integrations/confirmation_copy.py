@@ -41,12 +41,16 @@ def capture_confirmation(
         A persona-voice confirmation string ready to send to the user.
     """
     tag = f"({domain} · P{priority})"
+    is_time_bound = time_intent.kind in ("exact", "window", "constrained")
 
     if time_intent.kind == "recurring":
         human = (time_intent.recurrence or {}).get("human_readable", "on your schedule")
         return f"**{human}.** Done. — {title}"
 
-    if no_slot:
+    # A time-bound task with no slot couldn't be placed — never report it as
+    # "no deadline". This covers both the explicit no_slot flag and the
+    # defensive case where a dated task arrives without a slot.
+    if no_slot or (slot is None and is_time_bound):
         return (
             f"'{title}' is tight — I couldn't find a slot before your deadline. "
             f"Want me to move something to make room, or take the next opening?"

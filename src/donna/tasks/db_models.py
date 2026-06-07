@@ -40,6 +40,7 @@ class Base(DeclarativeBase):
 class TaskStatus(enum.StrEnum):
     BACKLOG = "backlog"
     SCHEDULED = "scheduled"
+    NEEDS_SCHEDULING = "needs_scheduling"
     IN_PROGRESS = "in_progress"
     BLOCKED = "blocked"
     WAITING_INPUT = "waiting_input"
