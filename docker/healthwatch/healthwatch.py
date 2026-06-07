@@ -282,10 +282,6 @@ def main() -> None:
         time.sleep(interval)
 
 
-if __name__ == "__main__":
-    main()
-
-
 def classify(record: ContainerRecord) -> str:
     """Map a normalized container record to a status constant.
 
@@ -305,3 +301,7 @@ def classify(record: ContainerRecord) -> str:
             return UNHEALTHY
         return OK
     return DOWN
+
+
+if __name__ == "__main__":
+    main()
