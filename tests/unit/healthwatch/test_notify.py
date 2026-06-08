@@ -37,6 +37,8 @@ def test_notify_posts_to_channel_with_bot_auth():
     url, headers, body = poster.calls[0]
     assert url == "https://discord.com/api/v10/channels/123/messages"
     assert headers["Authorization"] == "Bot secrettoken"
+    # Discord's Cloudflare front 403s the default urllib UA; a real UA is required.
+    assert headers.get("User-Agent")
     assert "caddy" in body
 
 

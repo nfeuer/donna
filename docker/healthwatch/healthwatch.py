@@ -73,6 +73,9 @@ def diff(prev: dict[str, str], cur: dict[str, str]) -> list[Event]:
 
 
 _DISCORD_API = "https://discord.com/api/v10"
+# Discord's Cloudflare front rejects the default urllib User-Agent (403/1010),
+# so a real UA is mandatory for the REST API.
+_USER_AGENT = "DiscordBot (https://github.com/nfeuer/donna, 1.0)"
 
 
 def format_message(event: Event, host: str) -> str:
@@ -112,6 +115,7 @@ def notify(
     headers = {
         "Authorization": f"Bot {token}",
         "Content-Type": "application/json",
+        "User-Agent": _USER_AGENT,
     }
     body = json.dumps({"content": format_message(event, host)})
     status, text = poster(url, headers, body)
