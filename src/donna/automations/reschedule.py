@@ -32,11 +32,12 @@ async def recompute_next_runs(repo: Any, cron: Any, now: datetime) -> int:
             continue
         try:
             next_run_at = cron.next_run(expression=automation.schedule, after=now)
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 "automation_reschedule_invalid_cron",
                 automation_id=automation.id,
                 schedule=automation.schedule,
+                error=str(exc),
             )
             continue
         await repo.update_fields(automation.id, next_run_at=next_run_at)
