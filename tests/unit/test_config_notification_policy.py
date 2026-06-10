@@ -25,3 +25,10 @@ def test_load_notification_policy_missing_section_defaults_empty(tmp_path: Path)
     cfg = load_notification_policy_config(tmp_path)
     assert cfg.blackout_exempt == []
     assert cfg.quiet_exempt == []
+
+
+def test_load_notification_policy_missing_file_defaults_empty(tmp_path: Path) -> None:
+    # No notifications.yaml at all -> graceful empty defaults, no exception.
+    cfg = load_notification_policy_config(tmp_path)
+    assert cfg.blackout_exempt == []
+    assert cfg.quiet_exempt == []

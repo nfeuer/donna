@@ -251,6 +251,9 @@ class CalendarConfig(BaseModel):
     timezone: str = "America/New_York"
 
 
+# === Notification Policy Config ===
+
+
 class NotificationPolicyConfig(BaseModel):
     """Per-type blackout/quiet-hours exemptions (from notifications.yaml)."""
 
@@ -265,9 +268,13 @@ def load_notification_policy_config(config_dir: Path) -> NotificationPolicyConfi
         config_dir: Directory containing notifications.yaml.
 
     Returns:
-        The parsed policy; empty exempt lists when the section is absent.
+        The parsed policy. Returns empty exempt lists when the file is missing
+        or the notification_policy section is absent.
     """
-    data = load_yaml(config_dir / "notifications.yaml")
+    path = config_dir / "notifications.yaml"
+    if not path.exists():
+        return NotificationPolicyConfig()
+    data = load_yaml(path)
     section = (data or {}).get("notification_policy") or {}
     return NotificationPolicyConfig(**section)
 
