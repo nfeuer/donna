@@ -1,0 +1,22 @@
+# Per-type blackout / quiet-hours policy.
+#
+# Types NOT listed below respect BOTH windows (the safe default):
+#   - blackout (12 AM–6 AM): absolute window, all priorities queued
+#   - quiet hours (10 PM–12 AM): priority < 5 queued
+# Listed types are EXEMPT and deliver regardless of the named window.
+#
+# Rationale: proactive nudges (overdue, post_meeting, evening_checkin,
+# stale_task, afternoon_inactivity, digests) use many evolving type strings,
+# so they are gated by the default rather than enumerated. Only deliberately
+# exempt types are listed.
+notification_policy:
+  blackout_exempt:
+    - reminder            # user-set for a specific time
+    - automation_alert    # user-configured deliberately
+    - automation_failure  # ops signal
+    - debug               # ops signal
+  quiet_exempt:
+    - reminder
+    - automation_alert
+    - automation_failure
+    - debug

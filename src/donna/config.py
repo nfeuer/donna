@@ -251,6 +251,27 @@ class CalendarConfig(BaseModel):
     timezone: str = "America/New_York"
 
 
+class NotificationPolicyConfig(BaseModel):
+    """Per-type blackout/quiet-hours exemptions (from notifications.yaml)."""
+
+    blackout_exempt: list[str] = Field(default_factory=list)
+    quiet_exempt: list[str] = Field(default_factory=list)
+
+
+def load_notification_policy_config(config_dir: Path) -> NotificationPolicyConfig:
+    """Load the per-type notification window policy.
+
+    Args:
+        config_dir: Directory containing notifications.yaml.
+
+    Returns:
+        The parsed policy; empty exempt lists when the section is absent.
+    """
+    data = load_yaml(config_dir / "notifications.yaml")
+    section = (data or {}).get("notification_policy") or {}
+    return NotificationPolicyConfig(**section)
+
+
 class PreferenceScheduleConfig(BaseModel):
     """Schedule and thresholds for the preference rule extraction batch job."""
 
