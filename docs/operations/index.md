@@ -7,3 +7,4 @@
 | [Backup & Recovery](backup-recovery.md) | Backup cadence, restore drills |
 | [Budget & Cost](budget-and-cost.md) | `invocation_log`, guards, inspection |
 | [Vault Sync](vault-sync.md) | Obsidian vault sync, WebDAV, conflict resolution |
+| [Container Health Watcher](health-watcher.md) | `donna-healthwatch` sidecar, reciprocal heartbeat monitor |
