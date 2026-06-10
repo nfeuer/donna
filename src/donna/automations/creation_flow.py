@@ -51,6 +51,7 @@ class AutomationCreationPath:
         capability_input_schema_lookup: CapabilityInputSchemaLookup | None = None,
         capability_default_alerts_lookup: CapabilityDefaultAlertsLookup | None = None,
         skill_candidate_writer: SkillCandidateWriter | None = None,
+        cron: CronScheduleCalculator | None = None,
     ) -> None:
         self._repo = repository
         self._default_min_interval_seconds = default_min_interval_seconds
@@ -59,6 +60,7 @@ class AutomationCreationPath:
         self._capability_input_schema_lookup = capability_input_schema_lookup
         self._capability_default_alerts_lookup = capability_default_alerts_lookup
         self._skill_candidate_writer = skill_candidate_writer
+        self._cron = cron or CronScheduleCalculator()
 
     async def approve(self, draft: DraftAutomation, *, name: str) -> str | None:
         """Create the automation row. Returns its id or ``None`` on duplicate."""
@@ -128,7 +130,7 @@ class AutomationCreationPath:
         schedule_expr = draft.active_cadence_cron or draft.schedule_cron
         if schedule_expr:
             try:
-                next_run_at = CronScheduleCalculator().next_run(
+                next_run_at = self._cron.next_run(
                     expression=schedule_expr, after=datetime.now(UTC),
                 )
             except Exception:

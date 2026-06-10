@@ -1,9 +1,12 @@
 """AutomationCreationPath — renders confirmation card, handles approve/cancel/edit."""
 from __future__ import annotations
 
+from zoneinfo import ZoneInfo
+
 import pytest
 
 from donna.automations.creation_flow import AutomationCreationPath
+from donna.automations.cron import CronScheduleCalculator
 from donna.orchestrator.discord_intent_dispatcher import DraftAutomation
 
 
@@ -238,3 +241,31 @@ async def test_approve_does_not_queue_candidate_when_not_flagged() -> None:
     )
     await flow.approve(draft, name="watch shirt")
     assert len(candidate_reports) == 0
+
+
+@pytest.mark.asyncio
+async def test_creation_uses_injected_tz_cron() -> None:
+    """next_run_at must reflect the injected timezone, not bare UTC."""
+    repo = _FakeRepo()
+    flow = AutomationCreationPath(
+        repository=repo,
+        cron=CronScheduleCalculator(tz=ZoneInfo("America/New_York")),
+    )
+    draft = DraftAutomation(
+        user_id="u1",
+        capability_name="product_watch",
+        inputs={"url": "https://x.com/shirt"},
+        schedule_cron="0 9 * * *",
+        schedule_human="daily at 9am",
+        alert_conditions=None,
+        target_cadence_cron="0 9 * * *",
+        active_cadence_cron="0 9 * * *",
+    )
+    await flow.approve(draft, name="morning watch")
+    row = repo.created[0]
+    next_run_at = row["next_run_at"]
+    assert next_run_at is not None
+    # 9 AM Eastern = 13:00 or 14:00 UTC depending on DST; never 09:00 UTC
+    assert next_run_at.hour in (13, 14), (
+        f"expected 13 or 14 UTC (9 AM Eastern), got {next_run_at.hour:02d}:00 UTC"
+    )
