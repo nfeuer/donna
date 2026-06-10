@@ -52,6 +52,7 @@ def _make_bot() -> MagicMock:
     bot.send_message = AsyncMock(return_value=None)
     bot.send_embed = AsyncMock(return_value=None)
     bot.send_to_thread = AsyncMock()
+    bot.send_dm = AsyncMock(return_value=None)
     return bot
 
 
@@ -320,21 +321,12 @@ class TestFallbackAlert:
 # ---------------------------------------------------------------------------
 
 
-def _make_bot_with_dm() -> MagicMock:
-    bot = MagicMock()
-    bot.send_message = AsyncMock(return_value=None)
-    bot.send_embed = AsyncMock(return_value=None)
-    bot.send_to_thread = AsyncMock()
-    bot.send_dm = AsyncMock(return_value=None)
-    return bot
-
-
 def _make_service_with_policy(
     policy: NotificationPolicyConfig,
 ) -> tuple[NotificationService, MagicMock]:
     tw = _make_time_windows()
     cfg = _make_calendar_config(tw)
-    bot = _make_bot_with_dm()
+    bot = _make_bot()
     service = NotificationService(
         bot=bot, calendar_config=cfg, user_id="u1",
         notification_policy=policy,
@@ -383,7 +375,7 @@ class TestPerTypePolicies:
     async def test_no_policy_keeps_legacy_gating(self) -> None:
         tw = _make_time_windows()
         cfg = _make_calendar_config(tw)
-        bot = _make_bot_with_dm()
+        bot = _make_bot()
         service = NotificationService(bot=bot, calendar_config=cfg, user_id="u1")
         with patch("donna.notifications.service.datetime") as mock_dt:
             mock_dt.now.return_value = _utc(3)
@@ -392,3 +384,16 @@ class TestPerTypePolicies:
             )
         assert sent is False
         bot.send_dm.assert_not_awaited()
+
+    async def test_blackout_exempt_type_sends_via_channel(self) -> None:
+        policy = NotificationPolicyConfig(
+            blackout_exempt=[NOTIF_AUTOMATION_ALERT], quiet_exempt=[]
+        )
+        service, bot = _make_service_with_policy(policy)
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(3)  # 3 AM — blackout
+            sent = await service.dispatch(
+                NOTIF_AUTOMATION_ALERT, "deal!", CHANNEL_TASKS, priority=3
+            )
+        assert sent is True
+        bot.send_message.assert_awaited_once()
