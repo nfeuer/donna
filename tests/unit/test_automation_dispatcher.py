@@ -13,6 +13,7 @@ from donna.automations.dispatcher import (
 from donna.automations.repository import AutomationRepository
 from donna.config import SkillSystemConfig
 from donna.cost.budget import BudgetPausedError
+from donna.notifications.service import CHANNEL_DEBUG
 
 
 @pytest.fixture
@@ -409,7 +410,6 @@ async def test_deferred_dm_sets_alert_sent_false_and_emits_debug(db):
 
     assert report.alert_sent is False
     # A debug notification must have been emitted via dispatch(..., channel=CHANNEL_DEBUG)
-    from donna.notifications.service import CHANNEL_DEBUG
     debug_calls = [
         call for call in notifier.dispatch.call_args_list
         if call.kwargs.get("channel") == CHANNEL_DEBUG
@@ -440,6 +440,37 @@ async def test_delivered_dm_sets_alert_sent_true(db):
     dispatcher, _repo, *_, notifier = _make_dispatcher(db, router=router)
     # dispatch_dm returns True (delivered)
     notifier.dispatch_dm = AsyncMock(return_value=True)
+
+    report = await dispatcher.dispatch(auto)
+
+    assert report.alert_sent is True
+
+
+async def test_partial_delivery_with_later_channel_raising_keeps_alert_sent_true(db):
+    """discord_dm delivers; discord_channel raises -> user WAS notified, so
+    alert_sent must be True (not reset to False by the later exception)."""
+    auto_id, _ = await _seed_automation(
+        db,
+        alert_conditions={"field": "triggers_alert", "op": "==", "value": True},
+    )
+    await db.execute(
+        "UPDATE automation SET alert_channels = ? WHERE id = ?",
+        ('["discord_dm", "discord_channel"]', auto_id),
+    )
+    await db.commit()
+    auto = await AutomationRepository(db).get(auto_id)
+
+    router = AsyncMock()
+    router.complete = AsyncMock(
+        return_value=(
+            {"triggers_alert": True},
+            MagicMock(invocation_id="inv-1", cost_usd=0.01),
+        ),
+    )
+    dispatcher, _repo, *_, notifier = _make_dispatcher(db, router=router)
+    # First channel (discord_dm) delivers; second channel (discord_channel) raises.
+    notifier.dispatch_dm = AsyncMock(return_value=True)
+    notifier.dispatch = AsyncMock(side_effect=RuntimeError("boom"))
 
     report = await dispatcher.dispatch(auto)
 

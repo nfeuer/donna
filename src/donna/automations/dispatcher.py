@@ -259,11 +259,11 @@ class AutomationDispatcher:
                 fires = False
             if fires:
                 alert_content = self._render_alert_content(automation, output)
+                delivered = False
+                deferred: list[str] = []
                 try:
                     if self._notifier is not None:
                         channels = automation.alert_channels or ["discord_dm"]
-                        delivered = False
-                        deferred: list[str] = []
                         for ch in channels:
                             ok = await self._dispatch_alert_to_channel(
                                 ch, automation, alert_content,
@@ -272,17 +272,17 @@ class AutomationDispatcher:
                                 delivered = True
                             else:
                                 deferred.append(ch)
-                        alert_sent = delivered
-                        if deferred:
-                            await self._notify_debug(
-                                f"Automation '{automation.name}' alert NOT "
-                                f"delivered on channel(s): {', '.join(deferred)} "
-                                f"(queued, blocked, or misconfigured)."
-                            )
                 except Exception:
                     logger.exception(
                         "automation_alert_dispatch_failed",
                         automation_id=automation.id,
+                    )
+                alert_sent = delivered
+                if deferred:
+                    await self._notify_debug(
+                        f"Automation '{automation.name}' alert NOT "
+                        f"delivered on channel(s): {', '.join(deferred)} "
+                        f"(queued, blocked, or misconfigured)."
                     )
 
         await self._repo.finish_run(
