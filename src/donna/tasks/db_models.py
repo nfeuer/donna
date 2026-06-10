@@ -40,6 +40,7 @@ class Base(DeclarativeBase):
 class TaskStatus(enum.StrEnum):
     BACKLOG = "backlog"
     SCHEDULED = "scheduled"
+    NEEDS_SCHEDULING = "needs_scheduling"
     IN_PROGRESS = "in_progress"
     BLOCKED = "blocked"
     WAITING_INPUT = "waiting_input"
@@ -160,6 +161,8 @@ class Task(Base):
     capability_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Wave 3: JSON-serialized extracted inputs dict from the intent dispatcher
     inputs_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Challenger intake: structured temporal intent (raw JSON string; see scheduling.time_intent)
+    time_intent_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class NudgeEvent(Base):

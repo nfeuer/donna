@@ -44,6 +44,7 @@ class TaskParseResult:
     prep_work_flag: bool
     agent_eligible: bool
     confidence: float
+    time_intent: dict[str, Any] | None = None
 
 
 _DEFAULT_TZ = zoneinfo.ZoneInfo("America/New_York")
@@ -62,6 +63,14 @@ def _render_template(
     )
 
 
+def _json_safe(ti: Any) -> dict[str, Any]:
+    """Round-trip a TimeIntent into a plain JSON-safe dict for TaskParseResult."""
+    import json as _json
+
+    parsed: dict[str, Any] = _json.loads(ti.to_json())
+    return parsed
+
+
 def _to_parse_result(data: dict[str, Any]) -> TaskParseResult:
     """Convert a validated dict to a TaskParseResult dataclass."""
     return TaskParseResult(
@@ -77,6 +86,7 @@ def _to_parse_result(data: dict[str, Any]) -> TaskParseResult:
         prep_work_flag=data.get("prep_work_flag", False),
         agent_eligible=data.get("agent_eligible", False),
         confidence=data["confidence"],
+        time_intent=data.get("time_intent"),
     )
 
 
@@ -137,6 +147,22 @@ class InputParser:
 
         # 5. Convert to result
         result = _to_parse_result(validated)
+
+        # 5a. Backfill time_intent deterministically if the LLM omitted it.
+        # Keeps dated tasks routable when the model degrades (CLAUDE.md fallback rule).
+        if result.time_intent is None:
+            from donna.scheduling.date_fallback import fallback_time_intent
+
+            fallback = fallback_time_intent(raw_text)
+            if fallback.kind != "none":
+                import dataclasses as _dc
+
+                result = _dc.replace(result, time_intent=_json_safe(fallback))
+                logger.warning(
+                    "task_parse_time_intent_fallback",
+                    kind=fallback.kind,
+                    user_id=user_id,
+                )
 
         # 5b. Apply learned preferences (post-parse, pre-database)
         if self._preference_applier is not None:

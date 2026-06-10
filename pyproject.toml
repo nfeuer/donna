@@ -135,6 +135,7 @@ warn_unused_configs = true
 
 [[tool.mypy.overrides]]
 module = [
+    "dateparser",
     "feedparser",
     "frontmatter",
     "google_auth_oauthlib.*",

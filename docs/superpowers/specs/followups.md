@@ -6,6 +6,25 @@
 
 ---
 
+## TI-FU1 — Urgency/deadline classification moved off the Challenger path
+
+- **Spec:** `spec_v3.md §7.1.1` / `§7.2`; design `2026-06-05-challenger-and-scheduling-intake-design.md`
+- **Status:** spec-update-pending
+- **Gap:** Plan 1 (time-intent foundation, 2026-06-06) moved *when* a task happens to the
+  input parser (`time_intent`) + a deterministic `routing_gate`, and stopped the
+  AutoScheduler from deferring time-bound tasks for the Challenger. The Challenger no longer
+  gates scheduling. `spec_v3.md §7.1.1/§7.2` still describe the Challenger as the pre-PM gate
+  on the critical path — update when Plan 3 (Challenger off critical path) lands.
+
+## TI-FU2 — `recurring` time-intent routing is a stub
+
+- **Spec:** design `2026-06-05-challenger-and-scheduling-intake-design.md` §3
+- **Status:** open (deferred to Plan 2/3)
+- **Gap:** The routing gate returns `Route.AUTOMATION` for `kind="recurring"`, but the
+  AutoScheduler only logs and skips — nothing yet creates a recurrence in the automation/cron
+  pipeline. Also "recurring reminder" vs "automation that runs a capability" remains
+  semantically muddy. Wire the handoff when the negotiation/constraint slice lands.
+
 ## S18 — Crash recovery only rolls back; no resume
 
 - **Spec:** `manual-escalation.md#§10.6` row 4

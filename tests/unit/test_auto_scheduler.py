@@ -9,6 +9,7 @@ import pytest
 
 from donna.scheduling.auto_scheduler import AutoScheduler
 from donna.scheduling.scheduler import ScheduledSlot
+from donna.scheduling.time_intent import TimeIntent
 from donna.tasks.database import TaskRow
 
 
@@ -18,6 +19,7 @@ def _make_task(
     estimated_duration: int | None = 60,
     domain: str = "personal",
     priority: int = 2,
+    time_intent_json: str | None = None,
 ) -> TaskRow:
     return TaskRow(
         id=task_id,
@@ -51,7 +53,17 @@ def _make_task(
         donna_managed=False,
         nudge_count=0,
         quality_score=None,
+        time_intent_json=time_intent_json,
     )
+
+
+# A time-bound intent → routes to SCHEDULER (the gate schedules immediately).
+def _exact_intent() -> str:
+    return TimeIntent(
+        kind="exact",
+        due_at=datetime(2026, 5, 13, 9, 0, tzinfo=UTC),
+        strictness="soft",
+    ).to_json()
 
 
 @pytest.fixture
@@ -103,7 +115,7 @@ async def test_on_task_created_schedules_without_calendar(
     scheduler_mock: MagicMock,
     db_mock: MagicMock,
 ) -> None:
-    task = _make_task()
+    task = _make_task(time_intent_json=_exact_intent())
     await auto_scheduler.on_task_created(task)
 
     scheduler_mock.find_next_slot.assert_called_once()
@@ -125,7 +137,7 @@ async def test_on_task_created_uses_calendar_when_available(
         calendar_id="primary",
         notification_service=notification_mock,
     )
-    task = _make_task()
+    task = _make_task(time_intent_json=_exact_intent())
     await auto.on_task_created(task)
 
     scheduler_mock.schedule_task.assert_called_once_with(
@@ -175,7 +187,7 @@ async def test_on_task_created_sends_notification(
     auto_scheduler: AutoScheduler,
     notification_mock: MagicMock,
 ) -> None:
-    task = _make_task()
+    task = _make_task(time_intent_json=_exact_intent())
     await auto_scheduler.on_task_created(task)
 
     notification_mock.dispatch.assert_called_once()
