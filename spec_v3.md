@@ -2725,6 +2725,10 @@ identifies the domain:
     system.backup.completed, system.backup.failed,
     system.migration.applied
 
+-   health.\*: health.container_down, health.container_recovered,
+    health.watchdog_stale, health.watchdog_resumed (container health
+    monitoring, §14.7)
+
 -   cost.\*: cost.daily_threshold, cost.monthly_warning,
     cost.agent_paused, cost.budget_increase
 
@@ -2798,6 +2802,41 @@ This dual-write ensures logs are available both in the real-time Grafana
 dashboard (via Loki, optimized for search and visualization) and in the
 persistent SQLite store (for long-term queries, automated analysis, and
 evaluation data).
+
+**14.7 Container Health Monitoring**
+
+Beyond per-service logs, Donna proactively alerts on Docker container
+health so an unhealthy or stopped service is surfaced immediately rather
+than discovered hours later. Two independent processes watch each other.
+
+`donna-healthwatch` is a standalone sidecar (its own minimal image,
+deployed in donna-monitoring.yml) that polls the Docker Engine API over a
+read-only socket mount and posts edge-triggered messages to the Discord
+debug channel when a watched container's health changes: one alert when a
+container becomes unhealthy or stops (exited/restarting), one when it
+recovers. It watches the full `donna-*` stack plus `caddy`. Running as a
+separate process is deliberate --- it can report the orchestrator itself
+being down, the case an in-process watcher could never cover. It runs
+non-root with read-only socket access (the host `docker` group via
+`group_add`) and never writes to the host.
+
+The watcher cannot observe its own death, so monitoring is reciprocal.
+Each poll cycle it writes a heartbeat file (UTC ISO-8601 timestamp) to a
+shared volume. The orchestrator runs a `HeartbeatMonitor` background task
+that reads that file --- read-only, with no Docker socket on the
+orchestrator --- and posts a debug-channel alert if the heartbeat goes
+stale, then a recovery alert when it resumes. This catches a hung or dead
+watcher. The only uncovered case is both processes failing simultaneously,
+which generally means the host is down and is independently noticeable.
+
+Alerting is edge-triggered (one message per transition, plus recovery) to
+avoid alert storms, and tolerant of transient Discord outages: a failed
+send keeps the prior state so the alert is retried on the next cycle
+rather than dropped. Configuration (donna.env): `HEALTHWATCH_POLL_SECONDS`
+(default 30), `HEALTHWATCH_STALE_SECONDS` (default 90 --- three missed
+beats), and `HEALTHWATCH_WATCH_PREFIX` / `HEALTHWATCH_WATCH_EXTRA` for the
+watch set. Emits the `health.*` event family (§14.4). Operator detail
+lives in docs/operations/health-watcher.md.
 
 **15. Development Dashboard**
 
