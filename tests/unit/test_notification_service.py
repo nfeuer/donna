@@ -11,10 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-from donna.config import TimeWindowConfig, TimeWindowsConfig
+from donna.config import NotificationPolicyConfig, TimeWindowConfig, TimeWindowsConfig
 from donna.notifications.service import (
     CHANNEL_DEBUG,
     CHANNEL_TASKS,
+    NOTIF_AUTOMATION_ALERT,
     NOTIF_REMINDER,
     NotificationService,
 )
@@ -312,3 +313,82 @@ class TestFallbackAlert:
         assert result is False
         # Verify _alerting flag was reset (no lingering recursion guard)
         assert service._alerting is False
+
+
+# ---------------------------------------------------------------------------
+# Per-type window policy tests
+# ---------------------------------------------------------------------------
+
+
+def _make_bot_with_dm() -> MagicMock:
+    bot = MagicMock()
+    bot.send_message = AsyncMock(return_value=None)
+    bot.send_embed = AsyncMock(return_value=None)
+    bot.send_to_thread = AsyncMock()
+    bot.send_dm = AsyncMock(return_value=None)
+    return bot
+
+
+def _make_service_with_policy(
+    policy: NotificationPolicyConfig,
+) -> tuple[NotificationService, MagicMock]:
+    tw = _make_time_windows()
+    cfg = _make_calendar_config(tw)
+    bot = _make_bot_with_dm()
+    service = NotificationService(
+        bot=bot, calendar_config=cfg, user_id="u1",
+        notification_policy=policy,
+    )
+    return service, bot
+
+
+class TestPerTypePolicies:
+    async def test_blackout_exempt_type_sends_during_blackout(self) -> None:
+        policy = NotificationPolicyConfig(
+            blackout_exempt=[NOTIF_AUTOMATION_ALERT], quiet_exempt=[]
+        )
+        service, bot = _make_service_with_policy(policy)
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(3)  # 3 AM — blackout
+            sent = await service.dispatch_dm(
+                "123", NOTIF_AUTOMATION_ALERT, "deal!", priority=3
+            )
+        assert sent is True
+        bot.send_dm.assert_awaited_once()
+
+    async def test_non_exempt_type_queues_during_blackout(self) -> None:
+        policy = NotificationPolicyConfig(
+            blackout_exempt=[NOTIF_AUTOMATION_ALERT], quiet_exempt=[]
+        )
+        service, bot = _make_service_with_policy(policy)
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(3)  # 3 AM — blackout
+            sent = await service.dispatch_dm("123", "overdue", "nudge", priority=3)
+        assert sent is False
+        bot.send_dm.assert_not_awaited()
+
+    async def test_quiet_exempt_type_sends_during_quiet_hours(self) -> None:
+        policy = NotificationPolicyConfig(
+            blackout_exempt=[], quiet_exempt=[NOTIF_AUTOMATION_ALERT]
+        )
+        service, bot = _make_service_with_policy(policy)
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(21)  # 9 PM — quiet hours
+            sent = await service.dispatch_dm(
+                "123", NOTIF_AUTOMATION_ALERT, "deal!", priority=3
+            )
+        assert sent is True
+        bot.send_dm.assert_awaited_once()
+
+    async def test_no_policy_keeps_legacy_gating(self) -> None:
+        tw = _make_time_windows()
+        cfg = _make_calendar_config(tw)
+        bot = _make_bot_with_dm()
+        service = NotificationService(bot=bot, calendar_config=cfg, user_id="u1")
+        with patch("donna.notifications.service.datetime") as mock_dt:
+            mock_dt.now.return_value = _utc(3)
+            sent = await service.dispatch_dm(
+                "123", NOTIF_AUTOMATION_ALERT, "deal!", priority=3
+            )
+        assert sent is False
+        bot.send_dm.assert_not_awaited()

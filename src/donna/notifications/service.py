@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 import discord
 import structlog
 
-from donna.config import CalendarConfig
+from donna.config import CalendarConfig, NotificationPolicyConfig
 from donna.notifications.bot_protocol import BotProtocol
 
 if TYPE_CHECKING:
@@ -65,6 +65,7 @@ class NotificationService:
         sms: TwilioSMS | None = None,
         gmail: GmailClient | None = None,
         digest_max_chars: int = DIGEST_MAX_CHARS_DEFAULT,
+        notification_policy: NotificationPolicyConfig | None = None,
     ) -> None:
         self._bot = bot
         self._tw = calendar_config.time_windows
@@ -78,6 +79,14 @@ class NotificationService:
         # Rate-limiting state for fallback alerts: (component, error_prefix) → last sent.
         self._fallback_alert_history: dict[tuple[str, str], datetime] = {}
         self._alerting = False
+        # Per-type window exemptions. Empty sets => every type respects both
+        # windows (legacy behavior when no policy is supplied).
+        self._blackout_exempt: set[str] = (
+            set(notification_policy.blackout_exempt) if notification_policy else set()
+        )
+        self._quiet_exempt: set[str] = (
+            set(notification_policy.quiet_exempt) if notification_policy else set()
+        )
 
     @staticmethod
     def _truncate_for_channel(content: str, max_chars: int) -> str:
@@ -105,6 +114,12 @@ class NotificationService:
         start = self._tw.quiet_hours.start_hour
         end = self._tw.quiet_hours.end_hour
         return start <= hour < end
+
+    def _respects_blackout(self, notification_type: str) -> bool:
+        return notification_type not in self._blackout_exempt
+
+    def _respects_quiet(self, notification_type: str) -> bool:
+        return notification_type not in self._quiet_exempt
 
     async def dispatch(
         self,
@@ -142,13 +157,13 @@ class NotificationService:
         )
 
         # Hard block: blackout applies to all priorities.
-        if self._is_blackout(now):
+        if self._is_blackout(now) and self._respects_blackout(notification_type):
             log.info("notification_queued_blackout")
             self._enqueue(notification_type, content, channel, priority, embed, thread_id)
             return False
 
         # Soft block: quiet hours apply to priority < 5.
-        if self._is_quiet(now) and priority < 5:
+        if self._is_quiet(now) and priority < 5 and self._respects_quiet(notification_type):
             log.info("notification_queued_quiet_hours")
             self._enqueue(notification_type, content, channel, priority, embed, thread_id)
             return False
@@ -188,12 +203,12 @@ class NotificationService:
             delivery="dm",
         )
 
-        if self._is_blackout(now):
+        if self._is_blackout(now) and self._respects_blackout(notification_type):
             log.info("dm_queued_blackout")
             self._enqueue_dm(discord_id, notification_type, content, priority)
             return False
 
-        if self._is_quiet(now) and priority < 5:
+        if self._is_quiet(now) and priority < 5 and self._respects_quiet(notification_type):
             log.info("dm_queued_quiet_hours")
             self._enqueue_dm(discord_id, notification_type, content, priority)
             return False
