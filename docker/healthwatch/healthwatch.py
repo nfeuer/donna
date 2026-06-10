@@ -9,6 +9,7 @@ runtime failure modes with the orchestrator it watches.
 """
 from __future__ import annotations
 
+import contextlib
 import http.client
 import json
 import logging
@@ -121,10 +122,8 @@ def notify(
     status, text = poster(url, headers, body)
     if status == 429:
         retry_after = 1.0
-        try:
+        with contextlib.suppress(ValueError, TypeError, AttributeError):
             retry_after = float(json.loads(text).get("retry_after", 1.0))
-        except (ValueError, TypeError, AttributeError):
-            pass
         time.sleep(min(retry_after, 30.0))
         status, text = poster(url, headers, body)
     return 200 <= status < 300

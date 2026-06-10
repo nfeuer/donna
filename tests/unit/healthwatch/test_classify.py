@@ -1,5 +1,5 @@
-import pytest
 import healthwatch as hw
+import pytest
 
 
 def rec(name, state, health=None):
