@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
@@ -12,6 +13,7 @@ from donna.automations.cron import CronScheduleCalculator, InvalidCronExpression
 from donna.automations.models import AutomationRow, AutomationRunRow
 from donna.automations.repository import AutomationRepository
 
+logger = structlog.get_logger()
 router = APIRouter()
 
 
@@ -126,6 +128,7 @@ def _get_cron(request: Request) -> CronScheduleCalculator:
         cal_cfg = load_calendar_config(config_dir)
         return CronScheduleCalculator(tz=ZoneInfo(cal_cfg.timezone))
     except Exception:
+        logger.warning("cron_tz_load_failed_using_utc", exc_info=True)
         return CronScheduleCalculator()
 
 

@@ -1139,6 +1139,7 @@ class AutomationHandle:
     repository: AutomationRepository | None
     dispatcher: AutomationDispatcher | None
     scheduler: AutomationScheduler | None
+    cron: Any | None = None
 
 
 @dataclass
@@ -2312,7 +2313,7 @@ async def wire_automation_subsystem(
         _cal_cfg = _load_cal_auto(ctx.config_dir)
         _automation_tz = ZoneInfo(_cal_cfg.timezone)
     except Exception:
-        log.warning("automation_tz_load_failed_using_utc")
+        log.warning("automation_tz_load_failed_using_utc", exc_info=True)
         _automation_tz = ZoneInfo("UTC")
     automation_cron = CronScheduleCalculator(tz=_automation_tz)
 
@@ -2426,6 +2427,7 @@ async def wire_automation_subsystem(
             repository=automation_repo,
             dispatcher=automation_dispatcher,
             scheduler=automation_scheduler,
+            cron=automation_cron,
         )
     except Exception:
         log.exception("automation_scheduler_wiring_failed")
@@ -2527,8 +2529,8 @@ async def wire_discord(
 
         # Wire the tz-aware cron onto the bot so AutomationCreationPath
         # (called from discord_bot.py) uses it for initial next_run_at.
-        if automation_h.dispatcher is not None:
-            ctx.bot._automation_cron = automation_h.dispatcher._cron
+        if automation_h.cron is not None:
+            ctx.bot._automation_cron = automation_h.cron
 
         log.info("discord_intent_dispatcher_wired")
 
