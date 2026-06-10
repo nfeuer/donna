@@ -14,9 +14,11 @@ class InvalidCronExpressionError(ValueError):
 
 class CronScheduleCalculator:
     def __init__(self, tz: ZoneInfo | None = None) -> None:
-        """Args:
-        tz: Zone in which cron fields are interpreted. When None, fields are
-            interpreted in UTC (legacy behavior).
+        """Initialise the calculator with an optional evaluation timezone.
+
+        Args:
+            tz: Zone in which cron fields are interpreted. When None, fields are
+                interpreted in UTC (legacy behavior).
         """
         self._tz = tz
 
@@ -38,6 +40,9 @@ class CronScheduleCalculator:
                 f"invalid cron expression {expression!r}: {exc}"
             ) from exc
         nxt = it.get_next(datetime)
-        if nxt.tzinfo is None:
+        # croniter returns a tz-aware datetime when given a tz-aware base, so
+        # this guard is defensive. A naive result would carry local wall-clock
+        # time in `zone`, so stamp `zone` (not UTC) before converting.
+        if nxt.tzinfo is None:  # pragma: no cover - unreachable with tz-aware base
             nxt = nxt.replace(tzinfo=zone)
         return nxt.astimezone(UTC)
