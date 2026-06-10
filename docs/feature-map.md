@@ -7,6 +7,7 @@ Donna's capabilities at a glance, organized by subsystem with implementation sta
 | **Task capture** — parse natural-language messages into structured tasks | Shipped | [Task System](domain/task-system.md) | [Capture a Task](workflows/capture-a-task.md) |
 | **Task deduplication** — fuzzy title match + LLM semantic comparison | Shipped | [Task System](domain/task-system.md) | [Capture a Task](workflows/capture-a-task.md) |
 | **Task state machine** — configurable lifecycle from `CAPTURED` through `DONE` | Shipped | [Task System](domain/task-system.md) | |
+| **Time intent + routing gate** — classify *when* a task happens and deterministically route it to scheduler / automation / backlog | Shipped | [Scheduling](domain/scheduling.md#routing-gate), [Task System](domain/task-system.md#time-intent) | [Capture a Task](workflows/capture-a-task.md) |
 | **Scheduling** — auto-schedule tasks to calendar slots, conflict resolution | Shipped | [Scheduling](domain/scheduling.md) | |
 | **Calendar sync** — bidirectional Google Calendar integration | Shipped | [Scheduling](domain/scheduling.md), [Integrations](domain/integrations.md) | |
 | **Reminder cadence** — T-24h, T-1h, T notifications with escalation | Shipped | [Notifications](domain/notifications.md) | |

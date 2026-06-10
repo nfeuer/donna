@@ -21,9 +21,11 @@ Donna-specific terms and their definitions.
 | **Memory vault** | A Git-backed knowledge store that chunks, embeds, and indexes content from tasks, chat, and corrections for semantic retrieval. | [Memory Vault](domain/memory-vault/index.md) |
 | **Model alias** | A logical name (e.g., `task_parse`, `chat_respond`) mapped to a specific model + parameters in `config/donna_models.yaml`. | [Model Layer](domain/model-layer.md) |
 | **ModelRouter** | The central abstraction that routes all LLM calls through alias lookup, budget checking, and structured logging. | [Model Layer](domain/model-layer.md) |
+| **`needs_scheduling`** | Task state for a time-bound task the scheduler could not place before its deadline — surfaced explicitly instead of stranding in backlog. | [Task System](domain/task-system.md#valid-transitions) |
 | **Orchestrator** | The central dispatcher that receives user messages, classifies intent, and routes to the appropriate skill or handler. | [Orchestrator](domain/orchestrator.md) |
 | **Payload** | The full JSON capture of an LLM request (prompt, parameters) and response (output, tokens, latency) stored by the collection subsystem. | [Collection](domain/collection.md) |
 | **Priority engine** | Computes dynamic task priority from urgency, importance, dependencies, and user corrections. | [Scheduling](domain/scheduling.md) |
+| **Routing gate** | The deterministic, LLM-free gate that routes a freshly captured task to the scheduler (time-bound), automation (recurring), or backlog (undated) based on its time intent and priority. | [Scheduling](domain/scheduling.md#routing-gate) |
 | **Rule applier** | The preference subsystem component that applies learned rules (from corrections) to new tasks at creation time. | [Preferences](domain/preferences.md) |
 | **Shadow preference** | A candidate preference rule extracted from corrections that needs validation before becoming active. | [Preferences](domain/preferences.md) |
 | **Skill** | A YAML-defined unit of work with steps, tool access, model routing, and validation. The atomic unit of Donna's capability system. | [Skill System](domain/skill-system/index.md), [Run a Skill](workflows/run-a-skill.md) |
@@ -31,5 +33,6 @@ Donna-specific terms and their definitions.
 | **State machine** | The configurable task lifecycle defined in `config/task_states.yaml` that governs valid transitions between states. | [Task System](domain/task-system.md) |
 | **Supabase sync** | Async write-through replication from local SQLite to a Supabase Postgres instance for cloud access and backup. | [Integrations](domain/integrations.md) |
 | **TaskEventBus** | The pub/sub system that broadcasts task lifecycle events (created, updated, completed) to subscribers like `CorrectionSubscriber`. | [Task System](domain/task-system.md), [Preferences](domain/preferences.md) |
+| **Time intent** | The structured representation of *when* a task should happen (`exact` / `window` / `constrained` / `recurring` / `none`), emitted by the parser and stored as `time_intent_json`. Drives the routing gate and derives `deadline` / `deadline_type`. | [Task System](domain/task-system.md#time-intent) |
 | **Tool dispatch** | The validation layer where models propose tool calls and the orchestrator validates and executes them. Models never call tools directly. | [Agents](domain/agents.md), [Skill System](domain/skill-system/index.md) |
 | **WAL mode** | SQLite Write-Ahead Logging mode, enabling concurrent reads during writes. All Donna SQLite databases use WAL. | [Architecture: Overview](architecture/overview.md) |

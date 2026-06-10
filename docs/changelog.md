@@ -2,6 +2,17 @@
 
 Recent changes, summarized from commits and PRs.
 
+## 2026-06-06
+
+### Added
+- **Time intent**: the parser now emits a structured `time_intent` classifying *when* a task happens (`exact` / `window` / `constrained` / `recurring` / `none`), persisted as `tasks.time_intent_json` (Alembic migration). `deadline` / `deadline_type` are derived from it. An LLM-free fallback re-extracts common date phrasings when the model omits it. ([Task System](domain/task-system.md#time-intent))
+- **Routing gate**: a deterministic, LLM-free gate routes captured tasks to the scheduler (time-bound), automation (recurring), or backlog (undated). ([Scheduling](domain/scheduling.md#routing-gate))
+- **`needs_scheduling` state**: time-bound tasks the scheduler can't place before their deadline surface in `needs_scheduling` instead of stranding in backlog. ([Task System](domain/task-system.md#valid-transitions))
+- **Persona-voice capture confirmations**: slot-aware Discord confirmations (template-based, zero-token) replace the static "Scheduled: pending." reply. ([Capture a Task](workflows/capture-a-task.md))
+
+### Fixed
+- **Strand bug**: time-bound tasks are now scheduled immediately by the routing gate and no longer deferred for the Challenger, fixing cases where dated tasks stranded in `backlog`. ([Scheduling](domain/scheduling.md#routing-gate))
+
 ## 2026-05-18
 
 ### Added
