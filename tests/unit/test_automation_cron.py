@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -44,3 +45,27 @@ def test_result_is_timezone_aware_utc():
     nxt = calc.next_run(expression="0 12 * * *", after=ref)
     assert nxt.tzinfo is not None
     assert nxt.utcoffset().total_seconds() == 0
+
+
+def test_next_run_interprets_cron_in_configured_tz_summer():
+    # During EDT (UTC-4), "9 AM Eastern" is 13:00 UTC.
+    calc = CronScheduleCalculator(tz=ZoneInfo("America/New_York"))
+    ref = datetime(2026, 6, 10, 6, 0, tzinfo=UTC)  # 02:00 EDT
+    nxt = calc.next_run(expression="0 9 * * *", after=ref)
+    assert nxt == datetime(2026, 6, 10, 13, 0, tzinfo=UTC)
+
+
+def test_next_run_interprets_cron_in_configured_tz_winter():
+    # During EST (UTC-5), "9 AM Eastern" is 14:00 UTC (DST correctness).
+    calc = CronScheduleCalculator(tz=ZoneInfo("America/New_York"))
+    ref = datetime(2026, 1, 10, 6, 0, tzinfo=UTC)  # 01:00 EST
+    nxt = calc.next_run(expression="0 9 * * *", after=ref)
+    assert nxt == datetime(2026, 1, 10, 14, 0, tzinfo=UTC)
+
+
+def test_next_run_defaults_to_utc_when_no_tz():
+    # No tz => legacy UTC interpretation (backward compatible).
+    calc = CronScheduleCalculator()
+    ref = datetime(2026, 6, 10, 6, 0, tzinfo=UTC)
+    nxt = calc.next_run(expression="0 9 * * *", after=ref)
+    assert nxt == datetime(2026, 6, 10, 9, 0, tzinfo=UTC)
