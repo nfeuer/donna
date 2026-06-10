@@ -828,6 +828,7 @@ class DonnaBot(discord.Client):
                 self, "_automation_default_alerts_lookup", None,
             ),
             skill_candidate_writer=skill_repo.create if skill_repo else None,
+            cron=getattr(self, "_automation_cron", None),
         )
         try:
             automation_id = await creation.approve(view.draft, name=view.name)

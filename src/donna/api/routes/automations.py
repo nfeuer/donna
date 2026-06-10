@@ -117,7 +117,16 @@ def _run_to_dict(row: AutomationRunRow) -> dict[str, Any]:
 
 
 def _get_cron(request: Request) -> CronScheduleCalculator:
-    return CronScheduleCalculator()
+    try:
+        from zoneinfo import ZoneInfo
+
+        from donna.config import load_calendar_config
+
+        config_dir = request.app.state.config_dir
+        cal_cfg = load_calendar_config(config_dir)
+        return CronScheduleCalculator(tz=ZoneInfo(cal_cfg.timezone))
+    except Exception:
+        return CronScheduleCalculator()
 
 
 # ---------------------------------------------------------------------------

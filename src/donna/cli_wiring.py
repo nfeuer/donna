@@ -47,6 +47,7 @@ from donna.config import (
     TaskTypesConfig,
     load_manual_escalation_config,
     load_models_config,
+    load_notification_policy_config,
     load_skill_system_config,
     load_state_machine_config,
     load_task_types_config,
@@ -1348,12 +1349,14 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
 
         try:
             calendar_config = load_calendar_config(config_dir)
+            notification_policy = load_notification_policy_config(config_dir)
             notification_service = NotificationService(
                 bot=bot,
                 calendar_config=calendar_config,
                 user_id=user_id,
                 sms=twilio_sms_instance,
                 gmail=None,
+                notification_policy=notification_policy,
             )
             log.info("notification_service_wired")
             router.set_fallback_alert_fn(notification_service.dispatch_fallback_alert)
@@ -2274,10 +2277,10 @@ class _ReclamperSchedulerAdapter:
     _SchedulerComputeNextRun.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, cron: Any | None = None) -> None:
         from donna.automations.cron import CronScheduleCalculator
 
-        self._cron = CronScheduleCalculator()
+        self._cron = cron if cron is not None else CronScheduleCalculator()
 
     async def compute_next_run(self, cron: str) -> Any:
         from datetime import datetime
@@ -2297,13 +2300,36 @@ async def wire_automation_subsystem(
     wrapped in a try/except and this preserves that behaviour.
     """
     log = ctx.log
+    from zoneinfo import ZoneInfo
+
     from donna.automations.alert import AlertEvaluator
     from donna.automations.cadence_policy import CadencePolicy
     from donna.automations.cadence_reclamper import CadenceReclamper
     from donna.automations.cron import CronScheduleCalculator
+    from donna.config import load_calendar_config as _load_cal_auto
+
+    try:
+        _cal_cfg = _load_cal_auto(ctx.config_dir)
+        _automation_tz = ZoneInfo(_cal_cfg.timezone)
+    except Exception:
+        log.warning("automation_tz_load_failed_using_utc")
+        _automation_tz = ZoneInfo("UTC")
+    automation_cron = CronScheduleCalculator(tz=_automation_tz)
 
     try:
         automation_repo = AutomationRepository(ctx.db.connection)
+        # Startup realign: recompute next_run_at for active on_schedule
+        # automations so existing rows reflect the tz-aware calculator.
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        from donna.automations.reschedule import recompute_next_runs
+
+        try:
+            await recompute_next_runs(automation_repo, automation_cron, _dt.now(UTC))
+        except Exception:
+            log.exception("automation_reschedule_failed")
+
         # Slice 22 — runtime tool-availability check for the dispatcher.
         runtime_tool_check = None
         if ctx.tool_gap_surfacer is not None:
@@ -2335,7 +2361,7 @@ async def wire_automation_subsystem(
             skill_executor_factory=_automation_skill_executor_factory,
             budget_guard=skill_h.budget_guard,
             alert_evaluator=AlertEvaluator(),
-            cron=CronScheduleCalculator(),
+            cron=automation_cron,
             notifier=ctx.notification_service,
             config=ctx.skill_config,
             runtime_tool_check=runtime_tool_check,
@@ -2375,7 +2401,7 @@ async def wire_automation_subsystem(
                     reclamper = CadenceReclamper(
                         repo=automation_repo,
                         policy=policy,
-                        scheduler=_ReclamperSchedulerAdapter(),
+                        scheduler=_ReclamperSchedulerAdapter(cron=automation_cron),
                     )
                     # reclamp_for_capability returns int; the hook signature
                     # expects Awaitable[None], so adapt via a wrapper that
@@ -2498,6 +2524,11 @@ async def wire_discord(
                 return _default_alerts.get(name)
 
             ctx.bot._automation_default_alerts_lookup = _async_default_alerts
+
+        # Wire the tz-aware cron onto the bot so AutomationCreationPath
+        # (called from discord_bot.py) uses it for initial next_run_at.
+        if automation_h.dispatcher is not None:
+            ctx.bot._automation_cron = automation_h.dispatcher._cron
 
         log.info("discord_intent_dispatcher_wired")
 
