@@ -137,3 +137,13 @@
 ```
 
 Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
+
+## Durable notification queue (deferred 2026-06-10)
+
+The blackout/quiet queue is in-memory (`NotificationService._queue`), flushed
+at 6 AM by the reminder loop. Types that respect blackout (overdue, digests,
+proactive nudges) can still be lost on a restart between queueing and flush.
+Automation alerts no longer use this path (they are blackout-exempt), so this
+is low-urgency. Follow-up: back the queue with the DB so restarts don't drop
+queued proactive notifications. Ref:
+docs/superpowers/specs/2026-06-10-automation-alert-delivery-design.md.

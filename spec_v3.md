@@ -3168,8 +3168,13 @@ them first thing.
     synchronously with every API call. Budget pauses enforced at
     orchestrator level.
 
--   Contacting user during blackout (12am--6am): notification service
-    has a hard block on outbound messages.
+-   Contacting user during blackout (12am--6am) or quiet hours
+    (10pm--12am): enforced **per notification type**. Types listed in
+    `config/notifications.yaml` (`reminder`, `automation_alert`,
+    `automation_failure`, `debug`) are exempt and deliver regardless.
+    SMS always stays night-silent for all types. All other types
+    respect both windows by default. See
+    `docs/superpowers/specs/2026-06-10-automation-alert-delivery-design.md`.
 
 -   Agent running indefinitely: configurable timeout. Timeout triggers
     user notification and agent_status = failed.
@@ -3832,7 +3837,10 @@ skill). They live in `src/donna/automations/` and the
 `automation` / `automation_run` tables.
 
 -   **Trigger model.** Cron-style schedules via `croniter`, plus
-    manual "run now" triggers.
+    manual "run now" triggers. Cron expressions are evaluated in the
+    user's `calendar.yaml` timezone (not UTC), so `0 9 * * *` fires
+    at 9 AM local time regardless of server timezone. See
+    `docs/superpowers/specs/2026-06-10-automation-alert-delivery-design.md`.
 -   **Dispatcher** (`automations/dispatcher.py`) picks between
     skill-based execution and `claude_native` fallback based on the
     capability's current skill state. A per-run budget is applied

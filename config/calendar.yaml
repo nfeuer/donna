@@ -29,13 +29,15 @@ scheduling:
 timezone: America/New_York
 
 # Time windows define when each domain's tasks may be scheduled.
-# Blackout (12am–6am) is absolute — no exceptions, not even priority 5.
-# Quiet hours (10pm–12am) block new scheduling except for priority 5.
+# Blackout (12am–6am) and quiet hours (10pm–12am) are now enforced PER
+# notification type. By default a type respects both windows. Types listed in
+# config/notifications.yaml (reminder, automation_alert, automation_failure,
+# debug) are EXEMPT and deliver regardless. SMS always stays night-silent.
 # All hours are local time (interpreted via timezone above).
 time_windows:
   blackout:
     start_hour: 0     # 12:00 AM
-    end_hour: 6       # 6:00 AM — absolute, no scheduling, no notifications
+    end_hour: 6       # 6:00 AM — per-type policy; see config/notifications.yaml
     days: [0, 1, 2, 3, 4, 5, 6]
   quiet_hours:
     start_hour: 22    # 10:00 PM
