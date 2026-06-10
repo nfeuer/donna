@@ -1,6 +1,6 @@
 """Regression: a time-bound task schedules even if the Challenger never resolves."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 

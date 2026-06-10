@@ -44,7 +44,7 @@ class TaskParseResult:
     prep_work_flag: bool
     agent_eligible: bool
     confidence: float
-    time_intent: dict | None = None
+    time_intent: dict[str, Any] | None = None
 
 
 _DEFAULT_TZ = zoneinfo.ZoneInfo("America/New_York")
@@ -63,11 +63,12 @@ def _render_template(
     )
 
 
-def _json_safe(ti: Any) -> dict:
+def _json_safe(ti: Any) -> dict[str, Any]:
     """Round-trip a TimeIntent into a plain JSON-safe dict for TaskParseResult."""
     import json as _json
 
-    return _json.loads(ti.to_json())
+    parsed: dict[str, Any] = _json.loads(ti.to_json())
+    return parsed
 
 
 def _to_parse_result(data: dict[str, Any]) -> TaskParseResult:

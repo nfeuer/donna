@@ -39,6 +39,8 @@ async def test_create_task_derives_deadline_from_window_intent(db: Database):
 
 async def test_create_task_none_intent_leaves_deadline_type_none(db: Database):
     ti = TimeIntent(kind="none")
-    task = await db.create_task(user_id="nick", title="Organize garage", time_intent_json=ti.to_json())
+    task = await db.create_task(
+        user_id="nick", title="Organize garage", time_intent_json=ti.to_json()
+    )
     assert task.deadline is None
     assert task.deadline_type == DeadlineType.NONE.value

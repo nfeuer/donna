@@ -23,7 +23,9 @@ def test_none_kind_has_no_times():
 
 def test_derive_deadline_prefers_due_at_then_latest():
     exact = TimeIntent(kind="exact", due_at=_dt(2026, 6, 6, 14), strictness="hard")
-    window = TimeIntent(kind="window", earliest=_dt(2026, 6, 6), latest=_dt(2026, 6, 13), strictness="soft")
+    window = TimeIntent(
+        kind="window", earliest=_dt(2026, 6, 6), latest=_dt(2026, 6, 13), strictness="soft"
+    )
     assert derive_deadline(exact) == _dt(2026, 6, 6, 14)
     assert derive_deadline(window) == _dt(2026, 6, 13)
     assert derive_deadline(TimeIntent(kind="none")) is None

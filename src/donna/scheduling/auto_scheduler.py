@@ -10,7 +10,7 @@ scheduled_start directly without creating a calendar event.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
 
@@ -60,8 +60,8 @@ class AutoScheduler:
             except (TypeError, ValueError):
                 due = None
             if due is not None:
-                strictness = (
-                    task.deadline_type if task.deadline_type in ("hard", "soft") else "soft"
+                strictness: Literal["hard", "soft"] = (
+                    "hard" if task.deadline_type == "hard" else "soft"
                 )
                 ti = TimeIntent(kind="exact", due_at=due, strictness=strictness)
         decision = route(ti, priority=task.priority or 2)

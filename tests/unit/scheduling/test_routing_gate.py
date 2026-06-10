@@ -9,19 +9,25 @@ NOW = datetime(2026, 6, 6, 9, 0, tzinfo=UTC)
 
 
 def test_recurring_routes_to_automation():
-    d = route(TimeIntent(kind="recurring", recurrence={"human_readable": "every Wed"}), priority=2, now=NOW)
+    ti = TimeIntent(kind="recurring", recurrence={"human_readable": "every Wed"})
+    d = route(ti, priority=2, now=NOW)
     assert d.route == Route.AUTOMATION
 
 
 def test_exact_routes_to_scheduler_now_and_defers_challenger_false():
-    d = route(TimeIntent(kind="exact", due_at=NOW + timedelta(days=1), strictness="hard"), priority=2, now=NOW)
+    ti = TimeIntent(kind="exact", due_at=NOW + timedelta(days=1), strictness="hard")
+    d = route(ti, priority=2, now=NOW)
     assert d.route == Route.SCHEDULER
     assert d.defer_for_challenger is False
 
 
 def test_window_and_constrained_route_to_scheduler():
-    assert route(TimeIntent(kind="window", latest=NOW + timedelta(days=5)), priority=2, now=NOW).route == Route.SCHEDULER
-    assert route(TimeIntent(kind="constrained", latest=NOW + timedelta(days=20), constraints={"weekday": [0]}), priority=2, now=NOW).route == Route.SCHEDULER
+    window = TimeIntent(kind="window", latest=NOW + timedelta(days=5))
+    constrained = TimeIntent(
+        kind="constrained", latest=NOW + timedelta(days=20), constraints={"weekday": [0]}
+    )
+    assert route(window, priority=2, now=NOW).route == Route.SCHEDULER
+    assert route(constrained, priority=2, now=NOW).route == Route.SCHEDULER
 
 
 def test_none_routes_to_backlog_and_may_defer_challenger():

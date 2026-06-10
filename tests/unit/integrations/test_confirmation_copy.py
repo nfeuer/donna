@@ -24,7 +24,9 @@ def test_placed_exact_includes_day_date_time():
 def test_recurring_states_cadence():
     msg = capture_confirmation(
         title="Standup", domain="work", priority=2,
-        time_intent=TimeIntent(kind="recurring", recurrence={"human_readable": "every Wednesday at 9:00 AM"}),
+        time_intent=TimeIntent(
+            kind="recurring", recurrence={"human_readable": "every Wednesday at 9:00 AM"}
+        ),
         slot=None,
     )
     assert "every Wednesday at 9:00 AM" in msg
