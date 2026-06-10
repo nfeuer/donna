@@ -262,11 +262,23 @@ class AutomationDispatcher:
                 try:
                     if self._notifier is not None:
                         channels = automation.alert_channels or ["discord_dm"]
+                        delivered = False
+                        deferred: list[str] = []
                         for ch in channels:
-                            await self._dispatch_alert_to_channel(
+                            ok = await self._dispatch_alert_to_channel(
                                 ch, automation, alert_content,
                             )
-                        alert_sent = True
+                            if ok:
+                                delivered = True
+                            else:
+                                deferred.append(ch)
+                        alert_sent = delivered
+                        if deferred:
+                            await self._notify_debug(
+                                f"Automation '{automation.name}' alert NOT "
+                                f"delivered on channel(s): {', '.join(deferred)} "
+                                f"(queued, blocked, or misconfigured)."
+                            )
                 except Exception:
                     logger.exception(
                         "automation_alert_dispatch_failed",
@@ -488,52 +500,53 @@ class AutomationDispatcher:
         channel: str,
         automation: AutomationRow,
         content: str,
-    ) -> None:
+    ) -> bool:
         if channel == "discord_dm":
-            await self._notifier.dispatch_dm(
+            return bool(await self._notifier.dispatch_dm(
                 discord_id=automation.user_id,
                 notification_type=NOTIF_AUTOMATION_ALERT,
                 content=content,
                 priority=3,
-            )
+            ))
         elif channel == "sms":
             phone = os.environ.get("DONNA_USER_PHONE", "")
             if phone:
-                await self._notifier.dispatch_sms(
+                return bool(await self._notifier.dispatch_sms(
                     body=content, to=phone, priority=3,
-                )
-            else:
-                logger.warning(
-                    "automation_alert_sms_no_phone",
-                    automation_id=automation.id,
-                )
+                ))
+            logger.warning(
+                "automation_alert_sms_no_phone",
+                automation_id=automation.id,
+            )
+            return False
         elif channel == "email":
             email = os.environ.get("DONNA_USER_EMAIL", "")
             if email:
-                await self._notifier.dispatch_email(
+                return bool(await self._notifier.dispatch_email(
                     to=email,
                     subject=f"Donna Alert: {automation.name}",
                     body=content,
                     priority=3,
-                )
-            else:
-                logger.warning(
-                    "automation_alert_email_no_address",
-                    automation_id=automation.id,
-                )
+                ))
+            logger.warning(
+                "automation_alert_email_no_address",
+                automation_id=automation.id,
+            )
+            return False
         elif channel in ("discord_channel", "discord"):
-            await self._notifier.dispatch(
+            return bool(await self._notifier.dispatch(
                 notification_type=NOTIF_AUTOMATION_ALERT,
                 content=content,
                 channel=CHANNEL_TASKS,
                 priority=3,
-            )
+            ))
         else:
             logger.warning(
                 "automation_alert_unknown_channel",
                 automation_id=automation.id,
                 channel=channel,
             )
+            return False
 
     async def _notify_debug(self, content: str) -> None:
         try:

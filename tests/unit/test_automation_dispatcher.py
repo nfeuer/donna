@@ -378,3 +378,69 @@ async def test_alert_dispatches_to_multiple_channels(db, monkeypatch):
     assert report.alert_sent is True
     notifier.dispatch_dm.assert_awaited_once()
     notifier.dispatch_sms.assert_awaited_once()
+
+
+async def test_deferred_dm_sets_alert_sent_false_and_emits_debug(db):
+    """dispatch_dm returning False ⇒ alert_sent False + debug notification emitted."""
+    auto_id, _ = await _seed_automation(
+        db,
+        alert_conditions={"field": "triggers_alert", "op": "==", "value": True},
+    )
+    await db.execute(
+        "UPDATE automation SET alert_channels = ? WHERE id = ?",
+        ('["discord_dm"]', auto_id),
+    )
+    await db.commit()
+    auto = await AutomationRepository(db).get(auto_id)
+
+    router = AsyncMock()
+    router.complete = AsyncMock(
+        return_value=(
+            {"triggers_alert": True},
+            MagicMock(invocation_id="inv-1", cost_usd=0.01),
+        ),
+    )
+    dispatcher, _repo, *_, notifier = _make_dispatcher(db, router=router)
+    # Override dispatch_dm to return False (deferred / blackout)
+    notifier.dispatch_dm = AsyncMock(return_value=False)
+    notifier.dispatch.reset_mock()
+
+    report = await dispatcher.dispatch(auto)
+
+    assert report.alert_sent is False
+    # A debug notification must have been emitted via dispatch(..., channel=CHANNEL_DEBUG)
+    from donna.notifications.service import CHANNEL_DEBUG
+    debug_calls = [
+        call for call in notifier.dispatch.call_args_list
+        if call.kwargs.get("channel") == CHANNEL_DEBUG
+    ]
+    assert len(debug_calls) >= 1
+
+
+async def test_delivered_dm_sets_alert_sent_true(db):
+    """dispatch_dm returning True ⇒ alert_sent True."""
+    auto_id, _ = await _seed_automation(
+        db,
+        alert_conditions={"field": "triggers_alert", "op": "==", "value": True},
+    )
+    await db.execute(
+        "UPDATE automation SET alert_channels = ? WHERE id = ?",
+        ('["discord_dm"]', auto_id),
+    )
+    await db.commit()
+    auto = await AutomationRepository(db).get(auto_id)
+
+    router = AsyncMock()
+    router.complete = AsyncMock(
+        return_value=(
+            {"triggers_alert": True},
+            MagicMock(invocation_id="inv-1", cost_usd=0.01),
+        ),
+    )
+    dispatcher, _repo, *_, notifier = _make_dispatcher(db, router=router)
+    # dispatch_dm returns True (delivered)
+    notifier.dispatch_dm = AsyncMock(return_value=True)
+
+    report = await dispatcher.dispatch(auto)
+
+    assert report.alert_sent is True
