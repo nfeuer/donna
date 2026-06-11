@@ -1,7 +1,8 @@
 # Cost & Escalation — Fable Critique & Redesign Spec
 
 **Date:** 2026-06-11
-**Status:** Triaged — pending owner decision on implementation scope (§6)
+**Status:** S1 trio IMPLEMENTED in shadow posture (branch `claude/awesome-allen-otrrka`); S2/S3 triaged, deferred to backlog
+**Implemented:** #1 router-side estimation, #2 monthly-cap enforcement, #3 log-before-raise + catcher — owner chose "hard pause + shadow gate" (daily/monthly caps enforced; interactive gate runs log-only via `gate.mode: shadow`).
 **Critic:** Fable 5 (adversarial design critique)
 **Triage:** Opus (independent verification + disposition)
 **Related:** `spec_v3.md §13` (Cost Management), `spec_v3.md §18` (Resilience & Failure Handling), `docs/superpowers/specs/manual-escalation.md` (canonical design), `docs/superpowers/plans/2026-06-11-fable-design-critique-program.md` (the program this is Wave A of), `docs/superpowers/specs/followups.md` (S18–S24), `docs/superpowers/followups/open-backlog.md` (G-15/G-16)
@@ -49,12 +50,12 @@ re-verified at implementation time per the disposition below.
 Legend: **ACCEPT** (sound, in-scope) · **ESCALATE** (safety/budget/scope decision for
 owner) · **DEFER** (sound, trigger-gated) · **KEEP** (existing design is correct).
 
-### S1 — make the budget cap real (ESCALATE as a group — changes runtime/safety posture)
+### S1 — make the budget cap real (IMPLEMENTED — owner chose hard pause + shadow gate)
 | # | Finding | Disposition |
 |---|---|---|
-| 1 | Router-side deterministic estimation so the gate fires by default (don't rely on caller discipline) | **ESCALATE** — turning the gate on starts firing real escalations (Discord prompts, parked tasks). Owner decision §6. |
-| 2 | Enforce $100/month cap + warning in `check_pre_call`; persist warned-month in DB | **ESCALATE** — pairs with #1; the actual hard-cap behavior. |
-| 3 | Log the invocation *before* raising `TokenLimitReachedError`; add a catcher policy | **ACCEPT** — pure ordering/correctness fix; no posture change. Lands with the S1 PR. |
+| 1 | Router-side deterministic estimation so the gate is consulted by default (don't rely on caller discipline) | **✅ IMPLEMENTED (shadow)** — `ModelRouter._estimate_cost_floor` computes a floor when no caller estimate; gate consulted on every call. Posture is `gate.mode: shadow` (logs `escalation_shadow_would_fire`, no prompts). Flip to `enforce` after calibration (followups.md "Fable Wave A"). |
+| 2 | Enforce $100/month cap + warning in `check_pre_call` | **✅ IMPLEMENTED** — `BudgetGuard.check_pre_call` raises `BudgetPausedError(period="monthly")` at the cap and fires the 90% warning. (Warned-month persistence deferred — in-memory dedup retained; followups.md.) |
+| 3 | Log the invocation *before* raising `TokenLimitReachedError`; add a catcher policy | **✅ IMPLEMENTED** — raise moved after the invocation_log + payload writes; `TokenLimitReachedError` catchers added to `auto_drafter`/`evolution`; log-write failure now alerts via `fallback_alert_fn`. |
 
 ### S2 — correctness, wiring, and trust-envelope (mostly ACCEPT)
 | # | Finding | Disposition |

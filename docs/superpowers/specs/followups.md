@@ -52,8 +52,13 @@
 ## S20-FU2 — Conversation engine doesn't pass `estimate_usd`
 
 - **Spec:** `manual-escalation.md#§5.2`
-- **Status:** open (upstream wiring)
-- **Gap:** `handle_escalation` calls `router.complete()` without `estimate_usd`, so the over-budget gate never fires. Also doesn't catch `EscalationDecisionError(mode='chat')`. Needs small upstream PR.
+- **Status:** mostly-resolved-in-branch (`claude/awesome-allen-otrrka`, 2026-06-11)
+- **Gap:** The "gate never fires without `estimate_usd`" half is **resolved**: the
+  router now derives a deterministic cost floor when a caller omits `estimate_usd`
+  (`ModelRouter._estimate_cost_floor`), so the gate is consulted on every call (Fable
+  Wave A #1). The Fable critique found this affected *all* call sites, not just the
+  conversation engine. **Still open:** `handle_escalation` doesn't catch
+  `EscalationDecisionError(mode='chat')` — only reachable once `gate.mode: enforce`.
 
 ## S20-FU4 — Summarizer template not loaded through router cache
 
@@ -142,6 +147,29 @@
 - **Spec:** `spec_v3.md#§7.4`
 - **Status:** open
 - **Gap:** Several `update_task` calls lack `source=` tags (`/done`, `/reschedule`, `rename_task`, dedup merge). `CorrectionSubscriber` doesn't wire `cluster_detector`. `input_text` empty for event-driven corrections. `spec_v3.md` §9.1 still describes direct logging.
+
+### Fable Wave A (Cost & Escalation) — residue from the S1 trio
+
+- **Spec:** `spec_v3.md#§13.1`, `manual-escalation.md#§4`, `#§10.6`; design
+  `2026-06-11-cost-escalation-fable-critique-design.md`
+- **Status:** open (deferred from the S1-trio branch `claude/awesome-allen-otrrka`)
+- **Gap:** The S1 trio (router-side estimation #1, monthly cap #2, log-before-raise #3)
+  shipped in **shadow** posture. Residual items:
+  1. **Enforce flip pending calibration.** `gate.mode: shadow` is deployed. Flip to
+     `enforce` once `escalation_shadow_would_fire` logs show the floor estimate is
+     well-calibrated. *Trigger:* ≥14 days of shadow data, or first real overspend.
+  2. **Monthly *increase* mechanism unwired.** `spec_v3.md §13.1` "Budget Increase
+     Approved" should raise the monthly cap for the current month; no row/code exists,
+     so the cap is the static `monthly_budget_usd`. Daily extensions count toward it.
+  3. **Monthly-warning dedup is in-memory.** `BudgetGuard._warned_months` re-warns the
+     debug channel after a restart (low harm). Persist (e.g. a sentinel audit row) if
+     it gets noisy. *Trigger:* duplicate-warning complaint.
+  4. **Per-call monthly aggregation.** `check_pre_call` now runs `get_monthly_cost`
+     every call (plus the existing daily query). Fine at single-user volume; cache if
+     call rate grows. *Trigger:* cost-query latency shows in p95.
+  5. **#3 catcher dormant under shadow.** `TokenLimitReachedError` catchers were added
+     to `auto_drafter` / `evolution`, but the raise is only reachable in `enforce`
+     mode (needs a granted extension). Verify under load when #1 flips to enforce.
 
 ---
 

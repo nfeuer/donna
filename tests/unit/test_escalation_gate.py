@@ -11,6 +11,7 @@ import pytest
 
 from donna.config import (
     ClaudeCodeModeConfig,
+    GateConfig,
     ManualEscalationConfig,
     ManualEscalationModeConfig,
     ManualEscalationModesConfig,
@@ -84,9 +85,12 @@ CREATE TABLE invocation_log (
 """
 
 
-def _config(enabled: bool = True, threshold: float = 5.0) -> ManualEscalationConfig:
+def _config(
+    enabled: bool = True, threshold: float = 5.0, mode: str = "enforce"
+) -> ManualEscalationConfig:
     return ManualEscalationConfig(
         enabled=enabled,
+        gate=GateConfig(mode=mode),
         modes=ManualEscalationModesConfig(
             chat=ManualEscalationModeConfig(enabled=True),
             claude_code=ClaudeCodeModeConfig(enabled=True),
@@ -161,6 +165,64 @@ def _gate(
         extension_repo=_stub_extension_repo(),
     )
     return gate, deliver
+
+
+class TestShadowMode:
+    """Shadow posture: observe only — never prompt, persist, or block."""
+
+    async def _row_count(self, repo: EscalationRepository) -> int:
+        cursor = await repo._conn.execute(
+            "SELECT COUNT(*) FROM escalation_request"
+        )
+        row = await cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    async def test_over_threshold_does_not_fire_or_persist(
+        self, repo: EscalationRepository
+    ) -> None:
+        # estimate 999 would clearly fire in enforce mode, but shadow must
+        # NOT prompt, create a row, or block.
+        gate, deliver = _gate(
+            repo=repo, config=_config(mode="shadow"), daily_total=0.0
+        )
+        outcome = await gate.fire_and_wait(
+            user_id="nick",
+            task_id="t1",
+            task_type="skill_draft",
+            estimate_usd=999.0,
+        )
+        assert outcome.fired is False
+        deliver.assert_not_called()
+        assert await self._row_count(repo) == 0
+
+    async def test_under_threshold_does_not_fire(
+        self, repo: EscalationRepository
+    ) -> None:
+        gate, deliver = _gate(
+            repo=repo, config=_config(mode="shadow"), daily_total=0.0
+        )
+        outcome = await gate.fire_and_wait(
+            user_id="nick",
+            task_id="t1",
+            task_type="skill_draft",
+            estimate_usd=0.50,
+        )
+        assert outcome.fired is False
+        deliver.assert_not_called()
+        assert await self._row_count(repo) == 0
+
+    async def test_disabled_kill_switch_still_short_circuits(
+        self, repo: EscalationRepository
+    ) -> None:
+        # Kill switch off takes precedence over the shadow branch.
+        gate, deliver = _gate(
+            repo=repo, config=_config(enabled=False, mode="shadow")
+        )
+        outcome = await gate.fire_and_wait(
+            user_id="nick", task_id="t1", task_type="x", estimate_usd=999.0
+        )
+        assert outcome.fired is False
+        deliver.assert_not_called()
 
 
 class TestShouldFire:

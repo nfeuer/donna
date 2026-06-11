@@ -6,6 +6,16 @@
 
 enabled: true                          # global kill switch
 
+# Escalation-gate posture (manual-escalation.md §4).
+#   shadow  — log every call that WOULD escalate, but never prompt, create
+#             rows, or block. Used to calibrate estimate accuracy before the
+#             interactive decision tree starts interrupting the user.
+#   enforce — run the full Approve/Manual/Pause/Cancel decision tree.
+# The daily/monthly budget *caps* are enforced regardless of this setting
+# (see BudgetGuard); this only governs the per-task interactive gate.
+gate:
+  mode: shadow
+
 modes:
   chat:
     enabled: true

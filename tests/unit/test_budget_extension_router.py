@@ -28,6 +28,7 @@ from donna.config import (
 )
 from donna.cost.escalation_gate import GateOutcome
 from donna.models.router import ModelRouter, TokenLimitReachedError
+from donna.models.tokens import estimate_tokens
 from donna.models.types import CompletionMetadata
 
 # ---------------------------------------------------------------------------
@@ -92,6 +93,140 @@ def _make_api_extended_outcome(
         correlation_id=correlation_id,
         extension_amount_usd=extension_amount_usd,
     )
+
+
+def _proceed_outcome() -> GateOutcome:
+    """A gate outcome meaning 'budget OK, caller proceeds' (e.g. shadow)."""
+    return GateOutcome(
+        fired=False,
+        mode=None,
+        resolved_by=None,
+        escalation_request_id=None,
+        correlation_id=None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# #1 — router-side deterministic estimation so the gate is never dark
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_estimate_cost_floor_uses_alias_rates() -> None:
+    """Floor = input_tokens·input_rate + estimate_output_tokens·output_rate."""
+    models_config = _make_models_config(
+        input_cost_per_token=0.000003, output_cost_per_token=0.000015
+    )
+    router = ModelRouter(
+        models_config=models_config,
+        task_types_config=_make_task_types_config(),
+        project_root=Path("/nonexistent"),
+    )
+    prompt = "estimate me please"
+    floor = router._estimate_cost_floor("skill_draft", prompt)
+    expected = (
+        estimate_tokens(prompt) * 0.000003
+        + models_config.cost.estimate_output_tokens * 0.000015
+    )
+    assert floor == pytest.approx(expected)
+
+
+@pytest.mark.asyncio
+async def test_estimate_cost_floor_zero_for_unresolvable_task_type() -> None:
+    router = ModelRouter(
+        models_config=_make_models_config(),
+        task_types_config=_make_task_types_config(),
+        project_root=Path("/nonexistent"),
+    )
+    assert router._estimate_cost_floor("unknown_task_type", "hi") == 0.0
+
+
+@pytest.mark.asyncio
+async def test_gate_consulted_without_caller_estimate() -> None:
+    """The gate fires on EVERY call — no reliance on callers passing estimate_usd.
+
+    Regression for the verified S1 defect where no production caller supplied
+    estimate_usd, leaving the gate dark.
+    """
+    models_config = _make_models_config()
+    mock_provider = MagicMock()
+    mock_provider.complete = AsyncMock(
+        return_value=({"ok": True}, _make_completion_metadata(token_limited=False))
+    )
+
+    gate = MagicMock()
+    gate.fire_and_wait = AsyncMock(return_value=_proceed_outcome())
+
+    budget_guard = MagicMock()
+    budget_guard.check_pre_call = AsyncMock()
+
+    router = ModelRouter(
+        models_config=models_config,
+        task_types_config=_make_task_types_config(),
+        project_root=Path("/nonexistent"),
+        budget_guard=budget_guard,
+        escalation_gate=gate,
+    )
+    router._providers["anthropic"] = mock_provider
+
+    # NOTE: no estimate_usd passed.
+    await router.complete(prompt="do work", task_type="skill_draft", user_id="nick")
+
+    gate.fire_and_wait.assert_awaited_once()
+    kwargs = gate.fire_and_wait.call_args.kwargs
+    assert kwargs["estimate_source"] == "router_floor"
+    expected_floor = router._estimate_cost_floor("skill_draft", "do work")
+    assert kwargs["estimate_usd"] == pytest.approx(expected_floor)
+
+
+# ---------------------------------------------------------------------------
+# #3 — spend is logged BEFORE the token-limit raise
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_invocation_logged_before_token_limit_raise() -> None:
+    """A token-limited extension call must record its (billed) spend, then raise.
+
+    Regression for the verified S1 defect where the raise preceded the
+    invocation_log write, dropping real spend from budget accounting.
+    """
+    models_config = _make_models_config()
+
+    mock_provider = MagicMock()
+    mock_provider.complete = AsyncMock(
+        return_value=({"x": 1}, _make_completion_metadata(token_limited=True))
+    )
+
+    gate = MagicMock()
+    gate.fire_and_wait = AsyncMock(return_value=_make_api_extended_outcome())
+
+    budget_guard = MagicMock()
+    budget_guard.check_pre_call = AsyncMock()
+
+    invocation_logger = MagicMock()
+    invocation_logger.log = AsyncMock(return_value="inv-1")
+
+    router = ModelRouter(
+        models_config=models_config,
+        task_types_config=_make_task_types_config(),
+        project_root=Path("/nonexistent"),
+        budget_guard=budget_guard,
+        escalation_gate=gate,
+        invocation_logger=invocation_logger,
+    )
+    router._providers["anthropic"] = mock_provider
+
+    with pytest.raises(TokenLimitReachedError):
+        await router.complete(
+            prompt="expensive",
+            task_type="skill_draft",
+            user_id="nick",
+            estimate_usd=2.50,
+        )
+
+    # Spend was recorded before the raise.
+    invocation_logger.log.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

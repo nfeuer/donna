@@ -41,6 +41,12 @@ class CostConfig(BaseModel):
     daily_pause_threshold_usd: float = 20.0
     task_approval_threshold_usd: float = 5.0
     monthly_warning_pct: float = 0.90
+    # Assumed output-token count used to compute a deterministic cost
+    # *floor* for the escalation gate when a caller supplies no
+    # ``estimate_usd``. Lets the gate assess every call without relying on
+    # caller discipline (manual-escalation.md §4). Input tokens come from
+    # the real prompt; output is unknown pre-call, so we assume this many.
+    estimate_output_tokens: int = 1000
 
 
 class QualityMonitoringConfig(BaseModel):
@@ -429,10 +435,27 @@ class ToolGapConfig(BaseModel):
     lint: ToolGapLintConfigModel = Field(default_factory=ToolGapLintConfigModel)
 
 
+class GateConfig(BaseModel):
+    """Escalation-gate posture.
+
+    ``shadow`` (deployed default in config/manual_escalation.yaml) makes the
+    gate *observe* — it logs every call that would have escalated
+    (``escalation_shadow_would_fire``) without creating rows, prompting the
+    user, or blocking. ``enforce`` runs the full interactive decision tree.
+
+    The Pydantic default is ``enforce`` so the existing slice-17–24 gate test
+    suite (which assumes enforcement) is unchanged; production opts into
+    ``shadow`` via YAML until estimate accuracy is calibrated.
+    """
+
+    mode: Literal["shadow", "enforce"] = "enforce"
+
+
 class ManualEscalationConfig(BaseModel):
     """Top-level manual escalation configuration (bootstrap defaults)."""
 
     enabled: bool = True
+    gate: GateConfig = Field(default_factory=GateConfig)
     modes: ManualEscalationModesConfig = Field(
         default_factory=ManualEscalationModesConfig
     )
