@@ -266,10 +266,13 @@ function EditableDomain({ task }: { task: TaskDetail }) {
           disabled={saving}
           onChange={async (e) => {
             const next = e.target.value;
+            const prev = value;
             setValue(next);
             setSaving(true);
             try {
               await updateTask(task.id, { domain: next });
+            } catch {
+              setValue(prev); // roll back; the axios interceptor shows the error toast
             } finally {
               setSaving(false);
             }
@@ -287,6 +290,7 @@ function EditableDomain({ task }: { task: TaskDetail }) {
 function EditableDuration({ task }: { task: TaskDetail }) {
   const initial = task.estimated_duration ? String(task.estimated_duration) : "";
   const [value, setValue] = useState(initial);
+  const [lastSaved, setLastSaved] = useState(initial);
   const [saving, setSaving] = useState(false);
   return (
     <div className={styles.field}>
@@ -300,10 +304,16 @@ function EditableDuration({ task }: { task: TaskDetail }) {
           onChange={(e) => setValue(e.target.value)}
           onBlur={async () => {
             const minutes = parseInt(value, 10);
-            if (Number.isNaN(minutes) || minutes < 5) return;
+            if (Number.isNaN(minutes) || minutes < 5) {
+              setValue(lastSaved); // revert invalid input to last saved value
+              return;
+            }
             setSaving(true);
             try {
               await updateTask(task.id, { estimated_duration: minutes });
+              setLastSaved(String(minutes));
+            } catch {
+              setValue(lastSaved); // roll back; interceptor shows the error toast
             } finally {
               setSaving(false);
             }

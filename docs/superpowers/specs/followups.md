@@ -124,6 +124,12 @@
 - **Status:** open
 - **Gap:** Several `update_task` calls lack `source=` tags (`/done`, `/reschedule`, `rename_task`, dedup merge). `CorrectionSubscriber` doesn't wire `cluster_detector`. `input_text` empty for event-driven corrections. `spec_v3.md` §9.1 still describes direct logging.
 
+## S25 — Task parsing flipped to local-first + personal-context injection
+
+- **Spec:** `spec_v3.md` model-routing and task-parsing sections (model layer §; parse pipeline §)
+- **Status:** spec-update-pending
+- **Gap:** `parse_task` now routes to `local_parser` (qwen2.5:32b) as primary with confidence-gated escalation to the cloud `reasoner` via a new `parse_task_cloud` route (threshold 0.7). The parse prompt gained calibrated duration anchors (15/30/60) and a `{{ personal_context }}` slot fed by vault notes + learned-preference rules. The `domain`/`estimated_duration` correction-learning loop was revived via the API (`PATCH /tasks/{id}`) and dashboard (`PATCH /admin/tasks/{id}`) edit pathways. `spec_v3.md` still describes cloud-first parsing with no local-first escalation or context injection — update the model-routing and parsing sections to match, and reconcile with the event-driven corrections follow-up above.
+
 ---
 
 ## How to add an entry
