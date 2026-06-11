@@ -60,6 +60,10 @@ Separate lightweight process **outside Docker**. Every 5 min checks `docker insp
 
 Part of morning digest generation. Before generating: DB integrity (`PRAGMA integrity_check`), NVMe space, last calendar sync, last Supabase sync, pending migrations, budget status. Issues prepended to morning digest.
 
+### Container Health Watcher
+
+A `donna-healthwatch` sidecar watches the whole `donna-*` container stack and posts edge-triggered Discord alerts when a container goes unhealthy/down or recovers. It writes a heartbeat the orchestrator reads back (read-only, no Docker socket), so the watcher is itself watched. See [Container Health Watcher](../operations/health-watcher.md) for configuration and operation.
+
 ### Crash Handler & Error Logging
 
 Unhandled exceptions must never fail silently. The orchestrator registers crash handlers at startup:

@@ -156,3 +156,11 @@
 ```
 
 Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
+
+---
+
+- **2026-06-06 — Container health watcher.** ✅ RESOLVED 2026-06-10. Added
+  `donna-healthwatch` sidecar + reciprocal orchestrator heartbeat monitor
+  (observability). `spec_v3.md` reconciled: new §14.7 (Container Health
+  Monitoring) + `health.*` event family in §14.4. Design doc:
+  `docs/superpowers/specs/2026-06-05-container-health-watcher-design.md`.
