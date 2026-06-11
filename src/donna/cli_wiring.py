@@ -2788,6 +2788,11 @@ async def _build_intent_dispatcher(
 
         challenger = ChallengerAgent(
             matcher=matcher, model_router=skill_h.subsystem_router,
+            fallback_alert_fn=(
+                ctx.notification_service.dispatch_fallback_alert
+                if ctx.notification_service is not None
+                else None
+            ),
         )
         novelty = ClaudeNoveltyJudge(
             model_router=skill_h.subsystem_router, matcher=matcher,

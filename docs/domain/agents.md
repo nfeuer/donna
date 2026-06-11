@@ -70,6 +70,18 @@ Infrastructure component (not an autonomous agent). Validates and executes tool 
 
 ## Agent Execution Flow
 
+> **Dormancy note (v3.1):** the PM-Agent-centric flow below is a **design target,
+> not live behavior**. `AgentDispatcher` and the PM/Prep/Scheduler/Decomposition
+> agents are built and unit-tested but **not wired into production**. The live
+> path is: `DiscordIntentDispatcher` → `ChallengerAgent.match_and_extract` → (on
+> escalation) `ClaudeNoveltyJudge`, with time-bound placement by the event-driven
+> `AutoScheduler` (not an agent). The tool-validation layer below now enforces the
+> allowlist on every call (`ToolRegistry.execute` requires `task_type`+`agent_name`
+> as of v3.1), but per-parameter schema validation and `config/agents.yaml`
+> autonomy enforcement remain unbuilt — they are preconditions for wiring the
+> dormant pipeline or the Phase-6 Coding/Communication agents. See `spec_v3.md
+> §7.2` and the Sub-Agent System critique design doc.
+
 1. Orchestrator receives task → routes to PM Agent for assessment.
 2. PM Agent evaluates completeness. If missing info → sends **targeted** questions (not open-ended).
    - Example: "For the Module A refactor, I need: (1) which API endpoints are affected, (2) should backward compatibility be maintained?"

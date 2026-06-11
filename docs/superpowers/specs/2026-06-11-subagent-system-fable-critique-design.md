@@ -1,7 +1,9 @@
 # Sub-Agent System — Fable Critique & Redesign Spec
 
 **Date:** 2026-06-11
-**Status:** Triaged — pending owner decision on scope + the §7.2 wire-or-delete call (§6)
+**Status:** Live fixes + tool-validation bypass IMPLEMENTED (see below); §7.2 = document-dormant + defer
+**Implemented:** #4 (live `_resume` silent-drop → routes escalations to the judge; unknown status → rephrase, never silent), #8 (challenger fail-open paths now alert; schema-validation failure degrades to `escalate_to_claude` instead of trusting unvalidated output; alerter wired from `cli_wiring`), #7 (`transition_task_state` read+validate moved inside the write lock — closes the TOCTOU, realizes §3.7.1), #2-core (`ToolRegistry.execute` requires `task_type`+`agent_name` — the allowlist bypass is closed). Docs corrected to mark the §7.2 pipeline dormant (spec §7.2, orchestrator.md, agents.md).
+**Deferred** (with the §7.2 wire-or-delete decision): per-tool param JSON-schemas, `db` strip from `AgentContext`, registry collapse, dispatcher-level `agents.yaml` enforcement (#3 full), and the dormant-pipeline internals #5/#6/#9/#11.
 **Critic:** Fable 5 (adversarial design critique)
 **Triage:** Opus (independent verification)
 **Related:** `spec_v3.md §7` (Sub-Agent System), §3.7 (concurrency), `CLAUDE.md` principles #2 (safety-first) / #6 (tool validation layer), Wave B-2 of the Fable critique program.

@@ -49,10 +49,18 @@ class SchedulerAgent:
 
         try:
             # Read existing calendar events via tool registry.
+            # NOTE (Fable #9, dormant): "parse_task" is the wrong allowlist key
+            # here (it has no tools), so this branch is currently never taken and
+            # events stays empty. Left as-is because this agent is unwired; the
+            # correct task_type/allowlist is resolved when the §7.2 pipeline is
+            # wired (see the Sub-Agent System critique design doc). The execute()
+            # call now passes the required task_type/agent_name regardless.
             if context.tool_registry.is_allowed("parse_task", "calendar_read"):
                 events_data = await context.tool_registry.execute(
                     "calendar_read",
                     {"lookahead_days": 14},
+                    task_type="parse_task",
+                    agent_name="scheduler",
                 )
                 events = events_data.get("events", [])
             else:

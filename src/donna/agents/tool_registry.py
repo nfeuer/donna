@@ -68,14 +68,23 @@ class ToolRegistry:
         self,
         tool_name: str,
         params: dict[str, Any],
-        task_type: str | None = None,
+        *,
+        task_type: str,
+        agent_name: str,
     ) -> dict[str, Any]:
         """Validate and execute a tool call.
+
+        ``task_type`` and ``agent_name`` are REQUIRED (no defaults): the
+        allowlist check is always enforced, so a caller cannot opt out of
+        validation by omitting the task type (principle #6 — models propose,
+        the orchestrator validates and executes). ``agent_name`` identifies the
+        proposing agent for the audit log.
 
         Args:
             tool_name: The tool to execute.
             params: Keyword arguments for the tool handler.
-            task_type: If provided, enforces the task_type allowlist.
+            task_type: Task type whose allowlist gates this call (required).
+            agent_name: Identity of the proposing agent, for audit (required).
 
         Returns:
             Tool execution result as a dict.
@@ -84,7 +93,7 @@ class ToolRegistry:
             ToolNotAllowedError: If the tool is not in the task type's allowlist.
             ToolNotRegisteredError: If no handler is registered for the tool.
         """
-        if task_type is not None and not self.is_allowed(task_type, tool_name):
+        if not self.is_allowed(task_type, tool_name):
             raise ToolNotAllowedError(
                 f"Tool {tool_name!r} is not allowed for task type {task_type!r}. "
                 f"Allowed: {self.get_allowed_tools(task_type)}"
@@ -97,7 +106,11 @@ class ToolRegistry:
                 f"Registered: {list(self._handlers.keys())}"
             )
 
-        logger.info("tool_executing", tool=tool_name, task_type=task_type)
+        logger.info(
+            "tool_executing", tool=tool_name, task_type=task_type, agent=agent_name
+        )
         result = await handler(**params)
-        logger.info("tool_executed", tool=tool_name, task_type=task_type)
+        logger.info(
+            "tool_executed", tool=tool_name, task_type=task_type, agent=agent_name
+        )
         return result

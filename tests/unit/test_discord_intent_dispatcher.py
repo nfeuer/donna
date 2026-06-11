@@ -186,6 +186,66 @@ async def test_resume_path_passes_structured_context_and_recreates_task() -> Non
 
 
 @pytest.mark.asyncio
+async def test_resume_escalation_is_not_silently_dropped() -> None:
+    """A clarification reply that re-parses to escalate_to_claude must route to
+    the novelty judge, not vanish as no_action (Fable #4 — live silent-drop).
+    """
+    challenger = _FakeChallenger(
+        ChallengerMatchResult(status="escalate_to_claude")
+    )
+    # Chat verdict → _handle_escalate returns kind="chat" (proves novelty ran).
+    verdict = NoveltyVerdict(
+        intent_kind="chat", trigger_type=None,
+        extracted_inputs={}, schedule=None, deadline=None, alert_conditions=None,
+        polling_interval_suggestion=None,
+        skill_candidate=True, skill_candidate_reasoning="n/a",
+        clarifying_question=None,
+    )
+    registry = PendingDraftRegistry(ttl_seconds=1800)
+    registry.set(PendingDraft(
+        user_id="u1", thread_id=77, draft_kind="task",
+        partial={"extracted_inputs": {}, "missing_fields": ["when"]},
+        capability_name="schedule_appointment",
+    ))
+    dispatcher = DiscordIntentDispatcher(
+        challenger=challenger,
+        novelty_judge=_FakeNovelty(verdict),
+        pending_drafts=registry,
+        tasks_db=_FakeTasksDb(),
+    )
+
+    out = await dispatcher.dispatch(_Msg(content="friday", thread_id=77))
+
+    # The reply was routed to the judge, not dropped.
+    assert out.kind != "no_action"
+    assert out.kind == "chat"
+    assert registry.get_by_thread(77) is None
+
+
+@pytest.mark.asyncio
+async def test_resume_unknown_status_asks_to_rephrase_not_silent() -> None:
+    """An unhandled re-parse status must not go silent; ask the user to rephrase."""
+    challenger = _FakeChallenger(ChallengerMatchResult(status="totally_unknown"))
+    registry = PendingDraftRegistry(ttl_seconds=1800)
+    registry.set(PendingDraft(
+        user_id="u1", thread_id=77, draft_kind="task",
+        partial={"extracted_inputs": {}, "missing_fields": ["when"]},
+        capability_name="schedule_appointment",
+    ))
+    dispatcher = DiscordIntentDispatcher(
+        challenger=challenger,
+        novelty_judge=_FakeNovelty(None),
+        pending_drafts=registry,
+        tasks_db=_FakeTasksDb(),
+    )
+
+    out = await dispatcher.dispatch(_Msg(content="friday", thread_id=77))
+
+    assert out.kind == "clarification_posted"
+    assert out.clarifying_question
+
+
+@pytest.mark.asyncio
 async def test_resume_path_titles_task_from_raw_text_not_internal_prompt() -> None:
     """Regression (Bug 1): a task created via a clarification thread must be
     titled with the actual task text. The parse_task capability stores that
