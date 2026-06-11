@@ -207,6 +207,11 @@ class ModelRouter:
                     break
         return routing
 
+    def confidence_threshold_for(self, task_type: str) -> float | None:
+        """Return the configured confidence threshold for ``task_type``, if any."""
+        entry = self._lookup_routing_entry(task_type)
+        return getattr(entry, "confidence_threshold", None) if entry else None
+
     def _resolve_route(self, task_type: str) -> tuple[ModelProvider, str, str]:
         """Resolve task_type → (provider instance, model ID, model alias).
 

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 TASK_TYPE = "parse_task"
+CLOUD_TASK_TYPE = "parse_task_cloud"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -153,6 +154,21 @@ class InputParser:
         # 3. Validate against schema
         schema = self._router.get_output_schema(TASK_TYPE)
         validated = validate_output(response, schema)
+
+        # 3b. Confidence-gated escalation: re-parse on the cloud model when the
+        # local model is unsure. The cloud route reuses this prompt + schema.
+        threshold = self._router.confidence_threshold_for(TASK_TYPE)
+        if threshold is not None and validated["confidence"] < threshold:
+            logger.info(
+                "parse_confidence_escalation",
+                local_confidence=validated["confidence"],
+                threshold=threshold,
+                user_id=user_id,
+            )
+            cloud_response, _cloud_meta = await self._router.complete(
+                prompt, task_type=CLOUD_TASK_TYPE, user_id=user_id,
+            )
+            validated = validate_output(cloud_response, schema)
 
         # 5. Convert to result
         result = _to_parse_result(validated)

@@ -223,6 +223,33 @@ class TestInputParser:
         assert "Alice" in called_prompt
         assert "- Alice: Coworker" in called_prompt
 
+    async def test_low_confidence_escalates_to_cloud(
+        self, router: ModelRouter, mock_logger: AsyncMock
+    ) -> None:
+        low = _buy_milk_response() | {"confidence": 0.4, "domain": "personal"}
+        high = _buy_milk_response() | {"confidence": 0.95, "domain": "work"}
+        router.complete = AsyncMock(  # type: ignore[method-assign]
+            side_effect=[(low, _make_metadata()), (high, _make_metadata())]
+        )
+
+        parser = InputParser(router, mock_logger, PROJECT_ROOT)
+        result = await parser.parse("email the client", user_id="nick")
+
+        assert router.complete.await_count == 2
+        assert router.complete.await_args_list[1].kwargs["task_type"] == "parse_task_cloud"
+        assert result.domain == "work"  # cloud result wins
+        assert result.confidence == 0.95
+
+    async def test_high_confidence_does_not_escalate(
+        self, router: ModelRouter, mock_logger: AsyncMock
+    ) -> None:
+        router.complete = AsyncMock(  # type: ignore[method-assign]
+            return_value=(_buy_milk_response(), _make_metadata())
+        )
+        parser = InputParser(router, mock_logger, PROJECT_ROOT)
+        await parser.parse("Buy milk", user_id="nick")
+        assert router.complete.await_count == 1
+
 
 class TestParsePromptCalibration:
     def test_prompt_contains_duration_anchors(self) -> None:
