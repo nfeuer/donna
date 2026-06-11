@@ -117,3 +117,12 @@ export async function fetchTask(id: string): Promise<TaskDetail> {
   const { data } = await client.get(`/admin/tasks/${id}`);
   return data;
 }
+
+export interface TaskUpdate {
+  domain?: string;
+  estimated_duration?: number;
+}
+
+export async function updateTask(id: string, body: TaskUpdate): Promise<void> {
+  await client.patch(`/admin/tasks/${id}`, body);
+}

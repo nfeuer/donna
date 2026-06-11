@@ -11,8 +11,10 @@ import json
 from typing import Any
 
 from fastapi import HTTPException, Query, Request
+from pydantic import BaseModel, field_validator
 
 from donna.api.auth import admin_router
+from donna.tasks.db_models import TaskDomain
 
 router = admin_router()
 
@@ -252,3 +254,43 @@ async def get_task_admin(
     ]
 
     return task
+
+
+class AdminTaskUpdate(BaseModel):
+    domain: str | None = None
+    estimated_duration: int | None = None
+
+    @field_validator("domain")
+    @classmethod
+    def _valid_domain(cls, v: str | None) -> str | None:
+        if v is not None and v not in {d.value for d in TaskDomain}:
+            raise ValueError(f"domain must be one of {[d.value for d in TaskDomain]}")
+        return v
+
+
+@router.patch("/tasks/{task_id}")
+async def update_task_admin(
+    request: Request,
+    task_id: str,
+    body: AdminTaskUpdate,
+) -> dict[str, Any]:
+    """Edit domain/duration from the dashboard. Fires correction learning."""
+    db = request.app.state.db
+    existing = await db.get_task(task_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        return {
+            "id": task_id,
+            "domain": existing.domain,
+            "estimated_duration": existing.estimated_duration,
+        }
+
+    row = await db.update_task(task_id, source="dashboard", **updates)
+    return {
+        "id": row.id,
+        "domain": row.domain,
+        "estimated_duration": row.estimated_duration,
+    }

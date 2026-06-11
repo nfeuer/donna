@@ -60,3 +60,19 @@ async def test_update_task_persists_with_api_source() -> None:
     assert db.update_task.await_args.kwargs["domain"] == "work"
     assert db.update_task.await_args.kwargs["estimated_duration"] == 15
     assert result.domain == "work"
+
+
+async def test_admin_update_uses_dashboard_source() -> None:
+    from donna.api.routes.admin_tasks import AdminTaskUpdate, update_task_admin
+
+    row = FakeRow()
+    db = MagicMock()
+    db.get_task = AsyncMock(return_value=row)
+    db.update_task = AsyncMock(return_value=FakeRow(estimated_duration=15))
+
+    body = AdminTaskUpdate(estimated_duration=15)
+    result = await update_task_admin(_request_with_db(db), "t1", body)
+
+    assert db.update_task.await_args.kwargs["source"] == "dashboard"
+    assert db.update_task.await_args.kwargs["estimated_duration"] == 15
+    assert result["estimated_duration"] == 15
