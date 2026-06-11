@@ -291,6 +291,8 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
         vault_client,
     )
     _start_memory_tasks(ctx, memory_handles)
+    if memory_store is not None and getattr(ctx, "input_parser", None) is not None:
+        ctx.input_parser.set_memory_store(memory_store)
     _build_episodic_sources(ctx.config_dir, memory_store, ctx.db, ctx.user_id)
 
     # Slice 15 — template-driven vault writes.

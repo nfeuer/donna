@@ -266,6 +266,24 @@ class TestInputParser:
         assert result.confidence == 0.35
         assert result.domain == "work"
 
+    async def test_preference_applier_overrides_result(
+        self, router: ModelRouter, mock_logger: AsyncMock
+    ) -> None:
+        router.complete = AsyncMock(  # type: ignore[method-assign]
+            return_value=(_buy_milk_response(), _make_metadata())
+        )
+
+        class _Applier:
+            async def apply_for_user(self, result, user_id):
+                import dataclasses
+                return dataclasses.replace(result, domain="work")
+
+        parser = InputParser(
+            router, mock_logger, PROJECT_ROOT, preference_applier=_Applier(),
+        )
+        result = await parser.parse("Buy milk", user_id="nick")
+        assert result.domain == "work"
+
 
 class TestParsePromptCalibration:
     def test_prompt_contains_duration_anchors(self) -> None:

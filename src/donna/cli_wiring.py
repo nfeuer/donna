@@ -1249,7 +1249,13 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
         invocation_logger=invocation_logger,
         payload_writer=payload_writer,
     )
-    input_parser = InputParser(router, invocation_logger, project_root, tz=user_tz)
+    from donna.preferences.rule_applier import PreferenceApplier
+
+    preference_applier = PreferenceApplier(db)
+    input_parser = InputParser(
+        router, invocation_logger, project_root,
+        tz=user_tz, preference_applier=preference_applier,
+    )
 
     # Slice 17/18 — over-budget escalation infrastructure. Built before
     # the bot so the gate's delivery callback can capture a bot reference
