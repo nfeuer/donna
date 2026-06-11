@@ -97,6 +97,25 @@ gates have data.
 - **OOS-8 auto-flag `requires_human_gate` from sensitive tools** — keep deferred; but decide the auto-draft *default* now (§6).
 - **Continuous-score drift detection (F-W1-A)** — already deferred with a trigger; don't redesign degradation stats now.
 
+## 5b. Owner addendum — surface pending draft approvals (required with the gate flip)
+
+Flipping the auto-draft default to `requires_human_gate=1` (§6 decision) means
+auto-drafted skills park in `draft` awaiting approval. That is only safe if the
+user is **told**, or drafts pile up unseen (the silent anti-pattern). Required:
+
+1. **Discord notification on a new draft awaiting approval.** When an auto-drafted
+   skill is parked in `draft` with `requires_human_gate`, dispatch a user-facing
+   `NotificationService` message ("New drafted skill '<name>' awaiting your
+   approval — review at <dashboard/route>"). This is distinct from the internal
+   `dispatch_fallback_alert` (#7): it is a normal user notification, not a
+   degradation alert.
+2. **Digest visibility.** Add a "Pending skill approvals" section to the digest
+   (EOD and/or morning) listing skills in `draft` with `requires_human_gate=1`,
+   so a missed Discord ping still surfaces. Query: skills in DRAFT state awaiting
+   human approval; show name + age.
+
+Implemented on top of the core slice (this session).
+
 ## 6. Owner decisions (escalated)
 1. **Scope:** the evidence-loop slice (#1+#2+#3+#6, activates the trust machinery — adds live shadow-sample cost, enables auto-demotion) vs the safety-hygiene set (#5+#7+#10, principle-compliance, no prod-behavior change) vs both.
 2. **Auto-draft human-gate default (#10a):** today, auto-drafted skills set `requires_human_gate=0` → one sandbox approval then fully automatic to trusted. Flip the default to `1` (require human approval before sandbox), per safety-first? A one-bit posture decision.
