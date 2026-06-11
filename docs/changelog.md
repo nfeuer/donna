@@ -2,6 +2,16 @@
 
 Recent changes, summarized from commits and PRs.
 
+## 2026-06-11
+
+### Fixed
+- **Timezone-correct slot placement**: `Scheduler.find_next_slot` now steps candidates in UTC (DST-safe) but evaluates every time-window against the configured `calendar.yaml` zone, so the absolute blackout and domain windows are enforced on the user's wall clock instead of UTC — a work task can no longer land at ~4 AM local, and confirmations show the correct local time. ([Scheduling](domain/scheduling.md#placement-safety-fable-scheduling-s1-2026-06-11), `spec_v3.md` §6.3)
+- **Deadline-aware horizon**: the search horizon is clamped to the task's deadline / `earliest` bound (honoring a `constrained` weekday); an unplaceable dated task now surfaces as `needs_scheduling` instead of being placed late within a flat 14-day window. ([Scheduling](domain/scheduling.md#placement-safety-fable-scheduling-s1-2026-06-11))
+- **Fail-closed calendar reads**: placement now builds its busy-set from the union of *all* configured calendars (personal + work + family) and raises `CalendarReadError` (with a fallback alert) on any read error, rather than booking blind against an empty calendar. ([Scheduling](domain/scheduling.md#placement-safety-fable-scheduling-s1-2026-06-11))
+
+### Changed
+- **Serialized placement choke point**: `Scheduler.schedule_task` / `schedule_dependency_chain` run the read→find-slot→create-event section under an `asyncio.Lock`, realizing the `spec_v3.md §3.7.1` double-booking guard (the earlier "async queue" wording was a design target). ([Scheduling](domain/scheduling.md#placement-safety-fable-scheduling-s1-2026-06-11), `spec_v3.md` §3.7.1)
+
 ## 2026-06-06
 
 ### Added
