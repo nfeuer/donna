@@ -14,6 +14,7 @@ sandbox_promotion_min_runs: 20
 sandbox_promotion_validity_rate: 0.90
 shadow_primary_promotion_min_runs: 100
 shadow_primary_promotion_agreement_rate: 0.85
+shadow_primary_promotion_max_failure_rate: 0.10   # Max run-level failure rate for shadow_primary -> trusted
 degradation_rolling_window: 30
 degradation_ci_confidence: 0.95
 auto_draft_daily_cap: 50

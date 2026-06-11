@@ -984,6 +984,10 @@ class SkillSystemConfig(BaseModel):
     sandbox_promotion_validity_rate: float = 0.90
     shadow_primary_promotion_min_runs: int = 100
     shadow_primary_promotion_agreement_rate: float = 0.85
+    # Fable critique #6: ceiling on the run-level failure rate over the shadow
+    # window. A skill that frequently fails outright must not be promoted to
+    # trusted even if its surviving runs agree highly with Claude.
+    shadow_primary_promotion_max_failure_rate: float = 0.10
     degradation_rolling_window: int = 30
     degradation_ci_confidence: float = 0.95
     auto_draft_daily_cap: int = 50
