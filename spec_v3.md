@@ -671,10 +671,13 @@ API) is async. Concurrency comes from I/O multiplexing, not parallelism.
     pattern: the orchestrator writes, and the Supabase sync process
     reads.
 
--   Calendar write operations are serialized through an async queue. If
-    two tasks need to create calendar events simultaneously, they are
-    queued and processed sequentially. This prevents double-booking race
-    conditions without complex locking.
+-   Calendar placement is serialized through an `asyncio.Lock` on the
+    `Scheduler`. The read→find-slot→create-event section runs under the
+    lock, so two tasks created near-simultaneously (e.g. Discord + SMS)
+    cannot pick the same slot. This prevents double-booking race
+    conditions. (v3.1 note: implemented as `Scheduler._lock` in
+    `scheduling/scheduler.py` — the earlier "async queue" wording was a
+    design target; the lock is the realized mechanism.)
 
 -   Task state transitions are atomic: read current state, validate
     transition, write new state, execute side effects --- all in a
@@ -1836,6 +1839,18 @@ Calendar:
 
 -   Get It Done Bias: Default to scheduling tasks as soon as possible
     while respecting constraints. Do not push tasks to "someday."
+
+(v3.1 note: `find_next_slot` now (a) interprets all `time_windows` hours
+in the configured `calendar.yaml timezone` — candidate slots are stepped
+in UTC and converted to local for every window check, so the absolute
+blackout is enforced on the user's wall clock, not UTC; (b) clamps the
+search horizon to the task's deadline / `earliest` bound, so an
+unplaceable dated task raises `NoSlotFoundError` → `needs_scheduling`
+instead of being placed late; and (c) builds its busy-set from the union
+of *all* configured calendars (personal + work + family), failing closed
+— `CalendarReadError` — on any read error rather than booking against an
+empty calendar. The constraint-aware negotiation/rearrange loop remains a
+future plan; this is the deterministic placement guard.)
 
 **7. Sub-Agent System**
 

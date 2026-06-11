@@ -32,9 +32,29 @@ through all components via `ctx.tz`. Concretely:
 - **Prompt templates** (input parser, chat, decomposition, preference
   extractor) render `{{ current_date }}` and `{{ current_time }}` in local
   time so the LLM reasons about the user's actual clock.
+- **Slot placement** — `Scheduler.find_next_slot` steps candidate slots in
+  UTC (DST-safe) and converts each to the configured zone before every
+  time-window check, so the absolute blackout and all domain windows are
+  enforced on the user's wall clock. Returned slots are timezone-aware in the
+  configured zone, so user-facing confirmations show the correct local time.
 
 Components fall back to `America/New_York` if `ctx.tz` is not set, so the
 behavior is consistent even if the config key is missing.
+
+### Placement safety (Fable Scheduling S1, 2026-06-11)
+
+`Scheduler.schedule_task` is the serialized placement choke point:
+
+- **All-calendars busy union.** The busy-set is the union of every configured
+  calendar (personal + work + family), not just the personal write calendar —
+  so a work-calendar meeting blocks a personal placement.
+- **Fail-closed reads.** A calendar read error raises `CalendarReadError` and
+  aborts placement (surfaced via a fallback alert) rather than booking blind
+  against an empty calendar.
+- **Serialized writes.** The read→find→create section runs under an
+  `asyncio.Lock`, realizing the `spec_v3.md §3.7.1` double-booking guard.
+- **Deadline-aware.** The search horizon is clamped to the task's deadline /
+  `earliest` bound; an unplaceable dated task surfaces as `needs_scheduling`.
 
 ### Calendar Sync Strategy
 
