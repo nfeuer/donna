@@ -107,11 +107,67 @@ except ImportError:
     pass
 
 
+def build_model_router(
+    models_config: ModelsConfig,
+    task_types_config: TaskTypesConfig,
+    project_root: Path,
+    *,
+    invocation_logger: InvocationLogger,
+    budget_guard: BudgetGuard | None = None,
+    escalation_gate: EscalationGate | None = None,
+    payload_writer: PayloadWriter | None = None,
+    fallback_alert_fn: Callable[..., Awaitable[bool]] | None = None,
+    on_shadow_complete: Callable[
+        [str, dict[str, Any], CompletionMetadata], Awaitable[None]
+    ]
+    | None = None,
+) -> ModelRouter:
+    """Sanctioned production constructor for :class:`ModelRouter`.
+
+    Unlike the raw constructor, ``invocation_logger`` is REQUIRED here: every
+    production router must record spend to ``invocation_log`` (CLAUDE.md
+    principle #3), because :class:`~donna.cost.budget.BudgetGuard` computes
+    spend from that table — an unlogged call is invisible to the $100 cap.
+    Bare ``ModelRouter(...)`` construction is reserved for offline
+    config-accessor and test paths that never call :meth:`ModelRouter.complete`.
+
+    Args:
+        models_config: Parsed ``donna_models.yaml``.
+        task_types_config: Parsed ``task_types.yaml``.
+        project_root: Repo root for prompt/schema resolution.
+        invocation_logger: Required structured-logging sink for every call.
+        budget_guard: Optional pre-call spend gate.
+        escalation_gate: Optional over-budget escalation gate.
+        payload_writer: Optional Claude-inspector payload sink.
+        fallback_alert_fn: Optional fallback-alert dispatcher.
+        on_shadow_complete: Optional shadow-completion callback.
+
+    Returns:
+        A fully wired :class:`ModelRouter`.
+    """
+    return ModelRouter(
+        models_config,
+        task_types_config,
+        project_root,
+        budget_guard=budget_guard,
+        on_shadow_complete=on_shadow_complete,
+        escalation_gate=escalation_gate,
+        invocation_logger=invocation_logger,
+        payload_writer=payload_writer,
+        fallback_alert_fn=fallback_alert_fn,
+    )
+
+
 class ModelRouter:
     """Config-driven model router.
 
     Routes LLM calls based on task type → model alias → provider,
     wrapping each call with the resilience layer.
+
+    Construct production instances via :func:`build_model_router` (which
+    requires an ``invocation_logger``); the bare constructor keeps the logger
+    optional only so offline config-accessor and test paths can build a router
+    they never call :meth:`complete` on.
     """
 
     def __init__(
@@ -161,7 +217,22 @@ class ModelRouter:
                         ),
                     )
                 elif mc.provider == "anthropic":
-                    self._providers[mc.provider] = cls()
+                    # Single source of price truth (#6): pass per-alias config
+                    # rates so cost_usd is computed from donna_models.yaml, not
+                    # hardcoded Sonnet pricing. The provider fails loud on an
+                    # unpriced model id rather than silently mispricing the
+                    # ledger when an alias's model changes.
+                    cost_rates = {
+                        m.model: (
+                            m.input_cost_per_token_usd,
+                            m.output_cost_per_token_usd,
+                        )
+                        for m in models_config.models.values()
+                        if m.provider == "anthropic"
+                        and m.input_cost_per_token_usd is not None
+                        and m.output_cost_per_token_usd is not None
+                    }
+                    self._providers[mc.provider] = cls(cost_rates=cost_rates)
                 else:
                     self._providers[mc.provider] = cls()
 
@@ -318,6 +389,19 @@ class ModelRouter:
                 responsible for transitioning the task to the matching
                 terminal state.
         """
+        # Ledger integrity (CLAUDE.md principle #3): a billed model call must
+        # never go unlogged. BudgetGuard computes spend FROM invocation_log, so
+        # an unlogged call is invisible to the budget cap. Fail loud rather than
+        # spend off-ledger. Production routers are built via build_model_router()
+        # which requires a logger; this guards direct/config-accessor paths that
+        # nonetheless try to make a real call.
+        if self._invocation_logger is None:
+            raise RoutingError(
+                "ModelRouter.complete() requires an invocation_logger so spend "
+                "is recorded on invocation_log; build the router via "
+                "build_model_router(). Refusing to make an unlogged billed call."
+            )
+
         # Track escalation context for invocation logging and token-limit
         # enforcement after the gate is consulted.
         _escalation_request_id: int | None = None

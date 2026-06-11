@@ -814,6 +814,21 @@ for the relevant alias. The shadow key enables production monitoring
 evaluation is triggered via CLI with an explicit model argument, not
 configured in routing.
 
+(v3.1 note: `confidence_threshold` (and confidence-based fallback, §4.7) is
+**not yet implemented** and was **removed** from `donna_models.yaml` and the
+`RoutingEntry` model — it was read nowhere, so leaving it advertised a control
+surface that did nothing. Re-add the key together with the consuming logic when
+confidence scoring lands (deferred; trigger in the Model-Layer critique design
+doc). The `shadow` key is likewise inert today — the shadow-completion callback
+is wired nowhere — so production monitoring is not operational yet. Separately,
+**ledger integrity** is now enforced at the choke point: every production
+`ModelRouter` is built via `build_model_router()`, which **requires** an
+`invocation_logger`, and `complete()` refuses to make an unlogged billed call —
+so all spend reaches `invocation_log` (the table `BudgetGuard` reads), keeping
+the §13.1 budget cap accurate. Per-alias `cost_usd` is computed from the config
+rates (`input/output_cost_per_token_usd`), not hardcoded Sonnet pricing; the
+Anthropic provider fails loud on an unpriced model rather than mispricing.)
+
 **4.3 Structured Invocation Logging**
 
 Every model call is logged to the invocation_log table. This is the

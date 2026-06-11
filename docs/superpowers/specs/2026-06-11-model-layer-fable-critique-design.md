@@ -1,7 +1,14 @@
 # Model Layer — Fable Critique & Redesign Spec
 
 **Date:** 2026-06-11
-**Status:** Triaged — pending owner decision on implementation scope (§6)
+**Status:** Phase-1 ledger fix IMPLEMENTED (see below); remaining items triaged
+**Implemented (Phase 1):** #1 (choke-point ledger integrity — `build_model_router`
+factory requires a logger; `complete()` refuses an unlogged billed call; chat +
+bot routers wired), #4 (dead `confidence_threshold` removed from config + model),
+#6 (single-source pricing — Anthropic provider prices from config rates, fails
+loud on an unpriced model). **Deferred to Phase 2 (post-#112 rebase):** #2
+per-attempt error logging, #3 shadow-through-`complete()`, #5 per-provider
+breaker, #7 token tripwire, #8/#9 eval+spot-check activation.
 **Critic:** Fable 5 (adversarial design critique)
 **Triage:** Opus (independent verification + disposition)
 **Related:** `spec_v3.md §4` (Model Abstraction & Evaluation Layer), `CLAUDE.md` principles #3 (log every model call) / #5 (model abstraction), `docs/superpowers/plans/2026-06-11-fable-design-critique-program.md` (Wave B-1), PR #112 (Cost & Escalation — interaction noted in §1)

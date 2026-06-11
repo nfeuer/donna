@@ -83,7 +83,7 @@ def _make_router() -> ModelRouter:
         },
         routing={
             "dedup_check": RoutingEntry(
-                model="parser", fallback="reasoner", confidence_threshold=0.7,
+                model="parser", fallback="reasoner",
             ),
         },
     )
