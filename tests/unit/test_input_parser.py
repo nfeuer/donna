@@ -205,6 +205,25 @@ class TestInputParser:
         assert "{{ current_date }}" not in called_prompt
 
 
+    async def test_personal_context_injected_into_prompt(
+        self, router: ModelRouter, mock_logger: AsyncMock
+    ) -> None:
+        from unittest.mock import AsyncMock as _AM
+
+        router.complete = _AM(return_value=(_buy_milk_response(), _make_metadata()))
+        parser = InputParser(router, mock_logger, PROJECT_ROOT)
+
+        class _Store:
+            search = _AM(return_value=[type("H", (), {"title": "Alice", "content": "Coworker"})()])
+
+        parser.set_memory_store(_Store())
+        await parser.parse("email Alice", user_id="nick")
+
+        called_prompt = router.complete.call_args[0][0]
+        assert "Alice" in called_prompt
+        assert "(none)" not in called_prompt
+
+
 class TestParsePromptCalibration:
     def test_prompt_contains_duration_anchors(self) -> None:
         text = (PROJECT_ROOT / "prompts" / "parse_task.md").read_text()
