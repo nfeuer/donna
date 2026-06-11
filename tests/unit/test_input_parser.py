@@ -203,3 +203,18 @@ class TestInputParser:
         # Should not still have template variables
         assert "{{ user_input }}" not in called_prompt
         assert "{{ current_date }}" not in called_prompt
+
+
+class TestParsePromptCalibration:
+    def test_prompt_contains_duration_anchors(self) -> None:
+        text = (PROJECT_ROOT / "prompts" / "parse_task.md").read_text()
+        # Quick-comms anchor and the "default low" instruction must be present.
+        assert "15" in text
+        assert "30" in text
+        assert "60" in text
+        assert "lower anchor" in text.lower()
+
+    def test_prompt_lists_quick_comm_examples(self) -> None:
+        text = (PROJECT_ROOT / "prompts" / "parse_task.md").read_text().lower()
+        for example in ("email", "schedule", "touch base"):
+            assert example in text
