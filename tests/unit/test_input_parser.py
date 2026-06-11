@@ -250,6 +250,22 @@ class TestInputParser:
         await parser.parse("Buy milk", user_id="nick")
         assert router.complete.await_count == 1
 
+    async def test_cloud_low_confidence_accepted_without_looping(
+        self, router: ModelRouter, mock_logger: AsyncMock
+    ) -> None:
+        low_local = _buy_milk_response() | {"confidence": 0.3, "domain": "personal"}
+        low_cloud = _buy_milk_response() | {"confidence": 0.35, "domain": "work"}
+        router.complete = AsyncMock(  # type: ignore[method-assign]
+            side_effect=[(low_local, _make_metadata()), (low_cloud, _make_metadata())]
+        )
+        parser = InputParser(router, mock_logger, PROJECT_ROOT)
+        result = await parser.parse("touch base with someone", user_id="nick")
+
+        # Exactly one escalation — no loop — and the cloud result is accepted as-is.
+        assert router.complete.await_count == 2
+        assert result.confidence == 0.35
+        assert result.domain == "work"
+
 
 class TestParsePromptCalibration:
     def test_prompt_contains_duration_anchors(self) -> None:

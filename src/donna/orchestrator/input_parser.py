@@ -168,7 +168,14 @@ class InputParser:
             cloud_response, _cloud_meta = await self._router.complete(
                 prompt, task_type=CLOUD_TASK_TYPE, user_id=user_id,
             )
+            # _cloud_meta is intentionally discarded — router.complete() logs
+            # the invocation itself.
             validated = validate_output(cloud_response, schema)
+            logger.info(
+                "parse_confidence_escalation_resolved",
+                cloud_confidence=validated["confidence"],
+                user_id=user_id,
+            )
 
         # 5. Convert to result
         result = _to_parse_result(validated)
