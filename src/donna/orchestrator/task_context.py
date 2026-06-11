@@ -33,6 +33,15 @@ async def build_personal_context(
 
     Never raises — a failure in any source degrades to less context, not an
     error, because parsing must not be blocked by retrieval problems.
+
+    Args:
+        raw_text: The unparsed task string, used as the vault search query.
+        user_id: The authenticated user's ID, passed through to both sources.
+        preference_applier: Optional rule engine; skipped when None.
+        memory_store: Optional vault store; skipped when None.
+
+    Returns:
+        A newline-separated context block, or "" if no sources produced output.
     """
     sections: list[str] = []
 
@@ -57,7 +66,12 @@ async def _vault_notes(
             query=raw_text, user_id=user_id, k=_MAX_NOTES, sources=["vault"],
         )
     except Exception as exc:  # retrieval must never block parsing
-        logger.warning("task_context_vault_failed", reason=str(exc), user_id=user_id)
+        logger.warning(
+            "task_context_vault_failed",
+            event_type="fallback_activated",
+            reason=str(exc),
+            user_id=user_id,
+        )
         return ""
 
     lines: list[str] = []
@@ -76,7 +90,12 @@ async def _preference_hints(
     try:
         rules: list[dict[str, Any]] = await preference_applier.load_rules(user_id)
     except Exception as exc:
-        logger.warning("task_context_prefs_failed", reason=str(exc), user_id=user_id)
+        logger.warning(
+            "task_context_prefs_failed",
+            event_type="fallback_activated",
+            reason=str(exc),
+            user_id=user_id,
+        )
         return ""
 
     lines: list[str] = []

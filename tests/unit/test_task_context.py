@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from unittest.mock import AsyncMock
 
-import pytest
-
 from donna.orchestrator.task_context import build_personal_context
 
 
@@ -38,7 +36,10 @@ async def test_empty_when_no_sources() -> None:
 async def test_includes_vault_titles_and_pref_hints() -> None:
     store = FakeMemoryStore([FakeChunk(title="Alice Smith", content="Coworker on Project X.")])
     applier = FakeApplier([
-        {"condition": {"keywords": ["dentist"]}, "action": {"field": "domain", "value": "personal"}},
+        {
+            "condition": {"keywords": ["dentist"]},
+            "action": {"field": "domain", "value": "personal"},
+        },
     ])
     result = await build_personal_context(
         "email Alice about Project X", "nick",
@@ -56,5 +57,14 @@ async def test_survives_memory_store_error() -> None:
     store.search = AsyncMock(side_effect=RuntimeError("vec0 down"))
     result = await build_personal_context(
         "email Alice", "nick", preference_applier=None, memory_store=store,
+    )
+    assert result == ""
+
+
+async def test_survives_preference_applier_error() -> None:
+    applier = FakeApplier([])
+    applier.load_rules = AsyncMock(side_effect=RuntimeError("db locked"))
+    result = await build_personal_context(
+        "email Alice", "nick", preference_applier=applier, memory_store=None,
     )
     assert result == ""
