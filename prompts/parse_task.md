@@ -85,7 +85,7 @@ Current time: {{ current_time }}
 
 The following are known people, projects, and learned preferences for this
 user. Use them to disambiguate domain (work vs personal vs family) and to
-calibrate effort. If empty, rely on the rubric alone.
+calibrate effort. If this says "(none)", rely on the rubric alone.
 
 {{ personal_context }}
 

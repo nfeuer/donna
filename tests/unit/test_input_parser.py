@@ -208,20 +208,20 @@ class TestInputParser:
     async def test_personal_context_injected_into_prompt(
         self, router: ModelRouter, mock_logger: AsyncMock
     ) -> None:
-        from unittest.mock import AsyncMock as _AM
-
-        router.complete = _AM(return_value=(_buy_milk_response(), _make_metadata()))
+        router.complete = AsyncMock(return_value=(_buy_milk_response(), _make_metadata()))
         parser = InputParser(router, mock_logger, PROJECT_ROOT)
 
+        hit = type("H", (), {"title": "Alice", "content": "Coworker"})()
+
         class _Store:
-            search = _AM(return_value=[type("H", (), {"title": "Alice", "content": "Coworker"})()])
+            search = AsyncMock(return_value=[hit])
 
         parser.set_memory_store(_Store())
         await parser.parse("email Alice", user_id="nick")
 
         called_prompt = router.complete.call_args[0][0]
         assert "Alice" in called_prompt
-        assert "(none)" not in called_prompt
+        assert "- Alice: Coworker" in called_prompt
 
 
 class TestParsePromptCalibration:
