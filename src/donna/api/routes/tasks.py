@@ -86,8 +86,8 @@ class UpdateTaskRequest(BaseModel):
     @field_validator("domain")
     @classmethod
     def _valid_domain(cls, v: str | None) -> str | None:
-        if v is not None and v not in {"personal", "work", "family"}:
-            raise ValueError("domain must be personal, work, or family")
+        if v is not None and v not in {d.value for d in TaskDomain}:
+            raise ValueError(f"domain must be one of {[d.value for d in TaskDomain]}")
         return v
 
 

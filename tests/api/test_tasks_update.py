@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from donna.api.routes.tasks import UpdateTaskRequest, update_task
 
@@ -41,7 +42,7 @@ def test_update_request_accepts_domain_and_duration() -> None:
 
 
 def test_update_request_rejects_invalid_domain() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         UpdateTaskRequest(domain="banana")
 
 
