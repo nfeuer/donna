@@ -36,3 +36,14 @@ def test_returns_none_when_unset() -> None:
 
 def test_returns_none_for_unknown_task() -> None:
     assert _router().confidence_threshold_for("bogus") is None
+
+
+def test_real_config_routes_parse_task_local_first() -> None:
+    import yaml
+
+    cfg = yaml.safe_load((PROJECT_ROOT / "config" / "donna_models.yaml").read_text())
+    routing = cfg["routing"]
+    assert routing["parse_task"]["model"] == "local_parser"
+    assert routing["parse_task"]["fallback"] == "reasoner"
+    assert routing["parse_task"]["confidence_threshold"] == 0.7
+    assert routing["parse_task_cloud"]["model"] == "reasoner"
