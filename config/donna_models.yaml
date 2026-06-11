@@ -153,6 +153,9 @@ cost:
   daily_pause_threshold_usd: 20.00
   task_approval_threshold_usd: 5.00
   monthly_warning_pct: 0.90
+  # Assumed output tokens for the escalation gate's deterministic cost floor
+  # when a caller supplies no estimate_usd (manual-escalation.md §4).
+  estimate_output_tokens: 1000
 
 # Quality monitoring (disabled Phase 1–2, enable when local model handles traffic)
 quality_monitoring:

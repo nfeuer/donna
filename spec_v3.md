@@ -88,6 +88,7 @@ reference `open-backlog.md`.
   §7.1.1 Comms Agent       Defined,disabled  Phase 6 gate — Stage 3 tools + MCP required.                                G-22
   §11.1 Notifications      Partial           Discord DM (tiers 1–2). Email tier 3 not implemented.                       G-14
   §12.1 Integrations       Partial           Gmail, Calendar, Discord, Twilio, Supabase, SQLite live. Others deferred.   G-20
+  §13 Budget/Escalation    Partial           Daily + monthly caps enforced in BudgetGuard; decision tree in shadow mode.  G-15
   §14.3 Logging            Changed           invocation_log in donna_tasks.db + Loki. No standalone donna_logs.db.       G-25
   §16.3.2 Backup           Partial           Local NVMe backups only. Off-server push not built.                         G-23
   §20 Phases               1–5 complete      Phase 6 content moved to appendix.                                          —
@@ -2493,13 +2494,23 @@ If the user responds "busy, will handle later," the system backs off for
 
 **13.1 Budget Rules**
 
-> **Roadmap:** the pause-only `Daily Spend Alert` terminal is being
-> replaced by the four-button over-budget decision tree (`Approve $X
-> extension / Manual handoff / Pause / Cancel`) defined in
-> `docs/superpowers/specs/manual-escalation.md`.
-> The table below documents current behavior; the decision-tree
-> behavior lands per-slice (`slice_17_*` through `slice_24_*`), and
-> this section will be updated by each slice that changes the rules.
+> **Status (2026-06-11):** Both budget *caps* are now enforced
+> deterministically in `BudgetGuard.check_pre_call` — the $20/day pause
+> *and* the $100/month hard cap (previously the monthly cap was unenforced;
+> `check_monthly_warning` was dead code). Enforcement is independent of the
+> escalation-gate posture below.
+>
+> The four-button over-budget decision tree (`Approve $X extension / Manual
+> handoff / Pause / Cancel`, defined in
+> `docs/superpowers/specs/manual-escalation.md`) is wired but runs in
+> **shadow mode** by default (`config/manual_escalation.yaml` → `gate.mode:
+> shadow`): the gate is consulted on *every* LLM call — the router now
+> derives a deterministic cost estimate when a caller supplies none, so the
+> gate is no longer dark — and logs each call that *would* escalate
+> (`escalation_shadow_would_fire`) without prompting, persisting, or
+> blocking. Flip `gate.mode: enforce` to run the interactive tree once
+> estimate accuracy is calibrated. See
+> `docs/superpowers/specs/2026-06-11-cost-escalation-fable-critique-design.md`.
 
   ------------------ ---------------- ------------------------------------
   **Rule**           **Threshold**    **Action**

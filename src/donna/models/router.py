@@ -237,6 +237,33 @@ class ModelRouter:
 
         return provider, model_config.model, alias
 
+    def _estimate_cost_floor(self, task_type: str, prompt: str) -> float:
+        """Deterministic floor cost estimate for the escalation gate.
+
+        Used when a caller supplies no ``estimate_usd`` so the gate can still
+        assess every call (manual-escalation.md §4) rather than relying on
+        caller discipline. Input tokens come from the real prompt; output is
+        assumed (``cost.estimate_output_tokens``). Returns ``0.0`` for free
+        local models or if routing cannot be resolved — those never escalate.
+
+        Args:
+            task_type: Routing key, resolved to a model alias.
+            prompt: Fully-rendered prompt text (its tokens are the input cost).
+
+        Returns:
+            A non-negative USD floor estimate for the call.
+        """
+        try:
+            _, _, alias = self._resolve_route(task_type)
+            model_config = self._models_config.models[alias]
+        except (RoutingError, KeyError):
+            return 0.0
+        input_tokens = estimate_tokens(prompt)
+        output_tokens = self._models_config.cost.estimate_output_tokens
+        in_rate = model_config.input_cost_per_token_usd or 0.0
+        out_rate = model_config.output_cost_per_token_usd or 0.0
+        return input_tokens * in_rate + output_tokens * out_rate
+
     async def complete(
         self,
         prompt: str,
@@ -298,15 +325,22 @@ class ModelRouter:
         _max_tokens_override: int | None = None
         _extension_amount_usd: float | None = None
 
-        if (
-            self._escalation_gate is not None
-            and estimate_usd is not None
-        ):
+        if self._escalation_gate is not None:
+            # Consult the gate on every call — do NOT rely on callers
+            # supplying ``estimate_usd`` (no production caller did, leaving
+            # the gate dark). When omitted, derive a deterministic floor from
+            # the resolved alias's token rates. manual-escalation.md §4.
+            if estimate_usd is not None:
+                gate_estimate = estimate_usd
+                estimate_source = "caller"
+            else:
+                gate_estimate = self._estimate_cost_floor(task_type, prompt)
+                estimate_source = "router_floor"
             outcome = await self._escalation_gate.fire_and_wait(
                 user_id=user_id,
                 task_id=task_id,
                 task_type=task_type,
-                estimate_usd=estimate_usd,
+                estimate_usd=gate_estimate,
                 priority=priority,
                 originating_entity=originating_entity,
                 target_paths=target_paths,
@@ -315,6 +349,7 @@ class ModelRouter:
                 # offer chat mode and persist the prompt body for the
                 # dashboard / Discord attachment.
                 original_prompt=prompt,
+                estimate_source=estimate_source,
             )
             # ``pause``, ``cancel``, ``chat`` (slice 20), and ``claude_code``
             # (slice 21) all mean "no autonomous API call". The caller
@@ -557,17 +592,11 @@ class ModelRouter:
             token_limited=metadata.token_limited,
         )
 
-        # §10.6 row 1: if the response was cut off by the extension token cap,
-        # raise so the caller can re-estimate and re-escalate rather than
-        # silently returning a truncated result.
-        if metadata.token_limited and _escalation_request_id is not None:
-            assert _escalation_correlation_id is not None
-            raise TokenLimitReachedError(
-                escalation_request_id=_escalation_request_id,
-                correlation_id=_escalation_correlation_id,
-            )
-
-        # Auto-log every successful LLM call to invocation_log.
+        # Auto-log every successful LLM call to invocation_log. This MUST
+        # happen before any token-limit raise below: the API call already
+        # incurred real, billed spend (``metadata.cost_usd``); raising first
+        # would drop that spend from invocation_log, under-counting the budget
+        # and starving BudgetGuard.
         invocation_id: str | None = None
         if self._invocation_logger is not None:
             from donna.logging.invocation_logger import InvocationMetadata
@@ -591,7 +620,30 @@ class ModelRouter:
                     )
                 )
             except Exception:
-                logger.warning("invocation_log_write_failed", task_type=task_type)
+                # Silent log failure starves budget enforcement of real spend,
+                # so alert rather than swallow (CLAUDE.md no-silent-degradation).
+                logger.warning(
+                    "invocation_log_write_failed",
+                    event_type="fallback_activated",
+                    task_type=task_type,
+                    cost_usd=enriched_metadata.cost_usd,
+                )
+                if self._fallback_alert_fn is not None:
+                    try:
+                        await self._fallback_alert_fn(
+                            component="model_router",
+                            error="invocation_log write failed — spend not recorded",
+                            fallback="budget accounting may under-count this call",
+                            context={
+                                "task_type": task_type,
+                                "cost_usd": enriched_metadata.cost_usd,
+                            },
+                        )
+                    except Exception:
+                        logger.warning(
+                            "fallback_alert_fn_failed_invocation_log",
+                            task_type=task_type,
+                        )
 
         # Write request/response payload to disk for forensic inspection.
         if self._payload_writer is not None and invocation_id is not None:
@@ -639,6 +691,19 @@ class ModelRouter:
                     await conn.commit()
             except Exception:
                 logger.warning("payload_write_failed", task_type=task_type)
+
+        # §10.6 row 1: if the response was cut off by the extension token cap,
+        # raise so the caller can re-estimate and re-escalate rather than
+        # silently returning a truncated result. Raised only AFTER the spend is
+        # logged + the payload is written above, so the billed call is never
+        # lost, and before the shadow fire below (no point shadowing a call we
+        # are about to fail).
+        if metadata.token_limited and _escalation_request_id is not None:
+            assert _escalation_correlation_id is not None
+            raise TokenLimitReachedError(
+                escalation_request_id=_escalation_request_id,
+                correlation_id=_escalation_correlation_id,
+            )
 
         # Shadow mode: fire secondary model in parallel if configured.
         routing = self._models_config.routing.get(task_type)

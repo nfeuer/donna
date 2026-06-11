@@ -38,7 +38,7 @@ import structlog
 import uuid6
 
 from donna.cost.budget import BudgetPausedError
-from donna.models.router import EscalationDecisionError
+from donna.models.router import EscalationDecisionError, TokenLimitReachedError
 from donna.skills.candidate_report import (
     SkillCandidateReportRow,
     SkillCandidateRepository,
@@ -216,6 +216,21 @@ class AutoDrafter:
                 candidate_id=candidate.id,
                 outcome=outcome_label,
                 rationale=f"escalation_resolved={exc.mode!r}",
+            )
+        except TokenLimitReachedError as exc:
+            # The extension's token cap truncated the draft (enforce mode).
+            # Router already logged the (real) spend before raising, so leave
+            # the candidate in ``new`` for a future retry — do NOT dismiss it
+            # as a malformed/failed call.
+            logger.warning(
+                "skill_auto_draft_token_limit_reached",
+                candidate_id=candidate.id,
+                escalation_request_id=exc.escalation_request_id,
+            )
+            return AutoDraftReport(
+                candidate_id=candidate.id,
+                outcome="budget_exhausted",
+                rationale="token_limit_reached; re-escalation required",
             )
         except Exception as exc:
             logger.warning(
