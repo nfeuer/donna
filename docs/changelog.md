@@ -2,6 +2,19 @@
 
 Recent changes, summarized from commits and PRs.
 
+## 2026-06-11
+
+### Changed
+- **Task parsing is now local-first.** `parse_task` routes to the local model (`local_parser`, qwen2.5:32b) as primary, with confidence-gated escalation to the cloud `reasoner` via a new `parse_task_cloud` route when the local parse confidence is below 0.7. Most tasks now parse at zero marginal cost; ambiguous ones get a cloud second opinion.
+- **Calibrated duration estimates.** `prompts/parse_task.md` gained explicit duration anchors (quick comms 15 min / errands 30 / focused work 60), fixing the prior "every task is ~1 hour" behavior. The domain rubric was sharpened and now leans on injected personal context to disambiguate work vs personal.
+
+### Added
+- **Personal-context injection.** New `orchestrator/task_context.py` assembles a compact context block from vault notes (semantic search) + active learned-preference rules, injected into the parse prompt via a `{{ personal_context }}` slot. Degrades gracefully when the vault is empty. `PreferenceApplier` and `memory_store` are now wired into the live parser.
+- **Domain/duration edit pathway.** `PATCH /tasks/{id}` (API) and `PATCH /admin/tasks/{id}` (dashboard) now accept `domain` and `estimated_duration`, with an inline editor in the dashboard task detail panel. These edits fire the `CorrectionSubscriber` learning loop, which was previously dormant for these fields.
+
+### Notes
+- `spec_v3.md` model-routing and task-parsing sections describe the old cloud-first behavior; reconciliation tracked as S25 in [`followups.md`](superpowers/specs/followups.md).
+
 ## 2026-05-18
 
 ### Added
