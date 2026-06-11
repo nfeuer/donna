@@ -2,6 +2,15 @@
 
 Recent changes, summarized from commits and PRs.
 
+## 2026-06-11
+
+### Changed
+- **Budget enforcement**: `BudgetGuard.check_pre_call` now enforces the `$100`/month hard cap (previously daily-only — the monthly check was dead code) and fires the 90% monthly warning. `BudgetPausedError` carries a `period` (`daily` / `monthly`). ([Cost & Escalation](domain/cost.md#budget-enforcement-flow))
+- **Escalation-gate posture**: new `config/manual_escalation.yaml` → `gate.mode`. The default **`shadow`** consults the gate on every call and logs would-escalate events (`escalation_shadow_would_fire`) without prompting, persisting, or blocking; **`enforce`** runs the interactive decision tree. The router now derives a deterministic cost floor when a caller omits `estimate_usd`, so the gate is no longer dark. ([Cost & Escalation](domain/cost.md#gate-posture-shadow-vs-enforce))
+
+### Fixed
+- **Billed spend dropped on token-limit truncation**: a token-capped extension call raised `TokenLimitReachedError` *before* the `invocation_log` write, dropping real spend from budget accounting. The raise now happens after the log + payload writes; `auto_drafter` / `evolution` catch it; log-write failures now alert via `fallback_alert_fn` instead of warning silently. ([Cost & Escalation](domain/cost.md))
+
 ## 2026-06-06
 
 ### Added

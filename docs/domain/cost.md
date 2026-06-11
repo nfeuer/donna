@@ -17,7 +17,7 @@ The design philosophy is "safety first, dial back later": autonomous spend is ga
 | Concept | Description |
 |---------|-------------|
 | CostTracker | Queries `invocation_log` for daily/monthly cost aggregations by task type or model. Foundation for all budget checks. |
-| BudgetGuard | Pre-call gate injected into ModelRouter. Checks daily spend against the pause threshold (plus any approved extensions). Raises `BudgetPausedError` on breach. |
+| BudgetGuard | Pre-call gate injected into ModelRouter. Enforces **both** the daily pause threshold (plus any approved extensions) **and** the `$100` monthly hard cap, and fires the 90% monthly warning. Raises `BudgetPausedError` (with `period` = `daily` or `monthly`) on breach. |
 | BudgetPausedError | Exception that halts all autonomous LLM work. Caught by the orchestrator to transition tasks to paused state. |
 | EscalationGate | Estimate-driven gate. When a task's pre-flight cost estimate exceeds budget or the per-task threshold, it creates an `escalation_request` row, posts a Discord view with buttons, and awaits resolution. |
 | GateOutcome | Result of `fire_and_wait`: indicates whether the caller should proceed (`api_extended`), park the task (`pause`/`cancel`), or hand off to the user (`chat`/`claude_code`). |
@@ -79,7 +79,16 @@ flowchart TD
 
 ### Budget Enforcement Flow
 
-`BudgetGuard.check_pre_call()` runs before every LLM API call. It queries today's spend from `invocation_log` (excluding zero-cost audit rows like `escalation_lifecycle` and `tool_gap_lifecycle`), factors in any approved `daily_budget_extension` rows to raise the effective cap, and raises `BudgetPausedError` if spend exceeds the limit. Monthly warnings fire once per calendar month at the configured percentage threshold.
+`BudgetGuard.check_pre_call()` runs before every LLM API call. It queries today's spend from `invocation_log` (excluding zero-cost audit rows like `escalation_lifecycle` and `tool_gap_lifecycle`), factors in any approved `daily_budget_extension` rows to raise the effective cap, and raises `BudgetPausedError(period="daily")` if spend exceeds the limit. It then checks **monthly** spend against the `$100` hard cap and raises `BudgetPausedError(period="monthly")` on breach; below the cap, the 90% monthly warning fires (once per calendar month). Both caps are enforced regardless of the escalation-gate posture below.
+
+### Gate posture (shadow vs enforce)
+
+`config/manual_escalation.yaml` → `gate.mode` selects the escalation-gate posture:
+
+- **`shadow`** (deployed default): the gate is consulted on *every* LLM call — the router derives a deterministic cost floor (`cost.estimate_output_tokens` × output rate + prompt-token input cost) when a caller supplies no `estimate_usd`, so the gate is never dark — but it only *logs* calls that would escalate (`escalation_shadow_would_fire`). No rows, no Discord prompts, no blocking. Used to calibrate estimate accuracy.
+- **`enforce`**: runs the full interactive Approve/Manual/Pause/Cancel decision tree described below.
+
+> Prior to 2026-06-11 the gate fired only when a caller passed `estimate_usd` — and no production caller did, so the decision tree was unreachable and the monthly cap unenforced. See [`2026-06-11-cost-escalation-fable-critique-design.md`](../superpowers/specs/2026-06-11-cost-escalation-fable-critique-design.md).
 
 ### Escalation Modes
 
