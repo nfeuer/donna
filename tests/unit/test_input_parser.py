@@ -122,6 +122,18 @@ class TestRenderTemplate:
         assert "202" in result
         assert "UTC" in result or ":" in result
 
+    def test_fills_personal_context(self) -> None:
+        template = "Context:\n{{ personal_context }}\nEnd"
+        result = _render_template(template, "test", personal_context="Knows: Alice (coworker)")
+        assert "Alice (coworker)" in result
+        assert "{{ personal_context }}" not in result
+
+    def test_personal_context_defaults_to_none_marker(self) -> None:
+        template = "Context: {{ personal_context }}"
+        result = _render_template(template, "test")
+        assert "{{ personal_context }}" not in result
+        assert "(none)" in result
+
 
 class TestInputParser:
     async def test_parse_buy_milk(

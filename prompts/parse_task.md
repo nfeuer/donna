@@ -53,6 +53,14 @@ Rate your confidence in the parse (0.0 to 1.0). Lower confidence if:
 Today's date: {{ current_date }}
 Current time: {{ current_time }}
 
+## Personal Context
+
+The following are known people, projects, and learned preferences for this
+user. Use them to disambiguate domain (work vs personal vs family) and to
+calibrate effort. If this says "(none)", rely on the rubric alone.
+
+{{ personal_context }}
+
 ## User Input
 
 {{ user_input }}

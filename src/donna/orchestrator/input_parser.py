@@ -50,7 +50,10 @@ _DEFAULT_TZ = zoneinfo.ZoneInfo("America/New_York")
 
 
 def _render_template(
-    template: str, user_input: str, tz: zoneinfo.ZoneInfo | None = None
+    template: str,
+    user_input: str,
+    tz: zoneinfo.ZoneInfo | None = None,
+    personal_context: str = "",
 ) -> str:
     """Fill template variables with current context."""
     now = datetime.now(UTC).astimezone(tz or _DEFAULT_TZ)
@@ -58,6 +61,7 @@ def _render_template(
         template
         .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
         .replace("{{ current_time }}", now.strftime("%I:%M %p %Z"))
+        .replace("{{ personal_context }}", personal_context.strip() or "(none)")
         .replace("{{ user_input }}", user_input)
     )
 
