@@ -253,6 +253,24 @@ class EodDigest:
         row = await cursor.fetchone()
         skill_system_cost = float(row[0]) if row else 0.0
 
+        # Skills currently parked in draft awaiting human approval. This is a
+        # STANDING backlog (not 24h-windowed): draft → sandbox only accepts a
+        # human_approval transition, so EVERY skill in draft (auto-drafted or
+        # evolution-parked) is waiting on the user. Surface them until acted on.
+        cursor = await conn.execute(
+            """
+            SELECT id, capability_name, created_at
+              FROM skill
+             WHERE state = 'draft'
+             ORDER BY created_at ASC
+            """,
+        )
+        pending_rows = await cursor.fetchall()
+        pending_approval = [
+            {"skill_id": r[0], "capability_name": r[1], "created_at": r[2]}
+            for r in pending_rows
+        ]
+
         return {
             "flagged": flagged,
             "drafted": drafted,
@@ -260,6 +278,7 @@ class EodDigest:
             "demoted": demoted,
             "evolved": evolved,
             "evolution_failed": evolution_failed,
+            "pending_approval": pending_approval,
             "skill_system_cost_usd": skill_system_cost,
         }
 
@@ -269,6 +288,15 @@ class EodDigest:
             return ""
 
         lines = ["**Skill System Changes (last 24h)**"]
+
+        if skill_data.get("pending_approval"):
+            lines.append("")
+            lines.append(
+                f"⏳ Pending your approval: {len(skill_data['pending_approval'])} "
+                "drafted skill(s)"
+            )
+            for p in skill_data["pending_approval"][:5]:
+                lines.append(f"  - {p['capability_name']} (approve in the dashboard)")
 
         if skill_data.get("drafted"):
             lines.append("")
@@ -315,11 +343,14 @@ class EodDigest:
         lines.append("")
         lines.append(f"Skill-system Claude spend: ${skill_data['skill_system_cost_usd']:.4f}")
 
-        # If no activity at all, return a short stub.
+        # If no activity at all, return a short stub. Pending approvals count as
+        # something the user must see (a standing backlog), so they keep the
+        # section alive even on a day with no 24h transitions.
         no_activity = not (
             skill_data.get("drafted") or skill_data.get("promoted")
             or skill_data.get("demoted") or skill_data.get("flagged")
             or skill_data.get("evolved") or skill_data.get("evolution_failed")
+            or skill_data.get("pending_approval")
         )
         if no_activity and skill_data.get("skill_system_cost_usd", 0.0) == 0.0:
             return "**Skill System Changes (last 24h)**\nNo changes in the last 24 hours."

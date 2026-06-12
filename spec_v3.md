@@ -3881,8 +3881,20 @@ Supporting modules: `skills/shadow.py`, `skills/divergence.py`,
     Judge (§7.1.1) flags a task as a reusable capability,
     Claude drafts a YAML skill + fixtures + output schema, which
     lands as a candidate via the Admin API (`skill_candidates`,
-    `skill_drafts`). A human still promotes the candidate into the
-    shadow stage.
+    `skill_drafts`). The promotion contract is **one human approval
+    at `draft → sandbox`; statistical gates thereafter** — once a
+    human approves a draft into sandbox, the sandbox→shadow_primary
+    and shadow_primary→trusted promotions are fully automatic,
+    gated only by the §23.4 run-validity and shadow-agreement
+    thresholds (and held back per skill by `requires_human_gate`).
+    Auto-drafted skills now default to `requires_human_gate=1`
+    (safety-first), so that single human approval is mandatory
+    before the skill leaves draft. The `draft → sandbox` edge is the
+    *only* human gate in the lifecycle; it accepts `human_approval`
+    or `manual_override` and is never crossed by an automated
+    `gate_passed`, so a system actor (including the evolution loop)
+    cannot forge it. Evolution therefore parks an evolved version in
+    `draft` awaiting that same human approval.
 -   **Evolution** (`skills/evolution.py`,
     `skills/evolution_scheduler.py`) -- a nightly job clusters
     recent corrections by skill (`correction_cluster`), asks

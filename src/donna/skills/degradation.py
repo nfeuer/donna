@@ -15,6 +15,7 @@ import aiosqlite
 import structlog
 
 from donna.config import SkillSystemConfig
+from donna.skills.alerting import FallbackAlert, emit_fallback_alert
 from donna.skills.divergence import SkillDivergenceRepository
 from donna.skills.lifecycle import SkillLifecycleManager
 from donna.tasks.db_models import SkillState
@@ -43,14 +44,22 @@ class DegradationDetector:
         divergence_repo: SkillDivergenceRepository,
         lifecycle_manager: SkillLifecycleManager,
         config: SkillSystemConfig,
+        fallback_alert: FallbackAlert | None = None,
     ) -> None:
         self._conn = connection
         self._divergence_repo = divergence_repo
         self._lifecycle = lifecycle_manager
         self._config = config
+        self._fallback_alert = fallback_alert
 
     async def run(self) -> list[DegradationReport]:
-        """Evaluate every trusted skill; return per-skill reports."""
+        """Evaluate every trusted skill; return per-skill reports.
+
+        Each skill is evaluated inside its own try/except so that one skill's
+        failure cannot abort the whole nightly sweep (Fable critique #2). A
+        per-skill failure is alerted via ``dispatch_fallback_alert`` and the
+        sweep continues with the next skill.
+        """
         cursor = await self._conn.execute(
             "SELECT id, baseline_agreement FROM skill WHERE state = ?",
             (SkillState.TRUSTED.value,),
@@ -60,8 +69,21 @@ class DegradationDetector:
         reports: list[DegradationReport] = []
 
         for skill_id, baseline_agreement in trusted_skills:
-            report = await self._evaluate_skill(skill_id, baseline_agreement)
-            reports.append(report)
+            try:
+                report = await self._evaluate_skill(skill_id, baseline_agreement)
+                reports.append(report)
+            except Exception as exc:
+                logger.exception(
+                    "degradation_skill_evaluation_failed",
+                    skill_id=skill_id,
+                )
+                await emit_fallback_alert(
+                    self._fallback_alert,
+                    component="skill_degradation",
+                    error=f"degradation evaluation failed for {skill_id}: {exc}",
+                    fallback="skipped this skill; nightly sweep continued",
+                    context={"skill_id": skill_id},
+                )
 
         return reports
 
@@ -146,6 +168,23 @@ class DegradationDetector:
                 ci_upper=current_upper,
                 successes=current_successes,
                 trials=n,
+            )
+            # The user must be told when a trusted skill is demoted — silent
+            # degradation defeats the §23.4 safety net (Fable critique #7).
+            await emit_fallback_alert(
+                self._fallback_alert,
+                component="skill_degradation",
+                error=(
+                    f"trusted skill {skill_id} degraded "
+                    f"(CI upper {current_upper:.2f} < baseline "
+                    f"{baseline_agreement:.2f})"
+                ),
+                fallback="demoted to flagged_for_review pending human decision",
+                context={
+                    "skill_id": skill_id,
+                    "ci_upper": round(current_upper, 4),
+                    "baseline_agreement": round(baseline_agreement, 4),
+                },
             )
             return DegradationReport(
                 skill_id=skill_id,

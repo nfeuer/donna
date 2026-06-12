@@ -242,6 +242,7 @@ def _make_drafter(
     executor_factory=None,
     config: SkillSystemConfig | None = None,
     estimated_draft_cost_usd: float = 0.50,
+    notifier=None,
 ) -> AutoDrafter:
     budget_guard = AsyncMock()
     repo = SkillCandidateRepository(db)
@@ -257,7 +258,28 @@ def _make_drafter(
         config=cfg,
         executor_factory=factory,
         estimated_draft_cost_usd=estimated_draft_cost_usd,
+        notifier=notifier,
     )
+
+
+async def test_run_notifies_user_of_pending_draft(db: aiosqlite.Connection) -> None:
+    """A successful draft pings the user that a skill awaits their approval."""
+    await _insert_capability(db, "parse_task")
+    repo = SkillCandidateRepository(db)
+    await _insert_candidate(repo, "parse_task")
+
+    messages: list[str] = []
+
+    async def _notify(msg: str) -> None:
+        messages.append(msg)
+
+    router = _make_router(_well_formed_output())
+    drafter = _make_drafter(db, router, notifier=_notify)
+
+    await drafter.run(remaining_budget_usd=5.0, max_drafts=1)
+
+    assert len(messages) == 1
+    assert "awaiting your approval" in messages[0]
 
 
 # ---------------------------------------------------------------------------

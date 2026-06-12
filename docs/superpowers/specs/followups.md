@@ -192,3 +192,24 @@ Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
   (observability). `spec_v3.md` reconciled: new §14.7 (Container Health
   Monitoring) + `health.*` event family in §14.4. Design doc:
   `docs/superpowers/specs/2026-06-05-container-health-watcher-design.md`.
+
+## SKILL-FABLE — Skill-system critique residue (deferred findings)
+
+- **Spec:** `spec_v3.md §23.3/§23.4`; design
+  `docs/superpowers/specs/2026-06-11-skill-system-fable-critique-design.md`
+- **Status:** open (trigger-gated / lower-urgency, intentionally out of scope for
+  the safety-critical slice)
+- **Gap:** The Wave-C critique slice implemented #1 (evidence loop), #2 (human-gate
+  scoping), #3 (version-scoped gates), #5 (suppress removal + human_approval
+  enforcement), #6 (sandbox/shadow gate rigor), #7 (skills-package alerting), and
+  #10 (auto-draft human-gate default + doc/spec reconciliation). Still open:
+  **#4** full dispatch-time tool-authorization intersection (step tools ∩ capability
+  config grant, fail-closed) — trigger: first write-capable tool registers
+  (`task_db_write`/`calendar_write`, §23.3 Stage 3); config-side `tools:`
+  declarations completable now at zero risk.
+  **#8** dormant ungated path in `orchestrator/dispatcher.py:244-266` (runs a matched
+  skill with no `skill.state` check) — dead today (`skill_executor=` never wired);
+  copy `_decide_path`'s state check or delete the Phase-1 path when that routing
+  is wired.
+  **#9** evolution gates vacuous-pass on empty evidence — fail closed (or require a
+  configurable minimum) and alert on a vacuous pass.

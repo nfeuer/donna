@@ -437,3 +437,31 @@ class TestEvolvedSkills:
         await db.commit()
         data = await digest._assemble_skill_system_data(datetime.now(UTC))
         assert data["skill_system_cost_usd"] == pytest.approx(0.25)
+
+
+class TestPendingApproval:
+    async def test_draft_skills_appear_as_pending_approval(self, db) -> None:
+        """Skills in draft state surface as standing pending-approval items."""
+        digest = _make_digest(db)
+        now = _now_utc()
+
+        # Two drafts awaiting approval + one already-sandboxed (not pending).
+        await _insert_skill(db, "skill-d1", "summarise_email", state="draft")
+        await _insert_skill(db, "skill-d2", "triage_pr", state="draft")
+        await _insert_skill(db, "skill-s1", "classify_ticket", state="sandbox")
+
+        data = await digest._assemble_skill_system_data(now)
+        names = {p["capability_name"] for p in data["pending_approval"]}
+        assert names == {"summarise_email", "triage_pr"}
+
+        text = digest._render_skill_section(data)
+        assert "Pending your approval" in text
+        assert "summarise_email" in text
+        assert "triage_pr" in text
+
+    async def test_no_drafts_no_pending_section(self, db) -> None:
+        digest = _make_digest(db)
+        await _insert_skill(db, "skill-s1", "classify_ticket", state="trusted")
+        data = await digest._assemble_skill_system_data(_now_utc())
+        assert data["pending_approval"] == []
+        assert "Pending your approval" not in digest._render_skill_section(data)
