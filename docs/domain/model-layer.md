@@ -25,7 +25,7 @@ src/donna/models/
 ├── __init__.py
 ├── router.py              # ModelRouter — config-driven routing, escalation, overflow handling
 ├── types.py               # CompletionMetadata dataclass
-├── tokens.py              # estimate_tokens() — character-based heuristic (len // 4)
+├── tokens.py              # estimate_tokens() — len//4 baseline (gate floor); router calibrates a per-task EMA divisor for the Ollama budget gate
 ├── validation.py          # validate_output() — JSON Schema (draft-07) validation
 ├── quality.py             # Spot-check quality monitoring (Claude-as-judge)
 └── providers/
@@ -38,6 +38,10 @@ src/donna/models/
 ### ModelRouter (`router.py`)
 
 The `ModelRouter` class is the central dispatch point. It loads routing configuration from `donna_models.yaml` and `task_types.yaml`, resolves `task_type` to `model_alias` to provider, and dispatches completions through the resilience layer (circuit breaker, retry).
+
+**Per-provider circuit breakers.** Each provider name (`ollama`, `anthropic`, …) gets its own `CircuitBreaker`, created lazily via `_breaker_for(provider)`. `resilient_call` is handed the breaker of the provider that will *actually* run the call — after an overflow escalation, that is the fallback's provider — so a local-GPU (Ollama) outage opens only Ollama's breaker and never short-circuits cloud (Anthropic) calls. When a breaker opens, the router dispatches a `dispatch_fallback_alert` in addition to the critical log.
+
+**Every billed attempt is logged.** `resilient_call` retries the whole billed provider call; the router passes it an `on_attempt_failure` hook and an `is_transient_error` classifier so that (a) each billed attempt — including one whose response failed to parse — writes its own `invocation_log` row marked `interrupted=1` (providers raise `ResponseParseError` carrying the pre-parse `usage`), and (b) non-retryable errors (auth / 4xx) fail fast instead of burning the retry budget; transport / 5xx / 408 / 429 / 529 retry. No billed call goes unlogged.
 
 Key error types raised by `ModelRouter.complete()`:
 
@@ -64,9 +68,19 @@ Returned alongside every LLM completion:
 | `overflow_escalated` | bool | True if request fell back from local to cloud due to context overflow |
 | `token_limited` | bool | True if provider truncated output at extension cap |
 
-### Token Estimation (`tokens.py`)
+### Token Estimation (`tokens.py` + self-calibrating divisor)
 
-`estimate_tokens(text)` uses `len(text) // 4` — zero dependencies, constant-time. Accuracy is tracked on the LLM Gateway dashboard via the `estimated_tokens_in` column. Upgrade trigger: swap for Ollama's `/api/tokenize` when `context_overflow_escalation` rate exceeds 10%.
+`estimate_tokens(text)` provides the zero-dependency `len(text) // 4` baseline, still used for the deterministic escalation-gate cost *floor*.
+
+For the **Ollama context-budget gate**, the router no longer trusts the constant `4`: a constant divisor *under*-estimates dense prompts, which silently truncates the context window — the exact failure the loud `ContextOverflowError` exists to prevent. Instead the router keeps a **per-task-type EMA of the observed `len(prompt) / tokens_in` ratio** from completed Ollama calls and uses the clamped EMA (times `safety_factor`) as the divisor. Knobs live under `ollama.token_estimation` in `config/donna_models.yaml`:
+
+| Knob | Meaning |
+|------|---------|
+| `safety_factor` | Multiplier on the divisor; `<1.0` shrinks it and inflates the estimate (headroom vs truncation). |
+| `ema_alpha` | EMA smoothing in `[0,1]`; higher reacts faster to recent calls. |
+| `divisor_bounds` | `[low, high]` clamp so one anomalous `tokens_in` can't poison the EMA. |
+
+No tokenizer dependency is added — the estimator calibrates from observed traffic. Exact tokenization stays deferred (trigger: combined overflow + `truncation_suspected` rate >10%).
 
 ### Output Validation (`validation.py`)
 
@@ -134,7 +148,11 @@ applying Sonnet pricing.
 
 Runs secondary model on same input without affecting primary output. Use case: after migrating `task_parse` from Claude to local, keep Claude as shadow for 2–4 weeks. If quality degrades, revert by changing routing config.
 
-**Cost implication:** Doubles model cost for that task type. Intended as temporary — disable once confidence is established.
+**Routes through `complete()`.** Shadow is no longer a side-channel that calls a provider directly. `_run_shadow` re-dispatches through `self.complete(..., is_shadow=True)` (resolving the shadow alias via `_lookup_routing_entry` + a synthetic `<task_type>::__shadow__` route), so the shadow inherits the budget pre-check, the per-provider circuit breaker, and — critically — **`invocation_log` accounting**: shadow spend lands as an `is_shadow=1` row with its real `cost_usd`. An `is_shadow` recursion guard ensures a shadow call never spawns its own shadow.
+
+**Kill switch.** Shadow is gated by `shadow.enabled` in `config/donna_models.yaml` (default `false`). Because shadow doubles real billed spend, it stays off until an operator opts in; a configured `routing.<task>.shadow` alias is inert while the switch is off. The full statistical auto-disable job (design B) is deferred until shadow is enabled in production.
+
+**Cost implication:** Doubles model cost for that task type — now visible in the ledger. Intended as temporary — disable once confidence is established.
 
 ## Offline Evaluation Harness (Model Comparison)
 
@@ -236,12 +254,16 @@ Per-alias overrides live on the individual model entry: `models.<alias>.num_ctx`
 
 ### Pre-dispatch budgeting
 
-Before dispatching to a local alias, `ModelRouter` estimates prompt tokens (`len(prompt) // 4`) and compares against `num_ctx - output_reserve`. If the estimate exceeds the budget:
+Before dispatching to a local alias, `ModelRouter` estimates prompt tokens with the **self-calibrating divisor** (see *Token Estimation* above) and compares against `num_ctx - output_reserve`. If the estimate exceeds the budget:
 
 1. If the task type has a `fallback` configured, the call escalates to the cloud alias. A `context_overflow_escalation` warn event is logged, and `invocation_log.overflow_escalated` is set to `1`.
 2. If no fallback exists, the router raises `ContextOverflowError`. This is deliberate — silent truncation produces silent garbage.
 
-Every call to an Ollama alias records `invocation_log.estimated_tokens_in` alongside the actual `tokens_in` reported by Ollama. The LLM Gateway dashboard surfaces mean absolute error as a gauge for when to upgrade the estimator to exact tokenization.
+### Post-call truncation tripwire
+
+Estimation is necessarily approximate, so a prompt can still slip past the pre-dispatch gate and saturate the window. After every Ollama call the router checks `tokens_in >= num_ctx - output_reserve`. When that holds, the response was likely **silently truncated** — the failure the loud `ContextOverflowError` exists to prevent. The router logs `truncation_suspected=True`, dispatches a `dispatch_fallback_alert`, logs the (billed-but-suspect) local row as `interrupted`, and re-dispatches once to the configured `fallback` alias — or raises `ContextOverflowError` if none exists. This closes the under-estimate hole and adds `truncation_suspected` to the upgrade gauge so the exact-tokenization trigger can actually fire (it previously counted only *detected* overflows).
+
+Every call to an Ollama alias records `invocation_log.estimated_tokens_in` alongside the actual `tokens_in` reported by Ollama, and feeds the observed ratio back into the per-task-type divisor EMA. The LLM Gateway dashboard surfaces mean absolute error as a gauge for when to upgrade the estimator to exact tokenization.
 
 ### Future Enhancements
 

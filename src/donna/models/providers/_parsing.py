@@ -10,8 +10,24 @@ import json
 import re
 from typing import Any, cast
 
+from donna.models.types import CompletionMetadata
+
 # Regex to strip markdown code fences from LLM output.
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?\s*```$", re.DOTALL)
+
+
+class ResponseParseError(ValueError):
+    """A billed completion was received but its body was not valid JSON.
+
+    Carries the call's :class:`~donna.models.types.CompletionMetadata` so the
+    router can still log the (already-billed) spend to ``invocation_log`` with
+    an ``interrupted`` marker even though parsing failed — a parse failure must
+    not drop real token spend from the budget ledger (model-layer critique #2).
+    """
+
+    def __init__(self, message: str, *, metadata: CompletionMetadata) -> None:
+        super().__init__(message)
+        self.metadata = metadata
 
 
 def parse_json_response(text: str) -> dict[str, Any]:
