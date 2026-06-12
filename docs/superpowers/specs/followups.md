@@ -223,14 +223,21 @@ Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
 - **Gap:** The Wave-C critique slice implemented #1 (evidence loop), #2 (human-gate
   scoping), #3 (version-scoped gates), #5 (suppress removal + human_approval
   enforcement), #6 (sandbox/shadow gate rigor), #7 (skills-package alerting), and
-  #10 (auto-draft human-gate default + doc/spec reconciliation). Still open:
+  #10 (auto-draft human-gate default + doc/spec reconciliation). **#8 and #9 are now
+  also implemented** (this slice). Still open:
   **#4** full dispatch-time tool-authorization intersection (step tools ∩ capability
   config grant, fail-closed) — trigger: first write-capable tool registers
   (`task_db_write`/`calendar_write`, §23.3 Stage 3); config-side `tools:`
   declarations completable now at zero risk.
-  **#8** dormant ungated path in `orchestrator/dispatcher.py:244-266` (runs a matched
-  skill with no `skill.state` check) — dead today (`skill_executor=` never wired);
-  copy `_decide_path`'s state check or delete the Phase-1 path when that routing
-  is wired.
-  **#9** evolution gates vacuous-pass on empty evidence — fail closed (or require a
-  configurable minimum) and alert on a vacuous pass.
+  **#8 — DONE.** `orchestrator/dispatcher.py` `_try_skill_shadow` now gates execution
+  on `skill_row.state in ("shadow_primary", "trusted")` (mirrors the automations
+  dispatcher's `_decide_path`), so a future wiring of `skill_executor` cannot run a
+  DRAFT/sandbox skill with real tools.
+  **#9 — DONE.** The three evolution gates (`targeted`, `fixture_regression`,
+  `recent_success`) no longer pass *silently* on an empty evidence set — the
+  condition is tagged `no_evidence` and logged `fallback_activated`. Config
+  `evolution_require_gate_evidence` (default **false**) additionally fails the
+  gate closed; kept lenient-by-default because the targeted-case pipeline does
+  not yet reliably populate evidence (flipping to true would block evolution of
+  evidence-sparse skills). Trigger to flip the default: reliable fixture/targeted
+  capture from successful runs.

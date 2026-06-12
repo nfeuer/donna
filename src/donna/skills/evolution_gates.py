@@ -113,6 +113,39 @@ class EvolutionGates:
         self._config = config
         self._executor = executor
 
+    def _empty_evidence_result(self, gate_name: str, skill_id: str) -> GateResult:
+        """Gate result when there is no evidence to evaluate (Fable #9).
+
+        A gate that passes on an *empty* evidence set is a decorative seam. By
+        default (``evolution_require_gate_evidence``) we fail closed; either way
+        the condition is logged ``fallback_activated`` so a vacuous pass is never
+        silent.
+
+        Args:
+            gate_name: The gate reporting no evidence.
+            skill_id: The skill under evaluation.
+
+        Returns:
+            A GateResult that fails closed unless the lenient config is set.
+        """
+        require = self._config.evolution_require_gate_evidence
+        logger.warning(
+            "evolution_gate_no_evidence",
+            event_type="fallback_activated",
+            gate=gate_name,
+            skill_id=skill_id,
+            fail_closed=require,
+        )
+        return GateResult(
+            name=gate_name,
+            passed=not require,
+            details={
+                "pass_rate": 0.0 if require else 1.0,
+                "total": 0,
+                "reason": "no_evidence",
+            },
+        )
+
     def run_structural_gate(self, new_version: dict[str, Any]) -> GateResult:
         return run_structural_gate(new_version)
 
@@ -123,11 +156,7 @@ class EvolutionGates:
         targeted_case_ids: list[str],
     ) -> GateResult:
         if not targeted_case_ids:
-            return GateResult(
-                name="targeted",
-                passed=True,
-                details={"pass_rate": 1.0, "total": 0},
-            )
+            return self._empty_evidence_result("targeted", skill_id)
 
         pass_count = 0
         total = len(targeted_case_ids)
@@ -171,11 +200,7 @@ class EvolutionGates:
         )
         rows = list(await cursor.fetchall())
         if not rows:
-            return GateResult(
-                name="fixture_regression",
-                passed=True,
-                details={"pass_rate": 1.0, "total": 0},
-            )
+            return self._empty_evidence_result("fixture_regression", skill_id)
 
         pass_count = 0
         skill = _synthetic_skill(skill_id, new_version)
@@ -225,10 +250,7 @@ class EvolutionGates:
         )
         rows = list(await cursor.fetchall())
         if not rows:
-            return GateResult(
-                name="recent_success", passed=True,
-                details={"pass_rate": 1.0, "total": 0},
-            )
+            return self._empty_evidence_result("recent_success", skill_id)
 
         pass_count = 0
         skill = _synthetic_skill(skill_id, new_version)

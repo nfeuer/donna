@@ -259,6 +259,20 @@ class AgentDispatcher:
             if version_row is None:
                 return
 
+            # Trust gate (Fable Skill-System #8): only skills that have earned
+            # live execution — shadow_primary or trusted — may run here. A DRAFT
+            # or sandbox skill must never execute with real tools through this
+            # path. Mirrors the automations dispatcher's _decide_path so a future
+            # wiring of skill_executor cannot run an unvetted skill.
+            if skill_row.state not in ("shadow_primary", "trusted"):
+                logger.info(
+                    "dispatcher_skill_shadow_ungated_state_skipped",
+                    task_id=task.id,
+                    capability=match.capability.name,
+                    state=skill_row.state,
+                )
+                return
+
             result = await self._skill_executor.execute(
                 skill=skill_row,
                 version=version_row,
