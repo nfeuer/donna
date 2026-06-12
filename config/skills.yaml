@@ -33,6 +33,7 @@ evolution_recent_success_window_days: 30
 evolution_max_consecutive_failures: 2      # Rejected_validation streak before -> claude_native
 evolution_estimated_cost_usd: 0.75         # Per-call budget estimate
 evolution_daily_cap: 10                    # Max evolution attempts per nightly run
+evolution_require_gate_evidence: false     # #9: log (never silent); set true to also fail closed
 
 # Phase 4 — correction clustering
 correction_cluster_window_runs: 10

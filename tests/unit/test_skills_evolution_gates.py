@@ -200,3 +200,23 @@ async def test_recent_success_gate_requires_all_succeed(db):
     )
     assert result.passed is False
     assert result.details["pass_rate"] < 1.0
+
+
+async def test_gate_no_evidence_passes_but_is_surfaced_by_default(db):
+    """#9: empty evidence no longer passes SILENTLY — the result is tagged
+    no_evidence (and logged fallback_activated). Default stays lenient so
+    evidence-sparse skills can still evolve."""
+    config = SkillSystemConfig()  # default: evolution_require_gate_evidence False
+    gates = EvolutionGates(db, config, MagicMock())
+    result = await gates.run_targeted_case_gate(_valid_new_version(), "s1", [])
+    assert result.passed is True
+    assert result.details["reason"] == "no_evidence"
+
+
+async def test_gate_fails_closed_on_no_evidence_when_required(db):
+    """With evolution_require_gate_evidence=True, empty evidence fails closed."""
+    config = SkillSystemConfig(evolution_require_gate_evidence=True)
+    gates = EvolutionGates(db, config, MagicMock())
+    result = await gates.run_targeted_case_gate(_valid_new_version(), "s1", [])
+    assert result.passed is False
+    assert result.details["reason"] == "no_evidence"

@@ -1085,6 +1085,13 @@ class SkillSystemConfig(BaseModel):
     evolution_max_consecutive_failures: int = 2
     evolution_estimated_cost_usd: float = 0.75
     evolution_daily_cap: int = 10
+    # Fable Skill-System #9: an evolution gate with NO evidence (no targeted
+    # cases / no fixtures / no recent runs) used to pass SILENTLY — a decorative
+    # seam. The empty-evidence condition is now always logged (fallback_activated)
+    # so it is never silent. Set True to additionally FAIL CLOSED on empty
+    # evidence (stricter; appropriate once fixture-capture reliably populates the
+    # gates — until then it blocks evolution of evidence-sparse skills).
+    evolution_require_gate_evidence: bool = False
 
     # Phase 4 — correction clustering
     correction_cluster_window_runs: int = 10

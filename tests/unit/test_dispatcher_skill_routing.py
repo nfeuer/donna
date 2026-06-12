@@ -19,6 +19,7 @@ def _make_dispatcher(
     challenger_match_status: str = "ready",
     challenger_capability_name: str = "parse_task",
     skill_exists: bool = True,
+    skill_state: str = "shadow_primary",
 ) -> tuple:
     """Create a dispatcher with mocked agents and skill infrastructure."""
     # Mock the challenger with both old execute() and new match_and_extract()
@@ -65,7 +66,7 @@ def _make_dispatcher(
     if skill_exists:
         skill_row = MagicMock(
             id="s1", capability_name="parse_task",
-            current_version_id="v1", state="sandbox",
+            current_version_id="v1", state=skill_state,
         )
         version_row = MagicMock(id="v1", version_number=1)
         skill_database.get_by_capability.return_value = skill_row
@@ -111,6 +112,24 @@ async def test_dispatcher_runs_skill_shadow_alongside_legacy():
     # Skill shadow also ran.
     skill_database.get_by_capability.assert_awaited_once_with("parse_task")
     skill_executor.execute.assert_awaited_once()
+
+
+async def test_dispatcher_skips_skill_not_in_live_state():
+    """A sandbox/draft skill must NOT execute through the shadow path (#8)."""
+    dispatcher, skill_executor, skill_database, _pm, _scheduler = _make_dispatcher(
+        skill_state="sandbox",
+    )
+
+    task = MagicMock()
+    task.id = "t1"
+    task.title = "draft the review"
+
+    result = await dispatcher.dispatch(task, user_id="nick")
+
+    # Legacy flow still ran; the unvetted skill was gated out.
+    assert result.status == "complete"
+    skill_database.get_by_capability.assert_awaited_once_with("parse_task")
+    skill_executor.execute.assert_not_called()
 
 
 async def test_dispatcher_skips_skill_when_no_match():
