@@ -28,15 +28,17 @@ class ModelConfig(BaseModel):
 class RoutingEntry(BaseModel):
     """Routing config for a single task type.
 
-    Note: ``confidence_threshold`` (spec §4.2/§4.7 confidence-based fallback)
-    was removed — it was read nowhere, so it advertised a control surface that
-    did nothing. Re-add it together with the consuming logic when confidence
-    scoring is implemented (deferred; see the Model-Layer critique design doc).
+    ``confidence_threshold`` (spec §4.2/§4.7 confidence-based fallback) drives
+    the confidence-gated escalation in ``InputParser``: when a local parse
+    returns a confidence below this value, the parse is re-run on the cloud
+    route (``ModelRouter.confidence_threshold_for`` reads it). Left ``None``
+    for task types that don't escalate on confidence.
     """
 
     model: str
     fallback: str | None = None
     shadow: str | None = None
+    confidence_threshold: float | None = None
 
 
 class CostConfig(BaseModel):

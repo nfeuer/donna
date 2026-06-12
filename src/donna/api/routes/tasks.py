@@ -12,7 +12,7 @@ from typing import Any
 
 import structlog
 from fastapi import HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from donna.api.auth import CurrentUser, user_router
 from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain, TaskStatus
@@ -80,6 +80,15 @@ class UpdateTaskRequest(BaseModel):
     description: str | None = None
     priority: int | None = None
     status: str | None = None
+    domain: str | None = None
+    estimated_duration: int | None = None
+
+    @field_validator("domain")
+    @classmethod
+    def _valid_domain(cls, v: str | None) -> str | None:
+        if v is not None and v not in {d.value for d in TaskDomain}:
+            raise ValueError(f"domain must be one of {[d.value for d in TaskDomain]}")
+        return v
 
 
 @router.get("")

@@ -18,6 +18,7 @@ import structlog
 from donna.logging.invocation_logger import InvocationLogger
 from donna.models.router import ModelRouter
 from donna.models.validation import validate_output
+from donna.orchestrator.task_context import build_personal_context
 from donna.tasks.dedup import Deduplicator, DuplicateDetectedError  # noqa: F401 — re-exported
 
 if TYPE_CHECKING:
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 TASK_TYPE = "parse_task"
+CLOUD_TASK_TYPE = "parse_task_cloud"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -51,7 +53,10 @@ _DEFAULT_TZ = zoneinfo.ZoneInfo("America/New_York")
 
 
 def _render_template(
-    template: str, user_input: str, tz: zoneinfo.ZoneInfo | None = None
+    template: str,
+    user_input: str,
+    tz: zoneinfo.ZoneInfo | None = None,
+    personal_context: str = "",
 ) -> str:
     """Fill template variables with current context."""
     now = datetime.now(UTC).astimezone(tz or _DEFAULT_TZ)
@@ -59,6 +64,7 @@ def _render_template(
         template
         .replace("{{ current_date }}", now.strftime("%Y-%m-%d"))
         .replace("{{ current_time }}", now.strftime("%I:%M %p %Z"))
+        .replace("{{ personal_context }}", personal_context.strip() or "(none)")
         .replace("{{ user_input }}", user_input)
     )
 
@@ -104,6 +110,7 @@ class InputParser:
         deduplicator: Deduplicator | None = None,
         preference_applier: PreferenceApplier | None = None,
         tz: zoneinfo.ZoneInfo | None = None,
+        memory_store: Any | None = None,
     ) -> None:
         self._router = router
         self._invocation_logger = invocation_logger
@@ -111,6 +118,11 @@ class InputParser:
         self._deduplicator = deduplicator
         self._preference_applier = preference_applier
         self._tz = tz
+        self._memory_store = memory_store
+
+    def set_memory_store(self, memory_store: Any) -> None:
+        """Late-bind the memory store (built after the parser at boot)."""
+        self._memory_store = memory_store
 
     async def parse(
         self,
@@ -132,9 +144,17 @@ class InputParser:
             ValidationError: If the LLM response fails schema validation.
             RoutingError: If the task type cannot be routed.
         """
-        # 1. Render prompt template
+        # 1. Build personal context, then render the prompt template
+        personal_context = await build_personal_context(
+            raw_text,
+            user_id,
+            preference_applier=self._preference_applier,
+            memory_store=self._memory_store,
+        )
         template = self._router.get_prompt_template(TASK_TYPE)
-        prompt = _render_template(template, raw_text, tz=self._tz)
+        prompt = _render_template(
+            template, raw_text, tz=self._tz, personal_context=personal_context,
+        )
 
         # 2. Call the model (invocation logged automatically by ModelRouter)
         response, _metadata = await self._router.complete(
@@ -144,6 +164,28 @@ class InputParser:
         # 3. Validate against schema
         schema = self._router.get_output_schema(TASK_TYPE)
         validated = validate_output(response, schema)
+
+        # 3b. Confidence-gated escalation: re-parse on the cloud model when the
+        # local model is unsure. The cloud route reuses this prompt + schema.
+        threshold = self._router.confidence_threshold_for(TASK_TYPE)
+        if threshold is not None and validated["confidence"] < threshold:
+            logger.info(
+                "parse_confidence_escalation",
+                local_confidence=validated["confidence"],
+                threshold=threshold,
+                user_id=user_id,
+            )
+            cloud_response, _cloud_meta = await self._router.complete(
+                prompt, task_type=CLOUD_TASK_TYPE, user_id=user_id,
+            )
+            # _cloud_meta is intentionally discarded — router.complete() logs
+            # the invocation itself.
+            validated = validate_output(cloud_response, schema)
+            logger.info(
+                "parse_confidence_escalation_resolved",
+                cloud_confidence=validated["confidence"],
+                user_id=user_id,
+            )
 
         # 5. Convert to result
         result = _to_parse_result(validated)

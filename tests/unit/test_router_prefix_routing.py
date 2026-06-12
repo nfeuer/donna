@@ -19,7 +19,7 @@ def router(tmp_path):
 
 def test_exact_key_match_takes_precedence(router) -> None:
     _, _, alias = router._resolve_route("parse_task")
-    assert alias == "parser"
+    assert alias == "local_parser"
 
 
 def test_prefix_match_fallback(router) -> None:

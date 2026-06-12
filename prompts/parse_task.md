@@ -18,7 +18,7 @@ Respond with a JSON object containing exactly these fields:
   "priority": "1-5 integer (1=lowest, 5=critical, default: 2)",
   "deadline": "ISO 8601 datetime if mentioned, null if not",
   "deadline_type": "hard | soft | none (default: none)",
-  "estimated_duration": "minutes as integer (infer from task complexity, default: 30)",
+  "estimated_duration": "minutes as integer — see Duration Guidelines (default: 15)",
   "recurrence": "cron expression or RRULE if task is recurring, null if not",
   "time_intent": { "kind": "exact|window|constrained|recurring|none", "due_at": null, "earliest": null, "latest": null, "strictness": "soft", "constraints": null, "recurrence": null },
   "tags": ["array", "of", "relevant", "tags"],
@@ -51,9 +51,37 @@ Classify *when* the task should happen into `time_intent.kind`:
 
 ## Domain Inference
 
-- **personal**: Health, car, home maintenance, hobbies, personal finance, shopping
-- **work**: Projects, meetings, code, professional development, work communication
-- **family**: Child care, family events, family obligations, household shared tasks
+- **personal**: Health, car, home maintenance, hobbies, personal finance,
+  shopping, personal appointments, friends.
+- **work**: Professional projects, work meetings, code, professional
+  development, communication with colleagues or clients.
+- **family**: Child care, family events, family obligations, shared household
+  tasks.
+
+Many tasks are ambiguous from the text alone (an email, "touch base with
+someone", "call about the appointment"). Use the Personal Context section to
+resolve them — if a named person or project there is work-related, lean work;
+if personal, lean personal. When the context does not resolve it, pick the most
+likely domain and **lower your confidence below 0.7** so the system can
+escalate.
+
+## Duration Guidelines
+
+Estimate the *focused working time*, not elapsed calendar time. Default to the
+lower anchor; only inflate when the task text explicitly justifies more effort
+(e.g. "write the full Q3 report", "deep clean the garage").
+
+- **15 min** — quick communications and micro-tasks: send an email or text,
+  a phone call or message to schedule an appointment, touch base with someone,
+  RSVP, confirm a time, pay a single bill, a quick lookup.
+- **30 min** — short admin and errands: fill out a form, a focused errand,
+  review a short document, a brief 1:1.
+- **60 min** — sustained work or meetings: writing, coding, a standard meeting,
+  anything requiring uninterrupted focus.
+- **>60 min** — only when the text names a clearly large effort. State why in
+  the description.
+
+When unsure between two anchors, pick the lower one and lower your confidence.
 
 ## Confidence
 
@@ -66,6 +94,14 @@ Rate your confidence in the parse (0.0 to 1.0). Lower confidence if:
 
 Today's date: {{ current_date }}
 Current time: {{ current_time }}
+
+## Personal Context
+
+The following are known people, projects, and learned preferences for this
+user. Use them to disambiguate domain (work vs personal vs family) and to
+calibrate effort. If this says "(none)", rely on the rubric alone.
+
+{{ personal_context }}
 
 ## User Input
 

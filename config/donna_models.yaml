@@ -39,8 +39,11 @@ ollama:
 routing:
   # Keys match task_types.yaml entries exactly
   parse_task:
-    model: parser
+    model: local_parser
     fallback: reasoner
+    confidence_threshold: 0.7
+  parse_task_cloud:
+    model: reasoner
   classify_priority:
     model: parser
     fallback: reasoner

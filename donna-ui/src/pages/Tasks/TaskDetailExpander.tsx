@@ -6,6 +6,7 @@ import { ScrollArea } from "../../primitives/ScrollArea";
 import { Skeleton } from "../../primitives/Skeleton";
 import {
   fetchTask,
+  updateTask,
   type Correction,
   type NudgeEvent,
   type Subtask,
@@ -135,7 +136,7 @@ function TaskExpanderBody({ task }: { task: TaskDetail }) {
         <div className={styles.eyebrow}>Details</div>
         <dl className={styles.fields}>
           <DetailField label="ID" value={task.id} mono />
-          <DetailField label="Domain" value={task.domain ?? "—"} />
+          <EditableDomain task={task} />
           <DetailField label="Deadline type" value={task.deadline_type ?? "—"} />
           <DetailField label="Deadline" value={formatTaskTimestamp(task.deadline)} mono />
           <DetailField
@@ -147,7 +148,7 @@ function TaskExpanderBody({ task }: { task: TaskDetail }) {
           <DetailField label="Created via" value={task.created_via ?? "—"} />
           <DetailField label="Agent" value={task.assigned_agent ?? "—"} />
           <DetailField label="Agent status" value={task.agent_status ?? "—"} />
-          <DetailField label="Duration (est)" value={task.estimated_duration ?? "—"} />
+          <EditableDuration task={task} />
           <DetailField label="Reschedules" value={String(task.reschedule_count)} />
           <DetailField label="Nudge count" value={String(task.nudge_count)} />
           <DetailField
@@ -249,6 +250,76 @@ function DetailField({
     <div className={styles.field}>
       <dt className={styles.fieldLabel}>{label}</dt>
       <dd className={mono ? styles.fieldValueMono : styles.fieldValue}>{value}</dd>
+    </div>
+  );
+}
+
+function EditableDomain({ task }: { task: TaskDetail }) {
+  const [value, setValue] = useState(task.domain ?? "personal");
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className={styles.field}>
+      <dt className={styles.fieldLabel}>Domain</dt>
+      <dd className={styles.fieldValue}>
+        <select
+          value={value}
+          disabled={saving}
+          onChange={async (e) => {
+            const next = e.target.value;
+            const prev = value;
+            setValue(next);
+            setSaving(true);
+            try {
+              await updateTask(task.id, { domain: next });
+            } catch {
+              setValue(prev); // roll back; the axios interceptor shows the error toast
+            } finally {
+              setSaving(false);
+            }
+          }}
+        >
+          <option value="personal">personal</option>
+          <option value="work">work</option>
+          <option value="family">family</option>
+        </select>
+      </dd>
+    </div>
+  );
+}
+
+function EditableDuration({ task }: { task: TaskDetail }) {
+  const initial = task.estimated_duration ? String(task.estimated_duration) : "";
+  const [value, setValue] = useState(initial);
+  const [lastSaved, setLastSaved] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className={styles.field}>
+      <dt className={styles.fieldLabel}>Duration (est, min)</dt>
+      <dd className={styles.fieldValue}>
+        <input
+          type="number"
+          min={5}
+          value={value}
+          disabled={saving}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={async () => {
+            const minutes = parseInt(value, 10);
+            if (Number.isNaN(minutes) || minutes < 5) {
+              setValue(lastSaved); // revert invalid input to last saved value
+              return;
+            }
+            setSaving(true);
+            try {
+              await updateTask(task.id, { estimated_duration: minutes });
+              setLastSaved(String(minutes));
+            } catch {
+              setValue(lastSaved); // roll back; interceptor shows the error toast
+            } finally {
+              setSaving(false);
+            }
+          }}
+        />
+      </dd>
     </div>
   );
 }
