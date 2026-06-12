@@ -38,7 +38,7 @@ Items below were inline callouts in domain docs, now tracked here as the canonic
 | G-12 | Time windows | 6 of 8 live | Extended Work, Emergency Work not configured | domain/scheduling.md | §6.1.2 |
 | G-13 | Observability DB | invocation_log in donna_tasks.db + Loki | Dedicated donna_logs.db not implemented | domain/observability.md | §14.3.1 |
 | G-14 | Notification tiers | Discord DM (tier 1-2) | Email tier 3 | domain/notifications.md | §11.1 |
-| G-15 | Budget breach handling | Pause-only + escalation decision tree (slices 17-24) | Pause-only path still active as fallback | workflows/handle-budget-breach.md | §18 |
+| G-15 | Budget breach handling | Daily **and** monthly caps now enforced in BudgetGuard (2026-06-11); decision tree wired | Decision tree runs in **shadow** mode — flip `gate.mode: enforce` after calibration (see followups.md "Fable Wave A") | workflows/handle-budget-breach.md | §18 |
 | G-16 | MorningDigest production wiring | Construction code exists | No production call site in orchestrator | domain/management-gui/index.md | §22 |
 | G-17 | Tool gap queue UI | Data model + Discord ping shipped (slice 22) | Standalone dashboard queue surface | domain/management-gui/index.md | §22 |
 | G-18 | Task soft-delete path | MemoryStore.delete() ready | No soft-delete on tasks table or Database API | domain/memory-vault/episodic.md | §30 |

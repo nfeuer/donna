@@ -2,6 +2,22 @@
 
 Recent changes, summarized from commits and PRs.
 
+## 2026-06-11
+
+### Changed
+- **Serialized placement choke point**: `Scheduler.schedule_task` / `schedule_dependency_chain` run the read→find-slot→create-event section under an `asyncio.Lock`, realizing the `spec_v3.md §3.7.1` double-booking guard (the earlier "async queue" wording was a design target). ([Scheduling](domain/scheduling.md#placement-safety-fable-scheduling-s1-2026-06-11), `spec_v3.md` §3.7.1)
+- **Budget enforcement**: `BudgetGuard.check_pre_call` now enforces the `$100`/month hard cap (previously daily-only — the monthly check was dead code) and fires the 90% monthly warning. `BudgetPausedError` carries a `period` (`daily` / `monthly`). ([Cost & Escalation](domain/cost.md#budget-enforcement-flow))
+- **Escalation-gate posture**: new `config/manual_escalation.yaml` → `gate.mode`. The default **`shadow`** consults the gate on every call and logs would-escalate events (`escalation_shadow_would_fire`) without prompting, persisting, or blocking; **`enforce`** runs the interactive decision tree. The router now derives a deterministic cost floor when a caller omits `estimate_usd`, so the gate is no longer dark. ([Cost & Escalation](domain/cost.md#gate-posture-shadow-vs-enforce))
+- **Ledger integrity at the model choke point**: `ModelRouter.complete()` is now the *accounting* boundary, not just dispatch. Production routers are built via `build_model_router()`, which **requires** an `invocation_logger`, and `complete()` raises `RoutingError` rather than make an unlogged billed call — so all spend reaches `invocation_log`, the table `BudgetGuard` reads for the `$100`/month cap. Chat and bot routers are now wired through the factory. ([Model Layer](domain/model-layer.md#structured-invocation-logging))
+- **Config-driven pricing**: per-call `cost_usd` is computed from the per-alias config rates (`input/output_cost_per_token_usd`) instead of hardcoded Sonnet `$3`/`$15`; the Anthropic provider **fails loud** on an unpriced model id rather than silently mispricing. ([Model Layer](domain/model-layer.md#structured-invocation-logging))
+- **Dead config removed**: `confidence_threshold` (read nowhere) was removed from `donna_models.yaml` and the `RoutingEntry` model; re-add it with the consuming logic when confidence scoring lands. ([Model Layer](domain/model-layer.md))
+
+### Fixed
+- **Timezone-correct slot placement**: `Scheduler.find_next_slot` now steps candidates in UTC (DST-safe) but evaluates every time-window against the configured `calendar.yaml` zone, so the absolute blackout and domain windows are enforced on the user's wall clock instead of UTC — a work task can no longer land at ~4 AM local, and confirmations show the correct local time. ([Scheduling](domain/scheduling.md#placement-safety-fable-scheduling-s1-2026-06-11), `spec_v3.md` §6.3)
+- **Deadline-aware horizon**: the search horizon is clamped to the task's deadline / `earliest` bound (honoring a `constrained` weekday); an unplaceable dated task now surfaces as `needs_scheduling` instead of being placed late within a flat 14-day window. ([Scheduling](domain/scheduling.md#placement-safety-fable-scheduling-s1-2026-06-11))
+- **Fail-closed calendar reads**: placement now builds its busy-set from the union of *all* configured calendars (personal + work + family) and raises `CalendarReadError` (with a fallback alert) on any read error, rather than booking blind against an empty calendar. ([Scheduling](domain/scheduling.md#placement-safety-fable-scheduling-s1-2026-06-11))
+- **Billed spend dropped on token-limit truncation**: a token-capped extension call raised `TokenLimitReachedError` *before* the `invocation_log` write, dropping real spend from budget accounting. The raise now happens after the log + payload writes; `auto_drafter` / `evolution` catch it; log-write failures now alert via `fallback_alert_fn` instead of warning silently. ([Cost & Escalation](domain/cost.md))
+
 ## 2026-06-06
 
 ### Added

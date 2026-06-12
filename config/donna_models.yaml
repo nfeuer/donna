@@ -41,11 +41,9 @@ routing:
   parse_task:
     model: parser
     fallback: reasoner
-    confidence_threshold: 0.7
   classify_priority:
     model: parser
     fallback: reasoner
-    confidence_threshold: 0.7
   generate_digest:
     model: local_parser
     fallback: parser
@@ -54,7 +52,6 @@ routing:
   dedup_check:
     model: parser
     fallback: reasoner
-    confidence_threshold: 0.7
   task_decompose:
     model: reasoner
   extract_preferences:
@@ -67,11 +64,9 @@ routing:
   generate_nudge:
     model: local_parser
     fallback: parser
-    confidence_threshold: 0.5
   generate_reminder:
     model: local_parser
     fallback: parser
-    confidence_threshold: 0.5
   challenge_task:
     model: local_parser
     fallback: parser
@@ -95,18 +90,15 @@ routing:
   escalation_summary:
     model: local_parser
     fallback: parser
-    confidence_threshold: 0.5
   triage_failure:
     model: local_parser
     fallback: parser
   claude_novelty:
     model: parser
     fallback: reasoner
-    confidence_threshold: 0.7
   reply_intent:
     model: local_parser
     fallback: parser
-    confidence_threshold: 0.5
   skill_equivalence_judge:
     model: reasoner
   skill_auto_draft:
@@ -133,7 +125,6 @@ routing:
     model: parser
     shadow: local_parser
     fallback: reasoner
-    confidence_threshold: 0.7
   # GPU-aware skill step overrides — executor builds task_type with
   # model alias prefix when a step declares model: or gpu_model:
   skill_step__local_parser:
@@ -145,7 +136,6 @@ routing:
   skill_validation:
     model: parser
     fallback: reasoner
-    confidence_threshold: 0.7
 
 # Cost tracking
 cost:
@@ -153,6 +143,9 @@ cost:
   daily_pause_threshold_usd: 20.00
   task_approval_threshold_usd: 5.00
   monthly_warning_pct: 0.90
+  # Assumed output tokens for the escalation gate's deterministic cost floor
+  # when a caller supplies no estimate_usd (manual-escalation.md §4).
+  estimate_output_tokens: 1000
 
 # Quality monitoring (disabled Phase 1–2, enable when local model handles traffic)
 quality_monitoring:

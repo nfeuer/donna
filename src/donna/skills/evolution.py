@@ -18,7 +18,7 @@ import uuid6
 
 from donna.config import SkillSystemConfig
 from donna.cost.budget import BudgetPausedError
-from donna.models.router import EscalationDecisionError
+from donna.models.router import EscalationDecisionError, TokenLimitReachedError
 from donna.skills.alerting import FallbackAlert, emit_fallback_alert
 from donna.skills.evolution_gates import (
     EvolutionGates,
@@ -147,6 +147,20 @@ class Evolver:
                 skill_id=skill_id,
                 outcome=outcome_label,
                 rationale=f"escalation_resolved={exc.mode!r}",
+            )
+        except TokenLimitReachedError as exc:
+            # Extension token cap truncated the rewrite (enforce mode). Router
+            # logged the real spend before raising; surface as budget-exhausted
+            # so the next cycle can retry rather than treating it as a crash.
+            logger.warning(
+                "skill_evolution_token_limit_reached",
+                skill_id=skill_id,
+                escalation_request_id=exc.escalation_request_id,
+            )
+            return EvolutionReport(
+                skill_id=skill_id,
+                outcome="budget_exhausted",
+                rationale="token_limit_reached; re-escalation required",
             )
         except Exception as exc:
             logger.warning(

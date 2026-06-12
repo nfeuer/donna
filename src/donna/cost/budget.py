@@ -33,17 +33,24 @@ Notifier = Callable[[str, str], Awaitable[None]]
 
 
 class BudgetPausedError(Exception):
-    """Raised when daily spend has hit the pause threshold.
+    """Raised when spend has hit a budget pause threshold.
 
-    All autonomous LLM work should stop until the next UTC day.
+    All autonomous LLM work should stop — until the next UTC day for a
+    ``daily`` pause, or until the next month / an approved budget increase
+    for a ``monthly`` pause. The ``daily_spent`` / ``daily_limit`` attribute
+    names are retained for backwards compatibility; for a monthly pause they
+    carry the monthly figures and ``period == "monthly"``.
     """
 
-    def __init__(self, daily_spent: float, daily_limit: float) -> None:
+    def __init__(
+        self, daily_spent: float, daily_limit: float, period: str = "daily"
+    ) -> None:
         self.daily_spent = daily_spent
         self.daily_limit = daily_limit
+        self.period = period
         super().__init__(
-            f"Daily budget hit: ${daily_spent:.4f} ≥ ${daily_limit:.2f}. "
-            "Autonomous work paused."
+            f"{period.capitalize()} budget hit: ${daily_spent:.4f} ≥ "
+            f"${daily_limit:.2f}. Autonomous work paused."
         )
 
 
@@ -117,6 +124,46 @@ class BudgetGuard:
                 except Exception:
                     logger.exception("budget_notifier_failed")
             raise BudgetPausedError(daily_spent=spent, daily_limit=limit)
+
+        # Monthly hard cap (spec_v3.md §13.1 / §18.3). Approved daily
+        # extensions let spend exceed $20/day but still accumulate toward the
+        # $100 monthly cap; there is no separate "monthly budget increase"
+        # mechanism yet, so the configured budget IS the cap. Enforced
+        # regardless of the escalation-gate posture (shadow or enforce).
+        monthly_summary = await self._tracker.get_monthly_cost(
+            exclude_task_types=[
+                "external_llm_call",
+                "escalation_lifecycle",
+                "tool_gap_lifecycle",
+            ]
+        )
+        monthly_spent = monthly_summary.total_usd
+        monthly_cap = self._cost_config.monthly_budget_usd
+        if monthly_spent >= monthly_cap:
+            msg = (
+                f"Monthly budget hit: ${monthly_spent:.2f} of ${monthly_cap:.2f} "
+                "used. I'm pausing autonomous work for the rest of the month. "
+                "Approve a budget increase if you need me to keep going."
+            )
+            logger.warning(
+                "budget_monthly_threshold_hit",
+                monthly_spent=monthly_spent,
+                monthly_cap=monthly_cap,
+                user_id=user_id,
+            )
+            if self._notifier is not None:
+                try:
+                    await self._notifier("debug", msg)
+                except Exception:
+                    logger.exception("budget_monthly_notifier_failed")
+            raise BudgetPausedError(
+                daily_spent=monthly_spent,
+                daily_limit=monthly_cap,
+                period="monthly",
+            )
+
+        # Below the hard cap — fire the one-shot 90% warning if applicable.
+        await self.check_monthly_warning(user_id)
 
     async def check_monthly_warning(self, user_id: str = "system") -> bool:
         """Send a monthly budget warning if spend is at or above warning_pct.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -106,7 +107,9 @@ def _build_router(
     router._providers = {"ollama": ollama, "anthropic": anthropic}
     router._prompt_cache = {}
     router._schema_cache = {}
-    router._invocation_logger = None
+    # No-op logger: complete() now refuses to make an unlogged billed call,
+    # so the budget/overflow paths under test still need a logger present.
+    router._invocation_logger = AsyncMock()
     router._payload_writer = None
     from donna.resilience.retry import CircuitBreaker
     router._circuit_breaker = CircuitBreaker()

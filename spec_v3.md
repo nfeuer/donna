@@ -88,6 +88,7 @@ reference `open-backlog.md`.
   §7.1.1 Comms Agent       Defined,disabled  Phase 6 gate — Stage 3 tools + MCP required.                                G-22
   §11.1 Notifications      Partial           Discord DM (tiers 1–2). Email tier 3 not implemented.                       G-14
   §12.1 Integrations       Partial           Gmail, Calendar, Discord, Twilio, Supabase, SQLite live. Others deferred.   G-20
+  §13 Budget/Escalation    Partial           Daily + monthly caps enforced in BudgetGuard; decision tree in shadow mode.  G-15
   §14.3 Logging            Changed           invocation_log in donna_tasks.db + Loki. No standalone donna_logs.db.       G-25
   §16.3.2 Backup           Partial           Local NVMe backups only. Off-server push not built.                         G-23
   §20 Phases               1–5 complete      Phase 6 content moved to appendix.                                          —
@@ -671,10 +672,13 @@ API) is async. Concurrency comes from I/O multiplexing, not parallelism.
     pattern: the orchestrator writes, and the Supabase sync process
     reads.
 
--   Calendar write operations are serialized through an async queue. If
-    two tasks need to create calendar events simultaneously, they are
-    queued and processed sequentially. This prevents double-booking race
-    conditions without complex locking.
+-   Calendar placement is serialized through an `asyncio.Lock` on the
+    `Scheduler`. The read→find-slot→create-event section runs under the
+    lock, so two tasks created near-simultaneously (e.g. Discord + SMS)
+    cannot pick the same slot. This prevents double-booking race
+    conditions. (v3.1 note: implemented as `Scheduler._lock` in
+    `scheduling/scheduler.py` — the earlier "async queue" wording was a
+    design target; the lock is the realized mechanism.)
 
 -   Task state transitions are atomic: read current state, validate
     transition, write new state, execute side effects --- all in a
@@ -812,6 +816,21 @@ for the relevant alias. The shadow key enables production monitoring
 (secondary model runs in parallel, output logged but not used). Offline
 evaluation is triggered via CLI with an explicit model argument, not
 configured in routing.
+
+(v3.1 note: `confidence_threshold` (and confidence-based fallback, §4.7) is
+**not yet implemented** and was **removed** from `donna_models.yaml` and the
+`RoutingEntry` model — it was read nowhere, so leaving it advertised a control
+surface that did nothing. Re-add the key together with the consuming logic when
+confidence scoring lands (deferred; trigger in the Model-Layer critique design
+doc). The `shadow` key is likewise inert today — the shadow-completion callback
+is wired nowhere — so production monitoring is not operational yet. Separately,
+**ledger integrity** is now enforced at the choke point: every production
+`ModelRouter` is built via `build_model_router()`, which **requires** an
+`invocation_logger`, and `complete()` refuses to make an unlogged billed call —
+so all spend reaches `invocation_log` (the table `BudgetGuard` reads), keeping
+the §13.1 budget cap accurate. Per-alias `cost_usd` is computed from the config
+rates (`input/output_cost_per_token_usd`), not hardcoded Sonnet pricing; the
+Anthropic provider fails loud on an unpriced model rather than mispricing.)
 
 **4.3 Structured Invocation Logging**
 
@@ -1837,6 +1856,18 @@ Calendar:
 -   Get It Done Bias: Default to scheduling tasks as soon as possible
     while respecting constraints. Do not push tasks to "someday."
 
+(v3.1 note: `find_next_slot` now (a) interprets all `time_windows` hours
+in the configured `calendar.yaml timezone` — candidate slots are stepped
+in UTC and converted to local for every window check, so the absolute
+blackout is enforced on the user's wall clock, not UTC; (b) clamps the
+search horizon to the task's deadline / `earliest` bound, so an
+unplaceable dated task raises `NoSlotFoundError` → `needs_scheduling`
+instead of being placed late; and (c) builds its busy-set from the union
+of *all* configured calendars (personal + work + family), failing closed
+— `CalendarReadError` — on any read error rather than booking against an
+empty calendar. The constraint-aware negotiation/rearrange loop remains a
+future plan; this is the deterministic placement guard.)
+
 **7. Sub-Agent System**
 
 **7.1 Agent Architecture**
@@ -2478,13 +2509,23 @@ If the user responds "busy, will handle later," the system backs off for
 
 **13.1 Budget Rules**
 
-> **Roadmap:** the pause-only `Daily Spend Alert` terminal is being
-> replaced by the four-button over-budget decision tree (`Approve $X
-> extension / Manual handoff / Pause / Cancel`) defined in
-> `docs/superpowers/specs/manual-escalation.md`.
-> The table below documents current behavior; the decision-tree
-> behavior lands per-slice (`slice_17_*` through `slice_24_*`), and
-> this section will be updated by each slice that changes the rules.
+> **Status (2026-06-11):** Both budget *caps* are now enforced
+> deterministically in `BudgetGuard.check_pre_call` — the $20/day pause
+> *and* the $100/month hard cap (previously the monthly cap was unenforced;
+> `check_monthly_warning` was dead code). Enforcement is independent of the
+> escalation-gate posture below.
+>
+> The four-button over-budget decision tree (`Approve $X extension / Manual
+> handoff / Pause / Cancel`, defined in
+> `docs/superpowers/specs/manual-escalation.md`) is wired but runs in
+> **shadow mode** by default (`config/manual_escalation.yaml` → `gate.mode:
+> shadow`): the gate is consulted on *every* LLM call — the router now
+> derives a deterministic cost estimate when a caller supplies none, so the
+> gate is no longer dark — and logs each call that *would* escalate
+> (`escalation_shadow_would_fire`) without prompting, persisting, or
+> blocking. Flip `gate.mode: enforce` to run the interactive tree once
+> estimate accuracy is calibrated. See
+> `docs/superpowers/specs/2026-06-11-cost-escalation-fable-critique-design.md`.
 
   ------------------ ---------------- ------------------------------------
   **Rule**           **Threshold**    **Action**

@@ -111,6 +111,10 @@ class EscalationGate:
         self._repo = repository
         self._tracker = tracker
         self._config = config
+        # Posture: "shadow" observes (logs would-escalate, never prompts or
+        # creates rows); "enforce" runs the full decision tree. See
+        # config/manual_escalation.yaml gate.mode (manual-escalation.md §4).
+        self._mode = config.gate.mode
         self._daily_pause_threshold_usd = daily_pause_threshold_usd
         self._resolver = resolver
         self._deliver = deliver
@@ -143,6 +147,7 @@ class EscalationGate:
         target_paths: dict[str, str] | None = None,
         base_sha: str | None = None,
         original_prompt: str | None = None,
+        estimate_source: str = "caller",
     ) -> GateOutcome:
         """Decide whether to escalate; if so, post the view and await.
 
@@ -184,6 +189,36 @@ class EscalationGate:
         specific main SHA (spec §5.3 / drift mitigation).
         """
         if not await self._is_enabled():
+            return GateOutcome(
+                fired=False,
+                mode=None,
+                resolved_by=None,
+                escalation_request_id=None,
+                correlation_id=None,
+            )
+
+        # Shadow posture (manual-escalation.md §4): observe only. Compute the
+        # same fire decision the enforce path would, log it for threshold
+        # calibration, and ALWAYS proceed — never create a row, prompt the
+        # user, or block. The budget *caps* (BudgetGuard) still apply; this
+        # only suppresses the interactive per-task gate.
+        if self._mode == "shadow":
+            threshold = self._config.triggers.task_approval_threshold_usd
+            daily_remaining = await self._daily_remaining(user_id)
+            effective = min(daily_remaining, threshold)
+            if estimate_usd > effective:
+                logger.info(
+                    "escalation_shadow_would_fire",
+                    event_type="cost.escalation_shadow",
+                    task_type=task_type,
+                    task_id=task_id,
+                    user_id=user_id,
+                    estimate_usd=round(estimate_usd, 6),
+                    effective_threshold=round(effective, 6),
+                    daily_remaining=round(daily_remaining, 6),
+                    task_approval_threshold=threshold,
+                    estimate_source=estimate_source,
+                )
             return GateOutcome(
                 fired=False,
                 mode=None,

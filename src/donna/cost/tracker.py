@@ -65,12 +65,15 @@ class CostTracker:
         self,
         year: int | None = None,
         month: int | None = None,
+        exclude_task_types: list[str] | None = None,
     ) -> CostSummary:
         """Total cost and per-task-type breakdown for a calendar month.
 
         Args:
             year: 4-digit year. Defaults to current year (UTC).
             month: 1–12. Defaults to current month (UTC).
+            exclude_task_types: Task types to exclude from the cost sum
+                (e.g. zero-cost audit rows), mirroring ``get_daily_cost``.
         """
         today = date.today()
         y = year or today.year
@@ -80,8 +83,10 @@ class CostTracker:
         month_start = datetime(y, m, 1, 0, 0, 0).isoformat()
         month_end = datetime(y, m, last_day, 23, 59, 59, 999999).isoformat()
 
-        total, count = await self._sum_range(month_start, month_end)
-        breakdown = await self._breakdown_by_task_type(month_start, month_end)
+        total, count = await self._sum_range(month_start, month_end, exclude_task_types)
+        breakdown = await self._breakdown_by_task_type(
+            month_start, month_end, exclude_task_types
+        )
 
         logger.debug(
             "cost_tracker_monthly",
