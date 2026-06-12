@@ -15,7 +15,9 @@ Time constraint rules tested:
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -62,6 +64,9 @@ def cal_config() -> CalendarConfig:
             token_path="token.json",
             scopes=["https://www.googleapis.com/auth/calendar"],
         ),
+        # Pin UTC so window hours == the UTC `now` frame these tests use.
+        # Local-timezone behavior is covered separately in TestTimezoneAwareness.
+        timezone="UTC",
     )
 
 
@@ -328,6 +333,7 @@ class TestNoSlot:
             ),
             time_windows=scheduler._config.time_windows,
             credentials=scheduler._config.credentials,
+            timezone="UTC",
         )
         tight_scheduler = Scheduler(short_config)
         task = _make_task(domain="work", estimated_duration=60)
@@ -339,3 +345,85 @@ class TestNoSlot:
         with pytest.raises(NoSlotFoundError) as exc_info:
             tight_scheduler.find_next_slot(task, [block], now=now)
         assert exc_info.value.task_id == task.id
+
+
+# ------------------------------------------------------------------
+# Tests: timezone awareness (#1 — windows enforced on the LOCAL wall clock)
+# ------------------------------------------------------------------
+
+
+class TestTimezoneAwareness:
+    """Window hours are local; the scheduler must not enforce them on UTC.
+
+    Regression for the verified S1 bug where slots were computed in UTC and
+    validated against local-hour windows, letting a work task land at ~4 AM
+    local (inside the 'absolute' blackout).
+    """
+
+    def _ny(self, cal_config: CalendarConfig) -> Scheduler:
+        return Scheduler(cal_config.model_copy(update={"timezone": "America/New_York"}))
+
+    def test_personal_slot_lands_in_local_window(self, cal_config: CalendarConfig) -> None:
+        sched = self._ny(cal_config)
+        task = _make_task(domain="personal", estimated_duration=60)
+        # Mon 2026-06-22 07:00 UTC = 03:00 EDT (deep in local blackout).
+        now = _utc(2026, 6, 22, 7, 0)
+        slot = sched.find_next_slot(task, [], now=now)
+        local = slot.start.astimezone(ZoneInfo("America/New_York"))
+        # Personal window is 17:00–20:00 LOCAL — never 0–6 (blackout).
+        assert 17 <= local.hour < 20
+        assert local.hour >= 6  # not in local blackout
+
+    def test_work_slot_lands_in_local_work_hours(self, cal_config: CalendarConfig) -> None:
+        sched = self._ny(cal_config)
+        task = _make_task(domain="work", estimated_duration=60)
+        # Mon 2026-06-22 05:00 UTC = 01:00 EDT. Under the old UTC bug the first
+        # "work" slot (08:00 UTC) would be 04:00 EDT — inside blackout.
+        now = _utc(2026, 6, 22, 5, 0)
+        slot = sched.find_next_slot(task, [], now=now)
+        local = slot.start.astimezone(ZoneInfo("America/New_York"))
+        assert 8 <= local.hour < 17
+        assert local.weekday() in (0, 1, 2, 3, 4)
+
+    def test_slot_is_timezone_aware(self, cal_config: CalendarConfig) -> None:
+        sched = self._ny(cal_config)
+        task = _make_task(domain="personal")
+        slot = sched.find_next_slot(task, [], now=_utc(2026, 6, 22, 7, 0))
+        assert slot.start.tzinfo is not None
+        assert slot.end.tzinfo is not None
+
+
+# ------------------------------------------------------------------
+# Tests: deadline clamping (#4 — slot finder honors the deadline)
+# ------------------------------------------------------------------
+
+
+class TestDeadlineClamp:
+    """find_next_slot must not place a task after its deadline.
+
+    Regression for the verified S1 bug where the slot-finder ignored
+    deadline/window/constraint entirely and placed ASAP within a flat 14-day
+    horizon, so NoSlotFoundError (→ needs_scheduling) almost never fired.
+    """
+
+    def test_no_slot_when_deadline_before_window(self, scheduler: Scheduler) -> None:
+        # Personal window opens 17:00; a hard deadline at 12:00 leaves no slot.
+        task = dataclasses.replace(
+            _make_task(domain="personal"),
+            deadline="2026-03-23T12:00:00+00:00",
+            deadline_type="hard",
+        )
+        now = _utc(2026, 3, 23, 10, 0)  # Monday 10:00 UTC
+        with pytest.raises(NoSlotFoundError):
+            scheduler.find_next_slot(task, [], now=now)
+
+    def test_slot_found_when_deadline_after_window(self, scheduler: Scheduler) -> None:
+        task = dataclasses.replace(
+            _make_task(domain="personal"),
+            deadline="2026-03-23T23:59:00+00:00",
+            deadline_type="hard",
+        )
+        now = _utc(2026, 3, 23, 10, 0)
+        slot = scheduler.find_next_slot(task, [], now=now)
+        assert slot.start.hour >= 17
+        assert slot.start < _utc(2026, 3, 23, 23, 59)
