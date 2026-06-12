@@ -341,3 +341,25 @@ async def test_parse_prompt_current_date_iso_uses_z_suffix() -> None:
     ), f"prompt missing Z-suffixed ISO date:\n{prompt}"
     # And confirm we did NOT emit the +00:00 form.
     assert "+00:00" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_schema_validation_failure_degrades_to_escalate() -> None:
+    """Fable #8: on schema-validation failure the challenger must NOT trust the
+    unvalidated LLM output — it degrades to escalate_to_claude instead of
+    building a result from malformed output.
+    """
+    bad_response = {"intent_kind": "task"}  # missing the required field below
+    strict_schema = {
+        "type": "object",
+        "required": ["mandatory_field"],
+        "properties": {"mandatory_field": {"type": "string"}},
+    }
+    router = _FakeRouter(bad_response, schema=strict_schema)
+    agent = ChallengerAgent(
+        matcher=_FakeMatcher(), input_extractor=None, model_router=router
+    )
+
+    result = await agent.match_and_extract("do something vague", "u1")
+
+    assert result.status == "escalate_to_claude"

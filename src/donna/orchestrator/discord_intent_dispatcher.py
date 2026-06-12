@@ -314,7 +314,6 @@ class DiscordIntentDispatcher:
             f"User reply: {msg.content}"
         )
         result = await self._challenger.match_and_extract(merged_message, msg.author_id)
-        self._drafts.discard(existing.thread_id)
         if result.status == "ready":
             if result.intent_kind == "task":
                 # Use the extracted task text, not msg.content (which is just
@@ -323,6 +322,7 @@ class DiscordIntentDispatcher:
                 # check both. Never fall back to merged_message — that is the
                 # internal LLM prompt and leaks strings like
                 # 'Previous context (capability=...): {...}' into task titles.
+                self._drafts.discard(existing.thread_id)
                 extracted = result.extracted_inputs or {}
                 title = (
                     extracted.get("title")
@@ -339,7 +339,11 @@ class DiscordIntentDispatcher:
 
                 return await self._create_task(result, _ResumedMsg())
             if result.intent_kind == "automation":
+                self._drafts.discard(existing.thread_id)
                 return await self._build_automation_draft(result, msg)
+            if result.intent_kind in ("chat", "question"):
+                self._drafts.discard(existing.thread_id)
+                return DispatchResult(kind="chat")
         if result.status in ("needs_input", "ambiguous"):
             self._drafts.set(PendingDraft(
                 user_id=msg.author_id,
@@ -353,4 +357,19 @@ class DiscordIntentDispatcher:
                 kind="clarification_posted",
                 clarifying_question=result.clarifying_question,
             )
-        return DispatchResult(kind="no_action")
+        if result.status == "escalate_to_claude":
+            # A clarification reply that re-parses to an escalation must NOT be
+            # dropped: route it to the novelty judge, the same as the first-pass
+            # dispatch() path. (Previously this fell through to no_action and the
+            # user's reply vanished silently.)
+            self._drafts.discard(existing.thread_id)
+            return await self._handle_escalate(msg)
+        # Unknown / unhandled status: never go silent on the user. Keep the
+        # draft so they can continue in-thread and ask them to rephrase.
+        logger.warning("intent_resume_unknown_status", status=result.status)
+        return DispatchResult(
+            kind="clarification_posted",
+            clarifying_question=(
+                "I didn't quite catch that — could you rephrase what you'd like me to do?"
+            ),
+        )

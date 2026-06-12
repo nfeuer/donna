@@ -63,11 +63,17 @@ class ChallengerAgent:
         matcher: CapabilityMatcher | None = None,
         input_extractor: Any | None = None,
         model_router: Any | None = None,
+        fallback_alert_fn: Any | None = None,
         capability_snapshot_ttl_s: float = 60.0,
     ) -> None:
         self._matcher = matcher
         self._input_extractor = input_extractor
         self._router = model_router
+        # Optional async (component, error, fallback, context) -> bool alerter.
+        # Fail-open paths below are correct (the challenger must never block
+        # task creation), but they must not be SILENT — a dead local LLM should
+        # surface, not degrade every parse to the legacy path unannounced.
+        self._fallback_alert_fn = fallback_alert_fn
         self._env = jinja2.Environment(
             loader=jinja2.FileSystemLoader("prompts"),
             autoescape=False,
@@ -92,6 +98,20 @@ class ChallengerAgent:
     @property
     def timeout_seconds(self) -> int:
         return _TIMEOUT_SECONDS
+
+    async def _dispatch_alert(self, *, error: str, fallback: str) -> None:
+        """Surface a fail-open degradation (no-op if no alerter is wired)."""
+        if self._fallback_alert_fn is None:
+            return
+        try:
+            await self._fallback_alert_fn(
+                component="challenger_agent",
+                error=error,
+                fallback=fallback,
+                context={},
+            )
+        except Exception:
+            logger.warning("challenger_fallback_alert_failed")
 
     async def match_and_extract(
         self,
@@ -139,6 +159,10 @@ class ChallengerAgent:
                 error_type=type(exc).__name__,
             )
             # Fall back to legacy path on transport-ish errors only.
+            await self._dispatch_alert(
+                error=f"LLM parse failed ({type(exc).__name__}): {exc}",
+                fallback="legacy capability matcher",
+            )
             return await self._legacy_match_and_extract(user_message, user_id)
         except OSError as exc:
             # Network / aiohttp / httpx transport errors all inherit OSError.
@@ -148,12 +172,17 @@ class ChallengerAgent:
                 error=str(exc),
                 error_type=type(exc).__name__,
             )
+            await self._dispatch_alert(
+                error=f"LLM parse transport error ({type(exc).__name__}): {exc}",
+                fallback="legacy capability matcher",
+            )
             return await self._legacy_match_and_extract(user_message, user_id)
 
         # F-W3-H: validate the LLM output against schemas/challenger_parse.json.
-        # Mirrors ClaudeNoveltyJudge (Wave 3 Task 6). On validation failure
-        # we log and degrade — _build_result_from_parse already tolerates
-        # missing optional fields, so we fall through rather than crash.
+        # Mirrors ClaudeNoveltyJudge (Wave 3 Task 6). On validation failure we
+        # must NOT trust the unvalidated output — degrade to escalate_to_claude
+        # so the request reaches the novelty judge instead of building a task
+        # from malformed model output (Fable #8).
         try:
             from donna.models.validation import validate_output
 
@@ -166,7 +195,11 @@ class ChallengerAgent:
                 error=str(exc),
                 error_type=type(exc).__name__,
             )
-            # Fall through — don't abort the parse on validation mismatch.
+            await self._dispatch_alert(
+                error=f"challenger output failed schema validation: {exc}",
+                fallback="escalate_to_claude (output not trusted)",
+            )
+            return ChallengerMatchResult(status="escalate_to_claude", match_score=0.0)
 
         return self._build_result_from_parse(result_json, caps)
 
@@ -371,7 +404,12 @@ class ChallengerAgent:
         except Exception as exc:
             elapsed = int((time.monotonic() - start) * 1000)
             logger.error("challenger_agent_llm_failed", task_id=task.id, error=str(exc))
-            # On failure, let the task proceed — don't block on challenger errors.
+            # On failure, let the task proceed — don't block on challenger errors —
+            # but surface the skip rather than degrading silently (Fable #8).
+            await self._dispatch_alert(
+                error=f"challenger execute failed ({type(exc).__name__}): {exc}",
+                fallback="challenger skipped; task proceeds unchallenged",
+            )
             return AgentResult(
                 status="complete",
                 output={"challenger_skipped": True, "reason": str(exc)},
