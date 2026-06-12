@@ -66,6 +66,46 @@ class QualityMonitoringConfig(BaseModel):
     enabled: bool = False
 
 
+class TokenEstimationConfig(BaseModel):
+    """Self-calibrating prompt-token estimation knobs (design A, #7).
+
+    The router estimates ``tokens_in`` from ``len(prompt) / divisor`` before the
+    budget gate. A constant divisor of 4 *under*-estimates dense prompts, which
+    silently truncates the Ollama context window — the exact failure the loud
+    :class:`~donna.models.router.ContextOverflowError` exists to prevent. To
+    close that hole without importing a tokenizer, the router maintains a
+    per-task-type EMA of the *observed* ``len(prompt) / tokens_in`` ratio from
+    completed Ollama calls and uses the clamped EMA (times ``safety_factor``,
+    which biases toward over-estimation) as the divisor.
+
+    Attributes:
+        safety_factor: Multiplier (<1 over-estimates tokens; >1 under-estimates).
+            Applied to the divisor, so a value below 1.0 shrinks the divisor and
+            inflates the estimate, giving headroom against truncation.
+        ema_alpha: Smoothing factor for the per-task-type ratio EMA in [0, 1].
+            Higher reacts faster to recent calls; lower is more stable.
+        divisor_bounds: ``(low, high)`` clamp on the EMA divisor so a single
+            anomalous call (e.g. a degenerate ``tokens_in``) cannot push the
+            estimate to an absurd value.
+    """
+
+    safety_factor: float = 0.9
+    ema_alpha: float = 0.2
+    divisor_bounds: tuple[float, float] = (2.5, 4.5)
+
+
+class ShadowConfig(BaseModel):
+    """Production shadow-mode kill switch (design B, #3).
+
+    When ``enabled`` is ``False`` (the safe default), the router never fires a
+    shadow call even if a routing entry declares ``shadow:`` — shadow doubles
+    real, billed spend, so it stays off until an operator opts in. The full
+    statistical auto-disable job (design B, deferred) reads the same flag.
+    """
+
+    enabled: bool = False
+
+
 class OllamaConfig(BaseModel):
     """Connection settings for the local Ollama LLM server."""
 
@@ -74,6 +114,9 @@ class OllamaConfig(BaseModel):
     keepalive: str = "5m"
     default_num_ctx: int = 8192
     default_output_reserve: int = 1024
+    token_estimation: TokenEstimationConfig = Field(
+        default_factory=TokenEstimationConfig
+    )
 
 
 class ModelsConfig(BaseModel):
@@ -86,6 +129,7 @@ class ModelsConfig(BaseModel):
         default_factory=QualityMonitoringConfig
     )
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
+    shadow: ShadowConfig = Field(default_factory=ShadowConfig)
 
 
 class ManualEscalationTaskTypeConfig(BaseModel):
@@ -118,14 +162,19 @@ class ManualEscalationTaskTypeConfig(BaseModel):
 
 
 class TaskTypeEntry(BaseModel):
-    """A single task type definition."""
+    """A single task type definition.
+
+    Note: shadow routing lives on :class:`RoutingEntry` (donna_models.yaml
+    ``routing.<task>.shadow``), which is what the router reads. The dead
+    ``shadow`` field that used to live here was never consulted and was removed
+    (model-layer Fable critique #3).
+    """
 
     description: str
     model: str
     prompt_template: str
     output_schema: str
     tools: list[str] = Field(default_factory=list)
-    shadow: str | None = None
     manual_escalation: ManualEscalationTaskTypeConfig | None = None
 
 

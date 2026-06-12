@@ -6,7 +6,8 @@
 #   - output_schema: JSON schema for structured LLM output
 #   - model: model alias from donna_models.yaml
 #   - tools: list of tools the model may request for this task type
-#   - shadow: (optional) secondary model for production monitoring
+# (Production shadow monitoring is configured under routing.<task>.shadow in
+#  donna_models.yaml, not here — see spec_v3.md §4.4.)
 
 task_types:
   parse_task:
@@ -26,7 +27,6 @@ task_types:
   generate_digest:
     description: "Generate morning digest in Donna persona"
     model: parser
-    shadow: reasoner
     prompt_template: prompts/morning_digest.md
     output_schema: schemas/digest_output.json
     tools: [calendar_read, task_db_read, cost_summary]

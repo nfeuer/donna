@@ -19,12 +19,19 @@ from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 
-from donna.config import ModelsConfig, TaskTypesConfig
+from donna.config import ModelsConfig, RoutingEntry, TaskTypesConfig
 from donna.models.providers import ModelProvider
+from donna.models.providers._parsing import ResponseParseError
 from donna.models.providers.anthropic import AnthropicProvider
 from donna.models.tokens import estimate_tokens
 from donna.models.types import CompletionMetadata
-from donna.resilience.retry import CircuitBreaker, TaskCategory, resilient_call
+from donna.resilience.retry import (
+    CircuitBreaker,
+    CircuitBreakerState,
+    TaskCategory,
+    is_transient_error,
+    resilient_call,
+)
 
 if TYPE_CHECKING:
     from donna.collection.payload_writer import PayloadWriter
@@ -194,7 +201,16 @@ class ModelRouter:
         self._invocation_logger = invocation_logger
         self._payload_writer = payload_writer
         self._fallback_alert_fn = fallback_alert_fn
-        self._circuit_breaker = CircuitBreaker()
+        # Per-provider circuit breakers (model-layer critique #5): a local-GPU
+        # (Ollama) outage must open ONLY Ollama's breaker, leaving the cloud
+        # (Anthropic) provider reachable. Lazily created per provider name via
+        # _breaker_for(). A single shared breaker previously coupled the two,
+        # so an Ollama outage blacked out cloud calls.
+        self._circuit_breakers: dict[str, CircuitBreaker] = {}
+        # Self-calibrating per-task-type token divisor EMA (design A, #7).
+        # Seeded lazily from the configured bounds; updated from observed
+        # len(prompt)/tokens_in on each completed Ollama call.
+        self._token_divisors: dict[str, float] = {}
 
         # Instantiate one provider instance per unique provider name in config.
         self._providers: dict[str, ModelProvider] = {}
@@ -283,6 +299,100 @@ class ModelRouter:
         entry = self._lookup_routing_entry(task_type)
         return getattr(entry, "confidence_threshold", None) if entry else None
 
+    def _ensure_shadow_route(self, task_type: str, shadow_alias: str) -> str:
+        """Register (idempotently) a synthetic route that maps to *shadow_alias*.
+
+        Shadow mode (#3) re-dispatches through :meth:`complete`, which resolves
+        the model from the ``task_type``'s routing entry — that would pick the
+        *primary* alias. To make the recursive call hit the *shadow* model
+        instead, we register a deterministic synthetic routing key
+        (``<task_type>::__shadow__``) whose ``model`` is the shadow alias and
+        whose ``shadow``/``fallback`` are unset (so it neither re-shadows nor
+        silently escalates). The key is created once and reused.
+
+        Args:
+            task_type: The originating routing key.
+            shadow_alias: The model alias to shadow with.
+
+        Returns:
+            The synthetic task_type the recursive shadow call should use.
+        """
+        shadow_task_type = f"{task_type}::__shadow__"
+        if shadow_task_type not in self._models_config.routing:
+            self._models_config.routing[shadow_task_type] = RoutingEntry(
+                model=shadow_alias
+            )
+        return shadow_task_type
+
+    def _breaker_for(self, provider_name: str) -> CircuitBreaker:
+        """Return the circuit breaker for *provider_name*, creating it lazily.
+
+        One breaker per provider (model-layer critique #5) so a failing
+        provider only short-circuits its own calls. ``resilient_call`` must be
+        handed the breaker of the provider that will *actually* run the call
+        (after any overflow escalation, that is the fallback's provider).
+
+        Args:
+            provider_name: Provider key (e.g. ``"ollama"``, ``"anthropic"``).
+
+        Returns:
+            The (possibly newly created) breaker for that provider.
+        """
+        breaker = self._circuit_breakers.get(provider_name)
+        if breaker is None:
+            breaker = CircuitBreaker()
+            self._circuit_breakers[provider_name] = breaker
+        return breaker
+
+    def _token_divisor_for(self, task_type: str) -> float:
+        """Return the clamped, safety-scaled token divisor for *task_type*.
+
+        Uses the per-task-type EMA of observed ``len(prompt)/tokens_in`` when
+        one exists, else the midpoint of the configured bounds. Applying
+        ``safety_factor`` (<1.0 by default) shrinks the divisor so the estimate
+        leans toward over-counting, buying headroom against silent truncation
+        (design A, #7).
+        """
+        cfg = self._models_config.ollama.token_estimation
+        low, high = cfg.divisor_bounds
+        raw = self._token_divisors.get(task_type)
+        if raw is None:
+            raw = (low + high) / 2.0
+        divisor = raw * cfg.safety_factor
+        # Clamp the safety-scaled divisor into the configured band.
+        return max(low, min(high, divisor))
+
+    def _estimate_tokens_calibrated(self, task_type: str, prompt: str) -> int:
+        """Estimate prompt tokens using the calibrated per-task-type divisor."""
+        divisor = self._token_divisor_for(task_type)
+        if divisor <= 0:
+            return estimate_tokens(prompt)
+        return int(len(prompt) / divisor)
+
+    def _update_token_divisor(
+        self, task_type: str, prompt: str, tokens_in: int
+    ) -> None:
+        """Fold an observed ``len(prompt)/tokens_in`` ratio into the EMA.
+
+        Called after a successful Ollama call that reported a real
+        ``tokens_in``. Clamps each observation into the configured bounds
+        before blending so a degenerate provider count can't poison the EMA
+        (design A, #7).
+        """
+        if tokens_in <= 0:
+            return
+        cfg = self._models_config.ollama.token_estimation
+        low, high = cfg.divisor_bounds
+        observed = max(low, min(high, len(prompt) / tokens_in))
+        prev = self._token_divisors.get(task_type)
+        if prev is None:
+            self._token_divisors[task_type] = observed
+        else:
+            alpha = cfg.ema_alpha
+            self._token_divisors[task_type] = (
+                alpha * observed + (1.0 - alpha) * prev
+            )
+
     def _resolve_route(self, task_type: str) -> tuple[ModelProvider, str, str]:
         """Resolve task_type → (provider instance, model ID, model alias).
 
@@ -340,6 +450,112 @@ class ModelRouter:
         out_rate = model_config.output_cost_per_token_usd or 0.0
         return input_tokens * in_rate + output_tokens * out_rate
 
+    async def _log_invocation(
+        self,
+        *,
+        task_type: str,
+        alias: str,
+        metadata: CompletionMetadata,
+        user_id: str,
+        task_id: str | None,
+        escalation_request_id: int | None,
+        is_shadow: bool,
+        interrupted: bool,
+    ) -> str | None:
+        """Write one ``invocation_log`` row and return its id (or ``None``).
+
+        Used for both successful completions and failed/interrupted billed
+        attempts (model-layer critique #2): every billed provider call — even
+        one whose response failed to parse or whose retries were exhausted —
+        must leave a row so :class:`~donna.cost.budget.BudgetGuard` sees the
+        real spend. A write failure is alerted, never swallowed.
+
+        Args:
+            task_type: Routing key for the call.
+            alias: Resolved model alias the call ran against.
+            metadata: Completion metadata carrying token/cost figures.
+            user_id: User the spend is attributed to.
+            task_id: Optional originating task id.
+            escalation_request_id: Optional escalation row id.
+            is_shadow: Whether this is a shadow run (``is_shadow=1``).
+            interrupted: ``True`` for an error/retry/parse-failure row.
+
+        Returns:
+            The new invocation id, or ``None`` if logging was unavailable or
+            the write failed.
+        """
+        if self._invocation_logger is None:
+            return None
+        from donna.logging.invocation_logger import InvocationMetadata
+
+        try:
+            return await self._invocation_logger.log(
+                InvocationMetadata(
+                    task_type=task_type,
+                    model_alias=alias,
+                    model_actual=metadata.model_actual,
+                    input_hash="",
+                    latency_ms=metadata.latency_ms,
+                    tokens_in=metadata.tokens_in,
+                    tokens_out=metadata.tokens_out,
+                    cost_usd=metadata.cost_usd,
+                    estimated_tokens_in=metadata.estimated_tokens_in,
+                    overflow_escalated=metadata.overflow_escalated,
+                    user_id=user_id,
+                    task_id=task_id,
+                    escalation_request_id=escalation_request_id,
+                    is_shadow=is_shadow,
+                    interrupted=interrupted,
+                )
+            )
+        except Exception:
+            # Silent log failure starves budget enforcement of real spend, so
+            # alert rather than swallow (CLAUDE.md no-silent-degradation).
+            logger.warning(
+                "invocation_log_write_failed",
+                event_type="fallback_activated",
+                task_type=task_type,
+                cost_usd=metadata.cost_usd,
+                interrupted=interrupted,
+            )
+            await self._dispatch_alert(
+                error="invocation_log write failed — spend not recorded",
+                fallback="budget accounting may under-count this call",
+                context={"task_type": task_type, "cost_usd": metadata.cost_usd},
+                log_event="fallback_alert_fn_failed_invocation_log",
+                task_type=task_type,
+            )
+            return None
+
+    async def _dispatch_alert(
+        self,
+        *,
+        error: str,
+        fallback: str,
+        context: dict[str, Any],
+        log_event: str,
+        task_type: str,
+    ) -> None:
+        """Best-effort fallback-alert dispatch that never raises.
+
+        Centralizes the ``self._fallback_alert_fn`` call + its try/except so
+        every fallback path (overflow escalation, breaker-open, truncation
+        tripwire, log-write failure) routes through
+        :meth:`~donna.notifications.service.NotificationService.dispatch_fallback_alert`
+        consistently (CLAUDE.md: alert on every fallback).
+        """
+        if self._fallback_alert_fn is None:
+            return
+        try:
+            await self._fallback_alert_fn(
+                component="model_router",
+                error=error,
+                fallback=fallback,
+                context=context,
+            )
+        except Exception:
+            logger.warning(log_event, task_type=task_type)
+
     async def complete(
         self,
         prompt: str,
@@ -353,6 +569,7 @@ class ModelRouter:
         base_sha: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         messages: list[dict[str, Any]] | None = None,
+        is_shadow: bool = False,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Route a completion call through the configured provider.
 
@@ -361,6 +578,12 @@ class ModelRouter:
             task_type: Key from task_types.yaml / routing config.
             task_id: Optional associated task ID for logging.
             user_id: User making the request; used by BudgetGuard checks.
+            is_shadow: Internal flag (design B, #3). When ``True`` this call is
+                a production shadow run: it is logged with ``is_shadow=1`` and
+                its (real, billed) spend lands on ``invocation_log``, but it
+                never spawns its own shadow (recursion guard) and skips the
+                escalation gate / token-limit re-escalation since the user is
+                not waiting on it. Set only by :meth:`_run_shadow`.
             estimate_usd: Pre-flight cost estimate. When provided alongside
                 a configured escalation gate, the gate decides whether to
                 offer the user a Discord choice instead of spending.
@@ -414,7 +637,11 @@ class ModelRouter:
         _max_tokens_override: int | None = None
         _extension_amount_usd: float | None = None
 
-        if self._escalation_gate is not None:
+        # Shadow runs (design B, #3) are not interactive: the user is not
+        # waiting on the secondary model's output, so the over-budget gate (and
+        # its Discord prompt) must not fire for them. Shadow spend is still
+        # logged + budget-pre-checked below — it is accounted, just not gated.
+        if self._escalation_gate is not None and not is_shadow:
             # Consult the gate on every call — do NOT rely on callers
             # supplying ``estimate_usd`` (no production caller did, leaving
             # the gate dark). When omitted, derive a deterministic floor from
@@ -486,7 +713,11 @@ class ModelRouter:
             )
             output_reserve = self._models_config.ollama.default_output_reserve
             budget = num_ctx_to_send - output_reserve
-            estimated_in = estimate_tokens(prompt)
+            # Calibrated estimate (design A, #7): a constant len//4 divisor
+            # UNDER-estimates dense prompts and silently truncates the context
+            # window. The per-task-type EMA divisor (scaled by safety_factor)
+            # closes that under-estimate hole without a tokenizer dependency.
+            estimated_in = self._estimate_tokens_calibrated(task_type, prompt)
 
             if estimated_in > budget:
                 routing_entry = self._lookup_routing_entry(task_type)
@@ -634,14 +865,185 @@ class ModelRouter:
         if messages is not None:
             call_kwargs["messages"] = messages
 
-        result, metadata = await resilient_call(
-            provider.complete,
-            prompt,
-            model_id,
-            category=TaskCategory.STANDARD,
-            circuit_breaker=self._circuit_breaker,
-            **call_kwargs,
-        )
+        # Per-provider circuit breaker (#5): hand resilient_call the breaker of
+        # the provider that will ACTUALLY run this call — after any overflow
+        # escalation, that is the fallback's provider. So an Ollama outage that
+        # opened Ollama's breaker never short-circuits an Anthropic-alias call.
+        target_provider_name = model_config.provider
+        breaker = self._breaker_for(target_provider_name)
+        breaker_was_open_before = breaker.state is CircuitBreakerState.OPEN
+
+        # Per-attempt billed-call logging (#2): every billed attempt — even one
+        # whose response failed to parse, or whose retries are exhausted — must
+        # land an invocation_log row so BudgetGuard sees the real spend. A parse
+        # failure carries the provider's pre-parse usage via ResponseParseError.
+        async def _on_attempt_failure(
+            exc: Exception, attempt: int, will_retry: bool
+        ) -> None:
+            attempt_meta = getattr(exc, "metadata", None)
+            if not isinstance(attempt_meta, CompletionMetadata):
+                return  # transport/auth error before any billed usage — nothing to bill
+            enriched = CompletionMetadata(
+                latency_ms=attempt_meta.latency_ms,
+                tokens_in=attempt_meta.tokens_in,
+                tokens_out=attempt_meta.tokens_out,
+                cost_usd=attempt_meta.cost_usd,
+                model_actual=attempt_meta.model_actual,
+                is_shadow=is_shadow,
+                estimated_tokens_in=estimated_in,
+                overflow_escalated=overflow_escalated,
+                token_limited=attempt_meta.token_limited,
+            )
+            await self._log_invocation(
+                task_type=task_type,
+                alias=alias,
+                metadata=enriched,
+                user_id=user_id,
+                task_id=task_id,
+                escalation_request_id=_escalation_request_id,
+                is_shadow=is_shadow,
+                interrupted=True,
+            )
+
+        # Exception classifier (#2): transport/5xx/529 retry; auth/4xx fail fast;
+        # a parse failure retries AT MOST ONCE (a model that returns garbage JSON
+        # rarely fixes itself on attempt 3 — cap it to avoid paying for noise).
+        _parse_failures = 0
+
+        def _is_retryable(exc: Exception) -> bool:
+            nonlocal _parse_failures
+            if isinstance(exc, ResponseParseError):
+                _parse_failures += 1
+                return _parse_failures <= 1
+            return is_transient_error(exc)
+
+        try:
+            result, metadata = await resilient_call(
+                provider.complete,
+                prompt,
+                model_id,
+                category=TaskCategory.STANDARD,
+                circuit_breaker=breaker,
+                is_retryable=_is_retryable,
+                on_attempt_failure=_on_attempt_failure,
+                **call_kwargs,
+            )
+        finally:
+            # A breaker that just opened means the target provider is failing —
+            # surface it as a fallback alert (CLAUDE.md), not just a critical log.
+            if (
+                not breaker_was_open_before
+                and breaker.state is CircuitBreakerState.OPEN
+            ):
+                await self._dispatch_alert(
+                    error=(
+                        f"Circuit breaker opened for provider "
+                        f"{target_provider_name!r} (alias {alias!r})"
+                    ),
+                    fallback="provider calls short-circuited until recovery",
+                    context={
+                        "task_type": task_type,
+                        "provider": target_provider_name,
+                        "alias": alias,
+                    },
+                    log_event="fallback_alert_fn_failed_breaker_open",
+                    task_type=task_type,
+                )
+
+        # Truncation tripwire (design A, #7): if the prompt saturated the Ollama
+        # window (tokens_in >= num_ctx - reserve), the response was likely
+        # SILENTLY truncated — the failure the loud ContextOverflowError exists
+        # to prevent. Alert + re-dispatch once to the configured fallback (reuse
+        # the overflow path) or loud-fail if none.
+        if (
+            model_config.provider == "ollama"
+            and num_ctx_to_send is not None
+            and metadata.tokens_in
+            >= num_ctx_to_send - self._models_config.ollama.default_output_reserve
+        ):
+            logger.warning(
+                "truncation_suspected",
+                truncation_suspected=True,
+                task_type=task_type,
+                alias=alias,
+                tokens_in=metadata.tokens_in,
+                num_ctx=num_ctx_to_send,
+                output_reserve=self._models_config.ollama.default_output_reserve,
+            )
+            await self._dispatch_alert(
+                error=(
+                    f"Suspected silent truncation: tokens_in={metadata.tokens_in} "
+                    f"saturated num_ctx={num_ctx_to_send} for {alias!r}"
+                ),
+                fallback="re-dispatching to fallback alias",
+                context={
+                    "task_type": task_type,
+                    "alias": alias,
+                    "tokens_in": metadata.tokens_in,
+                    "num_ctx": num_ctx_to_send,
+                },
+                log_event="fallback_alert_fn_failed_truncation",
+                task_type=task_type,
+            )
+            # The local result is suspect, but it was still billed — log it
+            # before re-dispatching so the spend is not lost.
+            await self._log_invocation(
+                task_type=task_type,
+                alias=alias,
+                metadata=CompletionMetadata(
+                    latency_ms=metadata.latency_ms,
+                    tokens_in=metadata.tokens_in,
+                    tokens_out=metadata.tokens_out,
+                    cost_usd=metadata.cost_usd,
+                    model_actual=metadata.model_actual,
+                    estimated_tokens_in=estimated_in,
+                    overflow_escalated=overflow_escalated,
+                    token_limited=metadata.token_limited,
+                ),
+                user_id=user_id,
+                task_id=task_id,
+                escalation_request_id=_escalation_request_id,
+                is_shadow=is_shadow,
+                interrupted=True,
+            )
+            routing_entry = self._lookup_routing_entry(task_type)
+            fallback_alias = routing_entry.fallback if routing_entry else None
+            if fallback_alias is None:
+                raise ContextOverflowError(
+                    f"Suspected silent truncation for task_type={task_type!r}: "
+                    f"tokens_in={metadata.tokens_in} saturated num_ctx="
+                    f"{num_ctx_to_send} (reserve="
+                    f"{self._models_config.ollama.default_output_reserve}); "
+                    "no fallback configured to re-dispatch to."
+                )
+            fb_config = self._models_config.models.get(fallback_alias)
+            fb_provider = (
+                self._providers.get(fb_config.provider) if fb_config else None
+            )
+            if fb_config is None or fb_provider is None:
+                raise RoutingError(
+                    f"Truncation fallback alias {fallback_alias!r} (task type "
+                    f"{task_type!r}) is not resolvable in config"
+                )
+            fb_breaker = self._breaker_for(fb_config.provider)
+            result, metadata = await resilient_call(
+                fb_provider.complete,
+                prompt,
+                fb_config.model,
+                category=TaskCategory.STANDARD,
+                circuit_breaker=fb_breaker,
+                is_retryable=is_transient_error,
+            )
+            alias = fallback_alias
+            model_config = fb_config
+            overflow_escalated = True
+        elif (
+            model_config.provider == "ollama"
+            and metadata.tokens_in
+        ):
+            # Healthy local call: feed the observed ratio into the EMA so the
+            # next estimate self-calibrates (design A, #7).
+            self._update_token_divisor(task_type, prompt, metadata.tokens_in)
 
         # Recovery detection: if the call actually went to Ollama (i.e. was not
         # escalated to the cloud fallback) and we previously marked Ollama as
@@ -658,16 +1060,13 @@ class ModelRouter:
                 event_type="system.ollama_recovered",
                 task_type=task_type,
             )
-            if self._fallback_alert_fn is not None:
-                try:
-                    await self._fallback_alert_fn(
-                        component="model_router",
-                        error="Ollama recovered — no longer falling back to cloud",
-                        fallback="resuming local model routing",
-                        context={"task_type": task_type},
-                    )
-                except Exception:
-                    logger.warning("fallback_alert_fn_failed_recovery", task_type=task_type)
+            await self._dispatch_alert(
+                error="Ollama recovered — no longer falling back to cloud",
+                fallback="resuming local model routing",
+                context={"task_type": task_type},
+                log_event="fallback_alert_fn_failed_recovery",
+                task_type=task_type,
+            )
 
         enriched_metadata = CompletionMetadata(
             latency_ms=metadata.latency_ms,
@@ -675,7 +1074,7 @@ class ModelRouter:
             tokens_out=metadata.tokens_out,
             cost_usd=metadata.cost_usd,
             model_actual=metadata.model_actual,
-            is_shadow=metadata.is_shadow,
+            is_shadow=is_shadow or metadata.is_shadow,
             estimated_tokens_in=estimated_in,
             overflow_escalated=overflow_escalated,
             token_limited=metadata.token_limited,
@@ -686,53 +1085,16 @@ class ModelRouter:
         # incurred real, billed spend (``metadata.cost_usd``); raising first
         # would drop that spend from invocation_log, under-counting the budget
         # and starving BudgetGuard.
-        invocation_id: str | None = None
-        if self._invocation_logger is not None:
-            from donna.logging.invocation_logger import InvocationMetadata
-
-            try:
-                invocation_id = await self._invocation_logger.log(
-                    InvocationMetadata(
-                        task_type=task_type,
-                        model_alias=alias,
-                        model_actual=enriched_metadata.model_actual,
-                        input_hash="",
-                        latency_ms=enriched_metadata.latency_ms,
-                        tokens_in=enriched_metadata.tokens_in,
-                        tokens_out=enriched_metadata.tokens_out,
-                        cost_usd=enriched_metadata.cost_usd,
-                        estimated_tokens_in=enriched_metadata.estimated_tokens_in,
-                        overflow_escalated=enriched_metadata.overflow_escalated,
-                        user_id=user_id,
-                        task_id=task_id,
-                        escalation_request_id=_escalation_request_id,
-                    )
-                )
-            except Exception:
-                # Silent log failure starves budget enforcement of real spend,
-                # so alert rather than swallow (CLAUDE.md no-silent-degradation).
-                logger.warning(
-                    "invocation_log_write_failed",
-                    event_type="fallback_activated",
-                    task_type=task_type,
-                    cost_usd=enriched_metadata.cost_usd,
-                )
-                if self._fallback_alert_fn is not None:
-                    try:
-                        await self._fallback_alert_fn(
-                            component="model_router",
-                            error="invocation_log write failed — spend not recorded",
-                            fallback="budget accounting may under-count this call",
-                            context={
-                                "task_type": task_type,
-                                "cost_usd": enriched_metadata.cost_usd,
-                            },
-                        )
-                    except Exception:
-                        logger.warning(
-                            "fallback_alert_fn_failed_invocation_log",
-                            task_type=task_type,
-                        )
+        invocation_id = await self._log_invocation(
+            task_type=task_type,
+            alias=alias,
+            metadata=enriched_metadata,
+            user_id=user_id,
+            task_id=task_id,
+            escalation_request_id=_escalation_request_id,
+            is_shadow=is_shadow,
+            interrupted=False,
+        )
 
         # Write request/response payload to disk for forensic inspection.
         if self._payload_writer is not None and invocation_id is not None:
@@ -794,11 +1156,25 @@ class ModelRouter:
                 correlation_id=_escalation_correlation_id,
             )
 
-        # Shadow mode: fire secondary model in parallel if configured.
-        routing = self._models_config.routing.get(task_type)
-        if routing and routing.shadow and self._on_shadow_complete:
+        # Shadow mode (design B, #3): fire the secondary model in parallel if
+        # configured AND enabled. Three gates protect against runaway spend:
+        #   1. `is_shadow` recursion guard — a shadow call never spawns its own
+        #      shadow (no infinite recursion / spend explosion).
+        #   2. Config kill-switch `shadow.enabled` — shadow doubles real billed
+        #      spend, so it stays off until an operator opts in.
+        #   3. `_lookup_routing_entry` (prefix-aware) so dynamic task_types
+        #      (skill_step::…) resolve their shadow alias correctly.
+        # The shadow now routes through complete(is_shadow=True), so its spend
+        # is budget-pre-checked, logged (is_shadow=1), and breaker-guarded.
+        routing_entry = self._lookup_routing_entry(task_type)
+        if (
+            not is_shadow
+            and self._models_config.shadow.enabled
+            and routing_entry is not None
+            and getattr(routing_entry, "shadow", None)
+        ):
             shadow_task = asyncio.create_task(
-                self._run_shadow(prompt, task_type, routing.shadow)
+                self._run_shadow(prompt, task_type, user_id=user_id)
             )
             self._shadow_tasks.add(shadow_task)
             shadow_task.add_done_callback(self._shadow_tasks.discard)
@@ -806,38 +1182,66 @@ class ModelRouter:
         return result, enriched_metadata
 
     async def _run_shadow(
-        self, prompt: str, task_type: str, shadow_alias: str
+        self, prompt: str, task_type: str, *, user_id: str
     ) -> None:
-        """Run a shadow model call (fire-and-forget, never blocks primary)."""
+        """Run a shadow completion (fire-and-forget, never blocks primary).
+
+        Re-expressed as a recursive internal :meth:`complete` call with
+        ``is_shadow=True`` (design B, #3) so budget pre-check, invocation
+        logging (``is_shadow=1`` with real ``cost_usd``), and the per-provider
+        circuit breaker all apply for free — shadow spend now lands on
+        ``invocation_log`` instead of bypassing the accounting boundary.
+
+        The shadow alias is resolved via :meth:`_lookup_routing_entry`
+        (prefix-routing aware) and dispatched through a synthetic route
+        (:meth:`_ensure_shadow_route`) so the recursive ``complete`` call hits
+        the shadow model rather than the primary.
+
+        Args:
+            prompt: The same prompt sent to the primary model.
+            task_type: The originating routing key.
+            user_id: User the shadow spend is attributed to.
+        """
         try:
+            routing_entry = self._lookup_routing_entry(task_type)
+            shadow_alias = (
+                getattr(routing_entry, "shadow", None) if routing_entry else None
+            )
+            if shadow_alias is None:
+                logger.warning("shadow_alias_not_found", task_type=task_type)
+                return
             model_config = self._models_config.models.get(shadow_alias)
             if model_config is None:
                 logger.warning("shadow_alias_not_found", alias=shadow_alias)
                 return
-
             provider = self._providers.get(model_config.provider)
             if provider is None:
-                logger.warning("shadow_provider_not_found", provider=model_config.provider)
+                logger.warning(
+                    "shadow_provider_not_found", provider=model_config.provider
+                )
                 return
 
-            result, metadata = await provider.complete(prompt, model_config.model)
-            shadow_metadata = CompletionMetadata(
-                latency_ms=metadata.latency_ms,
-                tokens_in=metadata.tokens_in,
-                tokens_out=metadata.tokens_out,
-                cost_usd=metadata.cost_usd,
-                model_actual=metadata.model_actual,
+            # Route through complete() with a synthetic task_type that resolves
+            # directly to the shadow alias, so the recursive call dispatches to
+            # the shadow model (not the primary) while reusing all of
+            # complete()'s accounting. The synthetic entry is registered once.
+            shadow_task_type = self._ensure_shadow_route(task_type, shadow_alias)
+            result, metadata = await self.complete(
+                prompt,
+                shadow_task_type,
+                user_id=user_id,
                 is_shadow=True,
             )
 
             if self._on_shadow_complete:
-                await self._on_shadow_complete(task_type, result, shadow_metadata)
+                await self._on_shadow_complete(task_type, result, metadata)
 
             logger.info(
                 "shadow_completion",
                 task_type=task_type,
                 shadow_alias=shadow_alias,
-                latency_ms=shadow_metadata.latency_ms,
+                latency_ms=metadata.latency_ms,
+                cost_usd=metadata.cost_usd,
             )
         except Exception:
             logger.exception("shadow_completion_failed", task_type=task_type)

@@ -35,6 +35,24 @@ ollama:
   keepalive: 5m
   default_num_ctx: 8192
   default_output_reserve: 1024
+  # Self-calibrating prompt-token estimation (design A, spec_v3.md §4.2).
+  # The router estimates tokens_in from len(prompt)/divisor before the budget
+  # gate; a constant divisor of 4 under-estimates dense prompts and silently
+  # truncates the context window. Instead the router keeps a per-task-type EMA
+  # of the observed len(prompt)/tokens_in ratio and uses the clamped EMA times
+  # safety_factor as the divisor. No tokenizer dependency.
+  token_estimation:
+    safety_factor: 0.9          # <1.0 inflates the estimate (headroom vs truncation)
+    ema_alpha: 0.2              # EMA smoothing in [0,1]; higher reacts faster
+    divisor_bounds: [2.5, 4.5]  # clamp on the EMA divisor
+
+# Production shadow-mode kill switch (design B, spec_v3.md §4.4).
+# Shadow doubles real billed spend, so it stays OFF until an operator opts in.
+# When disabled, the router never fires a shadow call even if a routing entry
+# declares shadow:. Shadow spend, when enabled, is now accounted on
+# invocation_log (is_shadow=1) because shadow routes through complete().
+shadow:
+  enabled: false
 
 routing:
   # Keys match task_types.yaml entries exactly

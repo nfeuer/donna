@@ -12,7 +12,7 @@ from typing import Any
 import anthropic
 import structlog
 
-from donna.models.providers._parsing import parse_json_response
+from donna.models.providers._parsing import ResponseParseError, parse_json_response
 from donna.models.types import CompletionMetadata
 
 logger = structlog.get_logger()
@@ -161,6 +161,15 @@ class AnthropicProvider:
             None,
         )
         raw_text = text_block.text if text_block else ""
-        parsed = parse_json_response(raw_text)
+        try:
+            parsed = parse_json_response(raw_text)
+        except (ValueError, TypeError) as exc:
+            # The call was billed (usage above is real) but the body was not
+            # valid JSON. Surface the metadata so the router logs the spend
+            # before retrying/failing (model-layer critique #2).
+            raise ResponseParseError(
+                f"Anthropic response was not valid JSON: {exc}",
+                metadata=metadata,
+            ) from exc
 
         return parsed, metadata

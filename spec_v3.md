@@ -832,6 +832,27 @@ the §13.1 budget cap accurate. Per-alias `cost_usd` is computed from the config
 rates (`input/output_cost_per_token_usd`), not hardcoded Sonnet pricing; the
 Anthropic provider fails loud on an unpriced model rather than mispricing.)
 
+(v3.1 note — Phase-2 resilience hardening (model-layer critique #2/#5/#7):
+**Per-provider circuit breakers** — each provider name gets its own breaker, and
+`resilient_call` consults the breaker of the provider that will *actually* run
+the call (after overflow escalation, the fallback's provider). A local-GPU
+(Ollama) outage therefore opens only Ollama's breaker and never short-circuits
+cloud (Anthropic) calls. A breaker opening dispatches a fallback alert.
+**Per-attempt billed-call logging** — `resilient_call` retries the whole billed
+call; every billed attempt (including a parse failure, which providers now raise
+as `ResponseParseError` carrying the pre-parse `usage`) writes its own
+`invocation_log` row marked `interrupted=1`, and non-retryable auth/4xx errors
+fail fast (transport/5xx/408/429/529 retry). No billed call goes unlogged.
+**Token-truncation tripwire + self-calibrating divisor (design A)** — the Ollama
+context-budget gate replaces the constant `len//4` divisor (which *under*-counts
+dense prompts and silently truncates the window) with a clamped per-task-type
+EMA of observed `len(prompt)/tokens_in`, scaled by `safety_factor`; knobs live
+under `ollama.token_estimation` (`safety_factor`, `ema_alpha`, `divisor_bounds`).
+After every Ollama call, `tokens_in >= num_ctx − output_reserve` trips a
+`truncation_suspected` alert + re-dispatch to the configured `fallback` (or loud
+`ContextOverflowError` if none), which also repairs the exact-tokenization
+upgrade trigger. No tokenizer dependency is added.)
+
 **4.3 Structured Invocation Logging**
 
 Every model call is logged to the invocation_log table. This is the
@@ -893,6 +914,19 @@ used for all downstream processing; the shadow model's response is
 logged to the invocation_log for comparison. This is a runtime feature
 for ongoing quality monitoring after a task type has been migrated to a
 different model.
+
+(v3.1 note: shadow now **routes through `complete(is_shadow=True)`** rather than
+calling a provider directly (model-layer critique #3, design B). This makes the
+shadow inherit the budget pre-check, the per-provider circuit breaker, and —
+critically — `invocation_log` **accounting**: shadow spend lands as an
+`is_shadow=1` row with its real `cost_usd`, instead of bypassing the accounting
+boundary. An `is_shadow` recursion guard prevents a shadow call from spawning
+its own shadow. Shadow is gated by a `shadow.enabled` kill-switch in
+`donna_models.yaml` (default `false`) because it doubles real billed spend; a
+configured `routing.<task>.shadow` alias is inert while the switch is off. The
+dead `TaskTypeEntry.shadow` field — read nowhere — was removed; the live shadow
+key is `RoutingEntry.shadow`. The full statistical auto-disable weekly job is
+deferred until shadow is enabled in production.)
 
 **Use case:** After migrating task_parse from Claude to a local model,
 keep Claude as a shadow for 2--4 weeks to monitor whether the local

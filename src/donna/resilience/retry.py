@@ -127,26 +127,87 @@ class CircuitBreakerOpenError(Exception):
     pass
 
 
+# HTTP status codes that are worth retrying: transient transport/server-side
+# failures and rate limiting. 4xx (other than 408/429) signal a client-side
+# problem a retry cannot fix (bad request, auth) and must fail fast.
+_RETRYABLE_STATUS_CODES = frozenset({408, 425, 429, 500, 502, 503, 504, 529})
+
+
+def is_transient_error(exc: Exception) -> bool:
+    """Classify whether *exc* is worth retrying.
+
+    Retry transport errors (connection/timeout), 5xx, 408/425/429, and the
+    Anthropic 529 "overloaded" status. Do NOT retry auth or other 4xx — a
+    retry cannot fix a malformed or unauthorized request, so failing fast
+    surfaces the real error sooner instead of burning the retry budget.
+
+    The check is duck-typed on a ``status_code`` attribute (the shape both the
+    Anthropic SDK's ``APIStatusError`` and ``aiohttp``'s ``ClientResponseError``
+    expose under different names) so this module needs no provider imports.
+
+    Args:
+        exc: The exception raised by a billed provider call.
+
+    Returns:
+        ``True`` if a retry may succeed; ``False`` for terminal client errors.
+    """
+    # Connection / timeout style transport errors are always transient.
+    if isinstance(exc, (ConnectionError, TimeoutError, asyncio.TimeoutError)):
+        return True
+    status = (
+        getattr(exc, "status_code", None)
+        or getattr(exc, "status", None)
+    )
+    if isinstance(status, int):
+        if status in _RETRYABLE_STATUS_CODES:
+            return True
+        if 400 <= status < 500:
+            return False  # terminal client error (auth, bad request)
+        if status >= 500:
+            return True
+    # Unknown shape: default to retryable so we never make a transient error
+    # terminal by accident (the loud-fail path is the retry exhaustion log).
+    return True
+
+
 async def resilient_call(
     func: Callable[..., Awaitable[Any]],
     *args: Any,
     category: TaskCategory = TaskCategory.STANDARD,
     circuit_breaker: CircuitBreaker | None = None,
+    is_retryable: Callable[[Exception], bool] | None = None,
+    on_attempt_failure: Callable[[Exception, int, bool], Awaitable[None]]
+    | None = None,
     **kwargs: Any,
 ) -> Any:
     """Execute an async function with retry logic and circuit breaker.
 
     Args:
-        func: Async function to call
-        category: Retry policy category
-        circuit_breaker: Optional shared circuit breaker instance
+        func: Async function to call.
+        category: Retry policy category.
+        circuit_breaker: Optional circuit breaker instance. The caller is
+            responsible for passing the breaker that guards the provider that
+            will *actually* run this call (so a local-GPU outage opening
+            Ollama's breaker does not short-circuit cloud calls).
+        is_retryable: Optional classifier ``(exc) -> bool``. When it returns
+            ``False`` the exception is treated as terminal and re-raised
+            immediately without consuming further retry budget (e.g. auth /
+            4xx errors that retrying cannot fix). Defaults to "retry
+            everything", preserving prior behaviour.
+        on_attempt_failure: Optional async hook ``(exc, attempt, will_retry)``
+            invoked after every failed (billed) attempt so the caller can log
+            the attempt to ``invocation_log`` with an error marker. ``attempt``
+            is zero-based; ``will_retry`` is ``True`` when another attempt
+            follows. Hook failures are logged but never mask the original
+            error.
 
     Returns:
-        The function's return value
+        The function's return value.
 
     Raises:
-        CircuitBreakerOpenError: If circuit breaker is open
-        Exception: The last exception if all retries exhausted
+        CircuitBreakerOpenError: If circuit breaker is open.
+        Exception: The last exception if all retries exhausted, or immediately
+            if ``is_retryable`` classifies it as terminal.
     """
     policy = RETRY_POLICIES[category]
 
@@ -168,6 +229,30 @@ async def resilient_call(
 
             if circuit_breaker:
                 circuit_breaker.record_failure()
+
+            # Non-retryable (auth/4xx): a retry cannot fix it, so fail fast
+            # rather than burning the retry budget and delaying the loud error.
+            terminal = is_retryable is not None and not is_retryable(e)
+            will_retry = (not terminal) and attempt < policy.max_retries
+
+            if on_attempt_failure is not None:
+                try:
+                    await on_attempt_failure(e, attempt, will_retry)
+                except Exception:
+                    logger.warning(
+                        "resilient_call_attempt_hook_failed",
+                        attempt=attempt + 1,
+                        error_type=type(e).__name__,
+                    )
+
+            if terminal:
+                logger.warning(
+                    "api_call_not_retryable",
+                    attempt=attempt + 1,
+                    category=category.value,
+                    error_type=type(e).__name__,
+                )
+                raise
 
             if attempt < policy.max_retries:
                 if policy.exponential:

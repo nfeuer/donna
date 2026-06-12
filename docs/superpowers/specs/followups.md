@@ -177,6 +177,21 @@
      to `auto_drafter` / `evolution`, but the raise is only reachable in `enforce`
      mode (needs a granted extension). Verify under load when #1 flips to enforce.
 
+## ML-FABLE-P2 — Shadow stable-state auto-disable job (design B)
+
+- **Spec:** `spec_v3.md §4.4`; design
+  `docs/superpowers/specs/2026-06-11-model-layer-fable-critique-design.md` (#3, design B)
+- **Status:** open (trigger-gated)
+- **Gap:** Phase-2 landed the shadow plumbing — shadow now routes through
+  `complete(is_shadow=True)`, its spend is accounted on `invocation_log`
+  (`is_shadow=1`), and a `shadow.enabled` config kill-switch gates it (default
+  `false`). **Deferred:** the full statistical weekly job that auto-disables a
+  shadow once the local model reaches a stable agreement/quality state (design B's
+  "stable-state exit"). The config kill-switch + accounted spend are sufficient
+  while shadow is off. **Trigger:** shadow actually enabled in prod
+  (`shadow.enabled: true` for any alias) — at that point the doubled spend needs
+  the automated exit so a monitoring window can't run unbounded.
+
 ---
 
 ## How to add an entry

@@ -13,7 +13,7 @@ from typing import Any
 import aiohttp
 import structlog
 
-from donna.models.providers._parsing import parse_json_response
+from donna.models.providers._parsing import ResponseParseError, parse_json_response
 from donna.models.types import CompletionMetadata
 
 logger = structlog.get_logger()
@@ -100,11 +100,10 @@ class OllamaProvider:
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
 
-        raw_text = data["message"]["content"]
-        parsed = parse_json_response(raw_text) if json_mode else {"text": raw_text}
-
-        # Token counts — Ollama provides these at top level.
-        # Graceful fallback if fields are missing (older Ollama versions).
+        # Token counts — Ollama provides these at top level. Captured BEFORE
+        # parsing so a parse failure still carries real spend metadata
+        # (model-layer critique #2). Graceful fallback if fields are missing
+        # (older Ollama versions).
         tokens_in = data.get("prompt_eval_count", 0)
         tokens_out = data.get("eval_count", 0)
         total_tokens = tokens_in + tokens_out
@@ -127,6 +126,17 @@ class OllamaProvider:
             cost_usd=metadata.cost_usd,
             num_ctx=effective_num_ctx,
         )
+
+        raw_text = data["message"]["content"]
+        if not json_mode:
+            return {"text": raw_text}, metadata
+        try:
+            parsed = parse_json_response(raw_text)
+        except (ValueError, TypeError) as exc:
+            raise ResponseParseError(
+                f"Ollama response was not valid JSON: {exc}",
+                metadata=metadata,
+            ) from exc
 
         return parsed, metadata
 

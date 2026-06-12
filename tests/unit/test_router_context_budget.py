@@ -111,8 +111,10 @@ def _build_router(
     # so the budget/overflow paths under test still need a logger present.
     router._invocation_logger = AsyncMock()
     router._payload_writer = None
-    from donna.resilience.retry import CircuitBreaker
-    router._circuit_breaker = CircuitBreaker()
+    # Per-provider breakers (model-layer #5) + token-divisor EMA store
+    # (design A, #7) replaced the single shared breaker.
+    router._circuit_breakers = {}
+    router._token_divisors = {}
     router._shadow_tasks = set()
     router._ollama_degraded = False
     router._fallback_alert_fn = None
@@ -162,14 +164,20 @@ async def test_local_dispatch_forwards_num_ctx_to_provider() -> None:
 @pytest.mark.asyncio
 async def test_metadata_carries_estimated_and_overflow_flag() -> None:
     router, _, _ = _build_router()
-    _, meta = await router.complete(prompt="x" * 200, task_type="generate_nudge")
-    assert meta.estimated_tokens_in == 50  # 200 // 4
+    prompt = "x" * 200
+    # Estimate now uses the self-calibrating divisor (design A, #7), not a
+    # constant len//4. With a fresh EMA the divisor is midpoint(2.5,4.5)·0.9.
+    expected = router._estimate_tokens_calibrated("generate_nudge", prompt)
+    _, meta = await router.complete(prompt=prompt, task_type="generate_nudge")
+    assert meta.estimated_tokens_in == expected
     assert meta.overflow_escalated is False
 
 
 @pytest.mark.asyncio
 async def test_metadata_marks_overflow_escalation() -> None:
     router, _, _ = _build_router()
-    _, meta = await router.complete(prompt="x" * 2000, task_type="generate_nudge")
-    assert meta.estimated_tokens_in == 500  # 2000 // 4
+    prompt = "x" * 2000
+    expected = router._estimate_tokens_calibrated("generate_nudge", prompt)
+    _, meta = await router.complete(prompt=prompt, task_type="generate_nudge")
+    assert meta.estimated_tokens_in == expected
     assert meta.overflow_escalated is True

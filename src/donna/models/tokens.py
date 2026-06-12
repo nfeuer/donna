@@ -1,13 +1,18 @@
 """Prompt token estimation for router-level budget checks.
 
-Uses a character-based heuristic (len // 4) that matches the ballpark for
-English prompts. We compare against the actual `tokens_in` returned by
-Ollama and surface drift on the LLM Gateway dashboard.
+`estimate_tokens` is the zero-dependency `len // 4` baseline. It is still used
+for the escalation gate's deterministic cost *floor*. The Ollama context-budget
+gate no longer trusts a constant divisor: `ModelRouter` maintains a
+self-calibrating per-task-type EMA of the observed `len(prompt) / tokens_in`
+ratio (clamped + safety-scaled) so a dense prompt is not silently truncated by
+an under-estimate (design A — see `ModelRouter._estimate_tokens_calibrated` and
+the `ollama.token_estimation` config block). The router also runs a post-call
+`truncation_suspected` tripwire that feeds the upgrade gauge.
 
-Upgrade trigger (OOS-11): swap this heuristic for Ollama's /api/tokenize
-endpoint when the `context_overflow_escalation` rate exceeds 10%. The
-event is emitted from `src/donna/models/router.py:215` whenever a
-request falls back off a local alias due to estimated_tokens > budget.
+Upgrade trigger (OOS-11): swap the heuristic for Ollama's /api/tokenize endpoint
+when the combined `context_overflow_escalation` + `truncation_suspected` rate
+exceeds 10% (the tripwire is what makes that trigger able to fire on otherwise
+silent truncation).
 """
 
 from __future__ import annotations
