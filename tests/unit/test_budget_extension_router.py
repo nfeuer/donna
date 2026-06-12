@@ -166,6 +166,7 @@ async def test_gate_consulted_without_caller_estimate() -> None:
         project_root=Path("/nonexistent"),
         budget_guard=budget_guard,
         escalation_gate=gate,
+        invocation_logger=AsyncMock(),
     )
     router._providers["anthropic"] = mock_provider
 
@@ -256,6 +257,7 @@ async def test_token_limit_reached_error_raised_when_truncated() -> None:
         models_config=models_config,
         task_types_config=task_types_config,
         project_root=Path("/nonexistent"),
+        invocation_logger=AsyncMock(),
         budget_guard=budget_guard,
         escalation_gate=gate,
     )
@@ -306,6 +308,7 @@ async def test_max_tokens_passed_to_provider_for_api_extended() -> None:
         models_config=models_config,
         task_types_config=task_types_config,
         project_root=Path("/nonexistent"),
+        invocation_logger=AsyncMock(),
         budget_guard=budget_guard,
         escalation_gate=gate,
     )
@@ -354,6 +357,7 @@ async def test_token_limit_reached_when_input_alone_exhausts_budget() -> None:
         models_config=models_config,
         task_types_config=task_types_config,
         project_root=Path("/nonexistent"),
+        invocation_logger=AsyncMock(),
         budget_guard=budget_guard,
         escalation_gate=gate,
     )
@@ -395,6 +399,7 @@ async def test_no_token_limit_when_not_api_extended() -> None:
         models_config=models_config,
         task_types_config=task_types_config,
         project_root=Path("/nonexistent"),
+        invocation_logger=AsyncMock(),
         budget_guard=None,
         escalation_gate=None,
     )
@@ -420,6 +425,7 @@ async def test_token_limit_not_raised_when_not_escalated() -> None:
         models_config=models_config,
         task_types_config=task_types_config,
         project_root=Path("/nonexistent"),
+        invocation_logger=AsyncMock(),
         budget_guard=None,
         escalation_gate=None,
     )
@@ -461,6 +467,7 @@ async def test_no_max_tokens_when_output_cost_missing() -> None:
         models_config=models_config,
         task_types_config=task_types_config,
         project_root=Path("/nonexistent"),
+        invocation_logger=AsyncMock(),
         budget_guard=budget_guard,
         escalation_gate=gate,
     )
