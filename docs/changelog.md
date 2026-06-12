@@ -2,6 +2,17 @@
 
 Recent changes, summarized from commits and PRs.
 
+## 2026-06-11
+
+### Fixed
+- **Discord clarification replies no longer vanish**: `DiscordIntentDispatcher._resume` discarded the pending draft *before* checking the re-parse status, so a clarification reply that re-parsed to `escalate_to_claude` (or `ready`+`chat`) fell through to `no_action` and was silently dropped — no judge, no task, no message. `_resume` now mirrors `dispatch()`: escalations route to the novelty judge, `ready`/`chat` returns chat, an unknown status asks the user to rephrase, and the draft is discarded only on a terminal outcome. ([Orchestrator](domain/orchestrator.md))
+- **Challenger fail-open is no longer silent**: the three fail-open paths (transport error, OSError, `execute()` exception) now emit `dispatch_fallback_alert`, and a schema-validation failure degrades to `escalate_to_claude` instead of proceeding on unvalidated model output. Fail-open is kept (the Challenger must never block task creation). ([Agents](domain/agents.md))
+- **Atomic task-state transitions**: `Database.transition_task_state` read+validated status *before* taking the write lock (TOCTOU); read + validate + write now happen inside the lock, honoring the spec §3.7.1 atomicity guarantee.
+
+### Changed
+- **Tool-validation allowlist can no longer be bypassed**: `ToolRegistry.execute` now requires `task_type`+`agent_name`; previously omitting `task_type` skipped the allowlist entirely (principle #6). ([Orchestrator](domain/orchestrator.md))
+- **§7.2 sub-agent pipeline documented as dormant**: `spec_v3.md §7.2`, `docs/domain/orchestrator.md`, and `docs/domain/agents.md` now state that `AgentDispatcher` + the PM/Prep/Scheduler/Decomposition agents + the agent-layer `ToolRegistry` are built-but-unwired, and describe the real live flow (`DiscordIntentDispatcher` → `ChallengerAgent` → `ClaudeNoveltyJudge` → `AutoScheduler`).
+
 ## 2026-06-06
 
 ### Added
