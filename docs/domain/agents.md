@@ -70,6 +70,18 @@ Infrastructure component (not an autonomous agent). Validates and executes tool 
 
 ## Agent Execution Flow
 
+> **Dormancy note (v3.1):** the PM-Agent-centric flow below is a **design target,
+> not live behavior**. `AgentDispatcher` and the PM/Prep/Scheduler/Decomposition
+> agents are built and unit-tested but **not wired into production**. The live
+> path is: `DiscordIntentDispatcher` → `ChallengerAgent.match_and_extract` → (on
+> escalation) `ClaudeNoveltyJudge`, with time-bound placement by the event-driven
+> `AutoScheduler` (not an agent). The tool-validation layer below now enforces the
+> allowlist on every call (`ToolRegistry.execute` requires `task_type`+`agent_name`
+> as of v3.1), but per-parameter schema validation and `config/agents.yaml`
+> autonomy enforcement remain unbuilt — they are preconditions for wiring the
+> dormant pipeline or the Phase-6 Coding/Communication agents. See `spec_v3.md
+> §7.2` and the Sub-Agent System critique design doc.
+
 1. Orchestrator receives task → routes to PM Agent for assessment.
 2. PM Agent evaluates completeness. If missing info → sends **targeted** questions (not open-ended).
    - Example: "For the Module A refactor, I need: (1) which API endpoints are affected, (2) should backward compatibility be maintained?"
@@ -94,6 +106,16 @@ The Challenger Agent runs on the **local LLM** (`challenge_task` task type → `
 - When questions are needed, a Discord thread is created on the original task message.
 - User replies in-thread are appended to task description/notes.
 - One round of follow-up per task (thread closes after first reply).
+
+**Does not gate scheduling of dated tasks.** Time-bound tasks (those with an
+`exact` / `window` / `constrained` [`time_intent`](task-system.md#time-intent))
+are routed straight to the Scheduler by the deterministic
+[routing gate](scheduling.md#routing-gate) and scheduled immediately, regardless
+of whether the Challenger is still probing. The Challenger runs in parallel and
+only enriches task quality; it no longer blocks the scheduling of dated work.
+Only undated tasks remain in backlog where the Challenger surfaces them. (This
+fixed a bug where time-bound tasks stranded in `backlog` awaiting the Challenger;
+see followup TI-FU1.)
 
 ## LLM-Generated Nudges & Reminders
 

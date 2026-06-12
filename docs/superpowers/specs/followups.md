@@ -6,6 +6,25 @@
 
 ---
 
+## TI-FU1 — Urgency/deadline classification moved off the Challenger path
+
+- **Spec:** `spec_v3.md §7.1.1` / `§7.2`; design `2026-06-05-challenger-and-scheduling-intake-design.md`
+- **Status:** spec-update-pending
+- **Gap:** Plan 1 (time-intent foundation, 2026-06-06) moved *when* a task happens to the
+  input parser (`time_intent`) + a deterministic `routing_gate`, and stopped the
+  AutoScheduler from deferring time-bound tasks for the Challenger. The Challenger no longer
+  gates scheduling. `spec_v3.md §7.1.1/§7.2` still describe the Challenger as the pre-PM gate
+  on the critical path — update when Plan 3 (Challenger off critical path) lands.
+
+## TI-FU2 — `recurring` time-intent routing is a stub
+
+- **Spec:** design `2026-06-05-challenger-and-scheduling-intake-design.md` §3
+- **Status:** open (deferred to Plan 2/3)
+- **Gap:** The routing gate returns `Route.AUTOMATION` for `kind="recurring"`, but the
+  AutoScheduler only logs and skips — nothing yet creates a recurrence in the automation/cron
+  pipeline. Also "recurring reminder" vs "automation that runs a capability" remains
+  semantically muddy. Wire the handoff when the negotiation/constraint slice lands.
+
 ## S18 — Crash recovery only rolls back; no resume
 
 - **Spec:** `manual-escalation.md#§10.6` row 4
@@ -33,8 +52,13 @@
 ## S20-FU2 — Conversation engine doesn't pass `estimate_usd`
 
 - **Spec:** `manual-escalation.md#§5.2`
-- **Status:** open (upstream wiring)
-- **Gap:** `handle_escalation` calls `router.complete()` without `estimate_usd`, so the over-budget gate never fires. Also doesn't catch `EscalationDecisionError(mode='chat')`. Needs small upstream PR.
+- **Status:** mostly-resolved-in-branch (`claude/awesome-allen-otrrka`, 2026-06-11)
+- **Gap:** The "gate never fires without `estimate_usd`" half is **resolved**: the
+  router now derives a deterministic cost floor when a caller omits `estimate_usd`
+  (`ModelRouter._estimate_cost_floor`), so the gate is consulted on every call (Fable
+  Wave A #1). The Fable critique found this affected *all* call sites, not just the
+  conversation engine. **Still open:** `handle_escalation` doesn't catch
+  `EscalationDecisionError(mode='chat')` — only reachable once `gate.mode: enforce`.
 
 ## S20-FU4 — Summarizer template not loaded through router cache
 
@@ -128,7 +152,30 @@
 
 - **Spec:** `spec_v3.md` model-routing and task-parsing sections (model layer §; parse pipeline §)
 - **Status:** spec-update-pending
-- **Gap:** `parse_task` now routes to `local_parser` (qwen2.5:32b) as primary with confidence-gated escalation to the cloud `reasoner` via a new `parse_task_cloud` route (threshold 0.7). The parse prompt gained calibrated duration anchors (15/30/60) and a `{{ personal_context }}` slot fed by vault notes + learned-preference rules. The `domain`/`estimated_duration` correction-learning loop was revived via the API (`PATCH /tasks/{id}`) and dashboard (`PATCH /admin/tasks/{id}`) edit pathways. `spec_v3.md` still describes cloud-first parsing with no local-first escalation or context injection — update the model-routing and parsing sections to match, and reconcile with the event-driven corrections follow-up above.
+- **Gap:** `parse_task` now routes to `local_parser` (qwen2.5:32b) as primary with confidence-gated escalation to the cloud `reasoner` via a new `parse_task_cloud` route (threshold 0.7). The parse prompt gained calibrated duration anchors (15/30/60) and a `{{ personal_context }}` slot fed by vault notes + learned-preference rules. The `domain`/`estimated_duration` correction-learning loop was revived via the API (`PATCH /tasks/{id}`) and dashboard (`PATCH /admin/tasks/{id}`) edit pathways. `spec_v3.md` still describes cloud-first parsing with no local-first escalation or context injection — update the model-routing and parsing sections to match, and reconcile with the event-driven corrections follow-up above. Note: `confidence_threshold` (removed as dead config in the Fable Model-Layer wave) was re-added to `RoutingEntry` here as its consumer now exists.
+
+### Fable Wave A (Cost & Escalation) — residue from the S1 trio
+
+- **Spec:** `spec_v3.md#§13.1`, `manual-escalation.md#§4`, `#§10.6`; design
+  `2026-06-11-cost-escalation-fable-critique-design.md`
+- **Status:** open (deferred from the S1-trio branch `claude/awesome-allen-otrrka`)
+- **Gap:** The S1 trio (router-side estimation #1, monthly cap #2, log-before-raise #3)
+  shipped in **shadow** posture. Residual items:
+  1. **Enforce flip pending calibration.** `gate.mode: shadow` is deployed. Flip to
+     `enforce` once `escalation_shadow_would_fire` logs show the floor estimate is
+     well-calibrated. *Trigger:* ≥14 days of shadow data, or first real overspend.
+  2. **Monthly *increase* mechanism unwired.** `spec_v3.md §13.1` "Budget Increase
+     Approved" should raise the monthly cap for the current month; no row/code exists,
+     so the cap is the static `monthly_budget_usd`. Daily extensions count toward it.
+  3. **Monthly-warning dedup is in-memory.** `BudgetGuard._warned_months` re-warns the
+     debug channel after a restart (low harm). Persist (e.g. a sentinel audit row) if
+     it gets noisy. *Trigger:* duplicate-warning complaint.
+  4. **Per-call monthly aggregation.** `check_pre_call` now runs `get_monthly_cost`
+     every call (plus the existing daily query). Fine at single-user volume; cache if
+     call rate grows. *Trigger:* cost-query latency shows in p95.
+  5. **#3 catcher dormant under shadow.** `TokenLimitReachedError` catchers were added
+     to `auto_drafter` / `evolution`, but the raise is only reachable in `enforce`
+     mode (needs a granted extension). Verify under load when #1 flips to enforce.
 
 ---
 
@@ -143,3 +190,32 @@
 ```
 
 Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
+
+---
+
+- **2026-06-06 — Container health watcher.** ✅ RESOLVED 2026-06-10. Added
+  `donna-healthwatch` sidecar + reciprocal orchestrator heartbeat monitor
+  (observability). `spec_v3.md` reconciled: new §14.7 (Container Health
+  Monitoring) + `health.*` event family in §14.4. Design doc:
+  `docs/superpowers/specs/2026-06-05-container-health-watcher-design.md`.
+
+## SKILL-FABLE — Skill-system critique residue (deferred findings)
+
+- **Spec:** `spec_v3.md §23.3/§23.4`; design
+  `docs/superpowers/specs/2026-06-11-skill-system-fable-critique-design.md`
+- **Status:** open (trigger-gated / lower-urgency, intentionally out of scope for
+  the safety-critical slice)
+- **Gap:** The Wave-C critique slice implemented #1 (evidence loop), #2 (human-gate
+  scoping), #3 (version-scoped gates), #5 (suppress removal + human_approval
+  enforcement), #6 (sandbox/shadow gate rigor), #7 (skills-package alerting), and
+  #10 (auto-draft human-gate default + doc/spec reconciliation). Still open:
+  **#4** full dispatch-time tool-authorization intersection (step tools ∩ capability
+  config grant, fail-closed) — trigger: first write-capable tool registers
+  (`task_db_write`/`calendar_write`, §23.3 Stage 3); config-side `tools:`
+  declarations completable now at zero risk.
+  **#8** dormant ungated path in `orchestrator/dispatcher.py:244-266` (runs a matched
+  skill with no `skill.state` check) — dead today (`skill_executor=` never wired);
+  copy `_decide_path`'s state check or delete the Phase-1 path when that routing
+  is wired.
+  **#9** evolution gates vacuous-pass on empty evidence — fail closed (or require a
+  configurable minimum) and alert on a vacuous pass.

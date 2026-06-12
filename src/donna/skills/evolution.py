@@ -6,7 +6,6 @@ runs four validation gates, persists or rejects.
 
 from __future__ import annotations
 
-import contextlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -19,7 +18,8 @@ import uuid6
 
 from donna.config import SkillSystemConfig
 from donna.cost.budget import BudgetPausedError
-from donna.models.router import EscalationDecisionError
+from donna.models.router import EscalationDecisionError, TokenLimitReachedError
+from donna.skills.alerting import FallbackAlert, emit_fallback_alert
 from donna.skills.evolution_gates import (
     EvolutionGates,
     GateResult,
@@ -60,6 +60,7 @@ class Evolver:
         lifecycle_manager: SkillLifecycleManager,
         config: SkillSystemConfig,
         executor_factory: Callable[[], Any],
+        fallback_alert: FallbackAlert | None = None,
     ) -> None:
         self._conn = connection
         self._router = model_router
@@ -67,6 +68,7 @@ class Evolver:
         self._lifecycle = lifecycle_manager
         self._config = config
         self._executor_factory = executor_factory
+        self._fallback_alert = fallback_alert
         self._input_builder = EvolutionInputBuilder(connection, config)
         self._log_repo = SkillEvolutionLogRepository(connection)
 
@@ -145,6 +147,20 @@ class Evolver:
                 skill_id=skill_id,
                 outcome=outcome_label,
                 rationale=f"escalation_resolved={exc.mode!r}",
+            )
+        except TokenLimitReachedError as exc:
+            # Extension token cap truncated the rewrite (enforce mode). Router
+            # logged the real spend before raising; surface as budget-exhausted
+            # so the next cycle can retry rather than treating it as a crash.
+            logger.warning(
+                "skill_evolution_token_limit_reached",
+                skill_id=skill_id,
+                escalation_request_id=exc.escalation_request_id,
+            )
+            return EvolutionReport(
+                skill_id=skill_id,
+                outcome="budget_exhausted",
+                rationale="token_limit_reached; re-escalation required",
             )
         except Exception as exc:
             logger.warning(
@@ -250,30 +266,34 @@ class Evolver:
             changelog=parsed.get("changelog", ""),
         )
 
-        # Destination state: sandbox unless requires_human_gate → draft.
-        to_state = (
-            SkillState.DRAFT if skill["requires_human_gate"]
-            else SkillState.SANDBOX
-        )
-
-        # Two-hop: degraded → draft (evolution creates a draft),
-        # then (if not requires_human_gate) draft → sandbox human_approval.
-        # But spec says degraded → draft with reason=gate_passed.
+        # Evolution lands the new version in DRAFT (spec §6.6 / §23.5). The
+        # subsequent draft → sandbox hop is a deliberate human gate:
+        # ``DRAFT → SANDBOX`` only accepts ``human_approval`` / ``manual_override``
+        # in the transition table, never an automated ``gate_passed``. The old
+        # code attempted that hop inside ``contextlib.suppress`` — a knowingly
+        # dead, always-failing call that violated the no-suppress rule (Fable
+        # critique #5). The skill correctly parks in draft awaiting a human; we
+        # alert loudly instead of silently swallowing the failure.
         await self._lifecycle.transition(
             skill_id=skill_id, to_state=SkillState.DRAFT,
             reason="gate_passed", actor="system",
             notes=f"evolution {new_version_id}",
         )
-        if to_state == SkillState.SANDBOX:
-            # For non-gated skills, also flip draft → sandbox.
-            # draft → sandbox requires human_approval in the table.
-            # For automated evolution path, we accept the skill staying in draft.
-            with contextlib.suppress(IllegalTransitionError):
-                await self._lifecycle.transition(
-                    skill_id=skill_id, to_state=SkillState.SANDBOX,
-                    reason="gate_passed", actor="system",
-                    notes=f"evolution {new_version_id}",
-                )
+        logger.info(
+            "skill_evolution_parked_in_draft_awaiting_approval",
+            skill_id=skill_id,
+            new_version_id=new_version_id,
+        )
+        await emit_fallback_alert(
+            self._fallback_alert,
+            component="skill_evolution",
+            error="evolved skill version cannot auto-advance past draft",
+            fallback=(
+                "evolved version parked in draft awaiting human approval "
+                "(draft→sandbox requires human_approval)"
+            ),
+            context={"skill_id": skill_id, "new_version_id": new_version_id},
+        )
 
         await self._log_repo.record(
             skill_id=skill_id,
@@ -396,8 +416,14 @@ class Evolver:
                 "claude_evolution", changelog, now,
             ),
         )
+        # Reset baseline_agreement to NULL on the version swap. The baseline is
+        # an attribute of the *previous* version's observed behaviour; carrying
+        # it forward would let the evolved code be judged against a baseline it
+        # never earned (Fable critique #3). It is re-established when the new
+        # version itself reaches the shadow→trusted gate.
         await self._conn.execute(
-            "UPDATE skill SET current_version_id = ?, updated_at = ? WHERE id = ?",
+            "UPDATE skill SET current_version_id = ?, baseline_agreement = NULL, "
+            "updated_at = ? WHERE id = ?",
             (new_version_id, now, skill_id),
         )
         await self._conn.commit()

@@ -86,7 +86,20 @@ The `shadow` key enables production monitoring (secondary model runs in parallel
 
 ## Structured Invocation Logging
 
-Every model call is logged to the `invocation_log` table:
+Every model call is logged to the `invocation_log` table. This is a **hard
+guarantee, not a convention**: production routers are constructed via
+`build_model_router()`, which **requires** an `invocation_logger`, and
+`ModelRouter.complete()` raises `RoutingError` rather than make an unlogged
+billed call. Because `BudgetGuard` computes spend *from* `invocation_log`, an
+unlogged call would be invisible to the budget cap — so the choke point is the
+**accounting** boundary, not just the dispatch boundary. (Bare `ModelRouter(...)`
+construction is reserved for offline config-accessor paths — e.g. the eval CLI —
+that never call `complete()`.)
+
+The logged `cost_usd` is computed from the per-alias config rates
+(`input/output_cost_per_token_usd`), the single source of price truth; the
+Anthropic provider fails loud on an unpriced model id rather than silently
+applying Sonnet pricing.
 
 | Field | Type | Purpose |
 |-------|------|---------|

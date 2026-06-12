@@ -257,23 +257,62 @@ async def test_human_gate_allows_user_actor(db: aiosqlite.Connection) -> None:
     assert row[0] == "shadow_primary"
 
 
-async def test_human_gate_blocks_system_even_with_manual_override_reason(
+async def test_human_gate_blocks_system_promotion_even_with_manual_override_reason(
     db: aiosqlite.Connection,
 ) -> None:
-    """requires_human_gate=True blocks actor=system regardless of reason.
+    """requires_human_gate=True blocks a system *promotion* regardless of reason.
 
-    Even reason='manual_override' must not let system bypass the gate — the gate
-    is enforced purely on actor identity, not on reason string.
+    Even reason='manual_override' must not let a system actor promote a gated
+    skill into the trust pipeline (sandbox or beyond) — the gate is enforced on
+    the destination being a gated-promotion state, not on the reason string.
     """
-    await _insert_skill(db, state="trusted", requires_human_gate=True)
+    await _insert_skill(db, state="sandbox", requires_human_gate=True)
     mgr = SkillLifecycleManager(db, config=SkillSystemConfig())
     with pytest.raises(HumanGateRequiredError):
         await mgr.transition(
             "s1",
-            SkillState.CLAUDE_NATIVE,
+            SkillState.SHADOW_PRIMARY,
             reason="manual_override",
             actor="system",
         )
+
+
+async def test_human_gate_allows_system_demotion_to_claude_native(
+    db: aiosqlite.Connection,
+) -> None:
+    """requires_human_gate=True must NOT block a system demotion (Fable #2).
+
+    Retiring a misbehaving skill to claude_native is a safety demotion, not a
+    promotion, so a system actor must be allowed through even when the gate is
+    set — otherwise the human gate would block the very safety net it exists to
+    enable.
+    """
+    await _insert_skill(db, state="trusted", requires_human_gate=True)
+    mgr = SkillLifecycleManager(db, config=SkillSystemConfig())
+    await mgr.transition(
+        "s1",
+        SkillState.CLAUDE_NATIVE,
+        reason="manual_override",
+        actor="system",
+    )
+    cursor = await db.execute("SELECT state FROM skill WHERE id = 's1'")
+    assert (await cursor.fetchone())[0] == "claude_native"
+
+
+async def test_human_gate_allows_system_degradation_demotion(
+    db: aiosqlite.Connection,
+) -> None:
+    """A gated trusted skill can still be flagged for review by the system."""
+    await _insert_skill(db, state="trusted", requires_human_gate=True)
+    mgr = SkillLifecycleManager(db, config=SkillSystemConfig())
+    await mgr.transition(
+        "s1",
+        SkillState.FLAGGED_FOR_REVIEW,
+        reason="degradation",
+        actor="system",
+    )
+    cursor = await db.execute("SELECT state FROM skill WHERE id = 's1'")
+    assert (await cursor.fetchone())[0] == "flagged_for_review"
 
 
 # ---------------------------------------------------------------------------
@@ -400,8 +439,16 @@ async def db_with_runs(tmp_path: Path):
         CREATE TABLE skill_run (
             id TEXT PRIMARY KEY,
             skill_id TEXT NOT NULL,
+            skill_version_id TEXT NOT NULL,
             status TEXT NOT NULL,
             started_at TEXT NOT NULL
+        );
+        CREATE TABLE skill_step_result (
+            id TEXT PRIMARY KEY,
+            skill_run_id TEXT NOT NULL,
+            step_name TEXT NOT NULL,
+            validation_status TEXT NOT NULL,
+            created_at TEXT NOT NULL
         );
         CREATE TABLE skill_divergence (
             id TEXT PRIMARY KEY,
@@ -435,13 +482,15 @@ async def _insert_skill_full(
     state: str = "sandbox",
     requires_human_gate: bool = False,
     baseline_agreement: float | None = None,
+    current_version_id: str | None = "v1",
 ) -> None:
     now = datetime.now(UTC).isoformat()
     await db.execute(
-        "INSERT INTO skill (id, capability_name, state, requires_human_gate, "
-        "baseline_agreement, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (skill_id, f"cap-{skill_id}", state, 1 if requires_human_gate else 0,
-         baseline_agreement, now, now),
+        "INSERT INTO skill (id, capability_name, current_version_id, state, "
+        "requires_human_gate, baseline_agreement, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (skill_id, f"cap-{skill_id}", current_version_id, state,
+         1 if requires_human_gate else 0, baseline_agreement, now, now),
     )
     await db.commit()
 
@@ -450,6 +499,7 @@ async def _insert_skill_runs(
     db: aiosqlite.Connection,
     skill_id: str,
     statuses: list[str],
+    skill_version_id: str = "v1",
 ) -> list[str]:
     """Insert skill_run rows; return list of run IDs."""
     run_ids = []
@@ -457,8 +507,9 @@ async def _insert_skill_runs(
         run_id = f"run-{skill_id}-{i}"
         now = datetime.now(UTC).isoformat()
         await db.execute(
-            "INSERT INTO skill_run (id, skill_id, status, started_at) VALUES (?, ?, ?, ?)",
-            (run_id, skill_id, status, now),
+            "INSERT INTO skill_run (id, skill_id, skill_version_id, status, "
+            "started_at) VALUES (?, ?, ?, ?, ?)",
+            (run_id, skill_id, skill_version_id, status, now),
         )
         run_ids.append(run_id)
     await db.commit()

@@ -22,6 +22,7 @@ import jinja2
 import structlog
 import yaml
 
+from donna.skills.alerting import FallbackAlert, emit_fallback_alert
 from donna.skills.dsl import DSLError, expand_for_each
 from donna.skills.models import SkillRow, SkillVersionRow
 from donna.skills.state import StateObject
@@ -125,6 +126,7 @@ class SkillExecutor:
         config: Any | None = None,               # Wave 2: SkillSystemConfig for validation timeouts
         task_type_prefix: str | None = None,     # Wave 2: override "skill_step" default
         tool_gap_surfacer: Any | None = None,    # Slice 22: emit high gap on missing tool
+        fallback_alert: FallbackAlert | None = None,  # Fable #7: alert on persist loss
     ) -> None:
         self._router = model_router
         if tool_registry is not None:
@@ -156,6 +158,10 @@ class SkillExecutor:
         # ToolNotFoundError path runs. Catches the case where boot-check
         # + scheduler-pre-run both missed (mid-run config edit, etc.).
         self._tool_gap_surfacer = tool_gap_surfacer
+        # Fable #7: alert on run-persistence write failures. A lost skill_run /
+        # skill_step_result row silently starves the promotion + degradation
+        # gates of evidence, so a write failure must not be swallowed.
+        self._fallback_alert = fallback_alert
 
     async def execute(
         self,
@@ -605,8 +611,15 @@ class SkillExecutor:
                 tool_calls=record.tool_calls,
                 error=record.error,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("skill_run_persistence_step_failed", skill_run_id=skill_run_id)
+            await emit_fallback_alert(
+                self._fallback_alert,
+                component="skill_executor",
+                error=f"skill_step_result persistence failed: {exc}",
+                fallback="step evidence lost; gate inputs incomplete",
+                context={"skill_run_id": skill_run_id, "step_name": record.step_name},
+            )
 
     async def _finish_run_if_repo(
         self, skill_run_id: str | None, result: SkillRunResult,
@@ -629,8 +642,15 @@ class SkillExecutor:
                 escalation_reason=result.escalation_reason,
                 error=result.error,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("skill_run_persistence_finish_failed", skill_run_id=skill_run_id)
+            await emit_fallback_alert(
+                self._fallback_alert,
+                component="skill_executor",
+                error=f"skill_run finish persistence failed: {exc}",
+                fallback="run evidence lost; promotion/degradation gates starved",
+                context={"skill_run_id": skill_run_id, "status": result.status},
+            )
 
     async def _run_llm_step(
         self, step: dict[str, Any], step_name: str, version: SkillVersionRow,

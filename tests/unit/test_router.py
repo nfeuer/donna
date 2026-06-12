@@ -15,7 +15,7 @@ from donna.config import (
     TaskTypeEntry,
     TaskTypesConfig,
 )
-from donna.models.router import ModelRouter, RoutingError
+from donna.models.router import ModelRouter, RoutingError, build_model_router
 from donna.models.types import CompletionMetadata
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -30,7 +30,7 @@ def models_config() -> ModelsConfig:
         },
         routing={
             "parse_task": RoutingEntry(
-                model="parser", fallback="reasoner", confidence_threshold=0.7,
+                model="parser", fallback="reasoner",
             ),
             "classify_priority": RoutingEntry(model="parser"),
         },
@@ -53,7 +53,42 @@ def task_types_config() -> TaskTypesConfig:
 
 @pytest.fixture
 def router(models_config: ModelsConfig, task_types_config: TaskTypesConfig) -> ModelRouter:
-    return ModelRouter(models_config, task_types_config, PROJECT_ROOT)
+    return ModelRouter(
+        models_config, task_types_config, PROJECT_ROOT,
+        invocation_logger=AsyncMock(),
+    )
+
+
+class TestLedgerIntegrity:
+    """A billed call must never go unlogged (CLAUDE.md principle #3).
+
+    Regression for the Model-Layer S1 finding: the chat router was built with
+    no invocation_logger, so chat spend was invisible to BudgetGuard (which
+    computes spend from invocation_log).
+    """
+
+    async def test_complete_without_logger_raises(
+        self, models_config: ModelsConfig, task_types_config: TaskTypesConfig
+    ) -> None:
+        bare = ModelRouter(models_config, task_types_config, PROJECT_ROOT)
+        with pytest.raises(RoutingError, match="invocation_logger"):
+            await bare.complete("hello", "parse_task")
+
+    def test_factory_requires_logger(
+        self, models_config: ModelsConfig, task_types_config: TaskTypesConfig
+    ) -> None:
+        # invocation_logger is keyword-only and has no default in the factory.
+        with pytest.raises(TypeError):
+            build_model_router(models_config, task_types_config, PROJECT_ROOT)  # type: ignore[call-arg]
+
+    def test_factory_wires_logger(
+        self, models_config: ModelsConfig, task_types_config: TaskTypesConfig
+    ) -> None:
+        r = build_model_router(
+            models_config, task_types_config, PROJECT_ROOT,
+            invocation_logger=AsyncMock(),
+        )
+        assert r._invocation_logger is not None
 
 
 class TestRouteResolution:
@@ -186,7 +221,10 @@ class TestOllamaFallbackTracking:
                 "donna.models.providers.anthropic", fromlist=["AnthropicProvider"]
             ).AnthropicProvider, "ollama": mock_ollama_cls},
         ):
-            return ModelRouter(ollama_models_config, ollama_task_types_config, PROJECT_ROOT)
+            return ModelRouter(
+                ollama_models_config, ollama_task_types_config, PROJECT_ROOT,
+                invocation_logger=AsyncMock(),
+            )
 
     def test_ollama_degraded_starts_false(
         self, ollama_router: ModelRouter

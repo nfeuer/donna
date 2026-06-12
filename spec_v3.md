@@ -88,6 +88,7 @@ reference `open-backlog.md`.
   §7.1.1 Comms Agent       Defined,disabled  Phase 6 gate — Stage 3 tools + MCP required.                                G-22
   §11.1 Notifications      Partial           Discord DM (tiers 1–2). Email tier 3 not implemented.                       G-14
   §12.1 Integrations       Partial           Gmail, Calendar, Discord, Twilio, Supabase, SQLite live. Others deferred.   G-20
+  §13 Budget/Escalation    Partial           Daily + monthly caps enforced in BudgetGuard; decision tree in shadow mode.  G-15
   §14.3 Logging            Changed           invocation_log in donna_tasks.db + Loki. No standalone donna_logs.db.       G-25
   §16.3.2 Backup           Partial           Local NVMe backups only. Off-server push not built.                         G-23
   §20 Phases               1–5 complete      Phase 6 content moved to appendix.                                          —
@@ -671,10 +672,13 @@ API) is async. Concurrency comes from I/O multiplexing, not parallelism.
     pattern: the orchestrator writes, and the Supabase sync process
     reads.
 
--   Calendar write operations are serialized through an async queue. If
-    two tasks need to create calendar events simultaneously, they are
-    queued and processed sequentially. This prevents double-booking race
-    conditions without complex locking.
+-   Calendar placement is serialized through an `asyncio.Lock` on the
+    `Scheduler`. The read→find-slot→create-event section runs under the
+    lock, so two tasks created near-simultaneously (e.g. Discord + SMS)
+    cannot pick the same slot. This prevents double-booking race
+    conditions. (v3.1 note: implemented as `Scheduler._lock` in
+    `scheduling/scheduler.py` — the earlier "async queue" wording was a
+    design target; the lock is the realized mechanism.)
 
 -   Task state transitions are atomic: read current state, validate
     transition, write new state, execute side effects --- all in a
@@ -812,6 +816,21 @@ for the relevant alias. The shadow key enables production monitoring
 (secondary model runs in parallel, output logged but not used). Offline
 evaluation is triggered via CLI with an explicit model argument, not
 configured in routing.
+
+(v3.1 note: `confidence_threshold` (and confidence-based fallback, §4.7) is
+**not yet implemented** and was **removed** from `donna_models.yaml` and the
+`RoutingEntry` model — it was read nowhere, so leaving it advertised a control
+surface that did nothing. Re-add the key together with the consuming logic when
+confidence scoring lands (deferred; trigger in the Model-Layer critique design
+doc). The `shadow` key is likewise inert today — the shadow-completion callback
+is wired nowhere — so production monitoring is not operational yet. Separately,
+**ledger integrity** is now enforced at the choke point: every production
+`ModelRouter` is built via `build_model_router()`, which **requires** an
+`invocation_logger`, and `complete()` refuses to make an unlogged billed call —
+so all spend reaches `invocation_log` (the table `BudgetGuard` reads), keeping
+the §13.1 budget cap accurate. Per-alias `cost_usd` is computed from the config
+rates (`input/output_cost_per_token_usd`), not hardcoded Sonnet pricing; the
+Anthropic provider fails loud on an unpriced model rather than mispricing.)
 
 **4.3 Structured Invocation Logging**
 
@@ -1837,6 +1856,18 @@ Calendar:
 -   Get It Done Bias: Default to scheduling tasks as soon as possible
     while respecting constraints. Do not push tasks to "someday."
 
+(v3.1 note: `find_next_slot` now (a) interprets all `time_windows` hours
+in the configured `calendar.yaml timezone` — candidate slots are stepped
+in UTC and converted to local for every window check, so the absolute
+blackout is enforced on the user's wall clock, not UTC; (b) clamps the
+search horizon to the task's deadline / `earliest` bound, so an
+unplaceable dated task raises `NoSlotFoundError` → `needs_scheduling`
+instead of being placed late; and (c) builds its busy-set from the union
+of *all* configured calendars (personal + work + family), failing closed
+— `CalendarReadError` — on any read error rather than booking against an
+empty calendar. The constraint-aware negotiation/rearrange loop remains a
+future plan; this is the deterministic placement guard.)
+
 **7. Sub-Agent System**
 
 **7.1 Agent Architecture**
@@ -1940,6 +1971,26 @@ Claude API fallback.
 
 -   On completion, user receives summary via the same channel
     (typically Discord) and output is available for review.
+
+(v3.1 status — IMPORTANT: the multi-stop `AgentDispatcher` pipeline above
+(PM Agent → execution-agent dispatch → Prep/Scheduler sub-agents, plus the
+agent-layer `ToolRegistry`) is **built and unit-tested but NOT wired into
+production** — `AgentDispatcher` is constructed nowhere outside its own
+docstring. The **actually-live** flow is narrower: `DiscordIntentDispatcher`
+routes a message to `ChallengerAgent.match_and_extract` →
+{ready | needs_input | escalate_to_claude}; `escalate_to_claude` goes to the
+`ClaudeNoveltyJudge`; and **time-bound task placement is done by the
+event-driven `AutoScheduler`** (which is not an agent), not the `SchedulerAgent`.
+Two safety seams the future Coding/Communication agents (§7.1.1, G-21/G-22)
+will depend on are **decorative today and must be made load-bearing before
+those agents are wired**: (1) the tool-validation layer — historically the
+allowlist check was skippable by omitting `task_type`; v3.1 makes
+`task_type`+`agent_name` required on `ToolRegistry.execute` so the check is
+always enforced (principle #6); (2) `config/agents.yaml` autonomy/enabled/
+timeout/allowlist values are read by dashboards and a diff-lint but are **not**
+enforced in any dispatch path — making the dispatcher the enforcement point is
+deferred to the §7.2-pipeline wire-or-delete decision. See
+docs/superpowers/specs/2026-06-11-subagent-system-fable-critique-design.md.)
 
 **7.3 Agent Safety Constraints**
 
@@ -2478,13 +2529,23 @@ If the user responds "busy, will handle later," the system backs off for
 
 **13.1 Budget Rules**
 
-> **Roadmap:** the pause-only `Daily Spend Alert` terminal is being
-> replaced by the four-button over-budget decision tree (`Approve $X
-> extension / Manual handoff / Pause / Cancel`) defined in
-> `docs/superpowers/specs/manual-escalation.md`.
-> The table below documents current behavior; the decision-tree
-> behavior lands per-slice (`slice_17_*` through `slice_24_*`), and
-> this section will be updated by each slice that changes the rules.
+> **Status (2026-06-11):** Both budget *caps* are now enforced
+> deterministically in `BudgetGuard.check_pre_call` — the $20/day pause
+> *and* the $100/month hard cap (previously the monthly cap was unenforced;
+> `check_monthly_warning` was dead code). Enforcement is independent of the
+> escalation-gate posture below.
+>
+> The four-button over-budget decision tree (`Approve $X extension / Manual
+> handoff / Pause / Cancel`, defined in
+> `docs/superpowers/specs/manual-escalation.md`) is wired but runs in
+> **shadow mode** by default (`config/manual_escalation.yaml` → `gate.mode:
+> shadow`): the gate is consulted on *every* LLM call — the router now
+> derives a deterministic cost estimate when a caller supplies none, so the
+> gate is no longer dark — and logs each call that *would* escalate
+> (`escalation_shadow_would_fire`) without prompting, persisting, or
+> blocking. Flip `gate.mode: enforce` to run the interactive tree once
+> estimate accuracy is calibrated. See
+> `docs/superpowers/specs/2026-06-11-cost-escalation-fable-critique-design.md`.
 
   ------------------ ---------------- ------------------------------------
   **Rule**           **Threshold**    **Action**
@@ -2725,6 +2786,10 @@ identifies the domain:
     system.backup.completed, system.backup.failed,
     system.migration.applied
 
+-   health.\*: health.container_down, health.container_recovered,
+    health.watchdog_stale, health.watchdog_resumed (container health
+    monitoring, §14.7)
+
 -   cost.\*: cost.daily_threshold, cost.monthly_warning,
     cost.agent_paused, cost.budget_increase
 
@@ -2798,6 +2863,41 @@ This dual-write ensures logs are available both in the real-time Grafana
 dashboard (via Loki, optimized for search and visualization) and in the
 persistent SQLite store (for long-term queries, automated analysis, and
 evaluation data).
+
+**14.7 Container Health Monitoring**
+
+Beyond per-service logs, Donna proactively alerts on Docker container
+health so an unhealthy or stopped service is surfaced immediately rather
+than discovered hours later. Two independent processes watch each other.
+
+`donna-healthwatch` is a standalone sidecar (its own minimal image,
+deployed in donna-monitoring.yml) that polls the Docker Engine API over a
+read-only socket mount and posts edge-triggered messages to the Discord
+debug channel when a watched container's health changes: one alert when a
+container becomes unhealthy or stops (exited/restarting), one when it
+recovers. It watches the full `donna-*` stack plus `caddy`. Running as a
+separate process is deliberate --- it can report the orchestrator itself
+being down, the case an in-process watcher could never cover. It runs
+non-root with read-only socket access (the host `docker` group via
+`group_add`) and never writes to the host.
+
+The watcher cannot observe its own death, so monitoring is reciprocal.
+Each poll cycle it writes a heartbeat file (UTC ISO-8601 timestamp) to a
+shared volume. The orchestrator runs a `HeartbeatMonitor` background task
+that reads that file --- read-only, with no Docker socket on the
+orchestrator --- and posts a debug-channel alert if the heartbeat goes
+stale, then a recovery alert when it resumes. This catches a hung or dead
+watcher. The only uncovered case is both processes failing simultaneously,
+which generally means the host is down and is independently noticeable.
+
+Alerting is edge-triggered (one message per transition, plus recovery) to
+avoid alert storms, and tolerant of transient Discord outages: a failed
+send keeps the prior state so the alert is retried on the next cycle
+rather than dropped. Configuration (donna.env): `HEALTHWATCH_POLL_SECONDS`
+(default 30), `HEALTHWATCH_STALE_SECONDS` (default 90 --- three missed
+beats), and `HEALTHWATCH_WATCH_PREFIX` / `HEALTHWATCH_WATCH_EXTRA` for the
+watch set. Emits the `health.*` event family (§14.4). Operator detail
+lives in docs/operations/health-watcher.md.
 
 **15. Development Dashboard**
 
@@ -3781,8 +3881,20 @@ Supporting modules: `skills/shadow.py`, `skills/divergence.py`,
     Judge (§7.1.1) flags a task as a reusable capability,
     Claude drafts a YAML skill + fixtures + output schema, which
     lands as a candidate via the Admin API (`skill_candidates`,
-    `skill_drafts`). A human still promotes the candidate into the
-    shadow stage.
+    `skill_drafts`). The promotion contract is **one human approval
+    at `draft → sandbox`; statistical gates thereafter** — once a
+    human approves a draft into sandbox, the sandbox→shadow_primary
+    and shadow_primary→trusted promotions are fully automatic,
+    gated only by the §23.4 run-validity and shadow-agreement
+    thresholds (and held back per skill by `requires_human_gate`).
+    Auto-drafted skills now default to `requires_human_gate=1`
+    (safety-first), so that single human approval is mandatory
+    before the skill leaves draft. The `draft → sandbox` edge is the
+    *only* human gate in the lifecycle; it accepts `human_approval`
+    or `manual_override` and is never crossed by an automated
+    `gate_passed`, so a system actor (including the evolution loop)
+    cannot forge it. Evolution therefore parks an evolved version in
+    `draft` awaiting that same human approval.
 -   **Evolution** (`skills/evolution.py`,
     `skills/evolution_scheduler.py`) -- a nightly job clusters
     recent corrections by skill (`correction_cluster`), asks

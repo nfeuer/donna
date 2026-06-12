@@ -14,10 +14,11 @@ Every task is represented by the following fields. Fields marked **auto** are in
 | description | String | User/Agent | Detailed description. May be populated by PM agent. |
 | domain | Enum | Inferred | `personal` \| `work` \| `family` (extensible) |
 | priority | Int (1–5) | Inferred/User | 1=lowest, 5=critical |
-| status | Enum | Auto | `backlog` \| `scheduled` \| `in_progress` \| `blocked` \| `waiting_input` \| `done` \| `cancelled` |
+| status | Enum | Auto | `backlog` \| `scheduled` \| `needs_scheduling` \| `in_progress` \| `blocked` \| `waiting_input` \| `paused` \| `done` \| `cancelled` |
 | estimated_duration | Minutes | Inferred | How long the task will take |
-| deadline | DateTime? | User/Inferred | Hard deadline if specified. Null if flexible. |
-| deadline_type | Enum | Inferred | `hard` \| `soft` \| `none` |
+| deadline | DateTime? | User/Inferred | Hard deadline if specified. Null if flexible. Derived from `time_intent` when not set explicitly. |
+| deadline_type | Enum | Inferred | `hard` \| `soft` \| `none`. Derived from `time_intent.strictness` when not set explicitly. |
+| time_intent | TimeIntent? | Inferred | Structured *when* of the task, stored as `time_intent_json`. See [Time Intent](#time-intent). |
 | scheduled_start | DateTime? | Scheduler | When the task is scheduled on the calendar |
 | actual_start | DateTime? | Auto | When the user actually started |
 | completed_at | DateTime? | Auto | Completion timestamp |
@@ -47,6 +48,9 @@ Defined in `config/task_states.yaml`. Orchestrator loads at startup, rejects inv
 | From | To | Trigger | Side Effects |
 |------|----|---------|-------------|
 | backlog | scheduled | Scheduler assigns time slot | Calendar event created; `calendar_event_id` stored; `donna_managed = true` |
+| backlog | needs_scheduling | Scheduler finds no slot before the deadline (`scheduler_no_slot_found`) | Negotiation opened — task surfaced as unplaceable rather than left silently in backlog |
+| needs_scheduling | scheduled | Alternative slot or rearrange accepted (`alternative_or_rearrange_accepted`) | Calendar event created; `donna_managed = true` |
+| needs_scheduling | backlog | User declines scheduling (`user_declines_scheduling`) | Task resurfaced in the weekly plan |
 | scheduled | in_progress | User acknowledges start OR scheduled time arrives | `actual_start` set |
 | scheduled | backlog | User cancels scheduled time | Calendar event deleted; `reschedule_count++` |
 | in_progress | done | User/agent reports completion | `completed_at` set; velocity metrics updated |
@@ -105,6 +109,24 @@ Example: "Get oil change before end of month" →
 - Domain: personal (automotive context)
 - Priority: 2 (flexible, no urgency keywords)
 - Estimated duration: 60–90 minutes
+
+### Time Intent
+
+`time_intent` is the structured representation of *when* a task should happen, separate from *what* it is. The input parser emits it (validated against `schemas/task_parse_output.json`), it is persisted as the `time_intent_json` column, and it drives routing — see [Scheduling → Routing Gate](scheduling.md#routing-gate).
+
+It classifies temporal intent into five kinds:
+
+| Kind | Meaning | Fields set |
+|------|---------|------------|
+| `exact` | A specific point ("tomorrow", "by Friday 5pm") | `due_at` |
+| `window` | A flexible range ("sometime next week", "by end of month") | `earliest`, `latest` |
+| `constrained` | A range plus a structural rule ("a Monday within the next month") | `earliest`, `latest`, `constraints` (e.g. `{"weekday": [0]}`) |
+| `recurring` | Repeats ("every Wednesday") | `recurrence` |
+| `none` | No time expressed | — |
+
+`strictness` is `hard` when missing the time has real consequences, else `soft`.
+
+The legacy `deadline` / `deadline_type` fields are **derived** from `time_intent` at task creation when not set explicitly: `deadline` from `due_at` (exact) or `latest` (window/constrained), and `deadline_type` from `strictness`. This keeps existing consumers (reminders, overdue detector, weekly planner) working unchanged. If the parsing model omits `time_intent`, an LLM-free fallback (`donna.scheduling.date_fallback`) re-extracts common phrasings ("tomorrow", a weekday, "next week", "end of month") so dated tasks still route.
 
 ### Dynamic Priority Escalation
 

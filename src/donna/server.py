@@ -32,6 +32,9 @@ import aiosqlite
 import structlog
 from aiohttp import web
 
+from donna.healthwatch.heartbeat_monitor import HeartbeatMonitor, make_file_reader
+from donna.notifications.service import CHANNEL_DEBUG
+
 if TYPE_CHECKING:
     from donna.agents.prep_agent import PrepAgent
     from donna.integrations.sms_router import SmsRouter
@@ -362,6 +365,29 @@ async def run_server(
                 )
             )
         logger.info("notification_background_tasks_started", count=len(bg_tasks))
+
+    # Reciprocal watch: alert if the donna-healthwatch sidecar's heartbeat goes
+    # stale. Uses the Discord bot directly (no Docker socket on this service).
+    if discord_bot is not None:
+        heartbeat_path = os.environ.get(
+            "HEALTHWATCH_HEARTBEAT_PATH", "/donna/healthwatch/heartbeat"
+        )
+        stale_threshold = float(os.environ.get("HEALTHWATCH_STALE_SECONDS", "90"))
+
+        async def _alert_debug(message: str) -> None:
+            await discord_bot.send_message(CHANNEL_DEBUG, message)
+
+        heartbeat_monitor = HeartbeatMonitor(
+            alert=_alert_debug,
+            read_age_seconds=make_file_reader(heartbeat_path),
+            threshold_seconds=stale_threshold,
+        )
+        bg_tasks.append(
+            asyncio.create_task(
+                heartbeat_monitor.run(), name="healthwatch_heartbeat_monitor"
+            )
+        )
+        logger.info("healthwatch_heartbeat_monitor_wired", path=heartbeat_path)
 
     stop_event = asyncio.Event()
 

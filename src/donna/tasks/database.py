@@ -75,6 +75,8 @@ class TaskRow:
     capability_name: str | None = None
     # Wave 3: extracted inputs dict from the intent dispatcher (parsed from JSON)
     inputs: dict[str, Any] | None = None
+    # Structured temporal intent (raw JSON string; see scheduling.time_intent).
+    time_intent_json: str | None = None
 
 
 # Columns that can be updated via update_task().
@@ -108,6 +110,7 @@ _UPDATABLE_COLUMNS: set[str] = {
     "quality_score",
     "capability_name",
     "inputs_json",
+    "time_intent_json",
 }
 
 # Column order for SELECT — must match TaskRow field order.
@@ -145,6 +148,7 @@ _TASK_COLUMNS = (
     "quality_score",
     "capability_name",
     "inputs_json",
+    "time_intent_json",
 )
 
 _SELECT_COLUMNS = ", ".join(_TASK_COLUMNS)
@@ -516,6 +520,7 @@ class Database:
         estimated_cost: float | None = None,
         capability_name: str | None = None,
         inputs: dict[str, Any] | None = None,
+        time_intent_json: str | None = None,
         **event_context: Any,
     ) -> TaskRow:
         """Insert a new task and return it. Generates a uuid7 ID.
@@ -524,10 +529,27 @@ class Database:
         by the Discord intent dispatcher so downstream consumers can query
         structured task inputs. ``inputs`` is serialized to JSON at write-time
         and parsed back to a dict at read-time.
+
+        ``time_intent_json`` is a Challenger-intake structured temporal intent
+        (JSON string). When supplied, derives ``deadline`` and ``deadline_type``
+        from it unless the caller explicitly overrides those fields.
         """
         conn = self.connection
         task_id = str(uuid6.uuid7())
         now = datetime.utcnow().isoformat()
+
+        if time_intent_json is not None:
+            from donna.scheduling.time_intent import (
+                TimeIntent,
+                derive_deadline,
+                derive_deadline_type,
+            )
+
+            _ti = TimeIntent.from_json(time_intent_json)
+            if deadline is None:
+                deadline = derive_deadline(_ti)
+            if deadline_type == DeadlineType.NONE:
+                deadline_type = DeadlineType(derive_deadline_type(_ti))
 
         async with self._write_lock:
             await conn.execute(
@@ -567,6 +589,7 @@ class Database:
                     None,  # quality_score
                     capability_name,
                     json.dumps(inputs) if inputs else None,
+                    time_intent_json,
                 ),
             )
             await conn.commit()
@@ -724,15 +747,20 @@ class Database:
         Raises ValueError if task not found.
         """
         conn = self.connection
-        task = await self.get_task(task_id)
-        if task is None:
-            raise ValueError(f"Task not found: {task_id}")
-
-        side_effects = self._state_machine.validate_transition(
-            task.status, new_status.value
-        )
-
+        # Read → validate → write must happen under the write lock so a
+        # concurrent transition cannot interleave between the status read and
+        # the write (TOCTOU). All writers serialize on this lock, so holding it
+        # across the read+validate makes the transition atomic, honoring the
+        # §3.7.1 "no interleaving possible" guarantee.
         async with self._write_lock:
+            task = await self.get_task(task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+
+            side_effects = self._state_machine.validate_transition(
+                task.status, new_status.value
+            )
+
             await conn.execute(
                 "UPDATE tasks SET status = ? WHERE id = ?",
                 (new_status.value, task_id),

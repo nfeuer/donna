@@ -81,6 +81,26 @@ _ALL_STATES: tuple[SkillState, ...] = (
     SkillState.DEGRADED,
 )
 
+# Safety-critical fix (Fable critique #2 / #5): the ``requires_human_gate`` flag
+# gates *trust-pipeline promotions* only — a skill advancing into sandbox or
+# beyond, where it begins to execute / shadow / serve live. These are the only
+# destination states a system actor may not reach when the gate is set.
+#
+# Everything else is allowed for a system actor:
+#   - the draft build-up (``claude_native → skill_candidate → draft``), which
+#     merely assembles a candidate and is not a trust promotion; and
+#   - safety demotions (``flagged_for_review``, ``degraded``, ``claude_native``
+#     via degradation / evolution_failure), which are the §23.4 safety net and
+#     must never be blocked by the very flag meant to keep an unproven skill out
+#     of production.
+_GATED_PROMOTION_STATES: frozenset[SkillState] = frozenset(
+    {
+        SkillState.SANDBOX,
+        SkillState.SHADOW_PRIMARY,
+        SkillState.TRUSTED,
+    }
+)
+
 
 def _build_transitions() -> dict[tuple[SkillState, SkillState], set[str]]:
     """Build the authoritative transition table from spec §6.2."""
@@ -167,7 +187,8 @@ class SkillLifecycleManager:
             The from→to pair is not in the transition table, it is a self-loop,
             or the *reason* is not permitted for that pair.
         HumanGateRequiredError
-            ``skill.requires_human_gate`` is ``True`` and *actor* is ``"system"``.
+            ``skill.requires_human_gate`` is ``True`` and *actor* is ``"system"``
+            *and* the transition is a promotion (not a safety demotion).
         """
         # 1. Load current skill row.
         cursor = await self._conn.execute(
@@ -204,11 +225,32 @@ class SkillLifecycleManager:
                 f"Allowed: {sorted(allowed_reasons)}"
             )
 
-        # 5. Human gate check.
-        if requires_human_gate and actor == "system":
+        # 4b. human_approval is, by definition, a human action. A system actor
+        #     may never claim it — that would let automation forge the one
+        #     manual gate the §23.5 lifecycle depends on (Fable critique #5).
+        if reason == "human_approval" and actor == "system":
+            raise IllegalTransitionError(
+                f"Reason 'human_approval' requires a non-system actor; "
+                f"got actor={actor!r} for transition "
+                f"{current_state.value!r} → {to_state.value!r}."
+            )
+
+        # 5. Human gate check — trust-pipeline promotions only.
+        #    A skill flagged ``requires_human_gate`` must never auto-promote into
+        #    sandbox or beyond, but the draft build-up and the safety-net
+        #    demotions (degradation / evolution-failure, driven by
+        #    ``actor='system'``) must always be allowed to fire, otherwise the
+        #    gate blocks the very protection it exists to enable (Fable critique
+        #    #2).
+        if (
+            requires_human_gate
+            and actor == "system"
+            and to_state in _GATED_PROMOTION_STATES
+        ):
             raise HumanGateRequiredError(
                 f"Skill {skill_id!r} requires human approval; "
-                f"actor='system' may not perform any promotion."
+                f"actor='system' may not perform the promotion "
+                f"{current_state.value!r} → {to_state.value!r}."
             )
 
         # 6. Atomic DB update + audit insert.
@@ -267,14 +309,14 @@ class SkillLifecycleManager:
         """
         # 1. Load skill row.
         cursor = await self._conn.execute(
-            "SELECT state, requires_human_gate, baseline_agreement "
+            "SELECT state, requires_human_gate, baseline_agreement, current_version_id "
             "FROM skill WHERE id = ?",
             (skill_id,),
         )
         row = await cursor.fetchone()
         if row is None:
             return None
-        state_value, requires_human_gate_int, _baseline = row
+        state_value, requires_human_gate_int, _baseline, current_version_id = row
         current_state = SkillState(state_value)
         requires_human_gate = bool(requires_human_gate_int)
 
@@ -283,11 +325,13 @@ class SkillLifecycleManager:
             return await self._maybe_promote_to_shadow_primary(
                 skill_id=skill_id,
                 requires_human_gate=requires_human_gate,
+                current_version_id=current_version_id,
             )
         if current_state == SkillState.SHADOW_PRIMARY:
             return await self._maybe_promote_to_trusted(
                 skill_id=skill_id,
                 requires_human_gate=requires_human_gate,
+                current_version_id=current_version_id,
             )
         return None
 
@@ -295,26 +339,43 @@ class SkillLifecycleManager:
         self,
         skill_id: str,
         requires_human_gate: bool,
+        current_version_id: str | None,
     ) -> str | None:
         """Gate: successful skill_runs >= N AND validity_rate >= threshold.
 
-        validity_rate = fraction of skill_runs where status='succeeded'.
+        validity_rate = fraction of *valid* skill_runs scoped to the current
+        version. A run counts as valid only when it both succeeded and recorded
+        no degraded step outcome (``continued`` / ``step_failed`` /
+        ``skill_failed``) — an ``on_failure: continue`` step must not let a
+        run that silently dropped work clear the gate (Fable critique #6).
+
+        The evidence is filtered to ``skill_version_id = current_version_id`` so
+        an evolved version cannot inherit its predecessor's track record and
+        clear the gate with zero runs of its own code (Fable critique #3).
         """
         config = self._config
         min_runs = config.sandbox_promotion_min_runs
         rate_threshold = config.sandbox_promotion_validity_rate
 
-        cursor = await self._conn.execute(
-            "SELECT status FROM skill_run WHERE skill_id = ? ORDER BY started_at DESC LIMIT ?",
-            (skill_id, min_runs),
-        )
-        statuses = [row[0] for row in await cursor.fetchall()]
-
-        if len(statuses) < min_runs:
+        if current_version_id is None:
             return None
 
-        succeeded = sum(1 for s in statuses if s == "succeeded")
-        validity_rate = succeeded / len(statuses)
+        cursor = await self._conn.execute(
+            "SELECT id, status FROM skill_run "
+            "WHERE skill_id = ? AND skill_version_id = ? "
+            "ORDER BY started_at DESC LIMIT ?",
+            (skill_id, current_version_id, min_runs),
+        )
+        run_rows = list(await cursor.fetchall())
+
+        if len(run_rows) < min_runs:
+            return None
+
+        valid = 0
+        for run_id, status in run_rows:
+            if status == "succeeded" and not await self._run_has_degraded_step(run_id):
+                valid += 1
+        validity_rate = valid / len(run_rows)
         if validity_rate < rate_threshold:
             return None
 
@@ -328,7 +389,7 @@ class SkillLifecycleManager:
             )
             return None
 
-        notes = json.dumps({"validity_rate": validity_rate, "runs_examined": len(statuses)})
+        notes = json.dumps({"validity_rate": validity_rate, "runs_examined": len(run_rows)})
         await self.transition(
             skill_id=skill_id,
             to_state=SkillState.SHADOW_PRIMARY,
@@ -338,34 +399,85 @@ class SkillLifecycleManager:
         )
         return SkillState.SHADOW_PRIMARY.value
 
+    async def _run_has_degraded_step(self, skill_run_id: str) -> bool:
+        """Return ``True`` if any step of *skill_run_id* recorded a degraded outcome.
+
+        A run can finish with ``status='succeeded'`` while individual steps were
+        absorbed via ``on_failure: continue`` (recorded as ``continued``) or
+        terminally failed (``step_failed`` / ``skill_failed``). Such a run is
+        not clean evidence for a promotion gate (Fable critique #6).
+
+        Args:
+            skill_run_id: The skill_run row to inspect.
+
+        Returns:
+            ``True`` if at least one step result has a degraded validation
+            status, else ``False``.
+        """
+        cursor = await self._conn.execute(
+            "SELECT 1 FROM skill_step_result "
+            "WHERE skill_run_id = ? "
+            "AND validation_status IN ('continued', 'step_failed', 'skill_failed') "
+            "LIMIT 1",
+            (skill_run_id,),
+        )
+        return await cursor.fetchone() is not None
+
     async def _maybe_promote_to_trusted(
         self,
         skill_id: str,
         requires_human_gate: bool,
+        current_version_id: str | None,
     ) -> str | None:
-        """Gate: divergences >= M AND agreement_rate >= threshold.
+        """Gate: divergences >= M AND agreement_rate >= threshold AND failure-rate ceiling.
 
         agreement_rate = mean overall_agreement on the rolling window.
         On promotion, set baseline_agreement to the observed rate.
+
+        Evidence is scoped to ``skill_version_id = current_version_id`` so an
+        evolved version does not inherit its predecessor's divergence history
+        (Fable critique #3). The run-level failure rate over the same window
+        must also stay at or below
+        ``config.shadow_primary_promotion_max_failure_rate`` — a high agreement
+        score must not mask a skill that frequently fails outright (Fable
+        critique #6).
         """
         config = self._config
         min_runs = config.shadow_primary_promotion_min_runs
         rate_threshold = config.shadow_primary_promotion_agreement_rate
+        max_failure_rate = config.shadow_primary_promotion_max_failure_rate
+
+        if current_version_id is None:
+            return None
 
         cursor = await self._conn.execute(
             """
-            SELECT d.overall_agreement
+            SELECT d.overall_agreement, r.status
               FROM skill_divergence d
               JOIN skill_run r ON d.skill_run_id = r.id
-             WHERE r.skill_id = ?
+             WHERE r.skill_id = ? AND r.skill_version_id = ?
              ORDER BY d.created_at DESC
              LIMIT ?
             """,
-            (skill_id, min_runs),
+            (skill_id, current_version_id, min_runs),
         )
-        agreements = [row[0] for row in await cursor.fetchall()]
+        window = list(await cursor.fetchall())
+        agreements = [row[0] for row in window]
 
         if len(agreements) < min_runs:
+            return None
+
+        failures = sum(1 for row in window if row[1] != "succeeded")
+        failure_rate = failures / len(window)
+        if failure_rate > max_failure_rate:
+            logger.info(
+                "skill_promotion_blocked_by_failure_rate",
+                skill_id=skill_id,
+                from_state="shadow_primary",
+                to_state="trusted",
+                failure_rate=failure_rate,
+                ceiling=max_failure_rate,
+            )
             return None
 
         mean_agreement = sum(agreements) / len(agreements)

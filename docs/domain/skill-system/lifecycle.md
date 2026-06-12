@@ -115,7 +115,7 @@ app.state.skill_lifecycle_manager = lifecycle
 app.state.auto_drafter = auto_drafter
 ```
 
-**Important:** `ShadowSampler` is injected into `SkillExecutor`. After each successful trusted-skill run, the executor fires an `asyncio.create_task` (non-blocking) that calls `ShadowSampler.maybe_sample(...)`. The sampler respects `shadow_sample_rate_trusted` and will not slow down the hot path.
+**Important:** `ShadowSampler` is injected into `SkillExecutor`. After each successful trusted-skill run, the executor fires an `asyncio.create_task` (non-blocking) that calls `ShadowSampler.sample_if_applicable(...)`. The sampler respects `shadow_sample_rate_trusted` and will not slow down the hot path.
 
 ---
 
@@ -142,7 +142,7 @@ async def nightly_job():
 `run_nightly_tasks` runs three sub-jobs in sequence:
 1. `SkillCandidateDetector.detect_candidates()` — scans `skill_run` for high-frequency claude_native patterns and creates `skill_candidate_report` rows.
 2. `AutoDrafter.run_batch()` — for each pending candidate above the savings threshold, asks Claude to generate a skill YAML and validates it against fixtures. Stops when `auto_draft_daily_cap` is reached or the day's budget limit is hit.
-3. `DegradationDetector.run()` — computes Wilson-score confidence intervals over recent divergence rows and transitions any skill whose CI lower bound falls below the agreement threshold to `flagged_for_review`.
+3. `DegradationDetector.run()` — computes Wilson-score confidence intervals over recent divergence rows and transitions any skill whose CI **upper** bound falls below the stored `baseline_agreement` to `flagged_for_review`. (Using the upper bound is the stricter test: a skill is only flagged when even the optimistic end of its current agreement interval sits below the baseline it earned at promotion.)
 
 ---
 

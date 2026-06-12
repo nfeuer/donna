@@ -17,13 +17,15 @@ from donna.models.types import CompletionMetadata
 
 logger = structlog.get_logger()
 
-# Claude Sonnet pricing (per million tokens) as of 2025-05.
+# Claude Sonnet pricing (per million tokens) as of 2025-05. Used only as a
+# back-compat default when the provider is constructed without config rates
+# (offline eval / direct tests) AND the model is a Sonnet id.
 _SONNET_INPUT_COST_PER_MTOK = 3.0
 _SONNET_OUTPUT_COST_PER_MTOK = 15.0
 
 
 def _compute_cost(tokens_in: int, tokens_out: int) -> float:
-    """Compute USD cost from token counts using Sonnet pricing."""
+    """Compute USD cost from token counts using Sonnet pricing (back-compat)."""
     return (
         tokens_in * _SONNET_INPUT_COST_PER_MTOK / 1_000_000
         + tokens_out * _SONNET_OUTPUT_COST_PER_MTOK / 1_000_000
@@ -38,8 +40,49 @@ class AnthropicProvider:
     (ModelRouter) wraps calls with resilient_call().
     """
 
-    def __init__(self, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        cost_rates: dict[str, tuple[float, float]] | None = None,
+    ) -> None:
+        """Create the provider.
+
+        Args:
+            api_key: Anthropic API key (falls back to the SDK's env lookup).
+            cost_rates: Per-model ``{model_id: (input_per_token, output_per_token)}``
+                rates from config (the single source of price truth). When
+                omitted, Sonnet model ids fall back to the documented Sonnet
+                rates and any other model id raises rather than misprice.
+        """
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
+        self._cost_rates = cost_rates or {}
+
+    def _cost(self, model: str, tokens_in: int, tokens_out: int) -> float:
+        """USD cost for *model*, sourced from config rates (fail loud on miss).
+
+        Args:
+            model: Anthropic model id the call ran against.
+            tokens_in: Prompt token count.
+            tokens_out: Completion token count.
+
+        Returns:
+            Cost in USD.
+
+        Raises:
+            ValueError: If no config rate exists for *model* and it is not a
+                recognized Sonnet id — refusing to silently misprice the ledger.
+        """
+        rates = self._cost_rates.get(model)
+        if rates is None:
+            if not self._cost_rates and model.startswith("claude-sonnet"):
+                return _compute_cost(tokens_in, tokens_out)
+            raise ValueError(
+                f"No cost rate configured for model {model!r}; refusing to "
+                "misprice the invocation ledger. Add input_cost_per_token_usd "
+                "and output_cost_per_token_usd to the alias in donna_models.yaml."
+            )
+        in_rate, out_rate = rates
+        return tokens_in * in_rate + tokens_out * out_rate
 
     async def complete(
         self,
@@ -91,7 +134,7 @@ class AnthropicProvider:
             latency_ms=elapsed_ms,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
-            cost_usd=_compute_cost(tokens_in, tokens_out),
+            cost_usd=self._cost(model, tokens_in, tokens_out),
             model_actual=f"anthropic/{response.model}",
             token_limited=token_limited,
         )

@@ -435,6 +435,10 @@ async def _run_eval(args: argparse.Namespace) -> None:
 
     models_config = load_models_config(config_dir)
     task_types_config = load_task_types_config(config_dir)
+    # Config-accessor only: eval uses the router for prompt/schema lookup and
+    # then drives providers directly (never calls router.complete()), so it
+    # needs no invocation_logger. Routing eval spend through the ledger is a
+    # separate slice (Fable Model-Layer finding #8).
     router = ModelRouter(models_config, task_types_config, project_root)
 
     template = router.get_prompt_template(args.task_type)
@@ -684,8 +688,9 @@ async def _test_digest(args: argparse.Namespace) -> None:
         load_task_types_config,
     )
     from donna.integrations.discord_bot import DonnaBot
+    from donna.logging.invocation_logger import InvocationLogger
     from donna.logging.setup import setup_logging
-    from donna.models.router import ModelRouter
+    from donna.models.router import build_model_router
     from donna.notifications.digest import MorningDigest
     from donna.notifications.service import NotificationService
     from donna.tasks.database import Database
@@ -714,7 +719,16 @@ async def _test_digest(args: argparse.Namespace) -> None:
 
     models_config = load_models_config(config_dir)
     task_types_config = load_task_types_config(config_dir)
-    router = ModelRouter(models_config, task_types_config, project_root)
+    # Ledger integrity: every model call must be logged so spend counts toward
+    # the budget cap (BudgetGuard reads invocation_log). Build via the
+    # sanctioned factory, which requires a logger.
+    invocation_logger = InvocationLogger(db.connection)
+    router = build_model_router(
+        models_config,
+        task_types_config,
+        project_root,
+        invocation_logger=invocation_logger,
+    )
 
     bot = DonnaBot(
         input_parser=cast(Any, None),

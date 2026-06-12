@@ -18,6 +18,7 @@ from typing import Any
 import structlog
 
 from donna.config import SkillSystemConfig
+from donna.skills.alerting import FallbackAlert, emit_fallback_alert
 from donna.skills.divergence import SkillDivergenceRepository
 from donna.skills.equivalence import EquivalenceJudge
 from donna.skills.lifecycle import SkillLifecycleManager
@@ -25,6 +26,12 @@ from donna.skills.models import SkillRow
 from donna.tasks.db_models import SkillState
 
 logger = structlog.get_logger()
+
+# Number of consecutive shadow-sample Claude-call failures before alerting.
+# Streak-based so single-sample noise (a transient timeout) does not page,
+# but a sustained loss of shadow coverage — which silently disables the
+# §23.4 monitoring net — does (Fable critique #7).
+_SHADOW_FAILURE_ALERT_STREAK = 5
 
 
 class ShadowSampler:
@@ -47,6 +54,7 @@ class ShadowSampler:
         lifecycle_manager: SkillLifecycleManager,
         # Deterministic random: used to inject a fixed seed in tests.
         random_fn: Callable[[], float] | None = None,
+        fallback_alert: FallbackAlert | None = None,
     ) -> None:
         self._router = model_router
         self._judge = judge
@@ -54,6 +62,10 @@ class ShadowSampler:
         self._config = config
         self._lifecycle = lifecycle_manager
         self._random_fn = random_fn if random_fn is not None else _random_module.random
+        self._fallback_alert = fallback_alert
+        # Count of consecutive shadow-sample Claude-call failures. Reset to 0
+        # on the next successful Claude call (see _do_sample).
+        self._consecutive_claude_failures = 0
 
     async def sample_if_applicable(
         self,
@@ -122,13 +134,37 @@ class ShadowSampler:
             claude_output = parsed if isinstance(parsed, dict) else {"output": parsed}
             # CompletionMetadata does not expose invocation_id; fall back to uuid7.
             invocation_id = getattr(metadata, "invocation_id", None) or str(uuid.uuid4())
+            # Success: reset the failure streak.
+            self._consecutive_claude_failures = 0
         except Exception:
+            self._consecutive_claude_failures += 1
             logger.warning(
                 "shadow_sample_claude_call_failed",
                 skill_id=skill.id,
                 skill_run_id=skill_run_id,
                 claude_task_type=claude_task_type,
+                consecutive_failures=self._consecutive_claude_failures,
             )
+            # Streak-based alert: a sustained loss of shadow coverage silently
+            # disables the §23.4 monitoring net for live shadow_primary/trusted
+            # skills, so the user must be told (Fable critique #7).
+            if self._consecutive_claude_failures >= _SHADOW_FAILURE_ALERT_STREAK:
+                await emit_fallback_alert(
+                    self._fallback_alert,
+                    component="skill_shadow_sampler",
+                    error=(
+                        f"{self._consecutive_claude_failures} consecutive shadow "
+                        f"Claude calls failed (task_type={claude_task_type})"
+                    ),
+                    fallback=(
+                        "shadow coverage lost; divergence monitoring is not "
+                        "recording for live skills"
+                    ),
+                    context={
+                        "skill_id": skill.id,
+                        "consecutive_failures": self._consecutive_claude_failures,
+                    },
+                )
             return
 
         # Step 4 & 5: Ask EquivalenceJudge for agreement score.

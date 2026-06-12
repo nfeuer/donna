@@ -233,13 +233,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if models_yaml.exists() and task_types_yaml.exists():
         try:
             from donna.config import load_models_config, load_task_types_config
-            from donna.models.router import ModelRouter
+            from donna.models.router import build_model_router
 
             m_cfg = load_models_config(config_dir)
             t_cfg = load_task_types_config(config_dir)
             project_root = Path(os.environ.get("DONNA_PROJECT_ROOT", "."))
-            chat_router = ModelRouter(
+            # Ledger integrity: the chat router MUST log every call so chat
+            # spend counts toward the budget cap (BudgetGuard reads
+            # invocation_log). Previously built with no logger → chat was
+            # invisible to accounting.
+            chat_router = build_model_router(
                 m_cfg, t_cfg, project_root,
+                invocation_logger=inv_logger,
                 payload_writer=payload_writer,
             )
             action_registry = ActionRegistry.from_yaml(config_dir / "chat_actions.yaml")

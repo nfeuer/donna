@@ -28,7 +28,7 @@ validation through the sandbox.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -38,7 +38,7 @@ import structlog
 import uuid6
 
 from donna.cost.budget import BudgetPausedError
-from donna.models.router import EscalationDecisionError
+from donna.models.router import EscalationDecisionError, TokenLimitReachedError
 from donna.skills.candidate_report import (
     SkillCandidateReportRow,
     SkillCandidateRepository,
@@ -91,6 +91,7 @@ class AutoDrafter:
         estimated_draft_cost_usd: float = 0.50,
         tool_registry: Any = None,
         tool_gap_surfacer: Any = None,
+        notifier: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self._conn = connection
         self._router = model_router
@@ -100,6 +101,10 @@ class AutoDrafter:
         self._config = config
         self._executor_factory = executor_factory
         self._estimated_cost = estimated_draft_cost_usd
+        # User-facing notifier: pings the user when a new skill is drafted and
+        # awaiting their approval (drafts now require human approval to leave
+        # draft, so the user must be told or they pile up unseen).
+        self._notifier = notifier
         # Slice 22 — pre-flight tool-gap detection. Each missing tool
         # becomes a *speculative* tool_request row so the morning digest
         # surfaces it. AutoDrafter still proceeds; the existing
@@ -145,7 +150,30 @@ class AutoDrafter:
             reports.append(report)
             remaining_budget_usd -= self._estimated_cost
 
+        await self._notify_drafted(reports)
         return reports
+
+    async def _notify_drafted(self, reports: list[AutoDraftReport]) -> None:
+        """Ping the user about newly drafted skills awaiting their approval.
+
+        Drafts now require explicit human approval to leave draft (§23.5), so
+        the user is told immediately rather than discovering them only when the
+        digest runs. No-op if no notifier is wired or nothing was drafted.
+        """
+        if self._notifier is None:
+            return
+        drafted = [r for r in reports if r.outcome == "drafted"]
+        if not drafted:
+            return
+        n = len(drafted)
+        plural = "s" if n != 1 else ""
+        try:
+            await self._notifier(
+                f"📝 I drafted {n} new skill{plural} awaiting your approval — "
+                "review and approve in the dashboard."
+            )
+        except Exception:
+            logger.warning("auto_draft_notify_failed", count=n)
 
     async def draft_one(
         self, candidate: SkillCandidateReportRow
@@ -216,6 +244,21 @@ class AutoDrafter:
                 candidate_id=candidate.id,
                 outcome=outcome_label,
                 rationale=f"escalation_resolved={exc.mode!r}",
+            )
+        except TokenLimitReachedError as exc:
+            # The extension's token cap truncated the draft (enforce mode).
+            # Router already logged the (real) spend before raising, so leave
+            # the candidate in ``new`` for a future retry — do NOT dismiss it
+            # as a malformed/failed call.
+            logger.warning(
+                "skill_auto_draft_token_limit_reached",
+                candidate_id=candidate.id,
+                escalation_request_id=exc.escalation_request_id,
+            )
+            return AutoDraftReport(
+                candidate_id=candidate.id,
+                outcome="budget_exhausted",
+                rationale="token_limit_reached; re-escalation required",
             )
         except Exception as exc:
             logger.warning(
@@ -637,8 +680,12 @@ class AutoDrafter:
                  requires_human_gate, baseline_agreement, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
+            # requires_human_gate defaults to 1 (safety-first, Fable critique
+            # #10a / spec §23.5): an auto-drafted skill requires explicit human
+            # approval before it can leave draft for sandbox. The statistical
+            # gates take over thereafter.
             (skill_id, capability_name, None, SkillState.CLAUDE_NATIVE.value,
-             0, None, now, now),
+             1, None, now, now),
         )
         await self._conn.execute(
             """

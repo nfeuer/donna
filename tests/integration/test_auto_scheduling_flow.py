@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from donna.config import load_calendar_config
 from donna.scheduling.auto_scheduler import AutoScheduler
 from donna.scheduling.scheduler import Scheduler
+from donna.scheduling.time_intent import TimeIntent
 from donna.tasks.database import Database
 from donna.tasks.db_models import TaskDomain
 from donna.tasks.events import TaskEventBus
@@ -61,7 +63,8 @@ async def db(tmp_path: Path, state_machine: StateMachine) -> Database:
             nudge_count INTEGER DEFAULT 0,
             quality_score REAL,
             capability_name TEXT,
-            inputs_json TEXT
+            inputs_json TEXT,
+            time_intent_json TEXT
         )
     """)
     yield database
@@ -88,6 +91,11 @@ async def test_create_task_triggers_auto_schedule(db: Database, cal_config) -> N
         title="Call the mechanic",
         domain=TaskDomain.PERSONAL,
         estimated_duration=30,
+        time_intent_json=TimeIntent(
+            kind="exact",
+            due_at=datetime.now(UTC) + timedelta(days=2),
+            strictness="soft",
+        ).to_json(),
     )
 
     # After create, the task should have been auto-scheduled

@@ -78,7 +78,10 @@ class TestExecute:
             return {"events": [{"title": "Meeting"}]}
 
         registry.register("calendar_read", mock_handler)
-        result = await registry.execute("calendar_read", {"lookahead_days": 7})
+        result = await registry.execute(
+            "calendar_read", {"lookahead_days": 7},
+            task_type="parse_task", agent_name="test",
+        )
         assert result["events"][0]["title"] == "Meeting"
 
     async def test_execute_with_task_type_check(self, registry: ToolRegistry) -> None:
@@ -87,7 +90,7 @@ class TestExecute:
 
         registry.register("task_db_read", mock_handler)
         result = await registry.execute(
-            "task_db_read", {}, task_type="parse_task"
+            "task_db_read", {}, task_type="parse_task", agent_name="test"
         )
         assert result["count"] == 5
 
@@ -98,9 +101,21 @@ class TestExecute:
         registry.register("task_db_write", mock_handler)
         with pytest.raises(ToolNotAllowedError, match="not allowed"):
             await registry.execute(
-                "task_db_write", {}, task_type="parse_task"
+                "task_db_write", {}, task_type="parse_task", agent_name="test"
             )
 
     async def test_unregistered_tool_raises(self, registry: ToolRegistry) -> None:
+        # Tool IS allowed for the task type but has no handler registered.
         with pytest.raises(ToolNotRegisteredError, match="No handler"):
-            await registry.execute("unknown_tool", {})
+            await registry.execute(
+                "cost_summary", {}, task_type="generate_digest", agent_name="test"
+            )
+
+    async def test_task_type_is_required(self, registry: ToolRegistry) -> None:
+        """The allowlist check can no longer be bypassed by omitting task_type."""
+        async def mock_handler(**kwargs: object) -> dict:
+            return {}
+
+        registry.register("calendar_read", mock_handler)
+        with pytest.raises(TypeError):
+            await registry.execute("calendar_read", {})  # type: ignore[call-arg]

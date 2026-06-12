@@ -26,12 +26,19 @@ class ModelConfig(BaseModel):
 
 
 class RoutingEntry(BaseModel):
-    """Routing config for a single task type."""
+    """Routing config for a single task type.
+
+    ``confidence_threshold`` (spec §4.2/§4.7 confidence-based fallback) drives
+    the confidence-gated escalation in ``InputParser``: when a local parse
+    returns a confidence below this value, the parse is re-run on the cloud
+    route (``ModelRouter.confidence_threshold_for`` reads it). Left ``None``
+    for task types that don't escalate on confidence.
+    """
 
     model: str
     fallback: str | None = None
-    confidence_threshold: float | None = None
     shadow: str | None = None
+    confidence_threshold: float | None = None
 
 
 class CostConfig(BaseModel):
@@ -41,6 +48,12 @@ class CostConfig(BaseModel):
     daily_pause_threshold_usd: float = 20.0
     task_approval_threshold_usd: float = 5.0
     monthly_warning_pct: float = 0.90
+    # Assumed output-token count used to compute a deterministic cost
+    # *floor* for the escalation gate when a caller supplies no
+    # ``estimate_usd``. Lets the gate assess every call without relying on
+    # caller discipline (manual-escalation.md §4). Input tokens come from
+    # the real prompt; output is unknown pre-call, so we assume this many.
+    estimate_output_tokens: int = 1000
 
 
 class QualityMonitoringConfig(BaseModel):
@@ -429,10 +442,27 @@ class ToolGapConfig(BaseModel):
     lint: ToolGapLintConfigModel = Field(default_factory=ToolGapLintConfigModel)
 
 
+class GateConfig(BaseModel):
+    """Escalation-gate posture.
+
+    ``shadow`` (deployed default in config/manual_escalation.yaml) makes the
+    gate *observe* — it logs every call that would have escalated
+    (``escalation_shadow_would_fire``) without creating rows, prompting the
+    user, or blocking. ``enforce`` runs the full interactive decision tree.
+
+    The Pydantic default is ``enforce`` so the existing slice-17–24 gate test
+    suite (which assumes enforcement) is unchanged; production opts into
+    ``shadow`` via YAML until estimate accuracy is calibrated.
+    """
+
+    mode: Literal["shadow", "enforce"] = "enforce"
+
+
 class ManualEscalationConfig(BaseModel):
     """Top-level manual escalation configuration (bootstrap defaults)."""
 
     enabled: bool = True
+    gate: GateConfig = Field(default_factory=GateConfig)
     modes: ManualEscalationModesConfig = Field(
         default_factory=ManualEscalationModesConfig
     )
@@ -984,6 +1014,10 @@ class SkillSystemConfig(BaseModel):
     sandbox_promotion_validity_rate: float = 0.90
     shadow_primary_promotion_min_runs: int = 100
     shadow_primary_promotion_agreement_rate: float = 0.85
+    # Fable critique #6: ceiling on the run-level failure rate over the shadow
+    # window. A skill that frequently fails outright must not be promoted to
+    # trusted even if its surviving runs agree highly with Claude.
+    shadow_primary_promotion_max_failure_rate: float = 0.10
     degradation_rolling_window: int = 30
     degradation_ci_confidence: float = 0.95
     auto_draft_daily_cap: int = 50

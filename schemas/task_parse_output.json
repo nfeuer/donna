@@ -43,6 +43,19 @@
       "type": ["string", "null"],
       "description": "Cron expression or RRULE if recurring"
     },
+    "time_intent": {
+      "type": ["object", "null"],
+      "description": "Structured temporal intent. Null when no time is expressed.",
+      "properties": {
+        "kind": { "type": "string", "enum": ["exact", "window", "constrained", "recurring", "none"] },
+        "due_at": { "type": ["string", "null"], "format": "date-time" },
+        "earliest": { "type": ["string", "null"], "format": "date-time" },
+        "latest": { "type": ["string", "null"], "format": "date-time" },
+        "strictness": { "type": "string", "enum": ["hard", "soft"] },
+        "constraints": { "type": ["object", "null"] },
+        "recurrence": { "type": ["object", "null"] }
+      }
+    },
     "tags": {
       "type": "array",
       "items": { "type": "string" },

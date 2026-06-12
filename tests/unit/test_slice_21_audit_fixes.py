@@ -165,6 +165,7 @@ def _make_router_with_gate(gate: Any) -> Any:
         task_types_config=task_types,
         project_root=Path("."),
         escalation_gate=gate,
+        invocation_logger=AsyncMock(),
     )
 
 

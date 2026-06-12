@@ -98,10 +98,26 @@ PR descriptions for any implementation slice MUST cite the relevant `§` of this
 
 ## 4. The over-budget decision tree
 
+> **Posture (2026-06-11):** the gate has two modes, set by
+> `config/manual_escalation.yaml` → `gate.mode`. **`shadow`** (deployed
+> default) consults the gate on every call and logs each one that *would*
+> escalate (`escalation_shadow_would_fire`) without prompting, persisting a
+> row, or blocking. **`enforce`** runs the interactive tree described below.
+> Independently of this setting, `BudgetGuard` now enforces both the daily
+> pause and the `$100` monthly hard cap.
+>
+> **Estimation source:** the router computes `estimate_usd` itself when a
+> caller does not supply one (a deterministic floor from the resolved alias's
+> token rates — `cost.estimate_output_tokens` for the output term). Earlier,
+> the gate fired *only* when a caller passed `estimate_usd`, and no production
+> caller did — leaving the gate dark. See
+> `2026-06-11-cost-escalation-fable-critique-design.md`.
+
 When a task is about to be dispatched, the cost router computes
 `estimate_usd`. If `estimate_usd > min(daily_budget_remaining,
-task_approval_threshold_usd)` AND escalation is enabled (see §6),
-Donna posts a single Discord message with up to four buttons:
+task_approval_threshold_usd)` AND escalation is enabled (see §6) AND
+`gate.mode == enforce`, Donna posts a single Discord message with up to
+four buttons:
 
 ```
 Task: <task_description>

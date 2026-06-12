@@ -19,6 +19,8 @@ services:
       - DONNA_VAULT_PATH=/donna/vault
       - DONNA_HEADLESS=true
       - GOOGLE_CREDENTIALS_PATH=/donna/config/google_credentials.json
+      - HEALTHWATCH_HEARTBEAT_PATH=/donna/healthwatch/heartbeat
+      - HEALTHWATCH_STALE_SECONDS=${HEALTHWATCH_STALE_SECONDS:-90}
     volumes:
       - ${DONNA_DB_PATH}:/donna/db
       - ${DONNA_WORKSPACE_PATH}:/donna/workspace
@@ -29,6 +31,7 @@ services:
       - ../prompts:/app/prompts:ro
       - ../schemas:/app/schemas:ro
       - browser-data:/data/browser
+      - /mnt/donna/healthwatch:/donna/healthwatch:ro
     ports:
       - "8100:8100"    # Health endpoint
     healthcheck:

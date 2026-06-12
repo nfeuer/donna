@@ -67,6 +67,7 @@ from donna.models.router import ModelRouter
 from donna.notifications.escalation_delivery_loop import EscalationDeliveryLoop
 from donna.notifications.service import NotificationService
 from donna.orchestrator.input_parser import InputParser
+from donna.skills.run_persistence import SkillRunRepository
 from donna.skills.startup_wiring import SkillSystemBundle
 from donna.tasks.database import Database
 from donna.tasks.state_machine import StateMachine
@@ -2186,6 +2187,11 @@ async def wire_skill_system(
             extension_repo=ctx.budget_extension_repo,
         )
 
+        _skill_fallback_alert = (
+            notification_service.dispatch_fallback_alert
+            if notification_service is not None
+            else None
+        )
         bundle = assemble_skill_system(
             connection=ctx.db.connection,
             model_router=subsystem_router,
@@ -2195,6 +2201,7 @@ async def wire_skill_system(
             validation_executor_factory=None,  # default real ValidationExecutor
             tool_gap_surfacer=ctx.tool_gap_surfacer,
             tool_registry=_skill_tools_module.DEFAULT_TOOL_REGISTRY,
+            fallback_alert=_skill_fallback_alert,
         )
 
         if bundle is not None:
@@ -2293,6 +2300,73 @@ class _ReclamperSchedulerAdapter:
         )
 
 
+async def _verify_evidence_loop_wired(
+    *,
+    ctx: StartupContext,
+    run_repository: Any | None,
+    shadow_sampler: Any | None,
+) -> None:
+    """Assert the skill evidence loop is wired before any skill goes live.
+
+    When ``skill_config.enabled`` and a skill is already in ``shadow_primary``
+    or ``trusted``, that skill executes live with real tools. If the executor
+    lacks run persistence or a shadow sampler, the §23.4 trust gates and
+    auto-demotion safety net are structurally inert (Fable critique #1). This
+    does **not** hard-crash boot — it alerts loudly via
+    ``dispatch_fallback_alert`` so the operator can react, matching the
+    safety-first posture (alert, don't silently degrade).
+
+    Args:
+        ctx: Startup context (config, db connection, notification service).
+        run_repository: The run repository wired into the executor (or None).
+        shadow_sampler: The shadow sampler wired into the executor (or None).
+
+    Returns:
+        None.
+    """
+    from donna.skills.alerting import emit_fallback_alert
+    from donna.tasks.db_models import SkillState
+
+    if not ctx.skill_config.enabled:
+        return
+    if run_repository is not None and shadow_sampler is not None:
+        return
+
+    cursor = await ctx.db.connection.execute(
+        "SELECT COUNT(*) FROM skill WHERE state IN (?, ?)",
+        (SkillState.SHADOW_PRIMARY.value, SkillState.TRUSTED.value),
+    )
+    row = await cursor.fetchone()
+    live_skill_count = int(row[0]) if row else 0
+    if live_skill_count == 0:
+        return
+
+    missing = []
+    if run_repository is None:
+        missing.append("run_repository")
+    if shadow_sampler is None:
+        missing.append("shadow_sampler")
+
+    alert_fn = (
+        ctx.notification_service.dispatch_fallback_alert
+        if ctx.notification_service is not None
+        else None
+    )
+    await emit_fallback_alert(
+        alert_fn,
+        component="skill_executor_wiring",
+        error=(
+            f"{live_skill_count} skill(s) are live (shadow_primary/trusted) but "
+            f"the executor is missing: {', '.join(missing)}"
+        ),
+        fallback=(
+            "live skills run without divergence recording; §23.4 trust gates "
+            "and auto-demotion are inert until wiring is fixed"
+        ),
+        context={"live_skill_count": live_skill_count, "missing": ",".join(missing)},
+    )
+
+
 async def wire_automation_subsystem(
     ctx: StartupContext, skill_h: SkillSystemHandle,
 ) -> AutomationHandle:
@@ -2326,13 +2400,44 @@ async def wire_automation_subsystem(
                 )
             except Exception:
                 log.exception("runtime_tool_check_wire_failed")
+        # Fable critique #1 — wire the evidence loop. Without a run repository
+        # the executor produces no skill_run / skill_step_result rows, and
+        # without the shadow sampler shadow_primary/trusted skills run live with
+        # zero divergence recording — so the §23.4 trust gates and auto-demotion
+        # are structurally inert. Construct the run repository here and reuse the
+        # already-built ShadowSampler from the bundle.
+        _skill_bundle = skill_h.bundle
+        _run_repository = SkillRunRepository(ctx.db.connection)
+        _shadow_sampler = (
+            _skill_bundle.shadow_sampler if _skill_bundle is not None else None
+        )
+        _exec_fallback_alert = (
+            ctx.notification_service.dispatch_fallback_alert
+            if ctx.notification_service is not None
+            else None
+        )
+
         def _automation_skill_executor_factory() -> Any:
             from donna.skills.executor import SkillExecutor
             return SkillExecutor(
                 model_router=skill_h.subsystem_router,
                 config=ctx.skill_config,
                 tool_gap_surfacer=ctx.tool_gap_surfacer,
+                run_repository=_run_repository,
+                shadow_sampler=_shadow_sampler,
+                fallback_alert=_exec_fallback_alert,
             )
+
+        # Boot-time invariant: if the skill system is enabled and any skill is
+        # already live (shadow_primary / trusted), the executor MUST have both
+        # run persistence and a shadow sampler, otherwise those skills execute
+        # with real tools and zero monitoring. Alert loudly rather than
+        # hard-crash boot (Fable critique #1).
+        await _verify_evidence_loop_wired(
+            ctx=ctx,
+            run_repository=_run_repository,
+            shadow_sampler=_shadow_sampler,
+        )
 
         automation_dispatcher = AutomationDispatcher(
             connection=ctx.db.connection,
@@ -2794,6 +2899,11 @@ async def _build_intent_dispatcher(
 
         challenger = ChallengerAgent(
             matcher=matcher, model_router=skill_h.subsystem_router,
+            fallback_alert_fn=(
+                ctx.notification_service.dispatch_fallback_alert
+                if ctx.notification_service is not None
+                else None
+            ),
         )
         novelty = ClaudeNoveltyJudge(
             model_router=skill_h.subsystem_router, matcher=matcher,

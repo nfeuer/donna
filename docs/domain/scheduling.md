@@ -32,9 +32,29 @@ through all components via `ctx.tz`. Concretely:
 - **Prompt templates** (input parser, chat, decomposition, preference
   extractor) render `{{ current_date }}` and `{{ current_time }}` in local
   time so the LLM reasons about the user's actual clock.
+- **Slot placement** — `Scheduler.find_next_slot` steps candidate slots in
+  UTC (DST-safe) and converts each to the configured zone before every
+  time-window check, so the absolute blackout and all domain windows are
+  enforced on the user's wall clock. Returned slots are timezone-aware in the
+  configured zone, so user-facing confirmations show the correct local time.
 
 Components fall back to `America/New_York` if `ctx.tz` is not set, so the
 behavior is consistent even if the config key is missing.
+
+### Placement safety (Fable Scheduling S1, 2026-06-11)
+
+`Scheduler.schedule_task` is the serialized placement choke point:
+
+- **All-calendars busy union.** The busy-set is the union of every configured
+  calendar (personal + work + family), not just the personal write calendar —
+  so a work-calendar meeting blocks a personal placement.
+- **Fail-closed reads.** A calendar read error raises `CalendarReadError` and
+  aborts placement (surfaced via a fallback alert) rather than booking blind
+  against an empty calendar.
+- **Serialized writes.** The read→find→create section runs under an
+  `asyncio.Lock`, realizing the `spec_v3.md §3.7.1` double-booking guard.
+- **Deadline-aware.** The search horizon is clamped to the task's deadline /
+  `earliest` bound; an unplaceable dated task surfaces as `needs_scheduling`.
 
 ### Calendar Sync Strategy
 
@@ -122,6 +142,26 @@ Blackout (12am–6am) and Quiet Hours (8pm–12am) overlap conceptually but have
 
 - **One agent per task at a time.** The orchestrator enforces this constraint. If agent B needs a task currently locked by agent A, agent B's request is queued until agent A completes or times out.
 - Agent outputs are written to the task record only through the orchestrator's internal API, never directly.
+
+## Routing Gate
+
+When a task is captured, a deterministic, LLM-free gate (`donna.scheduling.routing_gate`) decides where it goes next, based on its [`time_intent`](task-system.md#time-intent) and priority. No model call is involved — the decision is a pure function of the extracted intent.
+
+| Time intent | Route | Behavior |
+|-------------|-------|----------|
+| `exact` / `window` / `constrained` (time-bound) | **Scheduler** | Scheduled immediately. Never deferred for the Challenger. |
+| `recurring` | **Automation** | Owned by the automation/cron pipeline (handoff is a stub today — see followup TI-FU2). |
+| `none` (undated) | **Backlog** | Left in backlog for the weekly planner / Challenger to surface. Not auto-placed. |
+
+A task carrying a bare `deadline` without a `time_intent` (older rows, app-created tasks, or a model that emitted only `deadline`) is treated as `exact` so it still routes to the scheduler immediately rather than stranding in backlog.
+
+Urgency is computed at the same time: a task is urgent if its derived deadline is within 24 hours or its priority is 4–5.
+
+> **Time-bound tasks schedule independently of the Challenger.** This closes a bug where the auto-scheduler deferred dated tasks pending the Challenger and they stranded in `backlog`. The Challenger no longer gates the scheduling of dated tasks. See followup TI-FU1.
+
+### No Slot Found → `needs_scheduling`
+
+When the scheduler is asked to place a time-bound task but finds no open slot before the deadline (`NoSlotFoundError`), the task transitions to the `needs_scheduling` state rather than silently remaining in `backlog`. This surfaces the unplaceable task explicitly. The negotiation/rearrange loop that would resolve it — offering to move other items or take the next opening — is a future plan; today `needs_scheduling` is the state that makes the gap visible. See [Task System → state machine](task-system.md#valid-transitions).
 
 ## Scheduling Algorithm
 

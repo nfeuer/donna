@@ -14,10 +14,11 @@ See docs/notifications.md and slices/slice_03_discord.md.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import discord
@@ -534,20 +535,37 @@ class DonnaBot(discord.Client):
                 prep_work_flag=result.prep_work_flag,
                 agent_eligible=result.agent_eligible,
                 created_via=InputChannel.DISCORD,
-                challenger_pending=self._dispatcher is not None,
+                time_intent_json=json.dumps(result.time_intent) if result.time_intent else None,
+                challenger_pending=False,
             )
 
             log.info("task_created_via_discord", task_id=task.id, title=task.title)
 
+            from donna.integrations.confirmation_copy import capture_confirmation
             from donna.integrations.discord_views import TaskConfirmationView
+            from donna.scheduling.scheduler import ScheduledSlot
+            from donna.scheduling.time_intent import TimeIntent
 
-            confirmation_view = TaskConfirmationView(
-                task_id=task.id, db=self._database
+            fresh = await self._database.get_task(task.id)
+            ti = TimeIntent.from_json(getattr(fresh, "time_intent_json", None))
+            slot = None
+            if fresh is not None and fresh.scheduled_start:
+                start = datetime.fromisoformat(fresh.scheduled_start)
+                slot = ScheduledSlot(
+                    start=start,
+                    end=start + timedelta(minutes=fresh.estimated_duration or 30),
+                )
+            confirmation_msg = capture_confirmation(
+                title=task.title,
+                domain=task.domain,
+                priority=task.priority,
+                time_intent=ti,
+                slot=slot,
+                no_slot=(fresh is not None and fresh.status == "needs_scheduling"),
             )
             await message.channel.send(
-                f"Got it. '{task.title}' — {task.domain}, priority {task.priority}."
-                " Scheduled: pending.",
-                view=confirmation_view,
+                confirmation_msg,
+                view=TaskConfirmationView(task_id=task.id, db=self._database),
             )
 
             # Run challenger agent to probe task quality (if dispatcher is wired).

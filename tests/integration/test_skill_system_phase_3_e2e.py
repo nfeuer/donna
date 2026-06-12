@@ -80,6 +80,14 @@ _PHASE3_SCHEMA = """
         escalation_reason TEXT, error TEXT, user_id TEXT NOT NULL,
         started_at TEXT NOT NULL, finished_at TEXT
     );
+    CREATE TABLE skill_step_result (
+        id TEXT PRIMARY KEY, skill_run_id TEXT NOT NULL,
+        step_name TEXT NOT NULL, step_index INTEGER NOT NULL,
+        step_kind TEXT NOT NULL, invocation_log_id TEXT,
+        prompt_tokens INTEGER, output TEXT, tool_calls TEXT,
+        latency_ms INTEGER, validation_status TEXT NOT NULL,
+        error TEXT, created_at TEXT NOT NULL
+    );
     CREATE TABLE skill_divergence (
         id TEXT PRIMARY KEY, skill_run_id TEXT NOT NULL,
         shadow_invocation_id TEXT NOT NULL,
@@ -143,13 +151,15 @@ async def _insert_skill(
     state: str,
     requires_human_gate: int = 0,
     baseline_agreement: float | None = None,
+    current_version_id: str | None = "v1",
 ) -> None:
     now = _ts()
     await conn.execute(
         "INSERT INTO skill (id, capability_name, current_version_id, state, "
         "requires_human_gate, baseline_agreement, created_at, updated_at) "
-        "VALUES (?, ?, NULL, ?, ?, ?, ?, ?)",
-        (skill_id, capability_name, state, requires_human_gate, baseline_agreement, now, now),
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (skill_id, capability_name, current_version_id, state,
+         requires_human_gate, baseline_agreement, now, now),
     )
     await conn.commit()
 
@@ -160,15 +170,16 @@ async def _insert_skill_run(
     run_id: str,
     skill_id: str,
     status: str = "succeeded",
+    skill_version_id: str | None = "v1",
 ) -> None:
     now = _ts()
     await conn.execute(
         "INSERT INTO skill_run (id, skill_id, skill_version_id, task_id, automation_run_id, "
         "status, total_latency_ms, total_cost_usd, state_object, tool_result_cache, "
         "final_output, escalation_reason, error, user_id, started_at, finished_at) "
-        "VALUES (?, ?, NULL, NULL, NULL, ?, NULL, NULL, '{}', NULL, "
+        "VALUES (?, ?, ?, NULL, NULL, ?, NULL, NULL, '{}', NULL, "
         "NULL, NULL, NULL, 'nick', ?, ?)",
-        (run_id, skill_id, status, now, now),
+        (run_id, skill_id, skill_version_id, status, now, now),
     )
     await conn.commit()
 

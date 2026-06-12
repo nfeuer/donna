@@ -20,6 +20,7 @@ Respond with a JSON object containing exactly these fields:
   "deadline_type": "hard | soft | none (default: none)",
   "estimated_duration": "minutes as integer — see Duration Guidelines (default: 15)",
   "recurrence": "cron expression or RRULE if task is recurring, null if not",
+  "time_intent": { "kind": "exact|window|constrained|recurring|none", "due_at": null, "earliest": null, "latest": null, "strictness": "soft", "constraints": null, "recurrence": null },
   "tags": ["array", "of", "relevant", "tags"],
   "prep_work_flag": false,
   "agent_eligible": false,
@@ -34,6 +35,19 @@ Respond with a JSON object containing exactly these fields:
 - 3: Important, should be done this week
 - 4: Urgent or has a near deadline
 - 5: Critical, must be done immediately or today
+
+## Time Intent
+
+Classify *when* the task should happen into `time_intent.kind`:
+
+- `exact` — a specific point ("tomorrow", "Monday", "by Friday 5pm"). Set `due_at`.
+- `window` — a flexible range ("sometime next week", "by end of month"). Set `earliest` + `latest`.
+- `constrained` — a range plus a structural rule ("a Monday within the next month"). Set
+  `earliest` + `latest` + `constraints` (e.g. `{"weekday": [0]}`, Monday=0 … Sunday=6).
+- `recurring` — repeats ("every Wednesday"). Set `recurrence.human_readable`.
+- `none` — no time expressed.
+
+`strictness`: `hard` if missing it has real consequences, else `soft`. All datetimes ISO-8601.
 
 ## Domain Inference
 

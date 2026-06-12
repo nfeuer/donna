@@ -15,6 +15,7 @@ import aiosqlite
 import structlog
 
 from donna.config import SkillSystemConfig
+from donna.skills.alerting import FallbackAlert
 from donna.skills.auto_drafter import AutoDrafter
 from donna.skills.candidate_report import SkillCandidateRepository
 from donna.skills.correction_cluster import CorrectionClusterDetector
@@ -55,8 +56,28 @@ def assemble_skill_system(
     validation_executor_factory: Callable[[], Any] | None = None,
     tool_gap_surfacer: Any = None,
     tool_registry: Any = None,
+    fallback_alert: FallbackAlert | None = None,
 ) -> SkillSystemBundle | None:
-    """Wire all Phase 3 + 4 skill-system components. Returns None if disabled."""
+    """Wire all Phase 3 + 4 skill-system components. Returns None if disabled.
+
+    Args:
+        connection: Shared aiosqlite connection.
+        model_router: ModelRouter for all skill LLM calls.
+        budget_guard: BudgetGuard for pre-call budget checks (or None).
+        notifier: Async message notifier for user-facing skill notifications.
+        config: Loaded SkillSystemConfig.
+        validation_executor_factory: Factory for the sandbox ValidationExecutor.
+        tool_gap_surfacer: Optional ToolGap surfacer for missing-tool detection.
+        tool_registry: Optional tool registry for the auto-drafter.
+        fallback_alert: Optional ``dispatch_fallback_alert`` callable wired into
+            the components that activate fallback / degraded paths (degradation
+            demotions, evolution park-in-draft, shadow-sample loss). When None,
+            those paths still log ``fallback_activated`` (CLAUDE.md rule).
+
+    Returns:
+        A wired :class:`SkillSystemBundle`, or ``None`` when the system is
+        disabled.
+    """
     if not config.enabled:
         logger.info("skill_system_disabled", enabled=False)
         return None
@@ -81,6 +102,7 @@ def assemble_skill_system(
         divergence_repo=divergence_repo,
         config=config,
         lifecycle_manager=lifecycle,
+        fallback_alert=fallback_alert,
     )
     detector = SkillCandidateDetector(connection, candidate_repo, config)
     auto_drafter = AutoDrafter(
@@ -93,12 +115,14 @@ def assemble_skill_system(
         executor_factory=validation_executor_factory,
         tool_registry=tool_registry,
         tool_gap_surfacer=tool_gap_surfacer,
+        notifier=notifier,
     )
     degradation = DegradationDetector(
         connection=connection,
         divergence_repo=divergence_repo,
         lifecycle_manager=lifecycle,
         config=config,
+        fallback_alert=fallback_alert,
     )
     evolver = Evolver(
         connection=connection,
@@ -107,6 +131,7 @@ def assemble_skill_system(
         lifecycle_manager=lifecycle,
         config=config,
         executor_factory=validation_executor_factory,
+        fallback_alert=fallback_alert,
     )
     evolution_scheduler = EvolutionScheduler(
         connection=connection, evolver=evolver, config=config,
