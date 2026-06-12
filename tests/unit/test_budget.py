@@ -103,6 +103,73 @@ class TestCheckPreCall:
 
 
 # ---------------------------------------------------------------------------
+# Monthly hard cap (enforced inside check_pre_call)
+# ---------------------------------------------------------------------------
+
+
+class TestMonthlyCapEnforcement:
+    async def test_at_monthly_cap_raises_monthly(self) -> None:
+        """$100 monthly spend, $100 cap, daily fine → monthly BudgetPausedError."""
+        tracker = _make_tracker(daily_total=3.0, monthly_total=100.0)
+        guard = BudgetGuard(
+            tracker, _make_models_config(daily_pause=20.0, monthly_budget=100.0)
+        )
+        with pytest.raises(BudgetPausedError) as exc_info:
+            await guard.check_pre_call("nick")
+        assert exc_info.value.period == "monthly"
+        assert exc_info.value.daily_spent == 100.0
+        assert exc_info.value.daily_limit == 100.0
+
+    async def test_over_monthly_cap_raises(self) -> None:
+        """$120 monthly spend → monthly pause even though daily is fine."""
+        tracker = _make_tracker(daily_total=1.0, monthly_total=120.0)
+        guard = BudgetGuard(tracker, _make_models_config(monthly_budget=100.0))
+        with pytest.raises(BudgetPausedError) as exc_info:
+            await guard.check_pre_call("nick")
+        assert exc_info.value.period == "monthly"
+
+    async def test_under_monthly_cap_no_raise(self) -> None:
+        """$50 monthly spend, daily fine → no pause."""
+        tracker = _make_tracker(daily_total=3.0, monthly_total=50.0)
+        guard = BudgetGuard(tracker, _make_models_config())
+        await guard.check_pre_call("nick")  # should not raise
+
+    async def test_daily_pause_takes_precedence_over_monthly(self) -> None:
+        """Daily over limit raises a DAILY pause before the monthly check."""
+        tracker = _make_tracker(daily_total=25.0, monthly_total=120.0)
+        guard = BudgetGuard(tracker, _make_models_config(daily_pause=20.0))
+        with pytest.raises(BudgetPausedError) as exc_info:
+            await guard.check_pre_call("nick")
+        assert exc_info.value.period == "daily"
+
+    async def test_monthly_notifier_called_on_cap(self) -> None:
+        """Monthly pause notifies the debug channel."""
+        notifier = AsyncMock()
+        tracker = _make_tracker(daily_total=3.0, monthly_total=100.0)
+        guard = BudgetGuard(
+            tracker, _make_models_config(monthly_budget=100.0), notifier=notifier
+        )
+        with pytest.raises(BudgetPausedError):
+            await guard.check_pre_call("nick")
+        notifier.assert_called_once()
+        channel, _message = notifier.call_args[0]
+        assert channel == "debug"
+
+    async def test_precall_fires_monthly_warning_below_cap(self) -> None:
+        """Daily fine, monthly at 92% → check_pre_call fires the 90% warning."""
+        notifier = AsyncMock()
+        tracker = _make_tracker(daily_total=3.0, monthly_total=92.0)
+        guard = BudgetGuard(
+            tracker,
+            _make_models_config(monthly_budget=100.0, monthly_warning_pct=0.90),
+            notifier=notifier,
+        )
+        await guard.check_pre_call("nick")  # no raise (under cap)
+        # The 90% warning is now wired into check_pre_call.
+        notifier.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # check_monthly_warning
 # ---------------------------------------------------------------------------
 
@@ -171,4 +238,10 @@ class TestBudgetPausedError:
         err = BudgetPausedError(daily_spent=22.50, daily_limit=20.0)
         assert err.daily_spent == 22.50
         assert err.daily_limit == 20.0
+        assert err.period == "daily"
         assert "22.50" in str(err) or "22" in str(err)
+
+    def test_monthly_period(self) -> None:
+        err = BudgetPausedError(daily_spent=100.0, daily_limit=100.0, period="monthly")
+        assert err.period == "monthly"
+        assert "Monthly" in str(err)

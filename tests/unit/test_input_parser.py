@@ -77,7 +77,7 @@ def models_config() -> ModelsConfig:
         },
         routing={
             "parse_task": RoutingEntry(
-                model="parser", fallback="reasoner", confidence_threshold=0.7,
+                model="parser", fallback="reasoner",
             ),
         },
     )
