@@ -1972,6 +1972,26 @@ Claude API fallback.
 -   On completion, user receives summary via the same channel
     (typically Discord) and output is available for review.
 
+(v3.1 status — IMPORTANT: the multi-stop `AgentDispatcher` pipeline above
+(PM Agent → execution-agent dispatch → Prep/Scheduler sub-agents, plus the
+agent-layer `ToolRegistry`) is **built and unit-tested but NOT wired into
+production** — `AgentDispatcher` is constructed nowhere outside its own
+docstring. The **actually-live** flow is narrower: `DiscordIntentDispatcher`
+routes a message to `ChallengerAgent.match_and_extract` →
+{ready | needs_input | escalate_to_claude}; `escalate_to_claude` goes to the
+`ClaudeNoveltyJudge`; and **time-bound task placement is done by the
+event-driven `AutoScheduler`** (which is not an agent), not the `SchedulerAgent`.
+Two safety seams the future Coding/Communication agents (§7.1.1, G-21/G-22)
+will depend on are **decorative today and must be made load-bearing before
+those agents are wired**: (1) the tool-validation layer — historically the
+allowlist check was skippable by omitting `task_type`; v3.1 makes
+`task_type`+`agent_name` required on `ToolRegistry.execute` so the check is
+always enforced (principle #6); (2) `config/agents.yaml` autonomy/enabled/
+timeout/allowlist values are read by dashboards and a diff-lint but are **not**
+enforced in any dispatch path — making the dispatcher the enforcement point is
+deferred to the §7.2-pipeline wire-or-delete decision. See
+docs/superpowers/specs/2026-06-11-subagent-system-fable-critique-design.md.)
+
 **7.3 Agent Safety Constraints**
 
 These constraints are non-negotiable and enforced at the system level,

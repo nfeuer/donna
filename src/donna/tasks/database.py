@@ -747,15 +747,20 @@ class Database:
         Raises ValueError if task not found.
         """
         conn = self.connection
-        task = await self.get_task(task_id)
-        if task is None:
-            raise ValueError(f"Task not found: {task_id}")
-
-        side_effects = self._state_machine.validate_transition(
-            task.status, new_status.value
-        )
-
+        # Read → validate → write must happen under the write lock so a
+        # concurrent transition cannot interleave between the status read and
+        # the write (TOCTOU). All writers serialize on this lock, so holding it
+        # across the read+validate makes the transition atomic, honoring the
+        # §3.7.1 "no interleaving possible" guarantee.
         async with self._write_lock:
+            task = await self.get_task(task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+
+            side_effects = self._state_machine.validate_transition(
+                task.status, new_status.value
+            )
+
             await conn.execute(
                 "UPDATE tasks SET status = ? WHERE id = ?",
                 (new_status.value, task_id),
