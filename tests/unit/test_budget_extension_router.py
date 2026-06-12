@@ -166,6 +166,7 @@ async def test_gate_consulted_without_caller_estimate() -> None:
         project_root=Path("/nonexistent"),
         budget_guard=budget_guard,
         escalation_gate=gate,
+        invocation_logger=AsyncMock(),
     )
     router._providers["anthropic"] = mock_provider
 
