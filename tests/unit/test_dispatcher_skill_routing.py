@@ -116,7 +116,7 @@ async def test_dispatcher_runs_skill_shadow_alongside_legacy():
 
 async def test_dispatcher_skips_skill_not_in_live_state():
     """A sandbox/draft skill must NOT execute through the shadow path (#8)."""
-    dispatcher, skill_executor, skill_database, pm, scheduler = _make_dispatcher(
+    dispatcher, skill_executor, skill_database, _pm, _scheduler = _make_dispatcher(
         skill_state="sandbox",
     )
 
