@@ -16,3 +16,9 @@ class BotProtocol(Protocol):
     async def send_embed(self, channel_name: str, embed: Any) -> Any: ...
     async def send_to_thread(self, thread_id: int, text: str) -> None: ...
     async def send_dm(self, discord_id: str, content: str) -> None: ...
+    # NOTE: ``send_message_with_view`` (used for interactive notifications such
+    # as negotiation proposals) is intentionally NOT part of the required
+    # protocol surface — it is called best-effort via ``getattr`` so existing
+    # bot doubles that predate it still satisfy the protocol. DonnaBot provides
+    # it; callers that need a view but hit a bot without it degrade to a plain
+    # message.

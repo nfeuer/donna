@@ -177,6 +177,29 @@
      to `auto_drafter` / `evolution`, but the raise is only reachable in `enforce`
      mode (needs a granted extension). Verify under load when #1 flips to enforce.
 
+## NEG-A — Scheduling negotiation loop, Slice A (single-displacement, confirm-only)
+
+- **Spec:** `spec_v3.md §6.1.2` (conflict table) / `§6.3` (Minimize Rescheduling / Get
+  It Done); design `docs/superpowers/specs/2026-06-12-scheduling-negotiation-design.md`
+- **Status:** spec-update-pending (intentional, accepted drift)
+- **Gap / drift:** Slice A landed `Scheduler.negotiate_placement` /
+  `negotiate_and_apply` / `_apply` (single displacement, cap 1), the
+  `_iter_window_valid_slots` refactor of `find_next_slot`, the `negotiation_proposals`
+  table + repo, `NegotiationProposalView`, `NOTIF_RESCHEDULE`, and the
+  `auto_scheduler` `NoSlotFoundError` hook + gate (§1.2). **`spec_v3.md §6.1.2`
+  licenses *silent* auto-moves for low-priority items, but the 2026-06-05
+  confirmation invariant supersedes it: the loop ships propose-and-confirm by
+  default (`auto_apply: false`).** Rewrite the §6.1.2 / `docs/domain/scheduling.md`
+  conflict tables to describe confirm-by-default + the `auto_apply` dial-back when
+  Slice B ships. **Deferred to later slices (NOT in Slice A):** `cascade_shift` +
+  the overrun detector (Slice C), `auto_apply` of moves without confirmation +
+  multi-displacement cap > 1 (Slice B). A latent `find_next_slot` quirk surfaced:
+  it clamps only the slot *start* to the deadline, so a slot can end past the
+  deadline; the negotiator adds a stronger `slot.end <= deadline` guard (hard-
+  deadline-only), but `find_next_slot` itself keeps the pre-existing start-clamp
+  behavior unchanged. Open owner decisions OD-1..OD-6 (design §8) were taken at the
+  conservative defaults; revisit if accept-rate data warrants.
+
 ## ML-FABLE-P2 — Shadow stable-state auto-disable job (design B)
 
 - **Spec:** `spec_v3.md §4.4`; design

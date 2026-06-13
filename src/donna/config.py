@@ -301,6 +301,87 @@ class CredentialsConfig(BaseModel):
     scopes: list[str]
 
 
+class NegotiationCostWeights(BaseModel):
+    """Weights for the displacement cost function (design §1.4).
+
+    Each contributes a term to ``cost(D)`` for a displaced task ``D``; lower
+    total cost makes ``D`` a better victim. All weights live in config so the
+    ranking can be retuned without code changes (Config-over-code).
+
+    Attributes:
+        priority: Multiplies ``priority(D)`` (protect high-priority work).
+        hard_deadline: Penalty added when ``D`` is itself a hard-deadline task.
+        slack: Numerator of ``slack/(1+slack_hours)`` — penalizes tight victims.
+        reschedule: Multiplies ``reschedule_count(D)`` (anti-thrash brake).
+        imminence: Numerator of ``imminence/(1+hours_until_start)`` — penalizes
+            moving something that starts very soon.
+    """
+
+    priority: float = 10
+    hard_deadline: float = 20
+    slack: float = 8
+    reschedule: float = 5
+    imminence: float = 2
+
+
+class NegotiationOverrunConfig(BaseModel):
+    """Overrun-detector knobs (design §1.7 — Slice C, not built in Slice A).
+
+    Parsed so ``config/calendar.yaml`` can carry the block today, but the
+    detector itself is out of scope until the cascade-shift slice. ``enabled``
+    stays ``False`` so nothing fires.
+    """
+
+    enabled: bool = False
+    extension_step_minutes: int = 15
+    max_extension_minutes: int = 60
+
+
+class NegotiationConfig(BaseModel):
+    """Scheduling-negotiation configuration (design §4).
+
+    Conservative defaults: propose-and-confirm only (``auto_apply=false``),
+    single displacement, strictly-lower-priority victims, 60-minute lead time.
+    Realizes ``spec_v3.md`` §6.1.2 (conflict table) and §6.3 (Minimize
+    Rescheduling / Get It Done) via the cost function and movability filter.
+
+    Attributes:
+        enabled: Master switch for the negotiation gate (design §1.2).
+        auto_apply: When ``False`` (default), proposals are always persisted and
+            surfaced for confirmation — moves are never applied silently
+            (2026-06-05 confirmation invariant). Slice B dials this on.
+        min_displacer_priority: A task must have at least this priority to
+            trigger negotiation (protects calendar stability).
+        min_lead_minutes: A blocker starting sooner than this is immovable.
+        max_displacements_per_placement: Cap on movable blockers per slot
+            (Slice A keeps this at 1).
+        max_cascade_depth: Cap on cascade-shift moves (Slice C; unused here).
+        max_auto_moves_per_task_per_day: Anti-thrash cap on how often one task
+            may be auto-moved in a day.
+        proposal_ttl_hours: How long a persisted proposal stays ``pending``.
+        notify_min_priority_moved: Moving a task at/above this priority triggers
+            an immediate notification rather than a digest line.
+        cost_weights: Weights for the displacement cost function (§1.4).
+        overrun: Overrun-detector knobs (Slice C; disabled here).
+    """
+
+    enabled: bool = True
+    auto_apply: bool = False
+    min_displacer_priority: int = 3
+    min_lead_minutes: int = 60
+    max_displacements_per_placement: int = 1
+    max_cascade_depth: int = 3
+    max_auto_moves_per_task_per_day: int = 2
+    proposal_ttl_hours: int = 4
+    notify_min_priority_moved: int = 4
+    cost_weights: NegotiationCostWeights = Field(
+        default_factory=NegotiationCostWeights
+    )
+    overrun: NegotiationOverrunConfig = Field(
+        default_factory=NegotiationOverrunConfig
+    )
+
+
 class CalendarConfig(BaseModel):
     """Top-level calendar integration configuration."""
 
@@ -310,6 +391,7 @@ class CalendarConfig(BaseModel):
     time_windows: TimeWindowsConfig
     credentials: CredentialsConfig
     priority: PriorityConfig = Field(default_factory=PriorityConfig)
+    negotiation: NegotiationConfig = Field(default_factory=NegotiationConfig)
     timezone: str = "America/New_York"
 
 

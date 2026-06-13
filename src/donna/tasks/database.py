@@ -1245,6 +1245,97 @@ class Database:
         description = cursor.description
         return [self._row_to_chat_message(row, description) for row in rows]
 
+    # ------------------------------------------------------------------
+    # Negotiation proposals (scheduling negotiation loop, design §3)
+    # ------------------------------------------------------------------
+
+    async def create_negotiation_proposal(
+        self,
+        *,
+        proposal_id: str,
+        task_id: str,
+        slot_start: str,
+        slot_end: str,
+        moves_json: str,
+        cost: float,
+        created_at: str,
+        expires_at: str,
+    ) -> None:
+        """Persist a pending scheduling-negotiation proposal (design §3).
+
+        The row survives restarts; the accept path re-validates under the
+        placement lock, so a stale ``pending`` row is always safe.
+
+        Args:
+            proposal_id: UUID for the proposal.
+            task_id: The displacer task T awaiting a slot.
+            slot_start: ISO-8601 start of T's proposed slot.
+            slot_end: ISO-8601 end of T's proposed slot.
+            moves_json: JSON array of displacement moves.
+            cost: Total displacement cost of the proposal (§1.4).
+            created_at: ISO-8601 creation timestamp.
+            expires_at: ISO-8601 TTL boundary (``proposal_ttl_hours`` ahead).
+        """
+        conn = self.connection
+        async with self._write_lock:
+            await conn.execute(
+                """INSERT INTO negotiation_proposals
+                   (proposal_id, task_id, slot_start, slot_end, moves_json,
+                    status, cost, created_at, expires_at)
+                   VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)""",
+                (
+                    proposal_id,
+                    task_id,
+                    slot_start,
+                    slot_end,
+                    moves_json,
+                    cost,
+                    created_at,
+                    expires_at,
+                ),
+            )
+            await conn.commit()
+        logger.info(
+            "negotiation_proposal_persisted",
+            proposal_id=proposal_id,
+            task_id=task_id,
+            cost=cost,
+        )
+
+    async def get_negotiation_proposal(
+        self, proposal_id: str
+    ) -> dict[str, Any] | None:
+        """Fetch a single negotiation proposal row as a dict, or None."""
+        conn = self.connection
+        cursor = await conn.execute(
+            """SELECT proposal_id, task_id, slot_start, slot_end, moves_json,
+                      status, cost, created_at, expires_at
+               FROM negotiation_proposals WHERE proposal_id = ?""",
+            (proposal_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        columns = [d[0] for d in cursor.description]
+        return dict(zip(columns, row, strict=False))
+
+    async def update_negotiation_proposal_status(
+        self, proposal_id: str, status: str
+    ) -> None:
+        """Set a proposal's status (accepted / declined / expired)."""
+        conn = self.connection
+        async with self._write_lock:
+            await conn.execute(
+                "UPDATE negotiation_proposals SET status = ? WHERE proposal_id = ?",
+                (status, proposal_id),
+            )
+            await conn.commit()
+        logger.info(
+            "negotiation_proposal_status_updated",
+            proposal_id=proposal_id,
+            status=status,
+        )
+
     async def execute_sql(
         self, sql: str, params: list[Any] | None = None,
     ) -> list[dict[str, Any]]:
