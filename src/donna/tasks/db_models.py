@@ -873,6 +873,34 @@ class DailyBudgetExtension(Base):
     )
 
 
+class NegotiationProposal(Base):
+    """A pending scheduling-negotiation proposal (design §3).
+
+    Carries T's target slot plus an ordered JSON set of moves (displaced task →
+    new slot). Survives restarts; the accept path re-validates under the
+    placement lock, so stale rows are safe to apply or discard. Mirrors
+    ``alembic/versions/f5a6b7c8d9e0_add_negotiation_proposals.py`` so test
+    fixtures using ``Base.metadata.create_all`` match the migrated schema.
+
+    See docs/superpowers/specs/2026-06-12-scheduling-negotiation-design.md §3.
+    """
+
+    __tablename__ = "negotiation_proposals"
+
+    proposal_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    slot_start: Mapped[str] = mapped_column(String(64), nullable=False)
+    slot_end: Mapped[str] = mapped_column(String(64), nullable=False)
+    moves_json: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending",
+        index=True,
+    )
+    cost: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
 class DashboardSetting(Base):
     """Runtime override layer for YAML config keys.
 

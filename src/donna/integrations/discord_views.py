@@ -9,7 +9,8 @@ See docs/notifications.md and the discord interaction expansion plan.
 
 from __future__ import annotations
 
-from datetime import UTC
+import json
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import discord
@@ -219,6 +220,179 @@ class TaskConfirmationView(discord.ui.View):
     async def reschedule(self, interaction: Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
         await interaction.response.send_message(
             "Use `/reschedule` to pick a new time, or reply with a time like 'tomorrow 2pm'.",
+            ephemeral=True,
+        )
+
+
+# ------------------------------------------------------------------
+# Negotiation Proposal View (scheduling negotiation loop, design §3)
+# ------------------------------------------------------------------
+
+
+class NegotiationProposalView(discord.ui.View):
+    """Accept / Decline / Pick-time buttons on a displacement proposal.
+
+    Accept routes through ``Scheduler._apply`` under the placement lock with
+    re-validation (re-read busy; verify each move's old slot still matches and
+    the new slots are free), so a stale proposal is safe. Decline routes
+    through the existing ``user_declines_scheduling`` transition
+    (``needs_scheduling → backlog``). Pick-time hands off to ``/reschedule``.
+
+    See docs/superpowers/specs/2026-06-12-scheduling-negotiation-design.md §3.
+    """
+
+    def __init__(
+        self,
+        proposal_id: str,
+        task_id: str,
+        db: Database,
+        scheduler: Any,
+        calendar_client: Any,
+        calendar_id: str,
+        notification_service: Any | None = None,
+        timeout: float = 3600,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        self._proposal_id = proposal_id
+        self._task_id = task_id
+        self._db = db
+        self._scheduler = scheduler
+        self._calendar_client = calendar_client
+        self._calendar_id = calendar_id
+        self._notification_service = notification_service
+
+    @discord.ui.button(
+        label="Accept", style=ButtonStyle.green, custom_id="negotiation_accept"
+    )
+    async def accept(self, interaction: Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
+        from donna.scheduling.scheduler import (
+            NEGOTIATION_APPLIED,
+            NEGOTIATION_PROPOSED,
+            CalendarReadError,
+            Move,
+            NegotiationProposal,
+            ScheduledSlot,
+        )
+
+        await interaction.response.defer(ephemeral=True)
+
+        row = await self._db.get_negotiation_proposal(self._proposal_id)
+        if row is None or row.get("status") != "pending":
+            await interaction.followup.send(
+                "This proposal is no longer available.", ephemeral=True
+            )
+            self.stop()
+            return
+
+        task = await self._db.get_task(self._task_id)
+        if task is None:
+            await interaction.followup.send("Task not found.", ephemeral=True)
+            self.stop()
+            return
+
+        # Rebuild the proposal from the persisted row.
+        try:
+            moves_raw = json.loads(row["moves_json"])
+        except (TypeError, ValueError):
+            moves_raw = []
+        moves = tuple(
+            Move(
+                task_id=m["task_id"],
+                event_id=m["event_id"],
+                old_start=datetime.fromisoformat(m["old_start"]),
+                old_end=datetime.fromisoformat(m["old_end"]),
+                new_start=datetime.fromisoformat(m["new_start"]),
+                new_end=datetime.fromisoformat(m["new_end"]),
+                priority=m.get("priority", 2),
+            )
+            for m in moves_raw
+        )
+        proposal = NegotiationProposal(
+            proposal_id=row["proposal_id"],
+            task_id=row["task_id"],
+            slot=ScheduledSlot(
+                start=datetime.fromisoformat(row["slot_start"]),
+                end=datetime.fromisoformat(row["slot_end"]),
+            ),
+            moves=moves,
+            cost=row["cost"],
+        )
+
+        # Apply under the placement lock with re-validation (design §1.6).
+        try:
+            async with self._scheduler._lock:
+                outcome = await self._scheduler._apply(
+                    proposal,
+                    task,
+                    self._db,
+                    self._calendar_client,
+                    self._calendar_id,
+                )
+        except CalendarReadError:
+            logger.exception("negotiation_accept_read_failed", task_id=self._task_id)
+            await interaction.followup.send(
+                "Couldn't reach the calendar — try again in a moment.",
+                ephemeral=True,
+            )
+            return
+        except Exception:
+            logger.exception("negotiation_accept_failed", task_id=self._task_id)
+            await interaction.followup.send(
+                "Couldn't apply that rearrangement — try again.", ephemeral=True
+            )
+            return
+
+        if outcome == NEGOTIATION_APPLIED:
+            await interaction.followup.send(
+                "Done — rescheduled and moved the conflicting blocks.",
+                ephemeral=True,
+            )
+            logger.info("negotiation_accepted", task_id=self._task_id)
+        elif outcome == NEGOTIATION_PROPOSED:
+            await interaction.followup.send(
+                "Your calendar changed since I proposed this, so I worked out a "
+                "new plan — check the latest message.",
+                ephemeral=True,
+            )
+        else:  # NEGOTIATION_IMPOSSIBLE
+            await interaction.followup.send(
+                "Your calendar changed and there's no longer a way to fit this "
+                "by rearranging. It's still waiting for scheduling.",
+                ephemeral=True,
+            )
+        self.stop()
+
+    @discord.ui.button(
+        label="Decline", style=ButtonStyle.grey, custom_id="negotiation_decline"
+    )
+    async def decline(self, interaction: Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
+        from donna.tasks.db_models import TaskStatus
+
+        try:
+            await self._db.update_negotiation_proposal_status(
+                self._proposal_id, "declined"
+            )
+            # needs_scheduling → backlog (user_declines_scheduling).
+            await self._db.transition_task_state(self._task_id, TaskStatus.BACKLOG)
+            await interaction.response.send_message(
+                "Got it — left everything as-is. It'll resurface in your plan.",
+                ephemeral=True,
+            )
+            logger.info("negotiation_declined", task_id=self._task_id)
+        except Exception:
+            logger.exception("negotiation_decline_failed", task_id=self._task_id)
+            await interaction.response.send_message(
+                "Couldn't update that — try again.", ephemeral=True
+            )
+        self.stop()
+
+    @discord.ui.button(
+        label="Pick time", style=ButtonStyle.blurple, custom_id="negotiation_pick_time"
+    )
+    async def pick_time(self, interaction: Interaction, button: discord.ui.Button) -> None:  # type: ignore[type-arg]
+        await interaction.response.send_message(
+            "Use `/reschedule` to pick a new time, or reply with a time like "
+            "'tomorrow 2pm'.",
             ephemeral=True,
         )
 

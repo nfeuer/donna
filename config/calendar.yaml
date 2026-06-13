@@ -60,6 +60,32 @@ priority:
   workload_threshold_per_day: 5   # if more than N tasks same day, apply pressure
   escalation_after_reschedules: 1 # bump priority after this many reschedules under pressure
 
+# Scheduling negotiation loop ("Plan 2", Slice A).
+# See docs/superpowers/specs/2026-06-12-scheduling-negotiation-design.md §4 and
+# spec_v3.md §6.1.2 (conflict table) / §6.3 (Minimize Rescheduling / Get It Done).
+# Conservative defaults: propose-and-confirm only — moves are NEVER applied
+# silently (2026-06-05 confirmation invariant). All knobs are config, not code.
+negotiation:
+  enabled: true
+  auto_apply: false                   # DEFAULT OFF — propose-and-confirm
+  min_displacer_priority: 3           # only P3+ hard-deadline tasks may displace
+  min_lead_minutes: 60                # a blocker starting sooner is immovable
+  max_displacements_per_placement: 1  # slice A; 2 in the full loop
+  max_cascade_depth: 3                # slice C (cascade-shift); unused in slice A
+  max_auto_moves_per_task_per_day: 2  # anti-thrash cap per displaced task
+  proposal_ttl_hours: 4               # how long a pending proposal stays live
+  notify_min_priority_moved: 4        # §6.1.2 "none unless priority 4–5"
+  cost_weights:
+    priority: 10
+    hard_deadline: 20
+    slack: 8
+    reschedule: 5
+    imminence: 2
+  overrun:                            # slice C overrun detector; disabled here
+    enabled: false
+    extension_step_minutes: 15
+    max_extension_minutes: 60
+
 credentials:
   client_secrets_path: "google_credentials.json"   # OAuth2 client credentials file
   token_path: "token.json"                   # persisted token (created on first auth)

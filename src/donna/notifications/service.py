@@ -38,6 +38,9 @@ NOTIF_DIGEST = "digest"
 NOTIF_DEBUG = "debug"
 NOTIF_AUTOMATION_ALERT = "automation_alert"
 NOTIF_AUTOMATION_FAILURE = "automation_failure"
+# Scheduling-negotiation reschedule notice (design §2, rows 2/3/6/7). Routed
+# through dispatch() so blackout/quiet windows are enforced like any other.
+NOTIF_RESCHEDULE = "reschedule"
 
 # Discord message length limits
 DIGEST_MAX_CHARS_DEFAULT = 1900
@@ -114,6 +117,7 @@ class NotificationService:
         priority: int = 2,
         embed: discord.Embed | None = None,
         thread_id: int | None = None,
+        view: discord.ui.View | None = None,
     ) -> bool:
         """Dispatch a notification, respecting blackout and quiet hours.
 
@@ -124,6 +128,10 @@ class NotificationService:
             priority: 1–5; only priority 5 passes through quiet hours.
             embed: Optional Discord embed (e.g. for digest).
             thread_id: If set, sends to an existing thread instead of channel.
+            view: Optional interactive Discord View (e.g. a negotiation
+                proposal's Accept/Decline buttons). Routed through the bot's
+                ``send_message_with_view`` and queued/replayed like any other
+                notification so blackout/quiet windows are still enforced.
 
         Returns:
             True if the message was sent immediately, False if queued/blocked.
@@ -144,16 +152,20 @@ class NotificationService:
         # Hard block: blackout applies to all priorities.
         if self._is_blackout(now):
             log.info("notification_queued_blackout")
-            self._enqueue(notification_type, content, channel, priority, embed, thread_id)
+            self._enqueue(
+                notification_type, content, channel, priority, embed, thread_id, view
+            )
             return False
 
         # Soft block: quiet hours apply to priority < 5.
         if self._is_quiet(now) and priority < 5:
             log.info("notification_queued_quiet_hours")
-            self._enqueue(notification_type, content, channel, priority, embed, thread_id)
+            self._enqueue(
+                notification_type, content, channel, priority, embed, thread_id, view
+            )
             return False
 
-        await self._send(notification_type, content, channel, embed, thread_id, log)
+        await self._send(notification_type, content, channel, embed, thread_id, log, view)
         return True
 
     async def dispatch_dm(
@@ -236,6 +248,7 @@ class NotificationService:
         priority: int,
         embed: discord.Embed | None,
         thread_id: int | None,
+        view: discord.ui.View | None = None,
     ) -> None:
         """Add a send coroutine to the deferred queue."""
         async def _send_later() -> None:
@@ -244,7 +257,9 @@ class NotificationService:
                 channel=channel,
                 user_id=self._user_id,
             )
-            await self._send(notification_type, content, channel, embed, thread_id, log)
+            await self._send(
+                notification_type, content, channel, embed, thread_id, log, view
+            )
 
         self._queue.append(_send_later)
 
@@ -422,10 +437,20 @@ class NotificationService:
         embed: discord.Embed | None,
         thread_id: int | None,
         log: Any,
+        view: discord.ui.View | None = None,
     ) -> None:
         """Execute the actual Discord send and log the outcome."""
         try:
-            if thread_id is not None:
+            if view is not None:
+                # ``send_message_with_view`` is optional on the bot surface (not
+                # in BotProtocol); degrade to a plain message if absent so a
+                # legacy bot double never drops the notification.
+                send_with_view = getattr(self._bot, "send_message_with_view", None)
+                if send_with_view is not None:
+                    await send_with_view(channel, content, view)
+                else:
+                    await self._bot.send_message(channel, content)
+            elif thread_id is not None:
                 await self._bot.send_to_thread(thread_id, content)
             elif embed is not None:
                 await self._bot.send_embed(channel, embed)
