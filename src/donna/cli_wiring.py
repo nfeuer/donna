@@ -2759,13 +2759,6 @@ async def wire_discord(
                 )
             log.info("discord_slash_commands_registered")
 
-        # Wire agent activity feed if agents channel is configured.
-        if ctx.agents_channel_id_str:
-            from donna.integrations.discord_agent_feed import AgentActivityFeed
-
-            agent_feed = AgentActivityFeed(bot)  # noqa: F841 — side-effect ctor
-            log.info("discord_agent_feed_enabled")
-
         # Start proactive prompt background tasks.
         prompts_cfg = discord_config.proactive_prompts
 

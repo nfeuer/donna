@@ -8,9 +8,7 @@ The Orchestrator (core process, not a sub-agent) receives all tasks and determin
 
 | Agent | File | Responsibilities | Tool Access | Autonomy Level |
 |-------|------|-----------------|-------------|----------------|
-| **Scheduler** | `scheduler_agent.py` | Calendar management, time slots, rescheduling, reminders, weekly planning | `calendar_read`, `calendar_write`, `task_db_read`, `task_db_write` | High — auto-schedules priority 1–3. 2-min timeout. |
 | **Research / Prep** | `prep_agent.py` | Web research, info compilation, resource gathering before flagged tasks | Web search (MCP), Gmail (read-only), Filesystem (MCP read), GitHub (MCP read) | High — runs autonomously when prep flagged |
-| **Project Manager** | `pm_agent.py` | Task assessment, requirements evaluation, agent routing recommendation | `task_db_read`, `task_db_write` | Medium — can assess and route, must confirm requirements with user. 5-min timeout. |
 | **Challenger** | `challenger_agent.py` | Capability matching, intent extraction, task quality evaluation, follow-up questions | Task DB (read-only), `CapabilityMatcher` | Medium — probes task quality, returns questions to user via Discord thread |
 | **ClaudeNoveltyJudge** | `claude_novelty_judge.py` | Evaluates no-capability-match messages via Claude. Returns structured `NoveltyVerdict` with intent, schedule, skill candidate assessment | Model router (Claude API) | Medium — called by DiscordIntentDispatcher on `escalate_to_claude` status |
 | **DecompositionService** | `decomposition.py` | Breaks complex tasks into subtasks via LLM. Two-pass insert resolves dependency indices to UUIDs. Persists subtasks as real Task rows | Model router, Task DB (read-write) | Medium — decomposes autonomously, surfaces `missing_information` and `deadline_feasible` assessment |
@@ -23,11 +21,9 @@ The Orchestrator (core process, not a sub-agent) receives all tasks and determin
 ```
 src/donna/agents/
 ├── __init__.py              # Exports: DecomposeResult, DecompositionService, PrepAgent
-├── base.py                  # AgentContext, AgentResult, ToolCallRecord, Agent protocol
-├── pm_agent.py              # PMAgent — assessment, requirements, agent routing
+├── base.py                  # AgentContext, AgentResult, ToolCallRecord
 ├── challenger_agent.py      # ChallengerAgent — capability matching, intent extraction
 ├── claude_novelty_judge.py  # ClaudeNoveltyJudge — no-match escalation via Claude API
-├── scheduler_agent.py       # SchedulerAgent — calendar slots, task scheduling
 ├── prep_agent.py            # PrepAgent — research/prep execution for flagged tasks
 ├── decomposition.py         # DecompositionService — task → subtask breakdown
 └── tool_registry.py         # ToolRegistry — tool validation and execution layer
@@ -35,11 +31,11 @@ src/donna/agents/
 
 ### Agent Base Types (`base.py`)
 
-All agents implement the `Agent` protocol:
+Shared dataclasses used by the live agents (Challenger, NoveltyJudge, Prep)
+and the tool registry:
 
 | Type | Purpose |
 |------|---------|
-| `Agent` | Runtime-checkable protocol: `name`, `allowed_tools`, `timeout_seconds`, `execute(task, context)` |
 | `AgentContext` | Execution context: `router`, `db`, `user_id`, `project_root`, `tool_registry` |
 | `AgentResult` | Outcome: `status` (complete/failed/needs_input/escalated), `output`, `tool_calls_made`, `duration_ms`, `error`, `questions` |
 | `ToolCallRecord` | Record of a single tool call: `tool_name`, `params`, `result`, `allowed` |
@@ -70,34 +66,39 @@ Infrastructure component (not an autonomous agent). Validates and executes tool 
 
 ## Agent Execution Flow
 
-> **Dormancy note (v3.1):** the PM-Agent-centric flow below is a **design target,
-> not live behavior**. `AgentDispatcher` and the PM/Prep/Scheduler/Decomposition
-> agents are built and unit-tested but **not wired into production**. The live
-> path is: `DiscordIntentDispatcher` → `ChallengerAgent.match_and_extract` → (on
-> escalation) `ClaudeNoveltyJudge`, with time-bound placement by the event-driven
-> `AutoScheduler` (not an agent). The tool-validation layer below now enforces the
-> allowlist on every call (`ToolRegistry.execute` requires `task_type`+`agent_name`
-> as of v3.1), but per-parameter schema validation and `config/agents.yaml`
-> autonomy enforcement remain unbuilt — they are preconditions for wiring the
-> dormant pipeline or the Phase-6 Coding/Communication agents. See `spec_v3.md
-> §7.2` and the Sub-Agent System critique design doc.
+This is the **live** flow. The v3.1 multi-stop `AgentDispatcher`/PM pipeline
+(`PMAgent` → `SchedulerAgent`/Prep dispatch over a uniform `Agent` dispatch
+contract) was **removed 2026-06-17** — resolution **keep-the-ideas,
+drop-the-framework**. `DecompositionService` is retained for a future
+direct-service slice (R2); the tool-validation seam hardening is tracked (R3);
+`config/agents.yaml` remains the live allowlist registry (challenger/research)
+behind the tool-lint safety check and admin UI. See `spec_v3.md §7.2` and
+[`2026-06-17-subagent-72-resolution-design.md`](../superpowers/specs/2026-06-17-subagent-72-resolution-design.md).
 
-1. Orchestrator receives task → routes to PM Agent for assessment.
-2. PM Agent evaluates completeness. If missing info → sends **targeted** questions (not open-ended).
-   - Example: "For the Module A refactor, I need: (1) which API endpoints are affected, (2) should backward compatibility be maintained?"
-3. User responds. PM Agent updates task.
-4. **Challenger Agent** evaluates task quality. If the task is vague or missing critical context → opens a Discord thread with 1–3 probing questions about success criteria, dependencies, and scope. If the task is clear → passes through silently.
-5. PM Agent packages task with full context, requirements, acceptance criteria, file references.
-6. PM Agent dispatches to execution agent.
-7. Execution agent works. Progress logged to activity log.
-8. On completion → user receives summary via email + notification. Output available for review.
+1. A tasks-channel message is routed by the **`DiscordIntentDispatcher`** to
+   **`ChallengerAgent.match_and_extract`**, which returns one of
+   {`ready` | `needs_input` | `escalate_to_claude`}.
+   - `needs_input` → Donna prompts the user for the missing detail in a
+     clarification thread.
+   - `escalate_to_claude` → the **`ClaudeNoveltyJudge`** performs intent /
+     schedule / capability matching (deciding whether the task becomes a new
+     capability candidate or is handled ad-hoc).
+2. Time-bound task **placement** is done by the event-driven **`AutoScheduler`**
+   (not an agent) via `Scheduler.find_next_slot` and
+   `Scheduler.negotiate_placement` (the propose-and-confirm negotiation loop,
+   see [scheduling](scheduling.md)).
+3. **Prep** research runs as the **`PrepAgent`** background loop, which picks up
+   tasks carrying `prep_work_flag` once they fall inside the configured
+   lead-time window and attaches the prepared context.
+4. Progress is logged to the activity log; on completion the user receives a
+   summary via the originating channel (typically Discord).
 
 ### Challenger Agent Details
 
-The Challenger Agent runs on the **local LLM** (`challenge_task` task type → `local_parser` alias → Ollama qwen2.5:32b) at zero API cost. It sits in the dispatcher pipeline between PM assessment and execution agent dispatch.
+The Challenger Agent runs on the **local LLM** (`challenge_task` task type → `local_parser` alias → Ollama qwen2.5:32b) at zero API cost. It is the first stop on the live tasks-channel path: the `DiscordIntentDispatcher` calls it to match capabilities, extract intent, and probe task quality.
 
 **Behavior:**
-- Evaluates task description richness, not just field presence (that's the PM Agent's job).
+- Evaluates task description richness, not just field presence.
 - Generates 1–3 focused questions about: what "done" looks like, hidden dependencies, scope boundaries.
 - Returns `status="complete"` (no questions) if the task is well-specified.
 - On LLM failure, silently passes through — never blocks task creation.

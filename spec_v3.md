@@ -1979,62 +1979,34 @@ Claude API fallback.
 
 **7.2 Agent Execution Flow**
 
--   Orchestrator receives task. In v3.1 the first stop is the
-    **Challenger Agent**, which probes for hidden context and returns
-    one of {accept, needs_input, escalate_to_claude}. `needs_input`
-    prompts the user directly; `escalate_to_claude` hands off to the
-    Novelty Judge for capability matching.
+This describes the **live** flow. The v3.1 multi-stop `AgentDispatcher`/PM
+pipeline was **removed 2026-06-17** (resolution: keep-the-ideas, drop-the-
+framework; see
+docs/superpowers/specs/2026-06-17-subagent-72-resolution-design.md).
+`DecompositionService` is retained for a future direct-service slice (R2);
+the tool-validation seam hardening is tracked (R3); `config/agents.yaml`
+remains the live allowlist registry (challenger/research) behind the
+tool-lint safety check and admin UI.
 
--   Accepted tasks flow to the **PM Agent** for completeness
-    assessment. If requirements are missing, it sends targeted
-    questions (not open-ended). Example: "For the Module A
-    refactor, I need to know: (1) which API endpoints are affected,
-    and (2) should backward compatibility be maintained?"
+-   A tasks-channel message is routed by the **`DiscordIntentDispatcher`**
+    to **`ChallengerAgent.match_and_extract`**, which returns one of
+    {ready | needs_input | escalate_to_claude}. `needs_input` prompts the
+    user for the missing detail in a clarification thread;
+    `escalate_to_claude` hands off to the **`ClaudeNoveltyJudge`** for
+    intent / schedule / capability matching (deciding whether the task
+    becomes a new capability candidate or is handled ad-hoc).
 
--   User responds. PM Agent updates the task with new information.
+-   Time-bound task **placement** is done by the event-driven
+    **`AutoScheduler`** (not an agent) via `Scheduler.find_next_slot` and
+    `Scheduler.negotiate_placement` (the propose-and-confirm negotiation
+    loop, §6).
 
--   PM Agent packages the task with full context, requirements,
-    acceptance criteria, and file references.
+-   **Prep** research runs as the **`PrepAgent`** background loop, which
+    picks up tasks carrying `prep_work_flag` once they fall inside the
+    configured lead-time window and attaches the prepared context.
 
--   PM Agent dispatches to the appropriate execution agent. If the
-    task matched a capability (§23.2), execution is handled by the
-    Skills system; otherwise it goes to a sub-agent (Prep, Scheduler)
-    or back to the user for manual action.
-
--   Execution agent works. Progress logged to activity log.
-
--   On completion, user receives summary via the same channel
-    (typically Discord) and output is available for review.
-
-(v3.1 status — IMPORTANT: the multi-stop `AgentDispatcher` pipeline above
-(PM Agent → execution-agent dispatch → Prep/Scheduler sub-agents, plus the
-agent-layer `ToolRegistry`) is **built and unit-tested but NOT wired into
-production** — `AgentDispatcher` is constructed nowhere outside its own
-docstring. The **actually-live** flow is narrower: `DiscordIntentDispatcher`
-routes a message to `ChallengerAgent.match_and_extract` →
-{ready | needs_input | escalate_to_claude}; `escalate_to_claude` goes to the
-`ClaudeNoveltyJudge`; and **time-bound task placement is done by the
-event-driven `AutoScheduler`** (which is not an agent), not the `SchedulerAgent`.
-Two safety seams the future Coding/Communication agents (§7.1.1, G-21/G-22)
-will depend on are **decorative today and must be made load-bearing before
-those agents are wired**: (1) the tool-validation layer — historically the
-allowlist check was skippable by omitting `task_type`; v3.1 makes
-`task_type`+`agent_name` required on `ToolRegistry.execute` so the check is
-always enforced (principle #6); (2) `config/agents.yaml` autonomy/enabled/
-timeout/allowlist values are read by dashboards and a diff-lint but are **not**
-enforced in any dispatch path — making the dispatcher the enforcement point is
-deferred to the §7.2-pipeline wire-or-delete decision. See
-docs/superpowers/specs/2026-06-11-subagent-system-fable-critique-design.md.)
-
-(v3.1 resolution — 2026-06-17: the wire-or-delete decision is **resolved as
-"keep the ideas, drop the framework"**: the dormant dispatch framework
-(`AgentDispatcher`, `PMAgent`, `SchedulerAgent`, the uniform `Agent` dispatch
-contract, `config/agents.yaml`) will be **deleted**; `DecompositionService` is
-**salvaged** as a direct service (principle #4); and the tool-validation seam is
-made **load-bearing** (principle #6) before any future Coding/Communication
-agent. This §7.2 narrative will be rewritten to describe the live flow when the
-deletion slice (R1) lands — until then it is retained for historical context.
-See docs/superpowers/specs/2026-06-17-subagent-72-resolution-design.md.)
+-   Progress is logged to the activity log; on completion the user
+    receives a summary via the originating channel (typically Discord).
 
 **7.3 Agent Safety Constraints**
 

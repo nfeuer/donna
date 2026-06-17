@@ -209,9 +209,12 @@
 - **Gap / plan:** The dormant §7.2 pipeline's wire-or-delete decision is resolved as
   **keep-ideas/drop-framework**. Planned slices: **R1** delete the dispatch framework
   (`AgentDispatcher`, `PMAgent`, `SchedulerAgent`, the uniform `Agent` dispatch
-  contract, `config/agents.yaml`, their tests) + rewrite `spec_v3.md §7.2` and
-  `docs/domain/agents.md` to the live flow (Challenger → NoveltyJudge; AutoScheduler
-  placement; Prep loop); **R2** salvage `DecompositionService` as a direct service
+  contract, the inert `AgentActivityFeed`, their tests) + rewrite `spec_v3.md §7.2`,
+  `docs/domain/agents.md` and `orchestrator.md` to the live flow (Challenger →
+  NoveltyJudge; AutoScheduler placement; Prep loop). **R1 keeps `config/agents.yaml`**
+  — it is the *live* allowlist registry (challenger/research) behind the tool-lint +
+  admin UI, not dead config; its dead `pm`/`scheduler` entries are reshaped in R3, not
+  deleted in R1. **R2** salvage `DecompositionService` as a direct service
   (principle #4) behind a trigger (`/breakdown` command and/or auto-threshold);
   **R3** make the tool-validation seam load-bearing (principle #6) — required caller
   identity, per-tool param JSON-schemas, `db` stripped from `AgentContext` — the real
@@ -272,10 +275,12 @@ Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
   config grant, fail-closed) — trigger: first write-capable tool registers
   (`task_db_write`/`calendar_write`, §23.3 Stage 3); config-side `tools:`
   declarations completable now at zero risk.
-  **#8 — DONE.** `orchestrator/dispatcher.py` `_try_skill_shadow` now gates execution
-  on `skill_row.state in ("shadow_primary", "trusted")` (mirrors the automations
-  dispatcher's `_decide_path`), so a future wiring of `skill_executor` cannot run a
-  DRAFT/sandbox skill with real tools.
+  **#8 — DONE.** The `orchestrator/dispatcher.py` `_try_skill_shadow` trust-gate
+  was **removed with the §7.2 dispatch framework in R1** (SA-72): the
+  `AgentDispatcher` never ran in production, so the gate was dead defense-in-depth.
+  The *live* skill-shadow gating remains in the automations dispatcher's
+  `_decide_path` (`skill_row.state in ("shadow_primary", "trusted")`), so a
+  DRAFT/sandbox skill still cannot run with real tools on the live path.
   **#9 — DONE.** The three evolution gates (`targeted`, `fixture_regression`,
   `recent_success`) no longer pass *silently* on an empty evidence set — the
   condition is tagged `no_evidence` and logged `fallback_activated`. Config

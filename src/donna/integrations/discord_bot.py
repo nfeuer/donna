@@ -19,7 +19,7 @@ import re
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import discord
 import structlog
@@ -30,9 +30,6 @@ from donna.orchestrator.input_parser import InputParser
 from donna.tasks.database import Database, TaskRow
 from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain
 from donna.tasks.dedup import DuplicateDetectedError
-
-if TYPE_CHECKING:
-    from donna.orchestrator.dispatcher import AgentDispatcher
 
 logger = structlog.get_logger()
 
@@ -65,7 +62,6 @@ class DonnaBot(discord.Client):
         agents_channel_id: int | None = None,
         guild_id: int | None = None,
         overdue_reply_handler: Callable[[str, str], Awaitable[Any]] | None = None,
-        dispatcher: AgentDispatcher | None = None,
         chat_channel_id: int | None = None,
         chat_engine: Any | None = None,
         intent_dispatcher: Any | None = None,
@@ -85,7 +81,6 @@ class DonnaBot(discord.Client):
         self._agents_channel_id = agents_channel_id
         self._guild_id = guild_id
         self._overdue_reply_handler = overdue_reply_handler
-        self._dispatcher = dispatcher
         self._chat_channel_id = chat_channel_id
         self._chat_engine = chat_engine
         # Wave 3: DiscordIntentDispatcher-driven routing.
@@ -567,10 +562,6 @@ class DonnaBot(discord.Client):
                 confirmation_msg,
                 view=TaskConfirmationView(task_id=task.id, db=self._database),
             )
-
-            # Run challenger agent to probe task quality (if dispatcher is wired).
-            if self._dispatcher is not None:
-                await self._run_challenger(message, task, user_id, log)
 
         except DuplicateDetectedError as dup:
             # Dedup triggered: store pending context and prompt user.
@@ -1101,40 +1092,6 @@ class DonnaBot(discord.Client):
     # ------------------------------------------------------------------
     # Challenger agent integration
     # ------------------------------------------------------------------
-
-    async def _run_challenger(
-        self,
-        message: discord.Message,
-        task: TaskRow,
-        user_id: str,
-        log: Any,
-    ) -> None:
-        """Dispatch task through the challenger agent; open a thread if questions arise."""
-        if self._dispatcher is None:
-            return
-
-        try:
-            result = await self._dispatcher.dispatch(task, user_id=user_id)
-        except Exception:
-            log.exception("challenger_dispatch_failed", task_id=task.id)
-            return
-
-        if result.status == "needs_input" and result.questions:
-            try:
-                thread = await message.create_thread(
-                    name=f"Details: {task.title[:80]}",
-                )
-                self._challenger_threads[thread.id] = task.id
-                for q in result.questions:
-                    await thread.send(q)
-                log.info(
-                    "challenger_thread_created",
-                    task_id=task.id,
-                    thread_id=thread.id,
-                    question_count=len(result.questions),
-                )
-            except Exception:
-                log.exception("challenger_thread_create_failed", task_id=task.id)
 
     async def _handle_challenger_reply(
         self,

@@ -8,9 +8,11 @@ The orchestrator is the central routing layer that receives all inbound user mes
 
 The orchestrator (`src/donna/orchestrator/`) sits between the user-facing channels (Discord, dashboard, SMS) and the agent/skill execution layer. The **live** entry point is `DiscordIntentDispatcher`, which routes free-text messages and determines whether a user message is a task, an automation request, a chat interaction, or something novel that requires Claude escalation.
 
-> **Dormancy note (v3.1):** `AgentDispatcher` — the task-level dispatcher through the PM Agent hierarchy — is **built and unit-tested but not constructed in production** (it appears nowhere outside its own docstring). The live task path is: `DiscordIntentDispatcher` → `ChallengerAgent` → (on escalation) `ClaudeNoveltyJudge`, with time-bound placement handled by the event-driven `AutoScheduler` (a notification-subsystem component, not an agent). The PM/Prep/Scheduler agent pipeline and the agent-layer `ToolRegistry` are dormant; treat the rows below describing them as design targets, not live behavior. See `spec_v3.md §7.2` (v3.1 status note) and the Sub-Agent System critique design doc.
+> **History (2026-06-17):** the v3.1 task-level `AgentDispatcher` — which routed tasks through a `PMAgent` → `SchedulerAgent`/Prep hierarchy over a uniform `Agent` dispatch contract — was **removed** (resolution: keep-the-ideas, drop-the-framework). It was built and unit-tested but never constructed in production. `DecompositionService` is retained for a future direct-service slice (R2); the tool-validation seam hardening is tracked (R3); `config/agents.yaml` remains the live allowlist registry (challenger/research) behind the tool-lint safety check and admin UI. See `spec_v3.md §7.2` and [`2026-06-17-subagent-72-resolution-design.md`](../superpowers/specs/2026-06-17-subagent-72-resolution-design.md).
 
-The orchestrator enforces a strict principle from the spec: models propose, the orchestrator validates and executes. No agent or skill calls tools directly — and as of v3.1 the agent-layer `ToolRegistry.execute` requires `task_type`+`agent_name` so the allowlist check can no longer be bypassed by omitting them (principle #6). For Discord messages, it first runs the Challenger Agent for capability matching, then the Claude Novelty Judge for unmatched patterns, and builds automation drafts with cadence-policy awareness.
+The live task path is: `DiscordIntentDispatcher` → `ChallengerAgent.match_and_extract` → (on `escalate_to_claude`) `ClaudeNoveltyJudge`; time-bound placement is handled by the event-driven `AutoScheduler` (a scheduling-subsystem component, not an agent); prep research runs as the `PrepAgent` background loop.
+
+The orchestrator enforces a strict principle from the spec: models propose, the orchestrator validates and executes. No agent or skill calls tools directly. For Discord messages, it first runs the Challenger Agent for capability matching, then the Claude Novelty Judge for unmatched patterns, and builds automation drafts with cadence-policy awareness.
 
 The `InputParser` handles the specific case of natural language task capture: rendering the parse template, calling the model, validating the output schema, applying learned preferences, and running deduplication.
 
@@ -18,14 +20,11 @@ The `InputParser` handles the specific case of natural language task capture: re
 
 | Concept | Description |
 |---------|-------------|
-| AgentDispatcher | Routes tasks through PM assessment, then to the recommended execution agent. Manages agent timeouts and the skill shadow path. |
 | DiscordIntentDispatcher | Routes free-text Discord messages to task creation, automation drafting, chat, or Claude escalation based on Challenger Agent matching. |
 | InputParser | Parses natural language into structured `TaskParseResult` via template rendering, model call, schema validation, preference application, and deduplication. |
-| AgentActivityListener | Protocol for receiving agent lifecycle events (start, complete, failure). Used by the notification subsystem to track work in progress. |
 | DispatchResult | Return type from `DiscordIntentDispatcher.dispatch()`: indicates the routing outcome (`task_created`, `automation_confirmation_needed`, `clarification_posted`, `chat`, `no_action`). |
 | DraftAutomation | Proposed automation built from the Challenger's extraction, before user confirmation. Carries schedule, alert conditions, cadence policy adjustments. |
 | PendingDraft | Multi-turn conversation state for messages that need clarification. Stored in a `PendingDraftRegistry` keyed by thread/DM. |
-| Skill Shadow | Phase 1 skill system integration. The dispatcher runs the skill path in parallel for logging without affecting the user-facing response. |
 
 ## Architecture
 
@@ -53,37 +52,17 @@ flowchart TD
         NJ -->|chat| CHAT
     end
 
-    subgraph TaskDispatch["Task Dispatch"]
+    subgraph TaskCreation["Task Creation"]
         CT --> IP[InputParser.parse]
-        IP --> AGD[AgentDispatcher.dispatch]
-        AGD --> PM[PM Agent Assessment]
-        PM -->|needs_input| WI[Task → waiting_input]
-        PM -->|complete| EX{Recommended Agent}
-        EX --> SCHED[Scheduler Agent]
-        EX --> PREP[Prep Agent]
-        EX --> OTHER[Other Agent]
-    end
-
-    subgraph Shadow["Skill Shadow (Phase 1)"]
-        AGD -.->|Background| SS[ChallengerAgent.match_and_extract]
-        SS -.-> SE[SkillExecutor.execute]
-        SE -.-> LOG[Log result only]
+        IP --> PERSIST[Persist Task row]
+        PERSIST --> SCHED[AutoScheduler placement]
+        PERSIST --> PREP[PrepAgent loop if prep-flagged]
     end
 ```
 
-### AgentDispatcher Flow
+### Task Placement & Prep
 
-1. **Build context.** Creates an `AgentContext` with the model router, database, user ID, project root, and tool registry.
-
-2. **Skill shadow (background).** If `skill_routing_enabled` is true, the dispatcher runs the Challenger Agent against the task title. On a match, it looks up the corresponding skill and version from the `SkillDatabase`, executes via `SkillExecutor`, and logs the result. This path never affects the user-facing response -- it produces observability data for evaluating skill readiness.
-
-3. **PM assessment.** The PM Agent evaluates task completeness. If the task needs more information, it returns `needs_input` with questions. If assessment fails, the error propagates.
-
-4. **Challenger assessment.** If a Challenger Agent is registered, it runs after PM to evaluate the task against the capability registry.
-
-5. **Execution dispatch.** The PM's recommended agent (typically `scheduler`) is resolved from the agents dict. If unavailable, the dispatcher falls back to the scheduler. The chosen agent executes with a configured timeout via `asyncio.wait_for`.
-
-6. **Activity notification.** On completion or failure, the `AgentActivityListener` is notified so downstream systems (notifications, dashboard) can update.
+Once a task is created, time-bound **placement** is handled by the event-driven `AutoScheduler` (not an agent) via `Scheduler.find_next_slot` / `Scheduler.negotiate_placement` (the propose-and-confirm negotiation loop). **Prep** research runs as the `PrepAgent` background loop, which picks up tasks carrying `prep_work_flag` once they fall inside the configured lead-time window. Neither path runs through a task-level dispatcher.
 
 ### DiscordIntentDispatcher Flow
 
@@ -125,8 +104,6 @@ The orchestrator itself has minimal config -- it relies on the configurations of
 
 | Class / Function | Module | Description |
 |-----------------|--------|-------------|
-| `AgentDispatcher` | `dispatcher.py` | `dispatch(task, user_id)` -- PM assessment + execution agent routing. Constructor takes `skill_executor`, `skill_database`, `skill_routing_enabled` for Phase 1 shadow. |
-| `AgentActivityListener` | `dispatcher.py` | Protocol: `on_agent_start()`, `on_agent_complete()`, `on_agent_failure()`. |
 | `DiscordIntentDispatcher` | `discord_intent_dispatcher.py` | `dispatch(msg)` -- returns `DispatchResult`. Constructor takes `ChallengerAgent`, `ClaudeNoveltyJudge`, `PendingDraftRegistry`, `CadencePolicy`. |
 | `DispatchResult` | `discord_intent_dispatcher.py` | Dataclass: `kind`, `task_id`, `draft_automation`, `clarifying_question`. |
 | `DraftAutomation` | `discord_intent_dispatcher.py` | Dataclass: `capability_name`, `inputs`, `schedule_cron`, `alert_conditions`, `target_cadence_cron`, `active_cadence_cron`, `skill_candidate`, `notification_channels`. |
@@ -135,7 +112,7 @@ The orchestrator itself has minimal config -- it relies on the configurations of
 
 ## See Also
 
-- [Domain: Agents](agents.md) -- PM Agent, Challenger Agent, execution agents
+- [Domain: Agents](agents.md) -- Challenger Agent, Novelty Judge, Prep Agent
 - [Domain: Skill System](skill-system/index.md) -- skill executor, capability matching, shadow evaluation
 - [Domain: Task Management](task-system.md) -- task schema, state machine, deduplication
 - [Domain: Cost & Escalation](cost.md) -- budget enforcement that intersects with dispatch

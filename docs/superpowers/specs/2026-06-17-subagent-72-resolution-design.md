@@ -24,8 +24,19 @@ The §7.2 multi-agent pipeline (`AgentDispatcher` + a uniform `Agent` protocol o
 | `SchedulerAgent` | Fully superseded by the event-driven `AutoScheduler` + negotiation loop | **Delete** |
 | `DecompositionService` | Clean, unique capability; already a direct service (principle-#4 shaped) | **Salvage** — re-home + wire to a trigger |
 | Tool-validation seam (`ToolRegistry`, required caller identity, param schemas, no raw `db`) | The one idea worth more than the framework; principle #6 made real | **Make real on the live path** (own slice) |
-| `config/agents.yaml` | Decorative — enforced nowhere in dispatch | **Delete** with the dispatcher (resurrect only if a real dispatcher returns) |
+| `config/agents.yaml` | **Live allowlist registry** (see correction below) — describes the live `challenger`/`research` agents and is consumed by the tool-lint + admin UI | **Keep**; reshape deferred to R3 |
 | DB columns `agent_eligible` / `assigned_agent` / `agent_status` | `assigned_agent` never written; others minimally used by Prep | Keep `agent_eligible`/`agent_status` (Prep uses them); **drop `assigned_agent`** in a later cleanup migration |
+
+> **Correction (2026-06-17, found during R1 recon).** The initial draft listed
+> `config/agents.yaml` for deletion. That is **wrong** and is superseded: `agents.yaml`
+> is not dead dispatcher config — it is the canonical per-agent **allowlist registry**
+> that describes the *live* `challenger` and `research` agents and is consumed by the
+> tool-lint safety check (`cost/tool_lint/allowlist.py`), the admin dashboards
+> (`api/routes/admin_agents.py`, `admin_config.py`), and the `donna-ui` Agents page.
+> Deleting it would break live machinery and remove the very allowlist source R3 wants
+> to make *load-bearing*. **R1 keeps `agents.yaml` and all its consumers untouched;** any
+> trimming of its now-dead `pm`/`scheduler` entries is folded into R3's registry reshape,
+> not R1.
 
 ---
 
@@ -63,7 +74,7 @@ Verdict: the *degree of separation* is not good. Premature generalization with a
 
 ## 4. Resolution plan
 
-1. **Delete the framework.** Remove `orchestrator/dispatcher.py` (`AgentDispatcher`), `agents/pm_agent.py`, `agents/scheduler_agent.py`, their tests, and `config/agents.yaml`. Trim `agents/base.py` to only what a salvaged service still imports (keep the live agents — Challenger, NoveltyJudge, Prep — and shared infra `ToolRegistry` / `AgentContext` as needed). Remove the unused `dispatcher` param from `discord_bot.py`. Rewrite `spec_v3.md §7.2` and `docs/domain/agents.md` to describe the real flow.
+1. **Delete the framework.** Remove `orchestrator/dispatcher.py` (`AgentDispatcher` + the `AgentActivityListener` protocol), `agents/pm_agent.py`, `agents/scheduler_agent.py`, `integrations/discord_agent_feed.py` (the inert `AgentActivityFeed` that only fed the dispatcher), and their tests. Trim `agents/base.py` to only what live consumers still import (keep the live agents — Challenger, NoveltyJudge, Prep — and shared infra `ToolRegistry` / `AgentContext` as needed). Surgically remove the dormant `_dispatcher`/`AgentDispatcher` references from `discord_bot.py` (lines 35/68/88/571-572/1113-1117) **without touching the live `_intent_dispatcher`**, and the inert `AgentActivityFeed` construction from `cli_wiring.py`. **Keep `config/agents.yaml` and its consumers** (see correction above). Rewrite `spec_v3.md §7.2`, `docs/domain/agents.md`, and `docs/domain/orchestrator.md` to describe the real flow.
 2. **Salvage decomposition.** Re-home `DecompositionService` as a first-class direct service and give it a trigger — a Discord `/breakdown <task>` command and/or an auto-trigger when a task's `estimated_duration` exceeds a configurable threshold. Keep it principle-#4 shaped (orchestrator calls it directly; no dispatcher).
 3. **Make the validation seam real.** Separate slice: one `ToolRegistry` (keep the live skills one), caller identity (`agent_name` + `task_type`) **required** with no default-skip, per-tool param JSON-schemas validated pre-handler, and `db` stripped from `AgentContext` so agents act only through the registry. This converts critique findings #2/#3/#9 from decorative to code-enforced and is the real prerequisite for G-21/G-22.
 4. **Fold (deferred).** If/when we want richer intake, add acceptance-criteria packaging to the live Challenger/NoveltyJudge path. Not in scope now.
@@ -80,7 +91,7 @@ Verdict: the *degree of separation* is not good. Premature generalization with a
 
 - `spec_v3.md §7.2` — rewrite to describe the live flow (Challenger → NoveltyJudge; AutoScheduler placement; Prep loop); drop the PM/Dispatcher/SchedulerAgent narrative. **Lands with R1.** Until then, §7.2 carries a forward-pointer to this doc (added now).
 - `docs/domain/agents.md` — same reconciliation (Agent Execution Flow section). **R1.**
-- `config/agents.yaml` removal — note in R3 whether a real dispatcher ever resurrects a slimmer version.
+- `config/agents.yaml` — **retained** (live allowlist registry). Any trim of its dead `pm`/`scheduler` entries is folded into R3's registry reshape, not R1.
 - `docs/superpowers/specs/followups.md` — entry **SA-72** added now; closed per-slice.
 
 ## 7. Principle alignment
