@@ -8,7 +8,7 @@ Built solo over 10 weeks (1,000+ commits). The system runs 10 Docker containers 
 
 ## Why This Exists
 
-I forget to capture tasks, rarely check task lists, and don't schedule time to do work. Most productivity tools are passive — they wait for you to open them. Donna is the opposite: she escalates through Discord, SMS, and phone calls until you respond. She reschedules when you miss deadlines, prepares research before meetings, and learns your preferences from corrections over time.
+Staying on top of writing, scheduling, and keeping track of tasks can be hard. Most productivity tools are passive — they wait for you to open them. Donna is the opposite: she escalates through Discord, SMS, and phone calls until you respond. She reschedules when you miss deadlines, prepares research before meetings, and learns your preferences from corrections over time.
 
 ## What's Running
 
