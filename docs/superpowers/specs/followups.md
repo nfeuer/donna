@@ -200,6 +200,26 @@
   behavior unchanged. Open owner decisions OD-1..OD-6 (design §8) were taken at the
   conservative defaults; revisit if accept-rate data warrants.
 
+## SA-72 — Sub-Agent §7.2 resolution: keep the ideas, drop the framework
+
+- **Spec:** `spec_v3.md §7.2`; design
+  `docs/superpowers/specs/2026-06-17-subagent-72-resolution-design.md`; prior critique
+  `2026-06-11-subagent-system-fable-critique-design.md` (decision #1, escalated)
+- **Status:** spec-update-pending (decision made; implementation sliced, not yet built)
+- **Gap / plan:** The dormant §7.2 pipeline's wire-or-delete decision is resolved as
+  **keep-ideas/drop-framework**. Planned slices: **R1** delete the dispatch framework
+  (`AgentDispatcher`, `PMAgent`, `SchedulerAgent`, the uniform `Agent` dispatch
+  contract, `config/agents.yaml`, their tests) + rewrite `spec_v3.md §7.2` and
+  `docs/domain/agents.md` to the live flow (Challenger → NoveltyJudge; AutoScheduler
+  placement; Prep loop); **R2** salvage `DecompositionService` as a direct service
+  (principle #4) behind a trigger (`/breakdown` command and/or auto-threshold);
+  **R3** make the tool-validation seam load-bearing (principle #6) — required caller
+  identity, per-tool param JSON-schemas, `db` stripped from `AgentContext` — the real
+  precondition for G-21/G-22. **Deferred:** acceptance-criteria packaging (PMAgent's
+  only unique increment) folded into the live Challenger path; dropping the never-written
+  `assigned_agent` column in a later cleanup migration (`agent_eligible`/`agent_status`
+  stay — Prep uses them). `§7.2` carries a forward-pointer to the design doc until R1.
+
 ## ML-FABLE-P2 — Shadow stable-state auto-disable job (design B)
 
 - **Spec:** `spec_v3.md §4.4`; design

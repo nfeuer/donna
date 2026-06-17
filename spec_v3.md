@@ -2026,6 +2026,16 @@ enforced in any dispatch path — making the dispatcher the enforcement point is
 deferred to the §7.2-pipeline wire-or-delete decision. See
 docs/superpowers/specs/2026-06-11-subagent-system-fable-critique-design.md.)
 
+(v3.1 resolution — 2026-06-17: the wire-or-delete decision is **resolved as
+"keep the ideas, drop the framework"**: the dormant dispatch framework
+(`AgentDispatcher`, `PMAgent`, `SchedulerAgent`, the uniform `Agent` dispatch
+contract, `config/agents.yaml`) will be **deleted**; `DecompositionService` is
+**salvaged** as a direct service (principle #4); and the tool-validation seam is
+made **load-bearing** (principle #6) before any future Coding/Communication
+agent. This §7.2 narrative will be rewritten to describe the live flow when the
+deletion slice (R1) lands — until then it is retained for historical context.
+See docs/superpowers/specs/2026-06-17-subagent-72-resolution-design.md.)
+
 **7.3 Agent Safety Constraints**
 
 These constraints are non-negotiable and enforced at the system level,
