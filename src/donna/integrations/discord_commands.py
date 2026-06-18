@@ -9,6 +9,7 @@ See the discord interaction expansion plan.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -24,7 +25,9 @@ from donna.tasks.database import Database
 from donna.tasks.db_models import TaskDomain, TaskStatus
 
 if TYPE_CHECKING:
+    from donna.agents.decomposition import DecomposeResult, DecompositionService
     from donna.integrations.discord_bot import DonnaBot
+    from donna.tasks.database import TaskRow
 
 logger = structlog.get_logger()
 
@@ -64,8 +67,22 @@ def register_commands(
     user_id: str,
     calendar_client: Any | None = None,
     calendar_id: str = "primary",
+    decomposition_service: DecompositionService | None = None,
 ) -> None:
-    """Register all slash commands on the bot's command tree."""
+    """Register all slash commands on the bot's command tree.
+
+    Args:
+        bot: The Donna Discord client whose command tree receives the commands.
+        db: Task database for reads/writes.
+        user_id: The owning user the commands operate on behalf of.
+        calendar_client: Optional calendar client (enables event deletion on
+            cancel). ``None`` disables calendar side effects.
+        calendar_id: Calendar id used for those side effects.
+        decomposition_service: Optional direct task-decomposition service
+            (§7.2 resolution R2). When provided, the ``/breakdown`` command is
+            registered; when ``None`` it is silently omitted, so boots without a
+            router-backed service simply don't expose it.
+    """
 
     guild = discord.Object(id=bot._guild_id) if bot._guild_id else None
 
@@ -298,8 +315,6 @@ def register_commands(
             await interaction.response.send_message("Task not found.", ephemeral=True)
             return
 
-        import json
-
         notes_str = ""
         if task.notes:
             try:
@@ -356,10 +371,165 @@ def register_commands(
         await interaction.response.send_message(embed=embed, ephemeral=True)
         logger.info("slash_status", total=total, active=active)
 
+    # ------------------------------------------------------------------
+    # /breakdown  (§7.2 resolution R2 — decomposition as a direct service)
+    # ------------------------------------------------------------------
+    if decomposition_service is not None:
+
+        @bot.tree.command(
+            name="breakdown",
+            description="Break a complex task into sequenced subtasks",
+            guild=guild,
+        )
+        @app_commands.describe(task_id="The task to break down")
+        async def breakdown_cmd(interaction: Interaction, task_id: str) -> None:
+            await _handle_breakdown(
+                interaction=interaction,
+                task_id=task_id,
+                db=db,
+                service=decomposition_service,
+            )
+
+        @breakdown_cmd.autocomplete("task_id")
+        async def breakdown_autocomplete(
+            interaction: Interaction, current: str
+        ) -> list[app_commands.Choice[str]]:
+            return await _task_autocomplete(interaction, current, db)
+
 
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+
+async def _handle_breakdown(
+    *,
+    interaction: Interaction,
+    task_id: str,
+    db: Database,
+    service: DecompositionService,
+) -> None:
+    """Run task decomposition for ``/breakdown`` and report the plan.
+
+    Extracted from the registration closure so unit tests can drive it
+    without a live Discord client. ``DecompositionService.decompose`` makes
+    an LLM request — well over Discord's 3-second ack window — so the
+    interaction is *deferred* first and the result delivered as a followup.
+
+    The decompose call persists each subtask as a real Task row (parent_task
+    set, dependency indices resolved to UUIDs); this handler only triggers it
+    and renders what was created. It calls the service directly rather than
+    through any dispatcher (design §7.2 resolution; CLAUDE.md principle #4).
+
+    Args:
+        interaction: The Discord interaction to acknowledge and reply to.
+        task_id: Id of the parent task to break down.
+        db: Task database (used to re-read the created subtasks for display).
+        service: The direct decomposition service.
+
+    Returns:
+        None. Replies are sent on the interaction.
+    """
+    task = await db.get_task(task_id)
+    if task is None:
+        await interaction.response.send_message("Task not found.", ephemeral=True)
+        return
+
+    # An LLM call is ahead — acknowledge now, answer in a followup.
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        result = await service.decompose(task_id)
+    except Exception:
+        logger.exception("slash_breakdown_failed", task_id=task_id)
+        await interaction.followup.send(
+            "Couldn't break that task down — try again shortly.",
+            ephemeral=True,
+        )
+        return
+
+    if not result.subtask_ids:
+        await interaction.followup.send(
+            f"'{task.title}' looks atomic — nothing to break down.",
+            ephemeral=True,
+        )
+        logger.info("slash_breakdown_empty", task_id=task_id)
+        return
+
+    subtasks = [await db.get_task(sid) for sid in result.subtask_ids]
+    embed = _build_breakdown_embed(parent=task, subtasks=subtasks, result=result)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+    logger.info(
+        "slash_breakdown",
+        task_id=task_id,
+        subtask_count=len(result.subtask_ids),
+        total_hours=result.total_estimated_hours,
+    )
+
+
+def _dependency_positions(
+    subtask: TaskRow, pos_by_id: dict[str, int]
+) -> list[int]:
+    """Resolve a subtask's dependency UUIDs to 1-based plan positions."""
+    if not subtask.dependencies:
+        return []
+    try:
+        dep_ids = json.loads(subtask.dependencies)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(dep_ids, list):
+        return []
+    return sorted(pos_by_id[d] for d in dep_ids if d in pos_by_id)
+
+
+def _build_breakdown_embed(
+    *,
+    parent: TaskRow,
+    subtasks: list[TaskRow | None],
+    result: DecomposeResult,
+) -> discord.Embed:
+    """Render the created subtask plan as a Discord embed."""
+    pos_by_id = {st.id: i + 1 for i, st in enumerate(subtasks) if st is not None}
+
+    lines: list[str] = []
+    for i, st in enumerate(subtasks, start=1):
+        if st is None:
+            continue
+        dur = f" · {st.estimated_duration}min" if st.estimated_duration else ""
+        deps = _dependency_positions(st, pos_by_id)
+        after = (
+            f"  ⟵ after {', '.join(f'#{d}' for d in deps)}" if deps else ""
+        )
+        lines.append(f"**{i}.** {st.title}{dur}{after}")
+
+    embed = discord.Embed(
+        title=f"Broke down: {parent.title[:200]}",
+        description="\n".join(lines),
+        colour=EMBED_COLOUR,
+    )
+    embed.set_footer(
+        text=(
+            f"{len(pos_by_id)} subtask(s) created · "
+            f"~{result.total_estimated_hours:g}h total"
+        )
+    )
+    if result.deadline_feasible is False:
+        embed.add_field(
+            name="⏰ Deadline concern",
+            value="The estimated work may not fit before the deadline.",
+            inline=False,
+        )
+    if result.missing_information:
+        questions = "\n".join(
+            f"• {item.get('question', '')}"
+            for item in result.missing_information[:5]
+            if item.get("question")
+        )
+        if questions:
+            embed.add_field(
+                name="⚠️ Open questions", value=questions[:1024], inline=False
+            )
+    return embed
 
 
 async def _schedule_for_date(

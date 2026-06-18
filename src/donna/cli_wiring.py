@@ -2739,10 +2739,19 @@ async def wire_discord(
 
         discord_config = load_discord_config(ctx.config_dir)
         if discord_config.commands.enabled:
+            # §7.2 resolution R2 — decomposition as a direct service (no
+            # dispatcher). Construct it here where router/project_root are in
+            # scope and inject it so `/breakdown` is registered.
+            from donna.agents.decomposition import DecompositionService
+
+            decomposition_service = DecompositionService(
+                ctx.db, ctx.router, ctx.user_id, ctx.project_root,
+            )
             register_commands(
                 bot, ctx.db, ctx.user_id,
                 calendar_client=ctx.calendar_client,
                 calendar_id=ctx.calendar_id,
+                decomposition_service=decomposition_service,
             )
             # Slice 20 — register `/donna_submit` for the chat-mode
             # fallback path. Skipped silently when the bot is unavailable

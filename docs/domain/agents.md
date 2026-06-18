@@ -11,7 +11,7 @@ The Orchestrator (core process, not a sub-agent) receives all tasks and determin
 | **Research / Prep** | `prep_agent.py` | Web research, info compilation, resource gathering before flagged tasks | Web search (MCP), Gmail (read-only), Filesystem (MCP read), GitHub (MCP read) | High — runs autonomously when prep flagged |
 | **Challenger** | `challenger_agent.py` | Capability matching, intent extraction, task quality evaluation, follow-up questions | Task DB (read-only), `CapabilityMatcher` | Medium — probes task quality, returns questions to user via Discord thread |
 | **ClaudeNoveltyJudge** | `claude_novelty_judge.py` | Evaluates no-capability-match messages via Claude. Returns structured `NoveltyVerdict` with intent, schedule, skill candidate assessment | Model router (Claude API) | Medium — called by DiscordIntentDispatcher on `escalate_to_claude` status |
-| **DecompositionService** | `decomposition.py` | Breaks complex tasks into subtasks via LLM. Two-pass insert resolves dependency indices to UUIDs. Persists subtasks as real Task rows | Model router, Task DB (read-write) | Medium — decomposes autonomously, surfaces `missing_information` and `deadline_feasible` assessment |
+| **DecompositionService** | `decomposition.py` | Breaks complex tasks into subtasks via LLM. Two-pass insert resolves dependency indices to UUIDs. Persists subtasks as real Task rows | Model router, Task DB (read-write) | On demand — triggered by the `/breakdown` command (R2); surfaces `missing_information` and `deadline_feasible` assessment |
 | **ToolRegistry** | `tool_registry.py` | Validates and executes tool calls proposed by LLM agents. Enforces per-task-type tool allowlists from `task_types.yaml` | All registered tool handlers | N/A — infrastructure component, not an autonomous agent |
 | **Coding** | _No source file_ | Code generation, file editing, project scaffolding | Filesystem (MCP sandboxed read-write), GitHub (MCP read-write), Claude Code CLI | Low — output for review only. Never pushes to main. Never deletes. *Phase 6 — [G-21](../superpowers/followups/open-backlog.md)* |
 | **Communication / Drafting** | _No source file_ | Email drafts, message drafts, document creation | Gmail (draft only; send behind feature flag), Docs/markdown (write), Discord/Slack (specific channels only) | Low — always drafts. Never sends without explicit approval. *Phase 6 — [G-22](../superpowers/followups/open-backlog.md)* |
@@ -69,10 +69,11 @@ Infrastructure component (not an autonomous agent). Validates and executes tool 
 This is the **live** flow. The v3.1 multi-stop `AgentDispatcher`/PM pipeline
 (`PMAgent` → `SchedulerAgent`/Prep dispatch over a uniform `Agent` dispatch
 contract) was **removed 2026-06-17** — resolution **keep-the-ideas,
-drop-the-framework**. `DecompositionService` is retained for a future
-direct-service slice (R2); the tool-validation seam hardening is tracked (R3);
-`config/agents.yaml` remains the live allowlist registry (challenger/research)
-behind the tool-lint safety check and admin UI. See `spec_v3.md §7.2` and
+drop-the-framework**. `DecompositionService` is now wired as a direct service
+(R2, shipped 2026-06-17) behind the `/breakdown` command; the tool-validation
+seam hardening is tracked (R3); `config/agents.yaml` remains the live allowlist
+registry (challenger/research) behind the tool-lint safety check and admin UI.
+See `spec_v3.md §7.2` and
 [`2026-06-17-subagent-72-resolution-design.md`](../superpowers/specs/2026-06-17-subagent-72-resolution-design.md).
 
 1. A tasks-channel message is routed by the **`DiscordIntentDispatcher`** to
@@ -90,7 +91,12 @@ behind the tool-lint safety check and admin UI. See `spec_v3.md §7.2` and
 3. **Prep** research runs as the **`PrepAgent`** background loop, which picks up
    tasks carrying `prep_work_flag` once they fall inside the configured
    lead-time window and attaches the prepared context.
-4. Progress is logged to the activity log; on completion the user receives a
+4. **Decomposition** of a complex task into a sequenced subtask graph is
+   triggered on demand by the **`/breakdown <task>`** Discord command, which
+   calls **`DecompositionService`** directly (no dispatcher; principle #4),
+   persists each subtask as a real Task row (`parent_task` set, dependency
+   indices resolved to UUIDs), and renders the plan back to the user.
+5. Progress is logged to the activity log; on completion the user receives a
    summary via the originating channel (typically Discord).
 
 ### Challenger Agent Details

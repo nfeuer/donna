@@ -205,18 +205,19 @@
 - **Spec:** `spec_v3.md §7.2`; design
   `docs/superpowers/specs/2026-06-17-subagent-72-resolution-design.md`; prior critique
   `2026-06-11-subagent-system-fable-critique-design.md` (decision #1, escalated)
-- **Status:** spec-update-pending (decision made; implementation sliced, not yet built)
+- **Status:** R1 + R2 shipped (2026-06-17); **R3 remaining**
 - **Gap / plan:** The dormant §7.2 pipeline's wire-or-delete decision is resolved as
-  **keep-ideas/drop-framework**. Planned slices: **R1** delete the dispatch framework
+  **keep-ideas/drop-framework**. **R1 (done)** delete the dispatch framework
   (`AgentDispatcher`, `PMAgent`, `SchedulerAgent`, the uniform `Agent` dispatch
   contract, the inert `AgentActivityFeed`, their tests) + rewrite `spec_v3.md §7.2`,
   `docs/domain/agents.md` and `orchestrator.md` to the live flow (Challenger →
   NoveltyJudge; AutoScheduler placement; Prep loop). **R1 keeps `config/agents.yaml`**
   — it is the *live* allowlist registry (challenger/research) behind the tool-lint +
   admin UI, not dead config; its dead `pm`/`scheduler` entries are reshaped in R3, not
-  deleted in R1. **R2** salvage `DecompositionService` as a direct service
-  (principle #4) behind a trigger (`/breakdown` command and/or auto-threshold);
-  **R3** make the tool-validation seam load-bearing (principle #6) — required caller
+  deleted in R1. **R2 (done)** salvaged `DecompositionService` as a direct service
+  (principle #4) behind the `/breakdown` Discord command (`discord_commands.py`,
+  injected from `cli_wiring`); the auto-threshold trigger is deferred (config-gated,
+  future). **R3 (remaining)** make the tool-validation seam load-bearing (principle #6) — required caller
   identity, per-tool param JSON-schemas, `db` stripped from `AgentContext` — the real
   precondition for G-21/G-22. **Deferred:** acceptance-criteria packaging (PMAgent's
   only unique increment) folded into the live Challenger path; dropping the never-written

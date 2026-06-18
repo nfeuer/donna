@@ -1,7 +1,7 @@
 # §7.2 Sub-Agent System — Resolution Design ("keep the ideas, drop the framework")
 
 **Date:** 2026-06-17
-**Status:** Decided (owner) — implementation sliced below, not yet built
+**Status:** Decided (owner) — **R1 + R2 shipped (2026-06-17)**; R3 remaining
 **Decision owner:** Nick
 **Related:** `spec_v3.md §7` (Sub-Agent System), §7.2 (Agent Execution Flow), §3.7 (concurrency); `CLAUDE.md` principles #2 (safety-first), #4 (internal API over MCP / direct module calls), #6 (tool-validation layer); prior critique `docs/superpowers/specs/2026-06-11-subagent-system-fable-critique-design.md`; feature gaps G-21 (Coding agent) / G-22 (Communication agent).
 
@@ -82,7 +82,7 @@ Verdict: the *degree of separation* is not good. Premature generalization with a
 ## 5. Sequenced slices
 
 - **R1 — Framework deletion + spec/doc reconciliation.** Lowest risk, highest clarity. Removes the dormant landmine and makes the spec honest. Verify the live path (Challenger/NoveltyJudge/AutoScheduler/Prep) is untouched; confirm `ToolRegistry`/`AgentContext`/`base.py` keep only their live consumers.
-- **R2 — Decomposition as a direct service.** Re-home `DecompositionService`, add the trigger (command + optional auto-threshold), structured logging, and tests. Ship a usable capability.
+- **R2 — Decomposition as a direct service. ✅ Shipped 2026-06-17.** `DecompositionService` is constructed in `cli_wiring` (where `router`/`project_root` are in scope) and injected into `register_commands`, which exposes the `/breakdown <task>` Discord command — task-id autocomplete, defers for the LLM call, persists the subtask graph, and renders the plan (durations, dependency back-references, open questions, deadline concern). Called directly, no dispatcher. The auto-threshold trigger on `estimated_duration` is deferred (config-gated, future).
 - **R3 — Tool-validation seam (the real boundary).** The principle-#6 hardening. Gated/independent; the actual precondition before any future Coding/Communication agent. Larger and touches the live skills registry, so it lands last and on its own.
 
 (R1 and R3 are independent; R2 depends on nothing. Recommended order R1 → R2 → R3, but R3 can move earlier if a write-capable agent gets prioritized.)

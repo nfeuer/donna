@@ -1983,8 +1983,9 @@ This describes the **live** flow. The v3.1 multi-stop `AgentDispatcher`/PM
 pipeline was **removed 2026-06-17** (resolution: keep-the-ideas, drop-the-
 framework; see
 docs/superpowers/specs/2026-06-17-subagent-72-resolution-design.md).
-`DecompositionService` is retained for a future direct-service slice (R2);
-the tool-validation seam hardening is tracked (R3); `config/agents.yaml`
+`DecompositionService` is now wired as a **direct service** (R2, shipped
+2026-06-17) behind the `/breakdown` command — no dispatcher; the
+tool-validation seam hardening is tracked (R3); `config/agents.yaml`
 remains the live allowlist registry (challenger/research) behind the
 tool-lint safety check and admin UI.
 
@@ -2004,6 +2005,13 @@ tool-lint safety check and admin UI.
 -   **Prep** research runs as the **`PrepAgent`** background loop, which
     picks up tasks carrying `prep_work_flag` once they fall inside the
     configured lead-time window and attaches the prepared context.
+
+-   **Decomposition** of a complex task into a sequenced subtask graph is
+    available on demand via the **`/breakdown`** Discord command, which calls
+    **`DecompositionService`** directly (CLAUDE.md principle #4). It persists
+    each subtask as a real Task row (`parent_task` set, dependency indices
+    resolved to UUIDs) and reports the plan. An auto-trigger on
+    over-threshold `estimated_duration` is deferred (config-gated, future).
 
 -   Progress is logged to the activity log; on completion the user
     receives a summary via the originating channel (typically Discord).
