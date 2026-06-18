@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gmail_search parameters",
+  "description": "Parameter schema for the gmail_search skill tool (donna.skills.tools.gmail_search). Injected deps (bound via partial, not caller-supplied): client.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "query": {"type": "string", "minLength": 1, "description": "Gmail search query."},
+    "max_results": {"type": "integer", "minimum": 1, "description": "Max messages to return (clamped to 100; default 20)."},
+    "page_token": {"type": ["string", "null"], "description": "Pagination token from a prior call."}
+  },
+  "required": ["query"]
+}

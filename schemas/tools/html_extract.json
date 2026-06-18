@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "html_extract parameters",
+  "description": "Parameter schema for the html_extract skill tool (donna.skills.tools.html_extract). Injected deps: none.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "html": {"type": "string", "description": "Raw HTML to extract article text from."},
+    "base_url": {"type": ["string", "null"], "description": "Base URL used to resolve relative links."}
+  },
+  "required": ["html"]
+}

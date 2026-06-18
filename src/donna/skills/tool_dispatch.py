@@ -11,6 +11,7 @@ import structlog
 
 from donna.skills._render import render_value
 from donna.skills.tool_registry import (
+    ParameterValidationError,
     ToolNotAllowedError,
     ToolNotFoundError,
     ToolRegistry,
@@ -64,6 +65,9 @@ class ToolDispatcher:
         state: dict[str, Any],
         inputs: dict[str, Any],
         allowed_tools: list[str],
+        *,
+        task_type: str | None = None,
+        agent_name: str | None = None,
     ) -> dict[str, Any]:
         """Run a single tool invocation; return {store_as_key: tool_result}.
 
@@ -74,11 +78,23 @@ class ToolDispatcher:
         - ``continue``: log and return ``{spec.store_as: {"tool_error": ...}}``.
         - ``fail_step``: raise ``StepFailedError``.
         - ``fail_skill``: raise ``SkillFailedError``.
+
+        Args:
+            spec: The tool invocation to run.
+            state: Skill state dict, used to render Jinja args.
+            inputs: Skill inputs dict, used to render Jinja args.
+            allowed_tools: The per-step allowlist (the access gate).
+            task_type: Caller identity threaded to the registry audit log.
+            agent_name: Caller identity (capability name) for the audit log.
+
+        Returns:
+            ``{spec.store_as: <tool result>}``.
         """
         try:
             return await self._dispatch_with_retry(
                 spec=spec, state=state, inputs=inputs,
                 allowed_tools=allowed_tools,
+                task_type=task_type, agent_name=agent_name,
             )
         except ToolInvocationError as exc:
             return self._apply_on_failure(spec, exc)
@@ -89,6 +105,9 @@ class ToolDispatcher:
         state: dict[str, Any],
         inputs: dict[str, Any],
         allowed_tools: list[str],
+        *,
+        task_type: str | None = None,
+        agent_name: str | None = None,
     ) -> dict[str, Any]:
         try:
             resolved_args = render_value(
@@ -110,12 +129,19 @@ class ToolDispatcher:
                     tool_name=spec.tool,
                     args=resolved_args,
                     allowed_tools=allowed_tools,
+                    task_type=task_type,
+                    agent_name=agent_name,
                 )
                 if attempt > 0:
                     logger.info("tool_retry_succeeded", tool=spec.tool, attempt=attempt + 1)
                 return {spec.store_as: result}
-            except (ToolNotAllowedError, ToolNotFoundError) as exc:
-                # Permission errors don't benefit from retry.
+            except (
+                ToolNotAllowedError, ToolNotFoundError, ParameterValidationError,
+            ) as exc:
+                # Deterministic failures (permission, unknown tool, invalid
+                # args) don't benefit from retry — the same call fails the same
+                # way every time. Fail fast so a bad-arg call isn't replayed
+                # against the handler N times. (R3 — §7.2 resolution.)
                 raise ToolInvocationError(str(exc)) from exc
             except Exception as exc:
                 last_err = exc

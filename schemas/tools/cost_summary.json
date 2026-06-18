@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "cost_summary parameters",
+  "description": "Parameter schema for the cost_summary skill tool (donna.skills.tools.cost_summary). Injected deps (bound via partial): client.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "scope": {"type": "string", "enum": ["daily", "monthly"], "description": "Aggregation scope (default 'daily')."},
+    "for_date": {"type": ["string", "null"], "description": "ISO-8601 date (YYYY-MM-DD) for scope='daily'."},
+    "year": {"type": ["integer", "null"], "description": "Year for scope='monthly'."},
+    "month": {"type": ["integer", "null"], "minimum": 1, "maximum": 12, "description": "Month for scope='monthly'."},
+    "exclude_task_types": {
+      "type": ["array", "null"],
+      "items": {"type": "string"},
+      "description": "Task types to exclude (scope='daily' only)."
+    }
+  },
+  "required": []
+}

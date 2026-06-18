@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "gmail_get_message parameters",
+  "description": "Parameter schema for the gmail_get_message skill tool (donna.skills.tools.gmail_get_message). Injected deps (bound via partial): client.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "message_id": {"type": "string", "minLength": 1, "description": "Gmail message id to fetch."}
+  },
+  "required": ["message_id"]
+}

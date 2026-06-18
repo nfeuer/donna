@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "vault_undo_last parameters",
+  "description": "Parameter schema for the vault_undo_last skill tool (donna.skills.tools.vault_undo_last). Injected deps (bound via partial): client.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "n": {"type": "integer", "minimum": 1, "description": "Number of most-recent commits to revert (default 1)."}
+  },
+  "required": []
+}

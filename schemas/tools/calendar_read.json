@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "calendar_read parameters",
+  "description": "Parameter schema for the calendar_read skill tool (donna.skills.tools.calendar_read). Injected deps (bound via partial): client.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "time_min": {"type": "string", "minLength": 1, "description": "ISO-8601 datetime lower bound (inclusive)."},
+    "time_max": {"type": "string", "minLength": 1, "description": "ISO-8601 datetime upper bound (exclusive)."},
+    "calendar_id": {"type": "string", "minLength": 1, "description": "Calendar id (default 'primary')."}
+  },
+  "required": ["time_min", "time_max"]
+}

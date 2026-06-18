@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "task_db_read parameters",
+  "description": "Parameter schema for the task_db_read skill tool (donna.skills.tools.task_db_read). Injected deps (bound via partial): client. task_id is mutually exclusive with the filters (enforced by the handler).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {"type": ["string", "null"], "description": "Fetch a single task by id."},
+    "user_id": {"type": ["string", "null"], "description": "Filter list by owner."},
+    "status": {"type": ["string", "null"], "description": "Filter list by task status."},
+    "domain": {"type": ["string", "null"], "description": "Filter list by task domain."}
+  },
+  "required": []
+}

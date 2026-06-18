@@ -205,7 +205,7 @@
 - **Spec:** `spec_v3.md §7.2`; design
   `docs/superpowers/specs/2026-06-17-subagent-72-resolution-design.md`; prior critique
   `2026-06-11-subagent-system-fable-critique-design.md` (decision #1, escalated)
-- **Status:** R1 + R2 shipped (2026-06-17); **R3 remaining**
+- **Status:** R1 + R2 + R3 shipped (R3: 2026-06-18); **resolution complete**
 - **Gap / plan:** The dormant §7.2 pipeline's wire-or-delete decision is resolved as
   **keep-ideas/drop-framework**. **R1 (done)** delete the dispatch framework
   (`AgentDispatcher`, `PMAgent`, `SchedulerAgent`, the uniform `Agent` dispatch
@@ -213,16 +213,35 @@
   `docs/domain/agents.md` and `orchestrator.md` to the live flow (Challenger →
   NoveltyJudge; AutoScheduler placement; Prep loop). **R1 keeps `config/agents.yaml`**
   — it is the *live* allowlist registry (challenger/research) behind the tool-lint +
-  admin UI, not dead config; its dead `pm`/`scheduler` entries are reshaped in R3, not
-  deleted in R1. **R2 (done)** salvaged `DecompositionService` as a direct service
-  (principle #4) behind the `/breakdown` Discord command (`discord_commands.py`,
+  admin UI, not dead config. **R2 (done)** salvaged `DecompositionService` as a direct
+  service (principle #4) behind the `/breakdown` Discord command (`discord_commands.py`,
   injected from `cli_wiring`); the auto-threshold trigger is deferred (config-gated,
-  future). **R3 (remaining)** make the tool-validation seam load-bearing (principle #6) — required caller
-  identity, per-tool param JSON-schemas, `db` stripped from `AgentContext` — the real
-  precondition for G-21/G-22. **Deferred:** acceptance-criteria packaging (PMAgent's
-  only unique increment) folded into the live Challenger path; dropping the never-written
-  `assigned_agent` column in a later cleanup migration (`agent_eligible`/`agent_status`
-  stay — Prep uses them). `§7.2` carries a forward-pointer to the design doc until R1.
+  future). **R3 (done — REFRAMED)** made the tool-validation seam load-bearing
+  (principle #6) on the **live skills path**, not the deleted agent dispatcher:
+  per-tool param JSON-schema validation in `donna.skills.tool_registry.ToolRegistry`
+  (schemas under `schemas/tools/*.json` via `tool_param_schemas.py`;
+  `register(..., param_schema=...)`; fail-closed `ParameterValidationError` raised
+  pre-handler; threaded as deterministic/non-retryable through `ToolDispatcher`);
+  caller-identity audit (`task_type` + `agent_name` threaded executor → dispatcher →
+  registry, on the `tool_executed` log); deletion of the dead `agents/tool_registry.py`
+  + test; and removal of the unused `db`/`tool_registry` fields from `AgentContext`.
+  The no-schema branch logs + fires a `fallback_activated` alert (never silent); every
+  production tool is schema'd so it never fires in prod. **Deferred:** acceptance-criteria
+  packaging (PMAgent's only unique increment) folded into the live Challenger path;
+  dropping the never-written `assigned_agent` column in a later cleanup migration
+  (`agent_eligible`/`agent_status` stay — Prep uses them); **`agents.yaml` allowlist
+  enforcement (revisit at G-21/G-22)** — see next item.
+- **Deferred — `agents.yaml ∩ task_types` allowlist enforcement (revisit at G-21/G-22).**
+  R3's original critique plan imagined enforcing each agent's `config/agents.yaml`
+  allowlist as a runtime *ceiling* intersected with `task_types`. That gate belonged to
+  the `AgentDispatcher` deleted in R1 and assumes an *agent-driven* execution model; the
+  live system is *skill-driven* (per-step `tools:` allowlists in skill YAML are the live
+  access gate, enforced by `ToolRegistry.dispatch`). Building the intersection now would
+  gate a path nothing flows through. `agents.yaml` remains the live allowlist *registry*
+  behind the tool-lint check + admin UI. Revisit when a write-capable agent (G-21 Coding
+  / G-22 Communication) with its own dispatch path actually exists. Overlaps `SKILL-FABLE #4`
+  (dispatch-time tool-authorization intersection, also trigger-gated on the first
+  write-capable tool).
 - **Known R1 doc residue (open — fold into R3 or a docs pass):** the **skill-system**
   docs still describe skill activation via the now-deleted `AgentDispatcher` and the
   `skill_routing_enabled` flag (both removed in R1) — `docs/domain/skill-system/setup.md`

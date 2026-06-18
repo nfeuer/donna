@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "vault_list parameters",
+  "description": "Parameter schema for the vault_list skill tool (donna.skills.tools.vault_list). Injected deps (bound via partial): client.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "folder": {"type": "string", "description": "Folder to list under (default '' = vault root)."},
+    "recursive": {"type": "boolean", "description": "Recurse into sub-folders (default true)."}
+  },
+  "required": []
+}

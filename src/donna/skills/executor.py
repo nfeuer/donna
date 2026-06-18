@@ -249,6 +249,7 @@ class SkillExecutor:
                         allowed_tools=allowed_tools,
                         user_id=user_id,
                         capability_name=skill.capability_name,
+                        step_name=step_name,
                     )
                     if isinstance(collected, dict):
                         collected["success"] = True
@@ -263,6 +264,7 @@ class SkillExecutor:
                         allowed_tools=allowed_tools,
                         user_id=user_id,
                         capability_name=skill.capability_name,
+                        step_name=step_name,
                     )
                     state[step_name + "_tool_results"] = collected
                     record.tool_calls = list(collected.keys())
@@ -686,6 +688,7 @@ class SkillExecutor:
 
         output, meta, total_cost = await self._complete_with_tool_loop(
             rendered, task_type, user_id, step_tools, tool_definitions,
+            agent_name=skill.capability_name,
         )
 
         inv_id = getattr(meta, "invocation_id", None)
@@ -699,8 +702,23 @@ class SkillExecutor:
         tool_names: list[str],
         tool_definitions: list[dict[str, Any]] | None,
         max_rounds: int = 5,
+        *,
+        agent_name: str | None = None,
     ) -> tuple[Any, Any, float]:
-        """Call the router, handling tool_use loops when tools are provided."""
+        """Call the router, handling tool_use loops when tools are provided.
+
+        Args:
+            prompt: Rendered step prompt.
+            task_type: Composed task type (also used as the registry audit key).
+            user_id: The owning user.
+            tool_names: The per-step allowlist for any tool_use calls.
+            tool_definitions: Anthropic-format tool definitions, or ``None``.
+            max_rounds: Maximum tool_use round-trips before failing.
+            agent_name: Caller identity (capability name) for the audit log.
+
+        Returns:
+            A ``(output, last_meta, total_cost)`` tuple.
+        """
         total_cost = 0.0
         last_meta: Any = None
 
@@ -741,6 +759,7 @@ class SkillExecutor:
                 try:
                     result = await self._tool_registry.dispatch(
                         call["name"], call["input"], tool_names,
+                        task_type=task_type, agent_name=agent_name,
                     )
                     messages.append({
                         "role": "user",
@@ -768,17 +787,41 @@ class SkillExecutor:
         inputs: dict[str, Any], allowed_tools: list[str],
         user_id: str | None = None,
         capability_name: str | None = None,
+        step_name: str | None = None,
     ) -> dict[str, Any]:
         """Resolve DSL (for_each) and run all tool invocations for a step.
+
+        Caller identity (``task_type`` + ``agent_name``) is threaded into every
+        ``run_invocation`` so the registry's ``tool_executed`` audit log records
+        which skill/step proposed each tool call (R3 — §7.2 resolution). The
+        per-step allowlist remains the access gate; this is an audit trail.
 
         Slice 22 — defensive trip-wire: when ``self._tool_gap_surfacer``
         is wired, dispatching to a name not in the registry surfaces a
         high-severity ToolGap before the normal ToolNotFoundError path
         runs. Catches mid-run config edits / dynamic capability
         registration that boot-check + scheduler-pre-run both missed.
+
+        Args:
+            invocations: Raw tool-invocation specs from the step YAML.
+            state: Skill state object.
+            inputs: Skill inputs dict.
+            allowed_tools: The per-step allowlist (the access gate).
+            user_id: The owning user, used for ToolGap surfacing.
+            capability_name: The skill's capability name (the ``agent_name``).
+            step_name: The current step name, for the audit ``task_type``.
+
+        Returns:
+            A dict mapping each invocation's ``store_as`` key to its result.
         """
         collected: dict[str, Any] = {}
         state_dict = state.to_dict()
+        # Audit identity for the registry's tool_executed log (not a gate).
+        audit_task_type = (
+            f"skill_step::{capability_name}::{step_name}"
+            if capability_name or step_name
+            else None
+        )
         registered_names: set[str] | None = None
         if self._tool_gap_surfacer is not None:
             registered_names = set(self._tool_registry.list_tool_names())
@@ -808,6 +851,8 @@ class SkillExecutor:
                 result = await self._tool_dispatcher.run_invocation(
                     spec=spec, state=state_dict, inputs=inputs,
                     allowed_tools=allowed_tools,
+                    task_type=audit_task_type,
+                    agent_name=capability_name,
                 )
                 collected.update(result)
 

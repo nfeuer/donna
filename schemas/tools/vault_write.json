@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "vault_write parameters",
+  "description": "Parameter schema for the vault_write skill tool (donna.skills.tools.vault_write). Injected deps (bound via partial): client.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "path": {"type": "string", "minLength": 1, "description": "Forward-slash path of the note to create or overwrite."},
+    "content": {"type": "string", "description": "Full markdown body to write."},
+    "expected_mtime": {"type": ["number", "null"], "description": "Optimistic-concurrency mtime from a prior vault_read."},
+    "message": {"type": ["string", "null"], "description": "Optional commit message."}
+  },
+  "required": ["path", "content"]
+}

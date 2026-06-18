@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "browser_screenshot parameters",
+  "description": "Parameter schema for the browser_screenshot skill tool (donna.skills.tools.browser_screenshot). Injected deps: none.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "url": {"type": "string", "minLength": 1, "description": "Page URL to capture."},
+    "timeout_ms": {"type": "integer", "minimum": 0, "description": "Max page-load wait in milliseconds (default 15000)."}
+  },
+  "required": ["url"]
+}

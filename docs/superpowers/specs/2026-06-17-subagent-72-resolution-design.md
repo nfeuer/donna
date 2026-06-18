@@ -1,7 +1,7 @@
 # §7.2 Sub-Agent System — Resolution Design ("keep the ideas, drop the framework")
 
 **Date:** 2026-06-17
-**Status:** Decided (owner) — **R1 + R2 shipped (2026-06-17)**; R3 remaining
+**Status:** Decided (owner) — **R1 + R2 + R3 shipped (R3: 2026-06-18)**
 **Decision owner:** Nick
 **Related:** `spec_v3.md §7` (Sub-Agent System), §7.2 (Agent Execution Flow), §3.7 (concurrency); `CLAUDE.md` principles #2 (safety-first), #4 (internal API over MCP / direct module calls), #6 (tool-validation layer); prior critique `docs/superpowers/specs/2026-06-11-subagent-system-fable-critique-design.md`; feature gaps G-21 (Coding agent) / G-22 (Communication agent).
 
@@ -76,16 +76,81 @@ Verdict: the *degree of separation* is not good. Premature generalization with a
 
 1. **Delete the framework.** Remove `orchestrator/dispatcher.py` (`AgentDispatcher` + the `AgentActivityListener` protocol), `agents/pm_agent.py`, `agents/scheduler_agent.py`, `integrations/discord_agent_feed.py` (the inert `AgentActivityFeed` that only fed the dispatcher), and their tests. Trim `agents/base.py` to only what live consumers still import (keep the live agents — Challenger, NoveltyJudge, Prep — and shared infra `ToolRegistry` / `AgentContext` as needed). Surgically remove the dormant `_dispatcher`/`AgentDispatcher` references from `discord_bot.py` (lines 35/68/88/571-572/1113-1117) **without touching the live `_intent_dispatcher`**, and the inert `AgentActivityFeed` construction from `cli_wiring.py`. **Keep `config/agents.yaml` and its consumers** (see correction above). Rewrite `spec_v3.md §7.2`, `docs/domain/agents.md`, and `docs/domain/orchestrator.md` to describe the real flow.
 2. **Salvage decomposition.** Re-home `DecompositionService` as a first-class direct service and give it a trigger — a Discord `/breakdown <task>` command and/or an auto-trigger when a task's `estimated_duration` exceeds a configurable threshold. Keep it principle-#4 shaped (orchestrator calls it directly; no dispatcher).
-3. **Make the validation seam real.** Separate slice: one `ToolRegistry` (keep the live skills one), caller identity (`agent_name` + `task_type`) **required** with no default-skip, per-tool param JSON-schemas validated pre-handler, and `db` stripped from `AgentContext` so agents act only through the registry. This converts critique findings #2/#3/#9 from decorative to code-enforced and is the real prerequisite for G-21/G-22.
+3. **Make the validation seam real (REFRAMED — shipped R3, 2026-06-18).** The
+   original plan assumed a *dispatcher with agent-level allowlists* — but that
+   dispatcher (`AgentDispatcher`) and the agent-layer `ToolRegistry` were the
+   framework deleted in R1, so there is no agent-driven dispatch path left to
+   harden. The live tool-execution path is **skill-driven**:
+   `SkillExecutor._execute_step → ToolDispatcher.run_invocation →
+   ToolRegistry.dispatch` (`src/donna/skills/`). R3 therefore makes the seam
+   load-bearing **on that live skills path**, not on a phantom agent dispatcher:
+   - **Per-tool parameter-schema validation (the core).** The live skills
+     `ToolRegistry.register()` now takes a declarative `param_schema` (sourced
+     from version-controlled `schemas/tools/<tool>.json` via
+     `donna.skills.tool_param_schemas.load_tool_param_schemas`); `dispatch()`
+     validates each call's args against it **before** invoking the handler,
+     reusing jsonschema (as `validate_output` does) and raising a new
+     `ParameterValidationError`. Every one of the ~17 tools registered by
+     `register_default_tools` ships a schema, so **no production tool is
+     unschema'd**. **Fail-closed:** invalid args raise and the handler never
+     runs. The no-schema branch (only reachable via ad-hoc/test registrations)
+     is deliberate and audited — it logs + emits a `fallback_activated` alert,
+     never silently skips. The validation error is wired into
+     `ToolDispatcher` as a **deterministic, non-retryable** failure (alongside
+     the existing permission/unknown-tool errors), so a bad-arg call is not
+     replayed N times.
+   - **Caller-identity audit.** `task_type` + `agent_name` (the skill's
+     capability name) are threaded
+     `SkillExecutor._run_tool_invocations → ToolDispatcher.run_invocation →
+     ToolRegistry.dispatch` and recorded on the `tool_executed` structured log
+     for every execution. This is an **audit trail, not a new gate** — the
+     per-step allowlist remains the access decision, unchanged.
+   - **Dead agent registry deleted + `AgentContext` cleaned.** The separate,
+     post-R1-dead `src/donna/agents/tool_registry.py` (and its test) are removed;
+     `AgentContext` loses the unused `db` and `tool_registry` fields (it kept
+     `router`/`user_id`/`project_root` and the result/record dataclasses). The
+     live agents (Challenger, NoveltyJudge) only ever read `router`/`user_id`, so
+     stripping the raw `db` handle removes the principle-#6 bypass the critique
+     flagged. There were **zero** `AgentContext(...)` construction sites and no
+     production `.db`/`.tool_registry` access to migrate.
+
+   This converts critique findings #2/#3/#9 from decorative to code-enforced on
+   the path that actually executes tools, and is the real prerequisite for
+   G-21/G-22.
+
+   **DEFERRED (not built in R3): `agents.yaml ∩ task_types` enforcement.** The
+   original critique imagined enforcing each agent's `config/agents.yaml`
+   allowlist as a *ceiling* intersected with `task_types`. That gate belonged to
+   the deleted dispatcher and assumes an *agent-driven* execution model; the live
+   system is *skill-driven* (per-step `tools:` allowlists in skill YAML are the
+   live access gate, already enforced by `ToolRegistry.dispatch`). Building an
+   `agents.yaml` intersection now would gate a path nothing flows through.
+   `agents.yaml` stays the live allowlist *registry* behind the tool-lint check
+   + admin UI; reshaping it into a runtime ceiling is revisited at **G-21/G-22**
+   when a write-capable agent with its own dispatch path actually exists. See
+   followups `SA-72` and `SKILL-FABLE #4`.
 4. **Fold (deferred).** If/when we want richer intake, add acceptance-criteria packaging to the live Challenger/NoveltyJudge path. Not in scope now.
 
 ## 5. Sequenced slices
 
 - **R1 — Framework deletion + spec/doc reconciliation.** Lowest risk, highest clarity. Removes the dormant landmine and makes the spec honest. Verify the live path (Challenger/NoveltyJudge/AutoScheduler/Prep) is untouched; confirm `ToolRegistry`/`AgentContext`/`base.py` keep only their live consumers.
 - **R2 — Decomposition as a direct service. ✅ Shipped 2026-06-17.** `DecompositionService` is constructed in `cli_wiring` (where `router`/`project_root` are in scope) and injected into `register_commands`, which exposes the `/breakdown <task>` Discord command — task-id autocomplete, defers for the LLM call, persists the subtask graph, and renders the plan (durations, dependency back-references, open questions, deadline concern). Called directly, no dispatcher. The auto-threshold trigger on `estimated_duration` is deferred (config-gated, future).
-- **R3 — Tool-validation seam (the real boundary).** The principle-#6 hardening. Gated/independent; the actual precondition before any future Coding/Communication agent. Larger and touches the live skills registry, so it lands last and on its own.
+- **R3 — Tool-validation seam (the real boundary). ✅ Shipped 2026-06-18 (reframed).**
+  The principle-#6 hardening, landed on the **live skills path** (not the deleted
+  agent dispatcher). Built: per-tool param JSON-schema validation in
+  `donna.skills.tool_registry.ToolRegistry` (schemas in `schemas/tools/*.json`,
+  loaded by `tool_param_schemas.py`; `register(..., param_schema=...)`;
+  fail-closed `ParameterValidationError` raised pre-handler; deterministic →
+  non-retryable in `ToolDispatcher`); caller-identity audit (`task_type` +
+  `agent_name` threaded executor → dispatcher → registry, logged on
+  `tool_executed`); deletion of the dead `agents/tool_registry.py` + its test;
+  and removal of the unused `db`/`tool_registry` fields from `AgentContext`. The
+  no-schema path logs + fires a `fallback_activated` alert (never silent); every
+  production tool is schema'd so it never fires in prod. **Deferred:**
+  `agents.yaml ∩ task_types` enforcement (see §4 item 3 — belonged to the deleted
+  dispatcher; the live path is skill-driven; revisit at G-21/G-22).
 
-(R1 and R3 are independent; R2 depends on nothing. Recommended order R1 → R2 → R3, but R3 can move earlier if a write-capable agent gets prioritized.)
+(R1 and R3 are independent; R2 depends on nothing. Order taken: R1 → R2 → R3.)
 
 ## 6. Spec & doc updates (tracked, executed per-slice)
 

@@ -52,7 +52,13 @@ class MockToolRegistry(ToolRegistry):
     def from_mocks(cls, mocks: dict[str, Any] | None) -> MockToolRegistry:
         return cls(mocks or {})
 
-    def register(self, name: str, callable_: Any) -> None:
+    def register(
+        self,
+        name: str,
+        callable_: Any,
+        *,
+        param_schema: dict[str, Any] | None = None,
+    ) -> None:
         raise RuntimeError(
             "MockToolRegistry does not accept real tool callables; "
             "construct with the tool_mocks map instead."
@@ -63,7 +69,14 @@ class MockToolRegistry(ToolRegistry):
         tool_name: str,
         args: dict[str, Any],
         allowed_tools: list[str],
+        *,
+        task_type: str | None = None,
+        agent_name: str | None = None,
     ) -> dict[str, Any]:
+        # Deny-closed fixture path: the allowlist is still the access gate and
+        # ``task_type``/``agent_name`` are accepted for caller-identity parity
+        # with the live registry (R3 — §7.2 resolution), but validation here is
+        # against the precomputed mock map, not a param schema.
         if tool_name not in allowed_tools:
             raise ToolNotAllowedError(
                 f"tool {tool_name!r} not in step allowlist {allowed_tools}"

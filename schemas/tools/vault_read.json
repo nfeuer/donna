@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "vault_read parameters",
+  "description": "Parameter schema for the vault_read skill tool (donna.skills.tools.vault_read). Injected deps (bound via partial): client.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "path": {"type": "string", "minLength": 1, "description": "Forward-slash path relative to the vault root."}
+  },
+  "required": ["path"]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "rss_fetch parameters",
+  "description": "Parameter schema for the rss_fetch skill tool (donna.skills.tools.rss_fetch). Injected deps: none.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "url": {"type": "string", "minLength": 1, "description": "Feed URL."},
+    "since": {"type": ["string", "null"], "description": "ISO-8601 timestamp; only items published after this are returned."},
+    "max_items": {"type": "integer", "minimum": 0, "description": "Page size (default 50)."},
+    "offset": {"type": "integer", "minimum": 0, "description": "Number of leading filtered items to skip."},
+    "timeout_s": {"type": "number", "exclusiveMinimum": 0, "description": "Request timeout in seconds (default 10)."}
+  },
+  "required": ["url"]
+}

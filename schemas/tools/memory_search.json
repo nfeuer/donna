@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "memory_search parameters",
+  "description": "Parameter schema for the memory_search skill tool (donna.skills.tools.memory_search). Injected deps (bound via partial): store.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "query": {"type": "string", "minLength": 1, "description": "Natural-language search query."},
+    "user_id": {"type": "string", "minLength": 1, "description": "Owner whose memory is searched."},
+    "k": {"type": ["integer", "null"], "minimum": 1, "description": "Top-k chunks to return."},
+    "sources": {
+      "type": ["array", "null"],
+      "items": {"type": "string"},
+      "description": "Restrict to these source types."
+    },
+    "filters": {"type": ["object", "null"], "description": "Extra metadata filters (e.g. {\"path_prefix\": \"Projects/\"})."}
+  },
+  "required": ["query", "user_id"]
+}

@@ -1,21 +1,26 @@
 """Agent framework base types.
 
 Defines the shared result/record/context dataclasses used by Donna's live
-agents (Challenger, NoveltyJudge, Prep) and the tool registry. See
-docs/domain/agents.md for the live agent execution flow.
+agents (Challenger, NoveltyJudge, Prep). See docs/domain/agents.md for the live
+agent execution flow.
+
+R3 (§7.2 resolution —
+``docs/superpowers/specs/2026-06-17-subagent-72-resolution-design.md``) stripped
+the unused ``db`` and ``tool_registry`` fields from :class:`AgentContext`. The
+live agents only ever read ``router`` / ``user_id`` (and ``project_root``); the
+raw ``db`` handle let an agent bypass the tool-validation seam, contradicting
+CLAUDE.md principle #6. The separate, dead agent-layer ``ToolRegistry`` it
+referenced was deleted in the same slice — the *live* registry is
+:class:`donna.skills.tool_registry.ToolRegistry`.
 """
 
 from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from donna.models.router import ModelRouter
-from donna.tasks.database import Database
-
-if TYPE_CHECKING:
-    from donna.agents.tool_registry import ToolRegistry
 
 
 @dataclasses.dataclass(frozen=True)
@@ -30,13 +35,17 @@ class ToolCallRecord:
 
 @dataclasses.dataclass(frozen=True)
 class AgentContext:
-    """Everything an agent needs to do its work."""
+    """Everything a live agent needs to do its work.
+
+    Carries only what the live agents (Challenger, NoveltyJudge) read: the
+    model ``router``, the ``user_id``, and the ``project_root``. Agents act on
+    the world through the model router and validated tool dispatch, never a raw
+    DB handle (CLAUDE.md principle #6).
+    """
 
     router: ModelRouter
-    db: Database
     user_id: str
     project_root: Path
-    tool_registry: ToolRegistry
 
 
 @dataclasses.dataclass

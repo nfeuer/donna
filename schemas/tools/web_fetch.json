@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "web_fetch parameters",
+  "description": "Parameter schema for the web_fetch skill tool (donna.skills.tools.web_fetch). Injected deps: none.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "url": {"type": "string", "minLength": 1, "description": "The URL to fetch."},
+    "timeout_s": {"type": "number", "exclusiveMinimum": 0, "description": "Request timeout in seconds (default 10)."},
+    "method": {"type": "string", "enum": ["GET", "get"], "description": "HTTP method; only GET is supported."}
+  },
+  "required": ["url"]
+}

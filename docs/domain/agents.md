@@ -25,18 +25,22 @@ src/donna/agents/
 ├── challenger_agent.py      # ChallengerAgent — capability matching, intent extraction
 ├── claude_novelty_judge.py  # ClaudeNoveltyJudge — no-match escalation via Claude API
 ├── prep_agent.py            # PrepAgent — research/prep execution for flagged tasks
-├── decomposition.py         # DecompositionService — task → subtask breakdown
-└── tool_registry.py         # ToolRegistry — tool validation and execution layer
+└── decomposition.py         # DecompositionService — task → subtask breakdown
 ```
+
+> **Tool validation lives on the skills path.** The tool-validation seam is
+> implemented by the **skills** `ToolRegistry`
+> (`src/donna/skills/tool_registry.py`), not an agent-layer registry — see
+> *Tool Validation Seam* below. The separate `agents/tool_registry.py` was
+> deleted in the §7.2 resolution (R3, 2026-06-18); nothing flowed through it.
 
 ### Agent Base Types (`base.py`)
 
-Shared dataclasses used by the live agents (Challenger, NoveltyJudge, Prep)
-and the tool registry:
+Shared dataclasses used by the live agents (Challenger, NoveltyJudge, Prep):
 
 | Type | Purpose |
 |------|---------|
-| `AgentContext` | Execution context: `router`, `db`, `user_id`, `project_root`, `tool_registry` |
+| `AgentContext` | Execution context: `router`, `user_id`, `project_root`. (The unused `db` and `tool_registry` fields were removed in the §7.2 R3 resolution — a raw `db` handle let an agent bypass the validated tool path, against principle #6. Live agents read only `router`/`user_id`.) |
 | `AgentResult` | Outcome: `status` (complete/failed/needs_input/escalated), `output`, `tool_calls_made`, `duration_ms`, `error`, `questions` |
 | `ToolCallRecord` | Record of a single tool call: `tool_name`, `params`, `result`, `allowed` |
 
@@ -55,14 +59,34 @@ Uses the `claude_novelty` task type, validates output via `validate_output`, and
 
 Breaks a complex task into subtasks via the `task_decompose` prompt. Returns a `DecomposeResult` with `subtask_ids`, `total_estimated_hours`, `missing_information`, and `deadline_feasible`. Uses a two-pass insert: first creates all subtask rows, then resolves integer dependency indices from LLM output to real UUIDs.
 
-### ToolRegistry
+### Tool Validation Seam (live, on the skills path)
 
-Infrastructure component (not an autonomous agent). Validates and executes tool calls proposed by LLM agents:
+Tool execution is gated and validated by the **skills** `ToolRegistry`
+(`src/donna/skills/tool_registry.py`), driven by
+`SkillExecutor._execute_step → ToolDispatcher.run_invocation →
+ToolRegistry.dispatch`. This is the load-bearing realization of CLAUDE.md
+principle #6 (*models propose, the orchestrator validates and executes*) after
+the §7.2 R3 resolution (2026-06-18):
 
-1. Agent model outputs a tool call request.
-2. `ToolRegistry.is_allowed(task_type, tool_name)` checks against `task_types.yaml` allowlist.
-3. If allowed, `ToolRegistry.execute(tool_name, params)` runs the registered async handler.
-4. Raises `ToolNotAllowedError` or `ToolNotRegisteredError` on violations.
+1. **Allowlist (access gate).** The per-step `tools:` allowlist declared in the
+   skill YAML is the access decision; `dispatch()` raises `ToolNotAllowedError`
+   if the tool isn't on it, `ToolNotFoundError` if it isn't registered.
+2. **Per-tool parameter schema (fail-closed).** Each tool registers a
+   declarative JSON schema (`schemas/tools/<tool>.json`, loaded by
+   `tool_param_schemas.py`). `dispatch()` validates the call's args against it
+   **before** invoking the handler; invalid args raise `ParameterValidationError`
+   and the handler never runs. Every built-in tool is schema'd; the no-schema
+   branch (ad-hoc/test registrations only) logs + fires a `fallback_activated`
+   alert rather than silently skipping. The dispatcher treats a validation error
+   as a deterministic, **non-retryable** failure.
+3. **Caller-identity audit.** `task_type` + `agent_name` (the skill's capability
+   name) are threaded executor → dispatcher → registry and recorded on the
+   `tool_executed` structured log for every execution — an audit trail, not a
+   second gate.
+
+`config/agents.yaml` remains the per-agent allowlist *registry* (challenger /
+research) behind the tool-lint check + admin UI; intersecting it as a runtime
+ceiling is deferred to G-21/G-22 (the live path is skill-driven).
 
 ## Agent Execution Flow
 
@@ -71,7 +95,8 @@ This is the **live** flow. The v3.1 multi-stop `AgentDispatcher`/PM pipeline
 contract) was **removed 2026-06-17** — resolution **keep-the-ideas,
 drop-the-framework**. `DecompositionService` is now wired as a direct service
 (R2, shipped 2026-06-17) behind the `/breakdown` command; the tool-validation
-seam hardening is tracked (R3); `config/agents.yaml` remains the live allowlist
+seam was made load-bearing on the live skills path (R3, shipped 2026-06-18 — see
+*Tool Validation Seam* above); `config/agents.yaml` remains the live allowlist
 registry (challenger/research) behind the tool-lint safety check and admin UI.
 See `spec_v3.md §7.2` and
 [`2026-06-17-subagent-72-resolution-design.md`](../superpowers/specs/2026-06-17-subagent-72-resolution-design.md).

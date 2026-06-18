@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "email_read parameters",
+  "description": "Parameter schema for the email_read skill tool (donna.skills.tools.email_read). Injected deps (bound via partial): client. At least one filter must be provided (enforced by the handler, not the schema).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "from_sender": {"type": ["string", "null"], "description": "Filter by sender address."},
+    "subject_contains": {"type": ["string", "null"], "description": "Filter by subject substring."},
+    "is_unread": {"type": ["boolean", "null"], "description": "Filter by read/unread state."},
+    "since": {"type": ["string", "null"], "description": "ISO-8601 date (YYYY-MM-DD) lower bound."},
+    "until": {"type": ["string", "null"], "description": "ISO-8601 date (YYYY-MM-DD) upper bound."},
+    "max_results": {"type": "integer", "minimum": 1, "description": "Max messages to return (clamped to 100; default 20)."}
+  },
+  "required": []
+}

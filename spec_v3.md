@@ -1984,10 +1984,23 @@ pipeline was **removed 2026-06-17** (resolution: keep-the-ideas, drop-the-
 framework; see
 docs/superpowers/specs/2026-06-17-subagent-72-resolution-design.md).
 `DecompositionService` is now wired as a **direct service** (R2, shipped
-2026-06-17) behind the `/breakdown` command — no dispatcher; the
-tool-validation seam hardening is tracked (R3); `config/agents.yaml`
-remains the live allowlist registry (challenger/research) behind the
-tool-lint safety check and admin UI.
+2026-06-17) behind the `/breakdown` command — no dispatcher. The
+tool-validation seam was made load-bearing on the live **skills** path
+(R3, shipped 2026-06-18): the skills `ToolRegistry`
+(`src/donna/skills/tool_registry.py`) validates each tool call's
+arguments against a declarative per-tool JSON schema
+(`schemas/tools/<tool>.json`) **before** invoking the handler (fail-closed
+— invalid args raise `ParameterValidationError`, the handler never runs,
+and the dispatcher treats it as a deterministic non-retryable failure),
+and threads caller identity (`task_type` + `agent_name`) onto the
+`tool_executed` audit log. The separate, post-R1-dead
+`agents/tool_registry.py` was deleted and the unused `db`/`tool_registry`
+fields were stripped from `AgentContext` (removing a principle-#6 bypass).
+`agents.yaml ∩ task_types` enforcement is **deferred** to G-21/G-22 — the
+live path is skill-driven, and the dispatcher that would have enforced it
+was deleted in R1; `config/agents.yaml` remains the live allowlist
+registry (challenger/research) behind the tool-lint safety check and
+admin UI.
 
 -   A tasks-channel message is routed by the **`DiscordIntentDispatcher`**
     to **`ChallengerAgent.match_and_extract`**, which returns one of
@@ -3209,7 +3222,14 @@ is the rollback path.
 
 -   Tool validation layer: all model tool call requests are validated by
     the orchestrator before execution. The model proposes; the
-    orchestrator disposes.
+    orchestrator disposes. On the live **skills** path this is
+    code-enforced (§7.2, R3): the skills `ToolRegistry` checks the
+    per-step allowlist **and** validates each call's arguments against a
+    declarative per-tool JSON schema (`schemas/tools/<tool>.json`) before
+    invoking the handler — invalid args fail closed
+    (`ParameterValidationError`, handler never runs). Caller identity
+    (`task_type` + `agent_name`) is recorded on every tool execution for
+    audit.
 
 -   Blackout enforcement: 12:00 AM -- 6:00 AM hard block on outbound
     messages enforced at the notification service level, not agent

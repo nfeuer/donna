@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "vault_link parameters",
+  "description": "Parameter schema for the vault_link skill tool (donna.skills.tools.vault_link). Injected deps (bound via partial): client.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "path": {"type": "string", "minLength": 1, "description": "Forward-slash path of the note to extract wikilinks from."}
+  },
+  "required": ["path"]
+}

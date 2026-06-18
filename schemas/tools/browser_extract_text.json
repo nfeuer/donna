@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "browser_extract_text parameters",
+  "description": "Parameter schema for the browser_extract_text skill tool (donna.skills.tools.browser_extract_text). Injected deps: none.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "url": {"type": "string", "minLength": 1, "description": "Page URL to load and extract text from."},
+    "selector": {"type": "string", "minLength": 1, "description": "CSS selector to scope extraction (default 'body')."},
+    "timeout_ms": {"type": "integer", "minimum": 0, "description": "Max page-load wait in milliseconds (default 15000)."}
+  },
+  "required": ["url"]
+}
