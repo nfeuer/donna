@@ -1,8 +1,10 @@
 """Discord slash commands for direct task management.
 
 Provides /tasks, /done, /cancel, /reschedule, /next, /today, /tomorrow,
-/edit, and /status commands. Uses guild-specific registration for instant
-sync. All commands use autocomplete for task_id selection.
+/edit, /status, and /breakdown commands. /breakdown (§7.2 resolution R2)
+runs task decomposition via DecompositionService and is registered only
+when that service is injected. Uses guild-specific registration for instant
+sync; task-targeting commands use autocomplete for task_id selection.
 
 See the discord interaction expansion plan.
 """

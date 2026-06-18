@@ -223,6 +223,17 @@
   only unique increment) folded into the live Challenger path; dropping the never-written
   `assigned_agent` column in a later cleanup migration (`agent_eligible`/`agent_status`
   stay — Prep uses them). `§7.2` carries a forward-pointer to the design doc until R1.
+- **Known R1 doc residue (open — fold into R3 or a docs pass):** the **skill-system**
+  docs still describe skill activation via the now-deleted `AgentDispatcher` and the
+  `skill_routing_enabled` flag (both removed in R1) — `docs/domain/skill-system/setup.md`
+  (§3 line 81, §4 wiring, §5.4 `dispatcher_skill_shadow`, §6 troubleshooting, §8
+  checklist) and `index.md` (Current Status). Live skill routing is the `skill_executor`
+  wired into the **automations dispatcher** (`automations/dispatcher.py`) via
+  `cli_wiring.py`; `skill_routing_enabled` no longer exists in the source. Needs a proper
+  reconciliation pass (trace the real activation + whether the `dispatcher_skill_shadow`
+  event path survives) — not done in R1/R2 to avoid guess-rewriting a subsystem doc.
+  Also verify whether `AgentApprovalView` (`discord_views.py`) is orphaned now that
+  `AgentActivityFeed` was deleted.
 
 ## ML-FABLE-P2 — Shadow stable-state auto-disable job (design B)
 

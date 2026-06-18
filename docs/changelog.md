@@ -2,6 +2,14 @@
 
 Recent changes, summarized from commits and PRs.
 
+## 2026-06-18
+
+### Added
+- **`/breakdown` task-decomposition command** (§7.2 resolution R2). `/breakdown <task>` runs `DecompositionService` **directly** (no dispatcher; CLAUDE.md principle #4) to split a complex task into a sequenced subtask graph — persisting each subtask as a real Task row (`parent_task` set, dependency indices resolved to UUIDs) and rendering the plan (durations, dependency back-references, open questions, deadline concern). Defers the interaction for the LLM call; registered only when the service is wired. ([Agents](domain/agents.md), `spec_v3.md` §7.2)
+
+### Removed
+- **Dormant §7.2 dispatch framework deleted** (§7.2 resolution R1 — *supersedes the 2026-06-11 "documented as dormant" note below*). Removed `AgentDispatcher`, `PMAgent`, `SchedulerAgent`, the uniform `Agent` dispatch protocol, and the inert `AgentActivityFeed` (`discord_agent_feed.py`) — all built-but-never-wired. `DecompositionService` was kept and wired (see Added); `config/agents.yaml` is kept as the live challenger/research allowlist registry. The live flow is unchanged: `DiscordIntentDispatcher` → `ChallengerAgent` → `ClaudeNoveltyJudge`; `AutoScheduler` placement; `PrepAgent` loop. ([Agents](domain/agents.md), [Orchestrator](domain/orchestrator.md), `spec_v3.md` §7.2; design `2026-06-17-subagent-72-resolution-design.md`)
+
 ## 2026-06-11
 
 ### Added
