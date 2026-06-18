@@ -45,9 +45,8 @@ src/donna/integrations/
 ├── gmail.py                 ← Gmail (read + draft; send behind feature flag)
 ├── email_parser.py          ← Forwarded-email parser → InputParser pipeline
 ├── discord_bot.py           ← Core DonnaBot: message listener, outbound, overdue routing
-├── discord_commands.py      ← Slash commands: /tasks, /done, /cancel, /reschedule, /edit, etc.
+├── discord_commands.py      ← Slash commands: /tasks, /done, /cancel, /reschedule, /breakdown, /edit, etc.
 ├── discord_views.py         ← Interactive UI: buttons, dropdowns, modals (TaskEditModal, approvals)
-├── discord_agent_feed.py    ← Agent activity embeds → #donna-agents channel
 ├── discord_pending_drafts.py← In-memory draft registry (task/automation, 30-min TTL)
 ├── discord_submit_command.py← /donna submit slash command for chat-mode escalation answers
 ├── twilio_sms.py            ← Outbound SMS (rate-limited, blackout hours)
@@ -62,14 +61,13 @@ Each module: centralized auth, audit logging to logging DB, rate limiting, acces
 
 ### Discord Module Breakdown
 
-Discord is no longer a single file. The bot is split into six modules:
+Discord is no longer a single file. The bot is split into five modules:
 
 | Module | Purpose |
 |--------|---------|
 | `discord_bot.py` | Core `DonnaBot` class — message listener, outbound messaging, overdue thread routing |
-| `discord_commands.py` | Guild-registered slash commands with autocomplete (`/tasks`, `/done`, `/cancel`, `/reschedule`, `/next`, `/today`, `/tomorrow`, `/edit`, `/status`) |
+| `discord_commands.py` | Guild-registered slash commands with autocomplete (`/tasks`, `/done`, `/cancel`, `/reschedule`, `/next`, `/today`, `/tomorrow`, `/edit`, `/status`, `/breakdown`) |
 | `discord_views.py` | Interactive UI components — `TaskEditModal`, `TaskListPaginationView`, `AgentApprovalView`, buttons, dropdowns |
-| `discord_agent_feed.py` | `AgentActivityFeed` — posts agent start/complete/failure embeds to #donna-agents with approval buttons for approvable actions |
 | `discord_pending_drafts.py` | `PendingDraftRegistry` — per-user in-memory map of task/automation partial drafts (thread-id keyed, 30-min TTL) |
 | `discord_submit_command.py` | `/donna submit` command for chat-mode escalation answer submission (min 50 chars, owner-only, validates via `escalation_submit_service`) |
 

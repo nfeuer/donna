@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from donna.agents.decomposition import DecomposeResult
 from donna.integrations.discord_commands import (
+    _build_breakdown_embed,
+    _dependency_positions,
+    _handle_breakdown,
     _parse_when,
     _task_autocomplete,
     register_commands,
@@ -150,3 +155,157 @@ class TestRegisterCommands:
             "today", "tomorrow", "edit", "status",
         }
         assert set(registered) == expected
+
+    def test_breakdown_registered_only_with_service(self) -> None:
+        """/breakdown appears iff a decomposition service is injected."""
+
+        def make_bot_capturing(registered: list[str]) -> MagicMock:
+            bot = MagicMock()
+            bot._guild_id = 123456789
+            bot.tree = MagicMock()
+
+            def mock_command(**kwargs):
+                def decorator(fn):
+                    registered.append(kwargs.get("name"))
+                    cmd = MagicMock()
+                    cmd.autocomplete = MagicMock(return_value=lambda fn: fn)
+                    return cmd
+                return decorator
+
+            bot.tree.command = mock_command
+            return bot
+
+        db = AsyncMock()
+
+        without: list[str] = []
+        register_commands(make_bot_capturing(without), db, "nick")
+        assert "breakdown" not in without
+
+        with_svc: list[str] = []
+        register_commands(
+            make_bot_capturing(with_svc), db, "nick",
+            decomposition_service=MagicMock(),
+        )
+        assert "breakdown" in with_svc
+
+
+def _make_interaction() -> MagicMock:
+    """Interaction mock supporting defer / send_message / followup.send."""
+    interaction = MagicMock()
+    interaction.response.defer = AsyncMock()
+    interaction.response.send_message = AsyncMock()
+    interaction.followup.send = AsyncMock()
+    return interaction
+
+
+class TestHandleBreakdown:
+    @pytest.mark.asyncio
+    async def test_task_not_found_does_not_defer_or_decompose(self) -> None:
+        db = AsyncMock()
+        db.get_task = AsyncMock(return_value=None)
+        service = MagicMock()
+        service.decompose = AsyncMock()
+        interaction = _make_interaction()
+
+        await _handle_breakdown(
+            interaction=interaction, task_id="missing", db=db, service=service,
+        )
+
+        interaction.response.send_message.assert_awaited_once()
+        assert "not found" in interaction.response.send_message.await_args.args[0].lower()
+        interaction.response.defer.assert_not_awaited()
+        service.decompose.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_success_defers_and_followups_with_embed(self) -> None:
+        parent = _make_task_row(id="task-1", title="Launch the thing")
+        sub1 = _make_task_row(id="sub-1", title="Research", estimated_duration=60,
+                              dependencies=None)
+        sub2 = _make_task_row(id="sub-2", title="Build", estimated_duration=90,
+                              dependencies=json.dumps(["sub-1"]))
+        db = AsyncMock()
+        db.get_task = AsyncMock(side_effect=[parent, sub1, sub2])
+
+        service = MagicMock()
+        service.decompose = AsyncMock(return_value=DecomposeResult(
+            parent_task_id="task-1",
+            subtask_ids=["sub-1", "sub-2"],
+            total_estimated_hours=2.5,
+            missing_information=[],
+            deadline_feasible=True,
+        ))
+        interaction = _make_interaction()
+
+        await _handle_breakdown(
+            interaction=interaction, task_id="task-1", db=db, service=service,
+        )
+
+        interaction.response.defer.assert_awaited_once()
+        interaction.followup.send.assert_awaited_once()
+        embed = interaction.followup.send.await_args.kwargs["embed"]
+        assert "Launch the thing" in embed.title
+        # Dependency rendered as a back-reference to the first subtask.
+        assert "after #1" in embed.description
+
+    @pytest.mark.asyncio
+    async def test_empty_decomposition_reports_atomic(self) -> None:
+        parent = _make_task_row(id="task-1", title="Tiny task")
+        db = AsyncMock()
+        db.get_task = AsyncMock(return_value=parent)
+        service = MagicMock()
+        service.decompose = AsyncMock(return_value=DecomposeResult(
+            parent_task_id="task-1", subtask_ids=[], total_estimated_hours=0.0,
+            missing_information=[], deadline_feasible=None,
+        ))
+        interaction = _make_interaction()
+
+        await _handle_breakdown(
+            interaction=interaction, task_id="task-1", db=db, service=service,
+        )
+
+        interaction.followup.send.assert_awaited_once()
+        assert "atomic" in interaction.followup.send.await_args.args[0].lower()
+
+    @pytest.mark.asyncio
+    async def test_decompose_error_replies_gracefully(self) -> None:
+        parent = _make_task_row(id="task-1", title="Boom")
+        db = AsyncMock()
+        db.get_task = AsyncMock(return_value=parent)
+        service = MagicMock()
+        service.decompose = AsyncMock(side_effect=RuntimeError("llm down"))
+        interaction = _make_interaction()
+
+        await _handle_breakdown(
+            interaction=interaction, task_id="task-1", db=db, service=service,
+        )
+
+        interaction.response.defer.assert_awaited_once()
+        interaction.followup.send.assert_awaited_once()
+        assert "couldn't" in interaction.followup.send.await_args.args[0].lower()
+
+
+class TestBreakdownEmbedHelpers:
+    def test_dependency_positions_maps_uuids_to_positions(self) -> None:
+        sub = _make_task_row(id="sub-2", dependencies=json.dumps(["sub-1", "sub-3"]))
+        pos_by_id = {"sub-1": 1, "sub-2": 2, "sub-3": 3}
+        assert _dependency_positions(sub, pos_by_id) == [1, 3]
+
+    def test_dependency_positions_handles_no_or_bad_deps(self) -> None:
+        assert _dependency_positions(_make_task_row(dependencies=None), {}) == []
+        assert _dependency_positions(_make_task_row(dependencies="not-json"), {}) == []
+
+    def test_embed_footer_and_open_questions(self) -> None:
+        parent = _make_task_row(id="task-1", title="Plan trip")
+        sub = _make_task_row(id="sub-1", title="Book flights",
+                            estimated_duration=30, dependencies=None)
+        result = DecomposeResult(
+            parent_task_id="task-1", subtask_ids=["sub-1"],
+            total_estimated_hours=1.0,
+            missing_information=[{"question": "Which dates?", "blocking": True}],
+            deadline_feasible=False,
+        )
+        embed = _build_breakdown_embed(parent=parent, subtasks=[sub], result=result)
+        assert "1 subtask(s) created" in embed.footer.text
+        field_names = [f.name for f in embed.fields]
+        assert any("Open questions" in n for n in field_names)
+        assert any("Deadline concern" in n for n in field_names)

@@ -200,6 +200,41 @@
   behavior unchanged. Open owner decisions OD-1..OD-6 (design §8) were taken at the
   conservative defaults; revisit if accept-rate data warrants.
 
+## SA-72 — Sub-Agent §7.2 resolution: keep the ideas, drop the framework
+
+- **Spec:** `spec_v3.md §7.2`; design
+  `docs/superpowers/specs/2026-06-17-subagent-72-resolution-design.md`; prior critique
+  `2026-06-11-subagent-system-fable-critique-design.md` (decision #1, escalated)
+- **Status:** R1 + R2 shipped (2026-06-17); **R3 remaining**
+- **Gap / plan:** The dormant §7.2 pipeline's wire-or-delete decision is resolved as
+  **keep-ideas/drop-framework**. **R1 (done)** delete the dispatch framework
+  (`AgentDispatcher`, `PMAgent`, `SchedulerAgent`, the uniform `Agent` dispatch
+  contract, the inert `AgentActivityFeed`, their tests) + rewrite `spec_v3.md §7.2`,
+  `docs/domain/agents.md` and `orchestrator.md` to the live flow (Challenger →
+  NoveltyJudge; AutoScheduler placement; Prep loop). **R1 keeps `config/agents.yaml`**
+  — it is the *live* allowlist registry (challenger/research) behind the tool-lint +
+  admin UI, not dead config; its dead `pm`/`scheduler` entries are reshaped in R3, not
+  deleted in R1. **R2 (done)** salvaged `DecompositionService` as a direct service
+  (principle #4) behind the `/breakdown` Discord command (`discord_commands.py`,
+  injected from `cli_wiring`); the auto-threshold trigger is deferred (config-gated,
+  future). **R3 (remaining)** make the tool-validation seam load-bearing (principle #6) — required caller
+  identity, per-tool param JSON-schemas, `db` stripped from `AgentContext` — the real
+  precondition for G-21/G-22. **Deferred:** acceptance-criteria packaging (PMAgent's
+  only unique increment) folded into the live Challenger path; dropping the never-written
+  `assigned_agent` column in a later cleanup migration (`agent_eligible`/`agent_status`
+  stay — Prep uses them). `§7.2` carries a forward-pointer to the design doc until R1.
+- **Known R1 doc residue (open — fold into R3 or a docs pass):** the **skill-system**
+  docs still describe skill activation via the now-deleted `AgentDispatcher` and the
+  `skill_routing_enabled` flag (both removed in R1) — `docs/domain/skill-system/setup.md`
+  (§3 line 81, §4 wiring, §5.4 `dispatcher_skill_shadow`, §6 troubleshooting, §8
+  checklist) and `index.md` (Current Status). Live skill routing is the `skill_executor`
+  wired into the **automations dispatcher** (`automations/dispatcher.py`) via
+  `cli_wiring.py`; `skill_routing_enabled` no longer exists in the source. Needs a proper
+  reconciliation pass (trace the real activation + whether the `dispatcher_skill_shadow`
+  event path survives) — not done in R1/R2 to avoid guess-rewriting a subsystem doc.
+  Also verify whether `AgentApprovalView` (`discord_views.py`) is orphaned now that
+  `AgentActivityFeed` was deleted.
+
 ## ML-FABLE-P2 — Shadow stable-state auto-disable job (design B)
 
 - **Spec:** `spec_v3.md §4.4`; design
@@ -252,10 +287,12 @@ Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
   config grant, fail-closed) — trigger: first write-capable tool registers
   (`task_db_write`/`calendar_write`, §23.3 Stage 3); config-side `tools:`
   declarations completable now at zero risk.
-  **#8 — DONE.** `orchestrator/dispatcher.py` `_try_skill_shadow` now gates execution
-  on `skill_row.state in ("shadow_primary", "trusted")` (mirrors the automations
-  dispatcher's `_decide_path`), so a future wiring of `skill_executor` cannot run a
-  DRAFT/sandbox skill with real tools.
+  **#8 — DONE.** The `orchestrator/dispatcher.py` `_try_skill_shadow` trust-gate
+  was **removed with the §7.2 dispatch framework in R1** (SA-72): the
+  `AgentDispatcher` never ran in production, so the gate was dead defense-in-depth.
+  The *live* skill-shadow gating remains in the automations dispatcher's
+  `_decide_path` (`skill_row.state in ("shadow_primary", "trusted")`), so a
+  DRAFT/sandbox skill still cannot run with real tools on the live path.
   **#9 — DONE.** The three evolution gates (`targeted`, `fixture_regression`,
   `recent_success`) no longer pass *silently* on an empty evidence set — the
   condition is tagged `no_evidence` and logged `fallback_activated`. Config

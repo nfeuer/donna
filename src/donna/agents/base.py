@@ -1,18 +1,18 @@
-"""Agent framework base types and protocols.
+"""Agent framework base types.
 
-Defines the execution contract for all Donna sub-agents (PM, Scheduler,
-Research, Coding, Communication). See docs/agents.md for the hierarchy
-and safety constraints.
+Defines the shared result/record/context dataclasses used by Donna's live
+agents (Challenger, NoveltyJudge, Prep) and the tool registry. See
+docs/domain/agents.md for the live agent execution flow.
 """
 
 from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any
 
 from donna.models.router import ModelRouter
-from donna.tasks.database import Database, TaskRow
+from donna.tasks.database import Database
 
 if TYPE_CHECKING:
     from donna.agents.tool_registry import ToolRegistry
@@ -49,19 +49,3 @@ class AgentResult:
     duration_ms: int = 0
     error: str | None = None
     questions: list[str] | None = None  # populated when status == "needs_input"
-
-
-@runtime_checkable
-class Agent(Protocol):
-    """Protocol for all Donna sub-agents."""
-
-    @property
-    def name(self) -> str: ...
-
-    @property
-    def allowed_tools(self) -> list[str]: ...
-
-    @property
-    def timeout_seconds(self) -> int: ...
-
-    async def execute(self, task: TaskRow, context: AgentContext) -> AgentResult: ...
