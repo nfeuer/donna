@@ -314,3 +314,9 @@ Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
 - **Orchestrator startup guard (prevention #2):** as defense-in-depth behind the
   deploy-layer guard, have the orchestrator detect missing config at startup and
   emit a notification before exiting (ref `dispatch_fallback_alert`).
+- **Self-sufficient snapshots for fresh hardware:** the snapshot excludes the image
+  build context (`src/`, `pyproject.toml`, `alembic/`, `alembic.ini`), so a
+  brand-new host with no cached image cannot rebuild the orchestrator from the
+  snapshot, and `deploy` does not ship code changes. Decide whether to add those
+  paths to `ARCHIVE_PATHS` and use `--build` on `deploy` (every deploy rebuilds —
+  slower but fully reproducible) vs. keeping image builds a separate step.
