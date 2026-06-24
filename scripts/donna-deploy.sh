@@ -10,6 +10,7 @@ DEPLOY_REF="${DONNA_DEPLOY_REF:-HEAD}"
 COMPOSE_PROJECT="${DONNA_COMPOSE_PROJECT:-docker}"
 DOCKER_BIN="${DONNA_DOCKER_BIN:-docker}"
 ALERT_WEBHOOK="${DONNA_ALERT_WEBHOOK:-}"
+CURL_BIN="${DONNA_CURL_BIN:-curl}"
 
 ARCHIVE_PATHS=(config prompts schemas docker)
 SECRET_FILES=(docker/.env docker/google_credentials.json config/google_credentials.json config/token.json)
@@ -22,6 +23,15 @@ log() {  # event level msg
   msg="${msg//\"/\\\"}"
   printf '{"event":"%s","level":"%s","msg":"%s","ts":"%s"}\n' \
     "$1" "$2" "$msg" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >&2
+}
+
+alert() {  # msg
+  log "deploy_alert" "error" "$1"
+  if [ -n "$ALERT_WEBHOOK" ]; then
+    "$CURL_BIN" -fsS -m 10 -H 'Content-Type: application/json' \
+      -d "{\"content\":\"donna-deploy: $1\"}" "$ALERT_WEBHOOK" >/dev/null 2>&1 \
+      || log "deploy_alert_failed" "error" "webhook post failed"
+  fi
 }
 
 snapshot() {
@@ -46,7 +56,7 @@ snapshot() {
   done
   if [ "${#missing[@]}" -gt 0 ]; then
     rm -rf "$staging"
-    log "snapshot_aborted" "error" "missing required files: ${missing[*]}"
+    alert "snapshot build aborted; missing required files: ${missing[*]}"
     return 1
   fi
 
@@ -81,7 +91,7 @@ ensure() {
   else
     local ref="HEAD"
     if [ -f "$DEPLOY_DIR/.deployed-sha" ]; then ref="$(cat "$DEPLOY_DIR/.deployed-sha")"; fi
-    log "ensure_rebuild" "warning" "snapshot invalid/missing; rebuilding from $ref"
+    alert "ensure_rebuild: snapshot invalid/missing; rebuilding from $ref"
     snapshot "$ref"
   fi
   up

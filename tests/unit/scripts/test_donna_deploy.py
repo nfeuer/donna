@@ -101,3 +101,38 @@ def test_ensure_uses_existing_valid_snapshot_without_rebuild(tmp_path):
     assert r.returncode == 0, r.stderr
     assert (deploy / ".deployed-sha").read_text() == sha_before        # unchanged
     assert "up -d" in logf.read_text()
+
+
+def _fake_curl(tmp_path: Path) -> Path:
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    logf = tmp_path / "curl.log"
+    fake = bindir / "curl"
+    fake.write_text("#!/usr/bin/env bash\necho \"$@\" >> \"%s\"\n" % logf)
+    fake.chmod(0o755)
+    return logf
+
+
+def test_alert_fires_on_rebuild(tmp_path):
+    repo = _make_repo(tmp_path)
+    deploy = tmp_path / "deploy-main"
+    _fake_docker(tmp_path)
+    curl_log = _fake_curl(tmp_path)
+    r = _run(repo, deploy, "ensure",
+             DONNA_DOCKER_BIN=str(tmp_path / "bin" / "docker"),
+             DONNA_CURL_BIN=str(tmp_path / "bin" / "curl"),
+             DONNA_ALERT_WEBHOOK="https://hook.example/x")
+    assert r.returncode == 0, r.stderr
+    assert "hook.example" in curl_log.read_text()           # webhook was posted
+    assert "ensure_rebuild" in r.stderr or "rebuild" in r.stderr  # loud log too
+
+
+def test_no_alert_when_webhook_unset(tmp_path):
+    repo = _make_repo(tmp_path)
+    deploy = tmp_path / "deploy-main"
+    _fake_docker(tmp_path)
+    curl_log = _fake_curl(tmp_path)
+    _run(repo, deploy, "ensure",
+         DONNA_DOCKER_BIN=str(tmp_path / "bin" / "docker"),
+         DONNA_CURL_BIN=str(tmp_path / "bin" / "curl"))
+    assert not curl_log.exists() or curl_log.read_text() == ""   # no post attempted
