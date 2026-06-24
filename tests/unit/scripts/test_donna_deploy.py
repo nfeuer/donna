@@ -62,3 +62,42 @@ def test_snapshot_aborts_and_keeps_old_when_required_file_missing(tmp_path):
     assert r.returncode != 0
     # previous valid snapshot is still in place (atomic: never left empty/partial)
     assert (deploy / "config" / "donna_models.yaml").is_file()
+
+
+def _fake_docker(tmp_path: Path) -> Path:
+    """A fake `docker` that appends its args to a log file, so `up` is observable."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    logf = tmp_path / "docker.log"
+    fake = bindir / "docker"
+    fake.write_text("#!/usr/bin/env bash\necho \"$@\" >> \"%s\"\n" % logf)
+    fake.chmod(0o755)
+    return logf
+
+
+def test_ensure_rebuilds_when_snapshot_missing(tmp_path):
+    repo = _make_repo(tmp_path)
+    deploy = tmp_path / "deploy-main"
+    logf = _fake_docker(tmp_path)
+    # deploy dir never built -> ensure must rebuild then call docker compose up
+    r = _run(repo, deploy, "ensure", DONNA_DOCKER_BIN=str(tmp_path / "bin" / "docker"))
+    assert r.returncode == 0, r.stderr
+    assert (deploy / "config" / "donna_models.yaml").is_file()       # rebuilt
+    up_log = logf.read_text()
+    assert "compose" in up_log and "up -d" in up_log                  # stack brought up
+    assert "--project-name docker" in up_log                          # canonical project
+
+
+def test_ensure_uses_existing_valid_snapshot_without_rebuild(tmp_path):
+    repo = _make_repo(tmp_path)
+    deploy = tmp_path / "deploy-main"
+    logf = _fake_docker(tmp_path)
+    _run(repo, deploy, "snapshot")
+    sha_before = (deploy / ".deployed-sha").read_text()
+    # advance HEAD; a valid snapshot must NOT be rebuilt to the new HEAD
+    (repo / "prompts" / "p2.md").write_text("p2\n")
+    _git(repo, "add", "-A"); _git(repo, "commit", "-qm", "more")
+    r = _run(repo, deploy, "ensure", DONNA_DOCKER_BIN=str(tmp_path / "bin" / "docker"))
+    assert r.returncode == 0, r.stderr
+    assert (deploy / ".deployed-sha").read_text() == sha_before        # unchanged
+    assert "up -d" in logf.read_text()

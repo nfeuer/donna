@@ -59,10 +59,41 @@ snapshot() {
   log "snapshot_built" "info" "deployed $(cat "$DEPLOY_DIR/.deployed-sha")"
 }
 
+is_valid() {
+  local f
+  for f in "${REQUIRED_FILES[@]}"; do
+    [ -f "$DEPLOY_DIR/$f" ] || return 1
+  done
+  return 0
+}
+
+up() {
+  local args=(compose --project-name "$COMPOSE_PROJECT" --env-file "$DEPLOY_DIR/docker/.env")
+  local f
+  for f in "${COMPOSE_FILES[@]}"; do args+=(-f "$DEPLOY_DIR/docker/$f"); done
+  args+=(up -d)
+  "$DOCKER_BIN" "${args[@]}"
+}
+
+ensure() {
+  if is_valid; then
+    log "ensure_ok" "info" "snapshot valid"
+  else
+    local ref="HEAD"
+    if [ -f "$DEPLOY_DIR/.deployed-sha" ]; then ref="$(cat "$DEPLOY_DIR/.deployed-sha")"; fi
+    log "ensure_rebuild" "warning" "snapshot invalid/missing; rebuilding from $ref"
+    snapshot "$ref"
+  fi
+  up
+}
+
 main() {
   local cmd="${1:-deploy}"; shift || true
   case "$cmd" in
     snapshot) snapshot "$@" ;;
+    up)       up ;;
+    deploy)   snapshot; up ;;
+    ensure)   ensure ;;
     *) echo "usage: donna-deploy.sh {snapshot|up|deploy|ensure}" >&2; exit 2 ;;
   esac
 }
