@@ -27,6 +27,9 @@ docker compose \
 
 Helper scripts: `scripts/donna-up.sh`, `scripts/donna-down.sh`.
 
+> **Production deploys run from a committed snapshot — see [Deployment](deployment.md).**
+> `docker compose … up` here targets the live repo and is for local/dev use.
+
 ## Config Volume
 
 The orchestrator reads configuration from a mounted volume rather than

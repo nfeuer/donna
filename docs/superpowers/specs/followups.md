@@ -301,3 +301,16 @@ Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
   not yet reliably populate evidence (flipping to true would block evolution of
   evidence-sparse skills). Trigger to flip the default: reliable fixture/targeted
   capture from successful runs.
+
+## 2026-06-24 — Deploy snapshot resilience
+
+- **Secrets out of the dev tree:** `donna-deploy.sh snapshot` overlays secrets
+  (`docker/.env`, `config/google_credentials.json`, `config/token.json`,
+  `docker/google_credentials.json`) from the repo working tree. Relocate to a
+  dedicated secrets dir or `/mnt/donna/vault` so deploys don't read secrets from
+  the IDE workspace.
+- **Healthwatch alert gap:** `donna-healthwatch` ran throughout the 2026-06-22
+  orchestrator crash loop (>18h) without paging. Investigate why and close.
+- **Orchestrator startup guard (prevention #2):** as defense-in-depth behind the
+  deploy-layer guard, have the orchestrator detect missing config at startup and
+  emit a notification before exiting (ref `dispatch_fallback_alert`).

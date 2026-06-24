@@ -5,11 +5,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-DOCKER_DIR="$PROJECT_DIR/docker"
-
-# Consistent project name so containers from different compose files
-# can see each other and Docker doesn't flag orphans.
-export COMPOSE_PROJECT_NAME=donna
+# Run the committed snapshot, not the live working tree.
+DEPLOY_DIR="${DONNA_DEPLOY_DIR:-/mnt/donna/deploy-main}"
+DOCKER_DIR="$DEPLOY_DIR/docker"
+export COMPOSE_PROJECT_NAME=docker
+echo "(operating on snapshot $DEPLOY_DIR — run scripts/donna-deploy.sh deploy to refresh it)"
 
 WITH_MONITORING=false
 WITH_OLLAMA=false
