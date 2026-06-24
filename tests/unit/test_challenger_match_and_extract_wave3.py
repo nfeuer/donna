@@ -344,6 +344,37 @@ async def test_parse_prompt_current_date_iso_uses_z_suffix() -> None:
 
 
 @pytest.mark.asyncio
+async def test_parse_prompt_includes_local_timezone_context() -> None:
+    """The parse prompt must give the model the user's LOCAL time and named
+    timezone, not only a UTC stamp. Without local-zone framing the model
+    interprets a bare clock time like '2pm' in UTC and emits 14:00Z instead of
+    14:00 America/New_York (the deadline timezone bug).
+    """
+    router_response = {
+        "intent_kind": "task",
+        "capability_name": None,
+        "match_score": 0.0,
+        "confidence": 0.3,
+        "extracted_inputs": {},
+        "schedule": None,
+        "deadline": None,
+        "alert_conditions": None,
+        "missing_fields": [],
+        "clarifying_question": None,
+        "low_quality_signals": [],
+    }
+    router = _FakeRouter(router_response)
+    agent = ChallengerAgent(
+        matcher=_FakeMatcher(), input_extractor=None, model_router=router
+    )
+    await agent.match_and_extract("call the dentist at 2pm", "u1")
+    prompt = router.prompts[0]
+    assert "America/New_York" in prompt, (
+        f"prompt lacks the user's local timezone context:\n{prompt}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_schema_validation_failure_degrades_to_escalate() -> None:
     """Fable #8: on schema-validation failure the challenger must NOT trust the
     unvalidated LLM output — it degrades to escalate_to_claude instead of

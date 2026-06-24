@@ -231,6 +231,21 @@ class DiscordIntentDispatcher:
             return await self._build_automation_draft_from_verdict(verdict, msg)
         return DispatchResult(kind="chat")
 
+    @staticmethod
+    def _backfill_time_intent_json(text: str) -> str | None:
+        """Deterministically derive a time_intent from raw text, no LLM.
+
+        The challenger parse path produces a ``deadline`` but never a structured
+        ``time_intent`` — so without this the scheduler has nothing to place
+        against and ``time_intent_json`` is always NULL. Mirrors the backfill in
+        ``InputParser.parse`` (orchestrator/input_parser.py). Returns ``None``
+        when the text carries no temporal signal, so undated tasks are untouched.
+        """
+        from donna.scheduling.date_fallback import fallback_time_intent
+
+        ti = fallback_time_intent(text)
+        return ti.to_json() if ti.kind != "none" else None
+
     async def _create_task(
         self, result: ChallengerMatchResult, msg: _HasContent
     ) -> DispatchResult:
@@ -240,6 +255,7 @@ class DiscordIntentDispatcher:
             inputs=result.extracted_inputs,
             deadline=result.deadline,
             capability_name=(result.capability.name if result.capability else None),
+            time_intent_json=self._backfill_time_intent_json(msg.content),
         )
         return DispatchResult(kind="task_created", task_id=tid)
 
@@ -252,6 +268,7 @@ class DiscordIntentDispatcher:
             inputs=verdict.extracted_inputs,
             deadline=verdict.deadline,
             capability_name=None,
+            time_intent_json=self._backfill_time_intent_json(msg.content),
         )
         return DispatchResult(kind="task_created", task_id=tid)
 

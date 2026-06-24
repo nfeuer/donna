@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import time
+import zoneinfo
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -33,6 +34,12 @@ logger = structlog.get_logger()
 
 _TASK_TYPE = "challenge_task"
 _TIMEOUT_SECONDS = 120  # 2 minutes
+
+# The owner's local timezone. Bare clock times the user mentions ("2pm",
+# "tomorrow afternoon") must be interpreted here, not in UTC — otherwise the
+# model emits e.g. 14:00Z instead of 14:00 America/New_York. Mirrors
+# InputParser._DEFAULT_TZ (orchestrator/input_parser.py).
+_DEFAULT_TZ = zoneinfo.ZoneInfo("America/New_York")
 
 
 @dataclass(slots=True)
@@ -128,6 +135,7 @@ class ChallengerAgent:
 
         caps = await self._snapshot_capabilities()
         template = self._env.get_template("challenger_parse.md")
+        now_local = datetime.now(UTC).astimezone(_DEFAULT_TZ)
         prompt = template.render(
             capabilities=caps,
             user_message=user_message,
@@ -136,6 +144,10 @@ class ChallengerAgent:
             current_date_iso=datetime.now(UTC).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             ),
+            # Local-zone framing so the model interprets bare clock times in the
+            # user's timezone instead of UTC (deadline timezone correctness).
+            current_local_time=now_local.strftime("%A, %Y-%m-%d %I:%M %p %Z"),
+            local_tz_name=str(_DEFAULT_TZ),
         )
 
         # Narrow transport-style failures that are safe to fall back on.
