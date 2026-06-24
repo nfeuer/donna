@@ -17,14 +17,18 @@ REQUIRED_FILES=(config/donna_models.yaml docker/.env docker/donna-core.yml)
 COMPOSE_FILES=(donna-core.yml donna-app.yml donna-ui.yml donna-monitoring.yml donna-ollama.yml)
 
 log() {  # event level msg
+  local msg="$3"
+  msg="${msg//\\/\\\\}"
+  msg="${msg//\"/\\\"}"
   printf '{"event":"%s","level":"%s","msg":"%s","ts":"%s"}\n' \
-    "$1" "$2" "$3" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >&2
+    "$1" "$2" "$msg" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >&2
 }
 
 snapshot() {
   local ref="${1:-$DEPLOY_REF}"
   local staging="${DEPLOY_DIR}.staging.$$"
   rm -rf "$staging"; mkdir -p "$staging"
+  trap 'rm -rf "${staging:-}"' RETURN
 
   git -C "$REPO_DIR" archive "$ref" "${ARCHIVE_PATHS[@]}" | tar -x -C "$staging"
 
