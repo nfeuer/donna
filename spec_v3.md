@@ -3984,37 +3984,49 @@ skill). They live in `src/donna/automations/` and the
 -   **State blob**: `automation.state_blob` persists per-automation
     memory between runs (last seen item, last alert timestamp, etc.).
 
-**26. LLM Gateway & Queue** *(added v3.1)*
+**26. LLM Gateway & Queue** *(added v3.1; reconciled 2026-07 — see §26.1)*
 
-All outbound calls to Claude and Ollama flow through the **LLM
-Gateway** (`src/donna/llm/`). Purpose: keep a single, cost-aware,
-preemptible choke point so budget enforcement and observability
-never get bypassed.
+Donna has **two distinct choke points**, not one. Earlier drafts of
+this section conflated them; they are separated here to match the code.
 
--   **Priority queue** (`llm/queue.py`) with two lanes:
-    -   *Internal* -- system-initiated calls (digests, reminders,
-        evolution jobs, shadow sampling).
-    -   *External* -- user-initiated calls (chat, task capture,
-        interrogation).
-    External calls can preempt internal ones; `invocation_log`
-    records `queue_wait_ms`, `interrupted`, and the preempting
-    caller in `chain_id`/`caller`.
+**(A) Cost / accounting choke point — `ModelRouter.complete()`**
+(`src/donna/models/router.py`). *Every* internal LLM call flows through
+`complete()`, which is where budget and observability actually live:
+pre-call it consults `CostTracker` / `BudgetGuard` (§13) and may raise
+`BudgetPausedError`; it refuses to run without an `invocation_logger`
+("no unlogged billed call"); post-call it writes the full metadata row
+to `invocation_log`; it owns per-provider circuit breakers, truncation
+re-dispatch, and shadow fan-out. **This — not the gateway queue — is
+what makes §13.1 budget rules enforceable.** Cloud (Claude) calls stop
+here; they do not use the GPU and never enter the queue.
 
--   **Rate limiter** (`llm/rate_limiter.py`) caps per-minute and
-    per-hour outbound rates per provider; respects
-    `donna_models.yaml` burst settings.
+**(B) GPU-arbitration choke point — the LLM Gateway queue**
+(`src/donna/llm/queue.py`, `LLMQueueWorker`). Purpose: serialize the
+single local GPU (one RTX 3090, one resident Ollama model at a time) so
+external homelab callers can't starve Donna's own interactive work.
+Only **local Ollama** calls are meant to be GPU-arbitrated here.
 
--   **Alerter** (`llm/alerter.py`) fires notifications on budget
-    thresholds (daily $20 pause, 80%/90% monthly), circuit-breaker
-    opens, and sustained queue backlogs.
+-   **Two lanes:** *Internal* (Donna's own local calls — priority by
+    `task_type`) and *External* (other homelab services via
+    `POST /llm/completions`). Internal is dequeued first; during active
+    hours an arriving internal item is intended to **preempt** a running
+    external one (note: the direction is *internal preempts external* —
+    an earlier draft here said the reverse).
+-   **Rate limiter** (`llm/rate_limiter.py`), **Alerter**
+    (`llm/alerter.py`), GPU model-swap + home-restore, and queue-depth
+    observability all apply to the external lane today.
 
--   **Cost enforcement.** Pre-call, the gateway consults
-    `CostTracker` / `BudgetGuard` (§13, `src/donna/cost/`) and
-    may raise `BudgetPausedError`. Post-call, it writes the full
-    metadata row into `invocation_log`.
-
-The gateway is what makes the spec's "budget rules" (§13.1)
-enforceable in practice.
+**§26.1 Implementation status (2026-07).** The external lane is fully
+wired (in the API process). The **internal lane is not yet routed**:
+`ModelRouter` does not yet hand its Ollama inference to
+`enqueue_internal`, and preemption is therefore inert. Wiring the
+internal lane in-process (the API chat router sharing the worker) plus
+repairing preemption is a bounded, reviewed change; routing the
+*orchestrator's* local calls through the arbiter is cross-process
+(separate process from the worker) and is **deferred** — see
+`docs/superpowers/plans/2026-07-02-wiring-remediation-design.md` §5 and
+the follow-up plan. Until then, GPU contention between the orchestrator
+and external callers is unarbitrated (acceptable at current solo load).
 
 **27. Admin API & Dashboard** *(added v3.1)*
 
