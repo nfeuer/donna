@@ -7,10 +7,13 @@ for skill candidate promotion.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 import uuid6
+
+if TYPE_CHECKING:
+    from donna.tasks.database import Database
 
 logger = structlog.get_logger()
 
@@ -99,3 +102,39 @@ class CapabilityGapTracker:
             (gap_id,),
         )
         await self._conn.commit()
+
+
+async def log_capability_gap(
+    db: Database,
+    context: dict[str, Any],
+    params: dict[str, Any],
+) -> str:
+    """Module-level handler glue for the reply-action registry.
+
+    Wires ``donna.replies.actions.gap_actions.log_capability_gap`` (the path
+    in ``config/reply_actions.yaml``) to ``CapabilityGapTracker.log_gap``.
+
+    Args:
+        db: Database instance whose ``.connection`` is the raw aiosqlite conn.
+        context: Shared context dict supplied by the reply handler (contains
+            at least ``task_id``).
+        params: Action params from the LLM-proposed action or fast-path
+            invocation.  Expected keys: ``user_request``, ``description``.
+            Optional: ``context_type``, ``task_id``.
+
+    Returns:
+        A short confirmation string suitable for display to the user.
+    """
+    tracker = CapabilityGapTracker(db.connection)
+    user_request: str = params.get("user_request", "")
+    description: str = params.get("description", "")
+    context_type: str | None = params.get("context_type") or context.get("context_type")
+    task_id: str | None = params.get("task_id") or context.get("task_id")
+    await tracker.log_gap(
+        user_request=user_request,
+        description=description,
+        context_type=context_type,
+        task_id=task_id,
+    )
+    short = description[:60] if description else user_request[:60]
+    return f"Noted: '{short}' added to capability gaps."
