@@ -180,3 +180,20 @@ class TestReminderFormat:
         await sched._check_and_send(now)
 
         service.dispatch.assert_not_called()
+        service.dispatch_fallback_alert.assert_not_called()
+
+    async def test_reminder_unparseable_scheduled_start_alerts(self) -> None:
+        """A non-empty but malformed scheduled_start is surfaced, not silently skipped."""
+        sched, db, service = _make_scheduler()
+        now = _utc(9, 0)
+        db.list_tasks = AsyncMock(
+            return_value=[_task(scheduled_start="not-a-real-datetime")]
+        )
+
+        await sched._check_and_send(now)
+
+        service.dispatch.assert_not_called()
+        service.dispatch_fallback_alert.assert_called_once()
+        alert_kwargs = service.dispatch_fallback_alert.call_args[1]
+        assert alert_kwargs["component"] == "reminder"
+        assert "not-a-real-datetime" in alert_kwargs["error"]

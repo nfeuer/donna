@@ -102,6 +102,21 @@ class ReminderScheduler:
 
             start = _parse_dt(task.scheduled_start)
             if start is None:
+                # scheduled_start is non-empty (guarded above), so a None parse
+                # means a corrupt/malformed value — surface it rather than
+                # skipping this task's reminders silently every tick.
+                logger.warning(
+                    "reminder_scheduled_start_unparseable",
+                    event_type="fallback_activated",
+                    task_id=task.id,
+                    scheduled_start=task.scheduled_start,
+                )
+                await self._service.dispatch_fallback_alert(
+                    component="reminder",
+                    error=f"unparseable scheduled_start: {task.scheduled_start!r}",
+                    fallback="reminder skipped for this task",
+                    context={"task_id": task.id, "task_title": task.title},
+                )
                 continue
 
             # Within the 15-minute window and still in the future.
