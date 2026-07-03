@@ -79,3 +79,48 @@ async def test_run_server_starts_notification_tasks() -> None:
     assert "afternoon_inactivity" in started
     assert "stale_detector" in started
     assert "post_meeting_capture" in started
+
+
+@pytest.mark.asyncio
+async def test_run_server_surfaces_crashed_bg_task() -> None:
+    """A background loop that crashes is surfaced (Discord alert), not silent."""
+
+    async def _boom() -> None:
+        raise RuntimeError("kaboom")
+
+    reminder = MagicMock()
+    reminder.run = AsyncMock(side_effect=_boom)
+    overdue = MagicMock()
+    overdue.run = _stub_runner("overdue_detector", [])
+    digest = MagicMock()
+    digest.run = _stub_runner("morning_digest", [])
+
+    nt = NotificationTasks(
+        reminder_scheduler=reminder,
+        overdue_detector=overdue,
+        morning_digest=digest,
+    )
+
+    discord_bot = MagicMock()
+    discord_bot.send_message = AsyncMock()
+    discord_bot.is_ready = MagicMock(return_value=True)
+
+    server_task = asyncio.create_task(
+        run_server(
+            host="127.0.0.1",
+            port=0,
+            notification_tasks=nt,
+            discord_bot=discord_bot,
+        )
+    )
+
+    await asyncio.sleep(0.2)
+    server_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await server_task
+
+    # The crashed reminder loop triggered a Discord debug alert.
+    assert discord_bot.send_message.called
+    alert_text = discord_bot.send_message.call_args[0][1]
+    assert "crashed" in alert_text
+    assert "reminder_scheduler" in alert_text

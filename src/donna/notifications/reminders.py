@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import zoneinfo
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -60,6 +61,9 @@ class ReminderScheduler:
         self._tz = tz
         # task_id → date the reminder was sent (reset daily for reschedules)
         self._sent: dict[str, str] = {}
+        # Optional liveness hook, called once per loop iteration. run_server
+        # uses it to publish scheduler_last_heartbeat for the /health probe.
+        self.on_tick: Callable[[], None] | None = None
 
     async def run(self) -> None:
         """Loop forever, checking for upcoming tasks every minute."""
@@ -83,6 +87,9 @@ class ReminderScheduler:
                 await self._check_and_send(now)
             except Exception:
                 logger.exception("reminder_check_failed")
+
+            if self.on_tick is not None:
+                self.on_tick()
 
             await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
