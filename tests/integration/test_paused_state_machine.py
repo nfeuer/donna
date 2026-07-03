@@ -36,14 +36,32 @@ def test_paused_to_backlog_valid(loaded_state_machine: StateMachine) -> None:
     assert side_effects == []
 
 
-def test_paused_to_done_invalid(loaded_state_machine: StateMachine) -> None:
-    with pytest.raises(InvalidTransitionError):
-        loaded_state_machine.validate_transition("paused", "done")
-
-
 def test_done_to_paused_invalid(loaded_state_machine: StateMachine) -> None:
     with pytest.raises(InvalidTransitionError):
         loaded_state_machine.validate_transition("done", "paused")
+
+
+@pytest.mark.parametrize(
+    "from_state",
+    ["backlog", "scheduled", "paused", "needs_scheduling"],
+)
+def test_wildcard_to_done_valid(
+    loaded_state_machine: StateMachine, from_state: str
+) -> None:
+    """The ``* → done`` wildcard makes "complete from anywhere" legal and fires
+    the completion side-effects."""
+    side_effects = loaded_state_machine.validate_transition(from_state, "done")
+    assert "set_completed_at" in side_effects
+    assert "update_velocity_metrics" in side_effects
+
+
+def test_cancelled_to_done_still_invalid(
+    loaded_state_machine: StateMachine,
+) -> None:
+    """``cancelled → * except backlog`` is checked before the wildcard, so a
+    cancelled task cannot be marked done without re-opening first."""
+    with pytest.raises(InvalidTransitionError):
+        loaded_state_machine.validate_transition("cancelled", "done")
 
 
 def test_paused_to_cancelled_via_wildcard(

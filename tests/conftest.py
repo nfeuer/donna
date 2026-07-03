@@ -146,6 +146,17 @@ def state_machine_config() -> StateMachineConfig:
             ),
             TransitionEntry(
                 **{
+                    "from": "*",
+                    "to": "done",
+                    "trigger": "user_marks_complete",
+                    "side_effects": [
+                        "set_completed_at",
+                        "update_velocity_metrics",
+                    ],
+                }
+            ),
+            TransitionEntry(
+                **{
                     "from": "done",
                     "to": "in_progress",
                     "trigger": "user_reopens",
@@ -162,13 +173,6 @@ def state_machine_config() -> StateMachineConfig:
             ),
         ],
         invalid_transitions=[
-            InvalidTransitionEntry(
-                **{
-                    "from": "backlog",
-                    "to": "done",
-                    "reason": "Cannot complete without scheduling.",
-                }
-            ),
             InvalidTransitionEntry(
                 **{
                     "from": "cancelled",

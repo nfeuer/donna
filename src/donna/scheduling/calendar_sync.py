@@ -183,11 +183,14 @@ class CalendarSync:
 
         await self._db.update_task(
             task_id,
-            status=TaskStatus.BACKLOG,
             calendar_event_id=None,
             donna_managed=False,
             scheduled_start=None,
         )
+        # Status is a state-machine concern (scheduled → backlog is the legal
+        # user_cancels_scheduled_time transition); update_task no longer accepts
+        # status writes.
+        await self._db.transition_task_state(task_id, TaskStatus.BACKLOG)
 
         logger.info(
             "calendar_event_deleted_task_unscheduled",

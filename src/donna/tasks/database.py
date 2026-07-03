@@ -85,7 +85,6 @@ _UPDATABLE_COLUMNS: set[str] = {
     "description",
     "domain",
     "priority",
-    "status",
     "estimated_duration",
     "deadline",
     "deadline_type",
@@ -765,6 +764,19 @@ class Database:
                 "UPDATE tasks SET status = ? WHERE id = ?",
                 (new_status.value, task_id),
             )
+            # Apply completion-timestamp side effects under the same lock/commit
+            # so every caller going through the machine gets consistent
+            # completed_at bookkeeping (§5.2 sanctioned side-effects).
+            if "set_completed_at" in side_effects:
+                await conn.execute(
+                    "UPDATE tasks SET completed_at = ? WHERE id = ?",
+                    (datetime.utcnow().isoformat(), task_id),
+                )
+            if "clear_completed_at" in side_effects:
+                await conn.execute(
+                    "UPDATE tasks SET completed_at = NULL WHERE id = ?",
+                    (task_id,),
+                )
             await conn.commit()
 
         logger.info(
@@ -776,7 +788,21 @@ class Database:
         )
 
         updated_task = await self.get_task(task_id)
+        if self._supabase_sync is not None and updated_task is not None:
+            await self._supabase_sync.push_task(dataclasses.asdict(updated_task))
         if updated_task is not None:
+            # Now that every status write funnels through here, fire the memory
+            # observer so downstream consumers (e.g. the terminal-status
+            # re-embed in memory/sources_task.py) still react to status changes
+            # that previously came in via update_task().
+            await self._fire_memory_observer(
+                "observe_task",
+                {
+                    "action": "update",
+                    "task": dataclasses.asdict(updated_task),
+                    "previous_status": task.status,
+                },
+            )
             await self._emit_event(
                 "task_state_changed",
                 task=updated_task,

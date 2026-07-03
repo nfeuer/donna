@@ -71,16 +71,19 @@ class TestCorrectionEventFlow:
         assert row[0] == 0
 
     async def test_non_learnable_field_not_logged(self, wired_db: Database) -> None:
-        """Updating status (not learnable) with source still produces no correction."""
+        """A status change (not learnable) produces no correction row.
+
+        Status writes now flow through the state machine
+        (``transition_task_state``), which never emits the correction event —
+        so a status change can't be mistaken for a learnable preference edit.
+        """
         from donna.tasks.db_models import TaskStatus
 
         task = await wired_db.create_task(
             user_id="nick", title="Status task",
         )
 
-        await wired_db.update_task(
-            task.id, source="api", status=TaskStatus.IN_PROGRESS,
-        )
+        await wired_db.transition_task_state(task.id, TaskStatus.SCHEDULED)
 
         cursor = await wired_db.connection.execute(
             "SELECT COUNT(*) FROM correction_log WHERE task_id = ?",
