@@ -5,14 +5,15 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import HTTPException, Query, Request
 from pydantic import BaseModel
 
+from donna.api.auth import admin_router
 from donna.automations.cron import CronScheduleCalculator, InvalidCronExpressionError
 from donna.automations.models import AutomationRow, AutomationRunRow
 from donna.automations.repository import AutomationRepository
 
-router = APIRouter()
+router = admin_router()
 
 
 # ---------------------------------------------------------------------------

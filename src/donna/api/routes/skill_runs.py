@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import HTTPException, Query, Request
 
+from donna.api.auth import admin_router
 from donna.skills.runs import (
     SELECT_SKILL_RUN,
     SELECT_SKILL_STEP_RESULT,
@@ -15,7 +16,7 @@ from donna.skills.runs import (
     row_to_step_result,
 )
 
-router = APIRouter()
+router = admin_router()
 
 
 def _run_to_dict(run: SkillRunRow) -> dict[str, Any]:

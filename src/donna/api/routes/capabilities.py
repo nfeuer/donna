@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import HTTPException, Query, Request
 
+from donna.api.auth import admin_router
 from donna.capabilities.models import SELECT_CAPABILITY, CapabilityRow, row_to_capability
 
-router = APIRouter()
+router = admin_router()
 
 
 def _capability_to_dict(cap: CapabilityRow) -> dict[str, Any]:
