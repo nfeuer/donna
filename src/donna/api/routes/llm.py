@@ -51,8 +51,8 @@ def _resolve_model(request: Request, requested: str | None) -> str:
         models_cfg = getattr(request.app.state, "models_config", None) or {}
         default_alias = "local_parser"
         model_entry = models_cfg.get("models", {}).get(default_alias, {})
-        return str(model_entry.get("model", "qwen2.5:32b-instruct-q6_K"))
-    return "qwen2.5:32b-instruct-q6_K"
+        return str(model_entry.get("model", "qwen2.5:32b-instruct-q4_K_M"))
+    return "qwen2.5:32b-instruct-q4_K_M"
 
 
 @router.get("/health")
