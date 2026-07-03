@@ -124,17 +124,19 @@ async def _seed_run(conn, automation_id: str):
 async def test_post_create_returns_automation_id(db):
     request = _make_request(db)
     body = CreateAutomationRequest(
-        user_id="nick",
+        user_id="someone_else",  # attacker-supplied; must be ignored
         name="Watch shirt",
         capability_name="product_watch",
         inputs={"url": "https://example.com"},
         trigger_type="on_schedule",
         schedule="0 12 * * *",
     )
-    response = await create_automation(body=body, request=request)
+    response = await create_automation(body=body, request=request, admin_user_id="nick")
     assert "id" in response
     assert response["name"] == "Watch shirt"
     assert response["next_run_at"] is not None
+    # Ownership is bound to the authenticated admin, not the request body (IDOR fix).
+    assert response["user_id"] == "nick"
 
 
 # ===========================================================================
@@ -151,7 +153,7 @@ async def test_post_create_rejects_missing_capability(db):
         trigger_type="on_manual",
     )
     with pytest.raises(HTTPException) as exc_info:
-        await create_automation(body=body, request=request)
+        await create_automation(body=body, request=request, admin_user_id="nick")
     assert exc_info.value.status_code == 400
     assert "nonexistent_cap" in exc_info.value.detail
 
@@ -171,7 +173,7 @@ async def test_post_create_rejects_invalid_cron(db):
         schedule="not a cron",
     )
     with pytest.raises(HTTPException) as exc_info:
-        await create_automation(body=body, request=request)
+        await create_automation(body=body, request=request, admin_user_id="nick")
     assert exc_info.value.status_code == 400
 
 
