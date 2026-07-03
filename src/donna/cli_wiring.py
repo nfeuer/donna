@@ -668,6 +668,88 @@ def _try_build_person_profile_skill(
         return None, None
 
 
+def _build_proactive_prompts(ctx: StartupContext) -> dict[str, Any]:
+    """Construct the four proactive-prompt loops from config/discord.yaml.
+
+    These are the "pursue the user" loops (evening check-in, afternoon
+    inactivity nudge, stale-task detector, post-meeting capture). They existed
+    but were never wired into NotificationTasks, so the server start-guards
+    were always false. This builds them so run_server() can start them.
+
+    Args:
+        ctx: Startup context providing db, notification_service, user_id, tz,
+            and config_dir.
+
+    Returns:
+        A dict keyed by NotificationTasks field name
+        (post_meeting_capture / evening_checkin / stale_detector /
+        afternoon_inactivity); a value is None when that prompt is disabled in
+        config or its construction fails.
+    """
+    result: dict[str, Any] = {
+        "post_meeting_capture": None,
+        "evening_checkin": None,
+        "stale_detector": None,
+        "afternoon_inactivity": None,
+    }
+    service = ctx.notification_service
+    if service is None:
+        return result
+    try:
+        from donna.config import load_discord_config
+        from donna.notifications.proactive_prompts import (
+            AfternoonInactivityCheck,
+            EveningCheckin,
+            PostMeetingCapture,
+            StaleTaskDetector,
+        )
+
+        pp = load_discord_config(ctx.config_dir).proactive_prompts
+        if pp.post_meeting_capture.enabled:
+            result["post_meeting_capture"] = PostMeetingCapture(
+                db=ctx.db,
+                service=service,
+                user_id=ctx.user_id,
+                delay_minutes=pp.post_meeting_capture.delay_minutes,
+            )
+        if pp.evening_checkin.enabled:
+            result["evening_checkin"] = EveningCheckin(
+                db=ctx.db,
+                service=service,
+                user_id=ctx.user_id,
+                hour=pp.evening_checkin.hour,
+                minute=pp.evening_checkin.minute,
+                tz=ctx.tz,
+            )
+        if pp.stale_detection.enabled:
+            result["stale_detector"] = StaleTaskDetector(
+                db=ctx.db,
+                service=service,
+                user_id=ctx.user_id,
+                stale_days=pp.stale_detection.stale_days,
+                check_interval_hours=pp.stale_detection.check_interval_hours,
+            )
+        if pp.afternoon_inactivity.enabled:
+            result["afternoon_inactivity"] = AfternoonInactivityCheck(
+                db=ctx.db,
+                service=service,
+                user_id=ctx.user_id,
+                hour=pp.afternoon_inactivity.hour,
+                minute=pp.afternoon_inactivity.minute,
+                tz=ctx.tz,
+            )
+        logger.info(
+            "proactive_prompts_constructed",
+            post_meeting=result["post_meeting_capture"] is not None,
+            evening_checkin=result["evening_checkin"] is not None,
+            stale_detector=result["stale_detector"] is not None,
+            afternoon_inactivity=result["afternoon_inactivity"] is not None,
+        )
+    except Exception as exc:
+        logger.warning("proactive_prompts_unavailable", reason=str(exc))
+    return result
+
+
 def _build_notification_tasks(
     ctx: StartupContext,
     *,
@@ -883,6 +965,8 @@ def _build_notification_tasks(
         )
         return None
 
+    prompts = _build_proactive_prompts(ctx)
+
     return NotificationTasks(
         reminder_scheduler=reminder_scheduler,
         overdue_detector=overdue_detector,
@@ -890,6 +974,10 @@ def _build_notification_tasks(
         weekly_planner=weekly_planner,
         eod_digest=eod_digest,
         weekly_digest=weekly_digest,
+        post_meeting_capture=prompts["post_meeting_capture"],
+        evening_checkin=prompts["evening_checkin"],
+        stale_detector=prompts["stale_detector"],
+        afternoon_inactivity=prompts["afternoon_inactivity"],
     )
 
 
@@ -2768,31 +2856,8 @@ async def wire_discord(
                 )
             log.info("discord_slash_commands_registered")
 
-        # Start proactive prompt background tasks.
-        prompts_cfg = discord_config.proactive_prompts
-
-        # NotificationService is needed for proactive prompts — lazy import.
-        try:
-            from donna.notifications.proactive_prompts import (  # noqa: F401
-                AfternoonInactivityCheck,
-                EveningCheckin,
-                PostMeetingCapture,
-                StaleTaskDetector,
-            )
-
-            # Proactive prompts need NotificationService. If it's not yet
-            # wired (e.g., no calendar config), skip gracefully.
-            # For now, log that proactive prompts are configured but will
-            # be started once the full notification stack is wired in server.py.
-            log.info(
-                "discord_proactive_prompts_configured",
-                evening_checkin=prompts_cfg.evening_checkin.enabled,
-                stale_detection=prompts_cfg.stale_detection.enabled,
-                post_meeting=prompts_cfg.post_meeting_capture.enabled,
-                afternoon_inactivity=prompts_cfg.afternoon_inactivity.enabled,
-            )
-        except Exception:
-            log.exception("discord_proactive_prompts_load_failed")
+        # Proactive prompts are constructed in _build_proactive_prompts() and
+        # started by run_server() via NotificationTasks — not here.
 
     except Exception:
         log.exception("discord_config_load_failed")
