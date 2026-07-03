@@ -17,7 +17,10 @@ services:
       - ${DONNA_VAULT_PATH}:/donna/vault:ro
       - ${DONNA_DATA_PATH}/donna/config:/app/config
     ports:
-      - "8200:8200"
+      # Loopback-only: Caddy reaches the API via the homelab Docker network
+      # (donna-api:8200), so the host port need not be LAN-exposed. Keeps the
+      # admin surface off the LAN. (audit 2026-07-02 §3 finding #4)
+      - "127.0.0.1:8200:8200"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8200/health')"]
       interval: 30s
@@ -42,7 +45,10 @@ services:
     volumes:
       - browser-data:/data/browser
     ports:
-      - "3101:3100"
+      # Loopback-only: the orchestrator drives the browser over the homelab
+      # Docker network (donna-browser:3100); no LAN access to the control port.
+      # (audit 2026-07-02 §3 finding #4)
+      - "127.0.0.1:3101:3100"
     healthcheck:
       # The browser-sidecar image ships wget (for the Chrome install), not curl.
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3100/gallery"]
