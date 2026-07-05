@@ -17,10 +17,35 @@ import numpy as np
 import pytest
 import pytest_asyncio
 import sqlite_vec
+import structlog
 
+import donna.memory.writer as _writer_mod
 from donna.config import VaultRetrievalConfig
 from donna.memory.chunking import MarkdownHeadingChunker
 from donna.memory.store import MemoryStore
+
+
+@pytest.fixture(autouse=True)
+def _reset_writer_logger():
+    """Re-bind the module-level logger in ``donna.memory.writer`` per test.
+
+    Root cause: ``setup_logging()`` (called by the integration tests that boot
+    the full orchestrator) configures structlog with
+    ``cache_logger_on_first_use=True``.  Once the writer module's logger has
+    been emitted through, it is cached against that config, and the in-place
+    reconfigure done by ``structlog.testing.capture_logs()`` no longer
+    intercepts it — so ``capture_logs`` yields zero events and the
+    ``vault_autowrite_skipped_idempotent`` / ``person_stubs_created`` /
+    ``person_stub_failed`` assertions fail when the suite runs in full.
+
+    Replacing the proxy with a fresh ``structlog.get_logger()`` ensures each
+    test's ``capture_logs()`` context manager intercepts every emit.  Mirrors
+    the fix in ``tests/unit/test_seed_loader_drift_log.py``.
+    """
+    original = _writer_mod.logger
+    _writer_mod.logger = structlog.get_logger()
+    yield
+    _writer_mod.logger = original
 
 
 class FakeEmbeddingProvider:

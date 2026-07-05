@@ -77,6 +77,45 @@ async def test_ready_task_routes_to_task_path() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ready_task_backfills_time_intent_json_for_dated_message() -> None:
+    """A dated task message must persist a structured time_intent_json so the
+    scheduler can place it. The challenger produces no time_intent, so the
+    dispatcher backfills it deterministically (date_fallback) — mirroring the
+    InputParser path. Previously time_intent_json was never passed → always NULL.
+    """
+    result = ChallengerMatchResult(status="ready", intent_kind="task", confidence=0.9)
+    tasks_db = _FakeTasksDb()
+    dispatcher = DiscordIntentDispatcher(
+        challenger=_FakeChallenger(result),
+        novelty_judge=_FakeNovelty(None),
+        pending_drafts=_FakePendingDrafts(),
+        tasks_db=tasks_db,
+    )
+    out = await dispatcher.dispatch(_Msg(content="call the dentist tomorrow"))
+    assert out.kind == "task_created"
+    assert len(tasks_db.tasks) == 1
+    ti = tasks_db.tasks[0].get("time_intent_json")
+    assert ti is not None, "dated message must backfill time_intent_json"
+    import json as _json
+    assert _json.loads(ti)["kind"] != "none"
+
+
+@pytest.mark.asyncio
+async def test_ready_task_without_date_leaves_time_intent_none() -> None:
+    """A task with no temporal phrasing should not fabricate a time_intent."""
+    result = ChallengerMatchResult(status="ready", intent_kind="task", confidence=0.9)
+    tasks_db = _FakeTasksDb()
+    dispatcher = DiscordIntentDispatcher(
+        challenger=_FakeChallenger(result),
+        novelty_judge=_FakeNovelty(None),
+        pending_drafts=_FakePendingDrafts(),
+        tasks_db=tasks_db,
+    )
+    await dispatcher.dispatch(_Msg(content="email the contractor about the quote"))
+    assert tasks_db.tasks[0].get("time_intent_json") is None
+
+
+@pytest.mark.asyncio
 async def test_ready_automation_returns_confirmation_needed() -> None:
     result = ChallengerMatchResult(
         status="ready", intent_kind="automation", confidence=0.9,

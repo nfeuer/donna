@@ -25,7 +25,11 @@ Analyze the user's message and emit JSON matching this schema:
 - `confidence`: 0..1 — your overall confidence in the parse
 - `extracted_inputs`: object of fields from the capability's input schema
 - `schedule`: {cron, human_readable} when intent is automation with a clear schedule
-- `deadline`: ISO-8601 datetime when intent is task with a deadline
+- `deadline`: ISO-8601 datetime when intent is task with a deadline. Interpret any
+  clock time the user gives ("2pm", "tomorrow afternoon") in the user's LOCAL
+  timezone ({{ local_tz_name }}) and emit the datetime WITH that local UTC offset
+  (e.g. "2pm next Tuesday" → `2026-07-07T14:00:00-04:00`). Never emit a bare clock
+  time as UTC.
 - `alert_conditions`: alert DSL describing when the automation should notify on skill output.
   Use the **Output fields** listed above for each capability to decide what to alert on.
   For monitoring capabilities (product_watch, news_check, email_triage), the skill computes
@@ -58,9 +62,14 @@ If the user says "when X happens, do Y" (e.g., "when I get an email from jane@x.
   - anything "urgent" → every 15 min
 - Emit `schedule.cron` with the inferred interval and `schedule.human_readable` describing it.
 
-## Current date
+## Current date and time
 
-{{ current_date_iso }}
+- Current UTC instant: {{ current_date_iso }}
+- User's local time: {{ current_local_time }}
+- User's timezone: {{ local_tz_name }}
+
+Resolve relative dates ("tomorrow", "next Tuesday") and clock times against the
+user's LOCAL time and timezone above.
 
 ## User message
 

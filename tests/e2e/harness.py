@@ -351,6 +351,7 @@ class _TasksDbAdapter:
         inputs: dict[str, Any] | None = None,
         deadline: Any | None = None,
         capability_name: str | None = None,
+        time_intent_json: str | None = None,
     ) -> str:
         from donna.tasks.db_models import InputChannel
 
@@ -361,6 +362,7 @@ class _TasksDbAdapter:
             created_via=InputChannel.DISCORD,
             capability_name=capability_name,
             inputs=inputs,
+            time_intent_json=time_intent_json,
         )
         return row.id
 
