@@ -70,7 +70,7 @@ def _fake_docker(tmp_path: Path) -> Path:
     bindir.mkdir()
     logf = tmp_path / "docker.log"
     fake = bindir / "docker"
-    fake.write_text("#!/usr/bin/env bash\necho \"$@\" >> \"%s\"\n" % logf)
+    fake.write_text(f'#!/usr/bin/env bash\necho "$@" >> "{logf}"\n')
     fake.chmod(0o755)
     return logf
 
@@ -96,7 +96,8 @@ def test_ensure_uses_existing_valid_snapshot_without_rebuild(tmp_path):
     sha_before = (deploy / ".deployed-sha").read_text()
     # advance HEAD; a valid snapshot must NOT be rebuilt to the new HEAD
     (repo / "prompts" / "p2.md").write_text("p2\n")
-    _git(repo, "add", "-A"); _git(repo, "commit", "-qm", "more")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "more")
     r = _run(repo, deploy, "ensure", DONNA_DOCKER_BIN=str(tmp_path / "bin" / "docker"))
     assert r.returncode == 0, r.stderr
     assert (deploy / ".deployed-sha").read_text() == sha_before        # unchanged
@@ -108,7 +109,7 @@ def _fake_curl(tmp_path: Path) -> Path:
     bindir.mkdir(exist_ok=True)
     logf = tmp_path / "curl.log"
     fake = bindir / "curl"
-    fake.write_text("#!/usr/bin/env bash\necho \"$@\" >> \"%s\"\n" % logf)
+    fake.write_text(f'#!/usr/bin/env bash\necho "$@" >> "{logf}"\n')
     fake.chmod(0o755)
     return logf
 
