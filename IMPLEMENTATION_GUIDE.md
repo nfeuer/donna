@@ -486,7 +486,7 @@ Edit `config/donna_models.yaml` — add a `shadow` block so the local model runs
 models:
   parser:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     shadow:
       provider: ollama
       model: qwen2.5:32b-instruct-q6_K
@@ -506,10 +506,10 @@ models:
     estimated_cost_per_1k_tokens: 0.0001
   reasoner:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
   fallback:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
 ```
 
 Enable 5% spot-check sampling for ongoing quality monitoring. To revert: flip `parser.provider` back to `anthropic` and restart.

@@ -21,7 +21,7 @@ def _make_models_config(
     monthly_warning_pct: float = 0.90,
 ) -> ModelsConfig:
     return ModelsConfig(
-        models={"parser": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514")},
+        models={"parser": ModelConfig(provider="anthropic", model="claude-sonnet-4-6")},
         routing={"parse_task": RoutingEntry(model="parser")},
         cost=CostConfig(
             monthly_budget_usd=monthly_budget,

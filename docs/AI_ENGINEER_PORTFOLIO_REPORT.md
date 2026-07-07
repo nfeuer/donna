@@ -69,7 +69,7 @@ Each item: **what to build → what skill it demonstrates → effort/leverage.**
 **Effort:** medium. **Leverage:** medium-high.
 
 ### E. A model-migration / provider-abstraction case study
-**Build:** turn the *retired-model incident* (Claude `claude-sonnet-4-20250514` 404'd silently for ~3 weeks) into a case study: the `complete()` abstraction, how a model swap is one config line, and the dependency self-health-check that now surfaces such breakage (Session 2). Optionally add a third provider to prove the abstraction.
+**Build:** turn the *retired-model incident* (Claude `claude-sonnet-4-6` 404'd silently for ~3 weeks) into a case study: the `complete()` abstraction, how a model swap is one config line, and the dependency self-health-check that now surfaces such breakage (Session 2). Optionally add a third provider to prove the abstraction.
 **Demonstrates:** model-agnostic design, resilience thinking, and honest incident writeups (which senior reviewers love).
 **Effort:** low (writeup) to medium (3rd provider). **Leverage:** medium-high — a real incident is more credible than a clean-room demo.
 

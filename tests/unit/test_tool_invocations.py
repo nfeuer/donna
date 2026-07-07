@@ -24,7 +24,7 @@ _INVOCATION_ROW: dict = {
     "id": "inv-001",
     "task_type": "parse_task",
     "model_alias": "claude-sonnet",
-    "model_actual": "claude-sonnet-4-20250514",
+    "model_actual": "claude-sonnet-4-6",
     "tokens_in": 1000,
     "tokens_out": 200,
     "cost_usd": 0.003,

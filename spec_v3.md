@@ -776,19 +776,19 @@ controlling which model handles what work.
 >
 > provider: anthropic \# ollama once 3090 available
 >
-> model: claude-sonnet-4-20250514
+> model: claude-sonnet-4-6
 >
 > reasoner:
 >
 > provider: anthropic
 >
-> model: claude-sonnet-4-20250514
+> model: claude-sonnet-4-6
 >
 > fallback:
 >
 > provider: anthropic
 >
-> model: claude-sonnet-4-20250514
+> model: claude-sonnet-4-6
 >
 > routing:
 >
@@ -888,7 +888,7 @@ optimization.
   model_alias         String     Config alias used (parser, reasoner, etc.)
 
   model_actual        String     Resolved provider + model
-                                 (anthropic/claude-sonnet-4-20250514)
+                                 (anthropic/claude-sonnet-4-6)
 
   input_hash          String     Hash of input for dedup and comparison
                                  matching
@@ -3739,7 +3739,7 @@ admin surface for inspection and control.
                                                engine
 
   Cloud LLM       Claude API                   Primary LLM for all phases. Sonnet
-                  (claude-sonnet-4-20250514)   for cost efficiency; Opus for
+                  (claude-sonnet-4-6)   for cost efficiency; Opus for
                                                critical tasks.
 
   Local LLM       Ollama + Llama 3.1 8B        Deferred until 3090 acquired.

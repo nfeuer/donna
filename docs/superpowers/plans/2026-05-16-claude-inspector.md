@@ -84,7 +84,7 @@ def writer(payload_dir: Path) -> PayloadWriter:
 async def test_write_creates_file(writer: PayloadWriter, payload_dir: Path) -> None:
     request_data = {
         "messages": [{"role": "user", "content": "hello"}],
-        "model": "claude-sonnet-4-20250514",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 1024,
     }
     response_data = {
@@ -103,7 +103,7 @@ async def test_write_creates_file(writer: PayloadWriter, payload_dir: Path) -> N
     full_path = payload_dir / rel_path
     assert full_path.exists()
     data = json.loads(full_path.read_text())
-    assert data["request"]["model"] == "claude-sonnet-4-20250514"
+    assert data["request"]["model"] == "claude-sonnet-4-6"
     assert data["response"]["stop_reason"] == "end_turn"
 
 
@@ -627,7 +627,7 @@ async def test_get_calls_returns_paginated_list() -> None:
     rows = [
         (
             "inv-001", "2026-05-16T10:00:00", "parse_task", "task-1",
-            "sonnet", "anthropic/claude-sonnet-4-20250514",
+            "sonnet", "anthropic/claude-sonnet-4-6",
             500, 1000, 200, 0.006, 0.9, 0, "nick",
             1200, 0, "2026-05-16/inv-001.json",
         ),

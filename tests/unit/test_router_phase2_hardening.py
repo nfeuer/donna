@@ -66,7 +66,7 @@ def _meta(
     tokens_in: int = 50,
     tokens_out: int = 20,
     cost: float = 0.001,
-    model_actual: str = "anthropic/claude-sonnet-4-20250514",
+    model_actual: str = "anthropic/claude-sonnet-4-6",
     token_limited: bool = False,
 ) -> CompletionMetadata:
     return CompletionMetadata(
@@ -106,7 +106,7 @@ def _mixed_models_config(
             ),
             "cloud": ModelConfig(
                 provider="anthropic",
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 input_cost_per_token_usd=0.000003,
                 output_cost_per_token_usd=0.000015,
             ),
@@ -330,7 +330,7 @@ async def test_parse_failure_then_success_logs_two_rows() -> None:
     """A parse failure (retryable once) then success logs 2 invocation rows."""
     router, _ollama, anthropic, logger = _build_mixed_router()
 
-    good_meta = _meta(model_actual="anthropic/claude-sonnet-4-20250514")
+    good_meta = _meta(model_actual="anthropic/claude-sonnet-4-6")
     parse_err = ResponseParseError(
         "bad json", metadata=_meta(tokens_in=42, cost=0.002)
     )

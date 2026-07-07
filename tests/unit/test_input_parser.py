@@ -28,7 +28,7 @@ def _make_metadata(**overrides: object) -> CompletionMetadata:
         tokens_in=120,
         tokens_out=80,
         cost_usd=0.0016,
-        model_actual="anthropic/claude-sonnet-4-20250514",
+        model_actual="anthropic/claude-sonnet-4-6",
     )
     defaults.update(overrides)
     return CompletionMetadata(**defaults)
@@ -72,8 +72,8 @@ def _pay_bill_response() -> dict:
 def models_config() -> ModelsConfig:
     return ModelsConfig(
         models={
-            "parser": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
-            "reasoner": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
+            "parser": ModelConfig(provider="anthropic", model="claude-sonnet-4-6"),
+            "reasoner": ModelConfig(provider="anthropic", model="claude-sonnet-4-6"),
         },
         routing={
             "parse_task": RoutingEntry(

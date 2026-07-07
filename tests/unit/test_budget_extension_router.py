@@ -44,7 +44,7 @@ def _make_models_config(
         models={
             "parser": ModelConfig(
                 provider="anthropic",
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 input_cost_per_token_usd=input_cost_per_token,
                 output_cost_per_token_usd=output_cost_per_token,
             )
@@ -75,7 +75,7 @@ def _make_completion_metadata(token_limited: bool = False) -> CompletionMetadata
         tokens_in=50,
         tokens_out=20,
         cost_usd=0.001,
-        model_actual="anthropic/claude-sonnet-4-20250514",
+        model_actual="anthropic/claude-sonnet-4-6",
         token_limited=token_limited,
     )
 

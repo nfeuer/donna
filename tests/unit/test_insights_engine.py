@@ -73,7 +73,7 @@ async def _insert(
             is_shadow, user_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            row_id, ts, task_type, "router", "claude-sonnet-4-20250514",
+            row_id, ts, task_type, "router", "claude-sonnet-4-6",
             input_hash, 200, tokens_in, tokens_out, cost_usd, quality_score,
             is_shadow, "nick",
         ),

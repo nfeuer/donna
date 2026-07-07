@@ -501,7 +501,7 @@ async def test_log_defaults_for_missing_context_fields(tmp_path) -> None:
             InvocationMetadata(
                 task_type="parse_task",
                 model_alias="parser",
-                model_actual="anthropic/claude-sonnet-4-20250514",
+                model_actual="anthropic/claude-sonnet-4-6",
                 input_hash="def",
                 latency_ms=200,
                 tokens_in=900,
@@ -926,7 +926,7 @@ def _build_router(
             ),
             "parser": ModelConfig(
                 provider="anthropic",
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
             ),
         },
         routing={

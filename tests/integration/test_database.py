@@ -255,7 +255,7 @@ class TestInvocationLogger:
         metadata = InvocationMetadata(
             task_type="task_capture",
             model_alias="primary",
-            model_actual="claude-sonnet-4-20250514",
+            model_actual="claude-sonnet-4-6",
             input_hash="abc123",
             latency_ms=450,
             tokens_in=100,
@@ -282,7 +282,7 @@ class TestInvocationLogger:
         metadata = InvocationMetadata(
             task_type="test",
             model_alias="primary",
-            model_actual="claude-sonnet-4-20250514",
+            model_actual="claude-sonnet-4-6",
             input_hash="def456",
             latency_ms=100,
             tokens_in=50,
@@ -300,7 +300,7 @@ class TestInvocationLogger:
         metadata = InvocationMetadata(
             task_type="task_capture",
             model_alias="primary",
-            model_actual="claude-sonnet-4-20250514",
+            model_actual="claude-sonnet-4-6",
             input_hash="ghi789",
             latency_ms=300,
             tokens_in=80,

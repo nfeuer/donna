@@ -20,7 +20,7 @@ def writer(tmp_path: Path) -> PayloadWriter:
 @pytest.mark.asyncio
 async def test_successful_write_creates_valid_json(writer: PayloadWriter) -> None:
     """Write creates a JSON file with request and response keys."""
-    request = {"model": "claude-sonnet-4-20250514", "messages": [{"role": "user", "content": "hi"}]}
+    request = {"model": "claude-sonnet-4-6", "messages": [{"role": "user", "content": "hi"}]}
     response = {"id": "msg_123", "content": [{"text": "hello"}]}
 
     result = await writer.write("inv_001", request, response, for_date=date(2026, 5, 16))

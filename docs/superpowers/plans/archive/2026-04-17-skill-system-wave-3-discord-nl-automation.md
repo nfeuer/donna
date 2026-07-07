@@ -1433,7 +1433,7 @@ Register the new task_type in `config/task_types.yaml`:
 ```yaml
 claude_novelty:
   provider: claude
-  model: claude-sonnet-4-20250514
+  model: claude-sonnet-4-6
   max_output_tokens: 1024
   temperature: 0.2
 ```

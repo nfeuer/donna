@@ -31,7 +31,7 @@ def _make_call_row(**overrides: object) -> tuple:
         "task_type": "parse_task",
         "task_id": "task-001",
         "model_alias": "claude-sonnet",
-        "model_actual": "claude-sonnet-4-20250514",
+        "model_actual": "claude-sonnet-4-6",
         "latency_ms": 500,
         "tokens_in": 1000,
         "tokens_out": 200,

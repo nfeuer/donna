@@ -25,8 +25,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def models_config() -> ModelsConfig:
     return ModelsConfig(
         models={
-            "parser": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
-            "reasoner": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
+            "parser": ModelConfig(provider="anthropic", model="claude-sonnet-4-6"),
+            "reasoner": ModelConfig(provider="anthropic", model="claude-sonnet-4-6"),
         },
         routing={
             "parse_task": RoutingEntry(
@@ -95,7 +95,7 @@ class TestRouteResolution:
     def test_parse_task_resolves_to_parser(self, router: ModelRouter) -> None:
         _provider, model_id, alias = router._resolve_route("parse_task")
         assert alias == "parser"
-        assert model_id == "claude-sonnet-4-20250514"
+        assert model_id == "claude-sonnet-4-6"
 
     def test_unknown_task_type_raises(self, router: ModelRouter) -> None:
         with pytest.raises(RoutingError, match="Unknown task type"):
@@ -115,7 +115,7 @@ class TestComplete:
                 tokens_in=100,
                 tokens_out=50,
                 cost_usd=0.001,
-                model_actual="anthropic/claude-sonnet-4-20250514",
+                model_actual="anthropic/claude-sonnet-4-6",
             ),
         )
 
@@ -129,7 +129,7 @@ class TestComplete:
 
         assert result["title"] == "Buy milk"
         assert metadata.latency_ms == 150
-        assert metadata.model_actual == "anthropic/claude-sonnet-4-20250514"
+        assert metadata.model_actual == "anthropic/claude-sonnet-4-6"
 
 
 class TestPromptAndSchema:
@@ -173,7 +173,7 @@ class TestOllamaFallbackTracking:
                 ),
                 "cloud_fallback": ModelConfig(
                     provider="anthropic",
-                    model="claude-sonnet-4-20250514",
+                    model="claude-sonnet-4-6",
                 ),
             },
             routing={
@@ -248,7 +248,7 @@ class TestOllamaFallbackTracking:
                 tokens_in=50,
                 tokens_out=20,
                 cost_usd=0.001,
-                model_actual="anthropic/claude-sonnet-4-20250514",
+                model_actual="anthropic/claude-sonnet-4-6",
             ),
         )
 
@@ -301,7 +301,7 @@ class TestOllamaFallbackTracking:
                 tokens_in=50,
                 tokens_out=20,
                 cost_usd=0.001,
-                model_actual="anthropic/claude-sonnet-4-20250514",
+                model_actual="anthropic/claude-sonnet-4-6",
             ),
         )
 

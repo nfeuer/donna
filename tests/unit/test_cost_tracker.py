@@ -60,7 +60,7 @@ async def _insert_row(
            (id, timestamp, task_type, model_alias, model_actual, input_hash,
             latency_ms, tokens_in, tokens_out, cost_usd, user_id)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (row_id, timestamp, task_type, model_alias, "claude-sonnet-4-20250514",
+        (row_id, timestamp, task_type, model_alias, "claude-sonnet-4-6",
          "abc123", 200, 100, 50, cost_usd, user_id),
     )
     await conn.commit()
