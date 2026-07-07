@@ -137,3 +137,55 @@ def test_no_alert_when_webhook_unset(tmp_path):
          DONNA_DOCKER_BIN=str(tmp_path / "bin" / "docker"),
          DONNA_CURL_BIN=str(tmp_path / "bin" / "curl"))
     assert not curl_log.exists() or curl_log.read_text() == ""   # no post attempted
+
+
+def _fake_docker_reports_mount(tmp_path: Path, deploy: Path) -> Path:
+    """Fake docker: reports one running container that bind-mounts from `deploy`,
+    and logs `restart` invocations so we can assert the consumer was restarted."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    restartlog = tmp_path / "restart.log"
+    fake = bindir / "docker"
+    fake.write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$1" in\n'
+        "  ps) echo donna-orchestrator ;;\n"
+        f"  inspect) echo '{deploy}/config' ;;\n"
+        f'  restart) shift; echo "$@" >> \'{restartlog}\' ;;\n'
+        "  *) : ;;\n"
+        "esac\n"
+    )
+    fake.chmod(0o755)
+    return restartlog
+
+
+def test_deploy_restarts_snapshot_mounted_containers(tmp_path):
+    repo = _make_repo(tmp_path)
+    deploy = tmp_path / "deploy-main"
+    restartlog = _fake_docker_reports_mount(tmp_path, deploy)
+    r = _run(repo, deploy, "deploy", DONNA_DOCKER_BIN=str(tmp_path / "bin" / "docker"))
+    assert r.returncode == 0, r.stderr
+    # the running container that mounts the swapped snapshot is restarted (not recreated)
+    assert restartlog.read_text().strip() == "donna-orchestrator"
+
+
+def test_deploy_skips_restart_when_container_not_snapshot_mounted(tmp_path):
+    repo = _make_repo(tmp_path)
+    deploy = tmp_path / "deploy-main"
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    restartlog = tmp_path / "restart.log"
+    fake = bindir / "docker"
+    fake.write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$1" in\n'
+        "  ps) echo some-other-container ;;\n"
+        "  inspect) echo /var/lib/other ;;\n"          # mount is NOT under the deploy dir
+        f'  restart) shift; echo "$@" >> \'{restartlog}\' ;;\n'
+        "  *) : ;;\n"
+        "esac\n"
+    )
+    fake.chmod(0o755)
+    r = _run(repo, deploy, "deploy", DONNA_DOCKER_BIN=str(bindir / "docker"))
+    assert r.returncode == 0, r.stderr
+    assert not restartlog.exists()   # nothing mounts the snapshot -> no restart issued

@@ -19,6 +19,15 @@ secrets, so editing the repo never affects the running stack until you deploy.
 Required files (`config/donna_models.yaml`, `docker/.env`, `docker/donna-core.yml`)
 are validated before publish; a partial snapshot is never swapped in.
 
+After a snapshot swap, `deploy` (and `ensure` when it rebuilds) **restarts** the
+running containers whose bind mount is under `deploy-main` so they re-resolve the
+mount and reload config. The atomic swap replaces the directory inode, so an
+already-running container otherwise keeps a dangling mount and serves stale
+config until restarted. Restart is used (never `--force-recreate`) so no new
+containers or orphans are created and services that don't mount the snapshot
+(e.g. the Ollama GPU model) are left untouched. `up` also runs with
+`--remove-orphans` to keep stale containers from accumulating.
+
 ## Shipping code changes
 
 The snapshot archives `config/`, `prompts/`, `schemas/`, and `docker/` — it does
