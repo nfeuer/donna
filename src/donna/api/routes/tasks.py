@@ -16,6 +16,7 @@ from pydantic import BaseModel, field_validator
 
 from donna.api.auth import CurrentUser, user_router
 from donna.tasks.db_models import DeadlineType, InputChannel, TaskDomain, TaskStatus
+from donna.tasks.state_machine import InvalidTransitionError
 
 logger = structlog.get_logger()
 
@@ -176,7 +177,28 @@ async def update_task(
     if not updates:
         return TaskResponse.from_row(existing)
 
-    row = await db.update_task(task_id, source="api", **updates)
+    # Status changes must go through the state machine (lock + validate + emit +
+    # side-effects); update_task no longer accepts a status column.
+    status_value = updates.pop("status", None)
+    if status_value is not None:
+        try:
+            new_status = TaskStatus(status_value)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"Unknown status: {status_value}"
+            ) from exc
+        try:
+            await db.transition_task_state(task_id, new_status)
+        except InvalidTransitionError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    row = existing
+    if updates:
+        row = await db.update_task(task_id, source="api", **updates)
+    else:
+        refreshed = await db.get_task(task_id)
+        if refreshed is not None:
+            row = refreshed
     return TaskResponse.from_row(row)
 
 

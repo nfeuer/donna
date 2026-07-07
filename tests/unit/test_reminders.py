@@ -6,8 +6,11 @@ Discord connections, or database access.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from donna.notifications.reminders import REMINDER_LEAD_MINUTES, ReminderScheduler
 
@@ -180,3 +183,38 @@ class TestReminderFormat:
         await sched._check_and_send(now)
 
         service.dispatch.assert_not_called()
+        service.dispatch_fallback_alert.assert_not_called()
+
+    async def test_reminder_unparseable_scheduled_start_alerts(self) -> None:
+        """A non-empty but malformed scheduled_start is surfaced, not silently skipped."""
+        sched, db, service = _make_scheduler()
+        now = _utc(9, 0)
+        db.list_tasks = AsyncMock(
+            return_value=[_task(scheduled_start="not-a-real-datetime")]
+        )
+
+        await sched._check_and_send(now)
+
+        service.dispatch.assert_not_called()
+        service.dispatch_fallback_alert.assert_called_once()
+        alert_kwargs = service.dispatch_fallback_alert.call_args[1]
+        assert alert_kwargs["component"] == "reminder"
+        assert "not-a-real-datetime" in alert_kwargs["error"]
+
+
+class TestReminderHeartbeat:
+    async def test_on_tick_called_each_iteration(self) -> None:
+        """The liveness hook fires per loop iteration (feeds /health heartbeat)."""
+        sched, db, service = _make_scheduler()
+        db.list_tasks = AsyncMock(return_value=[])
+        service.flush_queue = AsyncMock(return_value=0)
+        ticks: list[int] = []
+        sched.on_tick = lambda: ticks.append(1)
+
+        task = asyncio.create_task(sched.run())
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert ticks  # at least one tick recorded before the 60s sleep

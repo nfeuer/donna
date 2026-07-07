@@ -6,9 +6,11 @@ from collections.abc import Sequence
 from datetime import UTC
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import HTTPException, Query, Request
 
-router = APIRouter()
+from donna.api.auth import admin_router
+
+router = admin_router()
 
 
 @router.get("/skill-candidates")

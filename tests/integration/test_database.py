@@ -20,7 +20,6 @@ from donna.tasks.db_models import (
     TaskStatus,
 )
 from donna.tasks.events import TaskEventBus
-from donna.tasks.state_machine import InvalidTransitionError
 
 pytestmark = pytest.mark.asyncio
 
@@ -155,7 +154,7 @@ class TestListTasks:
     async def test_list_tasks_filter_by_status(self, db: Database) -> None:
         await db.create_task(user_id="nick", title="Backlog task")
         t2 = await db.create_task(user_id="nick", title="Scheduled task")
-        await db.update_task(t2.id, status="scheduled")
+        await db.transition_task_state(t2.id, TaskStatus.SCHEDULED)
 
         tasks = await db.list_tasks(status=TaskStatus.BACKLOG)
         assert len(tasks) == 1
@@ -202,10 +201,32 @@ class TestTransitionTaskState:
         effects = await db.transition_task_state(task.id, TaskStatus.SCHEDULED)
         assert "create_calendar_event" in effects
 
-    async def test_backlog_to_done_raises_invalid(self, db: Database) -> None:
-        task = await db.create_task(user_id="nick", title="Skip steps")
-        with pytest.raises(InvalidTransitionError):
-            await db.transition_task_state(task.id, TaskStatus.DONE)
+    async def test_backlog_to_done_sets_completed_at(self, db: Database) -> None:
+        task = await db.create_task(user_id="nick", title="Complete from backlog")
+        effects = await db.transition_task_state(task.id, TaskStatus.DONE)
+        assert "set_completed_at" in effects
+        updated = await db.get_task(task.id)
+        assert updated is not None
+        assert updated.status == "done"
+        assert updated.completed_at is not None
+
+    async def test_reopen_done_clears_completed_at(self, db: Database) -> None:
+        task = await db.create_task(user_id="nick", title="Reopen me")
+        await db.transition_task_state(task.id, TaskStatus.DONE)
+        done = await db.get_task(task.id)
+        assert done is not None
+        assert done.completed_at is not None
+
+        await db.transition_task_state(task.id, TaskStatus.IN_PROGRESS)
+        reopened = await db.get_task(task.id)
+        assert reopened is not None
+        assert reopened.status == "in_progress"
+        assert reopened.completed_at is None
+
+    async def test_update_task_status_column_rejected(self, db: Database) -> None:
+        task = await db.create_task(user_id="nick", title="No status writes")
+        with pytest.raises(ValueError, match="Invalid columns"):
+            await db.update_task(task.id, status=TaskStatus.DONE)
 
     async def test_transition_updates_status_in_db(self, db: Database) -> None:
         task = await db.create_task(user_id="nick", title="Track status")

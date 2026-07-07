@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -40,6 +41,18 @@ class CalendarSync:
         sync = CalendarSync(client, db, config)
         await sync.run_once()           # single cycle (useful in tests)
         await sync.run_forever()        # production loop
+
+    Args:
+        client: Google Calendar client used to read live events.
+        db: Task database (shared aiosqlite connection).
+        config: Calendar configuration (poll interval, sync window, calendars).
+        user_id: Owner of the calendar mirror rows.
+        on_task_unscheduled: Optional callback invoked when a task is
+            unscheduled because its event was deleted by the user.
+        fallback_alert_fn: Optional coroutine forwarding to
+            ``NotificationService.dispatch_fallback_alert`` (``component``,
+            ``error``, ``fallback``, ``context`` kwargs). Called when a calendar
+            read fails and the sync cycle is aborted to avoid mass-unscheduling.
     """
 
     def __init__(
@@ -49,12 +62,14 @@ class CalendarSync:
         config: CalendarConfig,
         user_id: str = "nick",
         on_task_unscheduled: Any | None = None,
+        fallback_alert_fn: Callable[..., Awaitable[None]] | None = None,
     ) -> None:
         self._client = client
         self._db = db
         self._config = config
         self._user_id = user_id
         self._on_task_unscheduled = on_task_unscheduled
+        self._fallback_alert_fn = fallback_alert_fn
 
     # ------------------------------------------------------------------
     # Public API
@@ -79,6 +94,7 @@ class CalendarSync:
 
         # Fetch live events from all configured calendars.
         live_events: dict[str, CalendarEvent] = {}
+        failed_calendars: list[str] = []
         for cal_name, cal_cfg in self._config.calendars.items():
             cal_id = cal_cfg.calendar_id
             if not cal_id:
@@ -89,6 +105,30 @@ class CalendarSync:
                     live_events[ev.event_id] = ev
             except Exception:
                 logger.exception("calendar_fetch_error", calendar=cal_name)
+                failed_calendars.append(cal_name)
+
+        # Fail closed: if any calendar read failed, the live_events snapshot is
+        # incomplete. Proceeding into change detection would misread every event
+        # missing from the partial snapshot as "user deleted it" and mass-
+        # unschedule tasks whose events still exist in Google. Abort this cycle
+        # and retry next poll interval instead. Mirrors the fail-closed rationale
+        # in scheduler.CalendarReadError (booking blind silently double-books).
+        if failed_calendars:
+            logger.warning(
+                "calendar_sync_aborted_incomplete_read",
+                event_type="fallback_activated",
+                failed_calendars=failed_calendars,
+            )
+            if self._fallback_alert_fn is not None:
+                await self._fallback_alert_fn(
+                    component="calendar_sync",
+                    error=(
+                        "calendar read failed for: " + ", ".join(failed_calendars)
+                    ),
+                    fallback="skipped sync cycle (no change detection)",
+                    context={"failed_calendars": failed_calendars},
+                )
+            return
 
         # Load local mirror.
         mirror = await self._load_mirror()
@@ -143,11 +183,14 @@ class CalendarSync:
 
         await self._db.update_task(
             task_id,
-            status=TaskStatus.BACKLOG,
             calendar_event_id=None,
             donna_managed=False,
             scheduled_start=None,
         )
+        # Status is a state-machine concern (scheduled → backlog is the legal
+        # user_cancels_scheduled_time transition); update_task no longer accepts
+        # status writes.
+        await self._db.transition_task_state(task_id, TaskStatus.BACKLOG)
 
         logger.info(
             "calendar_event_deleted_task_unscheduled",

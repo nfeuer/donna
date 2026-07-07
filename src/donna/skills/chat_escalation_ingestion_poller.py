@@ -34,6 +34,7 @@ import structlog
 
 from donna.cost.escalation_audit import write_escalation_event
 from donna.tasks.db_models import TaskStatus
+from donna.tasks.state_machine import InvalidTransitionError
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -132,17 +133,26 @@ class ChatEscalationIngestionPoller:
 
         annotated = f"[escalation:{correlation_id}] {answer}"
         existing_notes = await self._read_notes(conn=conn, task_id=str(task_id))
-        # Hard-set to DONE alongside the notes update. Going through
-        # ``transition_task_state`` would re-trigger the state-machine
-        # validation that rejects e.g. ``backlog → done`` per
-        # ``config/task_states.yaml``; for a chat-mode answer landing
-        # back from the user, the task's prior state isn't meaningful
-        # — the work is finished by definition.
+        # Persist the annotated notes first, then transition to DONE through the
+        # state machine. The ``*→done`` wildcard in ``config/task_states.yaml``
+        # now makes "complete from anywhere" a legal, validated transition, so
+        # every status write (including this chat-mode ingestion path) goes
+        # through lock+validate+emit and fires the completion side-effects.
         await self._db.update_task(
             str(task_id),
             notes=[*existing_notes, annotated],
-            status=TaskStatus.DONE,
         )
+        try:
+            await self._db.transition_task_state(str(task_id), TaskStatus.DONE)
+        except InvalidTransitionError:
+            # Legal for every non-cancelled state; a cancelled task remains
+            # blocked by design. Log and continue — the notes annotation is
+            # already applied and the escalation row is still marked below.
+            logger.warning(
+                "chat_escalation_ingestion_transition_rejected",
+                correlation_id=correlation_id,
+                task_id=str(task_id),
+            )
 
         validation_result = json.dumps(
             {

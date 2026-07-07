@@ -133,6 +133,13 @@ transitions:
       - flag_dependent_tasks
       - delete_calendar_event_if_exists
 
+  - from: "*"  # any state
+    to: done
+    trigger: user_marks_complete
+    side_effects:
+      - set_completed_at
+      - update_velocity_metrics
+
   - from: done
     to: in_progress
     trigger: user_reopens
@@ -147,10 +154,6 @@ transitions:
 
 # Invalid transitions (enforced — these will be rejected)
 invalid_transitions:
-  - from: backlog
-    to: done
-    reason: "Cannot complete without scheduling. Must go scheduled → in_progress → done."
-
   - from: cancelled
     to: "*"
     except: [backlog]

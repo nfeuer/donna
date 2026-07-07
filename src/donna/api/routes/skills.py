@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import HTTPException, Query, Request
 from pydantic import BaseModel
 
+from donna.api.auth import admin_router
 from donna.skills.lifecycle import SkillLifecycleManager
 from donna.skills.models import (
     SELECT_SKILL,
@@ -18,7 +19,7 @@ from donna.skills.models import (
     row_to_skill_version,
 )
 
-router = APIRouter()
+router = admin_router()
 
 
 class TransitionRequest(BaseModel):

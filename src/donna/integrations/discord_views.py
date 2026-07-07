@@ -174,7 +174,7 @@ class TaskConfirmationView(discord.ui.View):
         from donna.tasks.db_models import TaskStatus
 
         try:
-            await self._db.update_task(self._task_id, status=TaskStatus.DONE)
+            await self._db.transition_task_state(self._task_id, TaskStatus.DONE)
             await interaction.response.send_message(
                 "Task marked as done.", ephemeral=True
             )
@@ -424,7 +424,7 @@ class OverdueNudgeView(discord.ui.View):
         from donna.tasks.db_models import TaskStatus
 
         try:
-            await self._db.update_task(self._task_id, status=TaskStatus.DONE)
+            await self._db.transition_task_state(self._task_id, TaskStatus.DONE)
             await interaction.response.send_message("Marked as done.", ephemeral=True)
             logger.info("overdue_done_via_button", task_id=self._task_id)
         except Exception:

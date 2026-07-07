@@ -266,6 +266,16 @@ async def run_server(
 
     bg_tasks: list[asyncio.Task] = []  # type: ignore[type-arg]
     if notification_tasks is not None:
+        # Publish a scheduler liveness heartbeat each reminder-loop iteration so
+        # /health's _check_scheduler reflects real liveness (previously it read a
+        # key nothing wrote and always reported "no heartbeat wired").
+        app["scheduler_last_heartbeat"] = datetime.now(UTC)
+
+        def _scheduler_heartbeat() -> None:
+            app["scheduler_last_heartbeat"] = datetime.now(UTC)
+
+        notification_tasks.reminder_scheduler.on_tick = _scheduler_heartbeat
+
         bg_tasks = [
             asyncio.create_task(
                 notification_tasks.reminder_scheduler.run(),
@@ -390,6 +400,52 @@ async def run_server(
         logger.info("healthwatch_heartbeat_monitor_wired", path=heartbeat_path)
 
     stop_event = asyncio.Event()
+
+    # Keep references to fire-and-forget crash-alert tasks so they aren't GC'd.
+    _crash_alert_tasks: set[asyncio.Task] = set()  # type: ignore[type-arg]
+
+    # Supervise background loops: they are meant to run forever, so if any exits
+    # (crash or unexpected return) surface it loudly instead of letting it die
+    # silently while /health stays green.
+    def _supervise_bg_task(task: asyncio.Task) -> None:  # type: ignore[type-arg]
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is None:
+            logger.warning(
+                "bg_task_exited_unexpectedly",
+                event_type="fallback_activated",
+                task_name=task.get_name(),
+            )
+            return
+        logger.error(
+            "bg_task_crashed",
+            event_type="fallback_activated",
+            task_name=task.get_name(),
+            exc_info=exc,
+        )
+        if discord_bot is not None:
+
+            async def _alert() -> None:
+                try:
+                    await discord_bot.send_message(
+                        CHANNEL_DEBUG,
+                        f"⚠️ Background task `{task.get_name()}` crashed: "
+                        f"{type(exc).__name__}: {exc}",
+                    )
+                except Exception:
+                    logger.exception(
+                        "bg_task_crash_alert_failed", task_name=task.get_name()
+                    )
+
+            alert_task = asyncio.create_task(
+                _alert(), name=f"crash_alert_{task.get_name()}"
+            )
+            _crash_alert_tasks.add(alert_task)
+            alert_task.add_done_callback(_crash_alert_tasks.discard)
+
+    for task in bg_tasks:
+        task.add_done_callback(_supervise_bg_task)
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):

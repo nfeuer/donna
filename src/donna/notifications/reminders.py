@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import zoneinfo
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -60,6 +61,9 @@ class ReminderScheduler:
         self._tz = tz
         # task_id → date the reminder was sent (reset daily for reschedules)
         self._sent: dict[str, str] = {}
+        # Optional liveness hook, called once per loop iteration. run_server
+        # uses it to publish scheduler_last_heartbeat for the /health probe.
+        self.on_tick: Callable[[], None] | None = None
 
     async def run(self) -> None:
         """Loop forever, checking for upcoming tasks every minute."""
@@ -84,6 +88,9 @@ class ReminderScheduler:
             except Exception:
                 logger.exception("reminder_check_failed")
 
+            if self.on_tick is not None:
+                self.on_tick()
+
             await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
     async def _check_and_send(self, now: datetime) -> None:
@@ -102,6 +109,21 @@ class ReminderScheduler:
 
             start = _parse_dt(task.scheduled_start)
             if start is None:
+                # scheduled_start is non-empty (guarded above), so a None parse
+                # means a corrupt/malformed value — surface it rather than
+                # skipping this task's reminders silently every tick.
+                logger.warning(
+                    "reminder_scheduled_start_unparseable",
+                    event_type="fallback_activated",
+                    task_id=task.id,
+                    scheduled_start=task.scheduled_start,
+                )
+                await self._service.dispatch_fallback_alert(
+                    component="reminder",
+                    error=f"unparseable scheduled_start: {task.scheduled_start!r}",
+                    fallback="reminder skipped for this task",
+                    context={"task_id": task.id, "task_title": task.title},
+                )
                 continue
 
             # Within the 15-minute window and still in the future.

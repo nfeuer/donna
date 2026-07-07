@@ -136,7 +136,7 @@ async def test_status_done_forces_reembed(
     await asyncio.sleep(0)
     calls_before = len(provider.calls)
 
-    await db.update_task(task.id, status=TaskStatus.DONE)
+    await db.transition_task_state(task.id, TaskStatus.DONE)
     await asyncio.sleep(0)
     await asyncio.sleep(0)
     assert len(provider.calls) > calls_before

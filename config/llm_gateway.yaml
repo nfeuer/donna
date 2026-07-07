@@ -42,7 +42,7 @@ alerts:
 ollama_health_check: true
 
 gpu:
-  home_model: "qwen2.5:32b-instruct-q6_K"
+  home_model: "qwen2.5:32b-instruct-q4_K_M"
   swap_timeout_s: 120
   restore_home_delay_s: 30
   alerts:

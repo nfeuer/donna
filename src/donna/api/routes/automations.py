@@ -5,14 +5,15 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import HTTPException, Query, Request
 from pydantic import BaseModel
 
+from donna.api.auth import CurrentAdmin, admin_router
 from donna.automations.cron import CronScheduleCalculator, InvalidCronExpressionError
 from donna.automations.models import AutomationRow, AutomationRunRow
 from donna.automations.repository import AutomationRepository
 
-router = APIRouter()
+router = admin_router()
 
 
 # ---------------------------------------------------------------------------
@@ -21,7 +22,9 @@ router = APIRouter()
 
 
 class CreateAutomationRequest(BaseModel):
-    user_id: str
+    # Ownership is bound to the authenticated admin, not this field. Kept
+    # optional for backward-compat with existing UI clients; server ignores it.
+    user_id: str | None = None
     name: str
     description: str | None = None
     capability_name: str
@@ -159,6 +162,7 @@ async def get_automation(automation_id: str, request: Request) -> dict[str, Any]
 async def create_automation(
     body: CreateAutomationRequest,
     request: Request,
+    admin_user_id: CurrentAdmin,
 ) -> dict[str, Any]:
     conn = request.app.state.db.connection
 
@@ -186,7 +190,7 @@ async def create_automation(
 
     repo = AutomationRepository(conn)
     auto_id = await repo.create(
-        user_id=body.user_id,
+        user_id=admin_user_id,
         name=body.name,
         description=body.description,
         capability_name=body.capability_name,

@@ -6,9 +6,11 @@ from dataclasses import dataclass
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from donna.api.routes.tasks import UpdateTaskRequest, update_task
+from donna.tasks.db_models import TaskStatus
 
 
 @dataclass
@@ -59,6 +61,51 @@ async def test_update_task_persists_with_api_source() -> None:
     assert db.update_task.await_args.kwargs["source"] == "api"
     assert db.update_task.await_args.kwargs["domain"] == "work"
     assert db.update_task.await_args.kwargs["estimated_duration"] == 15
+    assert result.domain == "work"
+
+
+async def test_update_task_status_routes_through_state_machine() -> None:
+    db = MagicMock()
+    db.get_task = AsyncMock(return_value=FakeRow(status="done"))
+    db.transition_task_state = AsyncMock(return_value=["set_completed_at"])
+    db.update_task = AsyncMock()
+
+    body = UpdateTaskRequest(status="done")
+    result = await update_task(_request_with_db(db), "t1", body, user_id="nick")
+
+    db.transition_task_state.assert_awaited_once_with("t1", TaskStatus.DONE)
+    db.update_task.assert_not_awaited()
+    assert result.status == "done"
+
+
+async def test_update_task_rejects_garbage_status() -> None:
+    row = FakeRow(status="backlog")
+    db = MagicMock()
+    db.get_task = AsyncMock(return_value=row)
+    db.transition_task_state = AsyncMock()
+
+    body = UpdateTaskRequest(status="banana")
+    with pytest.raises(HTTPException) as exc_info:
+        await update_task(_request_with_db(db), "t1", body, user_id="nick")
+
+    assert exc_info.value.status_code == 422
+    db.transition_task_state.assert_not_awaited()
+
+
+async def test_update_task_status_and_fields_together() -> None:
+    """A PATCH carrying both status and a plain field transitions AND updates."""
+    db = MagicMock()
+    db.get_task = AsyncMock(return_value=FakeRow(status="backlog"))
+    db.transition_task_state = AsyncMock(return_value=["set_completed_at"])
+    db.update_task = AsyncMock(return_value=FakeRow(status="done", domain="work"))
+
+    body = UpdateTaskRequest(status="done", domain="work")
+    result = await update_task(_request_with_db(db), "t1", body, user_id="nick")
+
+    db.transition_task_state.assert_awaited_once_with("t1", TaskStatus.DONE)
+    db.update_task.assert_awaited_once()
+    assert "status" not in db.update_task.await_args.kwargs
+    assert db.update_task.await_args.kwargs["domain"] == "work"
     assert result.domain == "work"
 
 

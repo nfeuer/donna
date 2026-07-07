@@ -397,3 +397,97 @@ class TestMirrorUpdate:
         )
         row = await cursor.fetchone()
         assert row is None
+
+
+class TestFailClosedOnReadError:
+    """A transient calendar read failure must not mass-unschedule tasks.
+
+    Regression for audit finding F2 / wiring-remediation item 8: CalendarSync
+    previously swallowed a ``list_events`` error, leaving that calendar's events
+    absent from the live snapshot; change detection then treated every managed
+    task as "user deleted it" and moved it to backlog. The sync must instead fail
+    closed — abort the cycle and alert — mirroring scheduler.CalendarReadError.
+    """
+
+    async def test_read_error_does_not_unschedule_and_alerts(
+        self, db: Database, cal_config: CalendarConfig
+    ) -> None:
+        """When list_events raises, the scheduled task stays scheduled + alert fires."""
+        task = await db.create_task(
+            user_id="nick", title="Ship release", domain=TaskDomain.PERSONAL,
+        )
+        await db.transition_task_state(task.id, TaskStatus.SCHEDULED)
+        await db.update_task(
+            task.id,
+            calendar_event_id="ev-donna-live",
+            donna_managed=True,
+            scheduled_start=_utc(2026, 3, 23, 17),
+        )
+        # Mirror row exists; the event still exists in Google but we can't read it.
+        await _seed_mirror(
+            db, "ev-donna-live", task.id,
+            _utc(2026, 3, 23, 17), _utc(2026, 3, 23, 18),
+        )
+
+        client = MagicMock(spec=GoogleCalendarClient)
+        client.list_events = AsyncMock(side_effect=RuntimeError("Google 503"))
+
+        alerts: list[dict[str, object]] = []
+
+        async def fake_alert(**kwargs: object) -> None:
+            alerts.append(kwargs)
+
+        sync = CalendarSync(client, db, cal_config, fallback_alert_fn=fake_alert)
+        await sync.run_once()
+
+        # Task must remain fully scheduled — nothing was unscheduled.
+        updated = await db.get_task(task.id)
+        assert updated is not None
+        assert updated.status == TaskStatus.SCHEDULED.value
+        assert updated.calendar_event_id == "ev-donna-live"
+        assert updated.donna_managed is True
+        assert updated.scheduled_start is not None
+
+        # The mirror row must be preserved (change detection was skipped).
+        conn = db.connection
+        cursor = await conn.execute(
+            "SELECT event_id FROM calendar_mirror WHERE event_id = ?",
+            ("ev-donna-live",),
+        )
+        assert await cursor.fetchone() is not None
+
+        # A fallback alert must have been dispatched with the failed calendar.
+        assert len(alerts) == 1
+        alert = alerts[0]
+        assert alert["component"] == "calendar_sync"
+        assert "personal" in str(alert["error"])
+        assert alert["context"] == {"failed_calendars": ["personal"]}
+
+    async def test_read_error_without_alert_fn_is_noop(
+        self, db: Database, cal_config: CalendarConfig
+    ) -> None:
+        """A None fallback_alert_fn must not raise; the cycle still aborts safely."""
+        task = await db.create_task(
+            user_id="nick", title="Guarded", domain=TaskDomain.PERSONAL,
+        )
+        await db.transition_task_state(task.id, TaskStatus.SCHEDULED)
+        await db.update_task(
+            task.id,
+            calendar_event_id="ev-guard",
+            donna_managed=True,
+            scheduled_start=_utc(2026, 3, 23, 17),
+        )
+        await _seed_mirror(
+            db, "ev-guard", task.id, _utc(2026, 3, 23, 17), _utc(2026, 3, 23, 18),
+        )
+
+        client = MagicMock(spec=GoogleCalendarClient)
+        client.list_events = AsyncMock(side_effect=RuntimeError("boom"))
+
+        sync = CalendarSync(client, db, cal_config)  # no fallback_alert_fn
+        await sync.run_once()
+
+        updated = await db.get_task(task.id)
+        assert updated is not None
+        assert updated.status == TaskStatus.SCHEDULED.value
+        assert updated.calendar_event_id == "ev-guard"

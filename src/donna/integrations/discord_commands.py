@@ -150,7 +150,7 @@ def register_commands(
             await interaction.response.send_message("Task not found.", ephemeral=True)
             return
         try:
-            await db.update_task(task_id, status=TaskStatus.DONE)
+            await db.transition_task_state(task_id, TaskStatus.DONE)
             await interaction.response.send_message(
                 f"'{task.title}' marked as done.", ephemeral=True
             )
@@ -235,9 +235,13 @@ def register_commands(
             await db.update_task(
                 task_id,
                 scheduled_start=new_start.isoformat(),
-                status=TaskStatus.SCHEDULED,
                 reschedule_count=reschedule_count,
             )
+            # Status writes must go through the state machine. Skip the
+            # transition when the task is already scheduled (there is no
+            # scheduled → scheduled transition — we're only moving the slot).
+            if task.status != TaskStatus.SCHEDULED.value:
+                await db.transition_task_state(task_id, TaskStatus.SCHEDULED)
             await interaction.response.send_message(
                 f"'{task.title}' rescheduled to {new_start.strftime('%Y-%m-%d %H:%M')}.",
                 ephemeral=True,
