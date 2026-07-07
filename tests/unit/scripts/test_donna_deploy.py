@@ -189,3 +189,16 @@ def test_deploy_skips_restart_when_container_not_snapshot_mounted(tmp_path):
     r = _run(repo, deploy, "deploy", DONNA_DOCKER_BIN=str(bindir / "docker"))
     assert r.returncode == 0, r.stderr
     assert not restartlog.exists()   # nothing mounts the snapshot -> no restart issued
+
+
+def test_snapshot_works_when_repo_owner_differs(tmp_path):
+    """Regression: the systemd unit runs as root against the differently-owned
+    repo, which trips git's dubious-ownership guard. git's
+    GIT_TEST_ASSUME_DIFFERENT_OWNER hook reproduces it; the inline safe.directory
+    in git_repo must let the snapshot build succeed anyway."""
+    repo = _make_repo(tmp_path)
+    deploy = tmp_path / "deploy-main"
+    r = _run(repo, deploy, "snapshot", GIT_TEST_ASSUME_DIFFERENT_OWNER="1")
+    assert r.returncode == 0, r.stderr
+    assert (deploy / "config" / "donna_models.yaml").is_file()
+    assert (deploy / ".deployed-sha").read_text().strip()

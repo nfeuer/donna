@@ -34,13 +34,20 @@ alert() {  # msg
   fi
 }
 
+# Run git against the repo with an explicit safe.directory. The systemd unit
+# invokes this as root against the feuer-owned checkout with no HOME set, so
+# root's git config isn't loaded and git otherwise aborts with "detected dubious
+# ownership" — producing an empty archive that tar then rejects. Passing
+# safe.directory inline makes git work regardless of invoking user or HOME.
+git_repo() { git -c "safe.directory=$REPO_DIR" -C "$REPO_DIR" "$@"; }
+
 snapshot() {
   local ref="${1:-$DEPLOY_REF}"
   local staging="${DEPLOY_DIR}.staging.$$"
   rm -rf "$staging"; mkdir -p "$staging"
   trap 'rm -rf "${staging:-}"' RETURN
 
-  git -C "$REPO_DIR" archive "$ref" "${ARCHIVE_PATHS[@]}" | tar -x -C "$staging"
+  git_repo archive "$ref" "${ARCHIVE_PATHS[@]}" | tar -x -C "$staging"
 
   local f
   for f in "${SECRET_FILES[@]}"; do
@@ -60,7 +67,7 @@ snapshot() {
     return 1
   fi
 
-  git -C "$REPO_DIR" rev-parse "$ref" > "$staging/.deployed-sha"
+  git_repo rev-parse "$ref" > "$staging/.deployed-sha"
 
   local backup="${DEPLOY_DIR}.old.$$"
   if [ -e "$DEPLOY_DIR" ]; then mv "$DEPLOY_DIR" "$backup"; fi
