@@ -203,6 +203,7 @@ nav:
   - Operations:
       - operations/index.md
       - Docker: operations/docker.md
+      - Deployment: operations/deployment.md
       - Migrations: operations/migrations.md
       - Backup & Recovery: operations/backup-recovery.md
       - Budget & Cost: operations/budget-and-cost.md

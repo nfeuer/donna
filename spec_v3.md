@@ -545,7 +545,21 @@ and Donna's local LLM inference. The 3090's 24GB VRAM provides
 substantial headroom for running larger quantized models or multiple
 models concurrently if needed.
 
-**3.5.3 NVMe Storage Layout**
+**3.5.3 Snapshot Deploy & Boot Resilience**
+
+The production stack runs from a committed, validated snapshot at
+`/mnt/donna/deploy-main`, decoupling the always-on stack from the live
+development checkout. `scripts/donna-deploy.sh` is the deploy entry point
+(`snapshot` / `up` / `deploy` / `ensure`): it builds the snapshot from
+committed git state via `git archive`, overlays gitignored secrets, validates
+required files (`config/donna_models.yaml`, `docker/.env`, `docker/donna-core.yml`),
+and atomically swaps it into place. A oneshot systemd unit (`donna.service`,
+after `docker.service`) runs `ensure` on boot to rebuild a missing snapshot and
+bring the stack up. Snapshot loss or missing required config posts to
+`DONNA_ALERT_WEBHOOK` and logs at error level, so a failed deploy can never crash
+the orchestrator silently. The compose project name is `docker`.
+
+**3.5.4 NVMe Storage Layout**
 
 The dedicated 1TB NVMe is mounted and organized as Donna's complete data
 volume:
