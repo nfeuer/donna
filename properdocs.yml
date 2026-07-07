@@ -10,6 +10,7 @@ docs_dir: docs
 exclude_docs: |
   superpowers/
   domain/archive/
+  AI_ENGINEER_PORTFOLIO_REPORT.md
 
 validation:
   nav:
