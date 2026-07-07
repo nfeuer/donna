@@ -7,8 +7,11 @@ Requires=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# Set this to the Discord debug webhook before enabling, or boot alerts are silent.
-Environment=DONNA_ALERT_WEBHOOK=
+# Boot-failure alerts read DONNA_ALERT_WEBHOOK from a root-only env file kept out
+# of git (create it with mode 0600):
+#   /etc/donna/deploy.env  ->  DONNA_ALERT_WEBHOOK=https://discord.com/api/webhooks/...
+# The leading '-' makes the file optional: absent -> no alert, unit still starts.
+EnvironmentFile=-/etc/donna/deploy.env
 ExecStart=/mnt/donna/donna/scripts/donna-deploy.sh ensure
 TimeoutStartSec=300
 

@@ -43,8 +43,10 @@ hardware").
 
 `systemd/donna.service` (oneshot, after `docker.service`) runs `ensure` on every
 boot. A missing snapshot (e.g. after a machine move) is rebuilt automatically and
-an alert is posted to `DONNA_ALERT_WEBHOOK`. Set `DONNA_ALERT_WEBHOOK` in the unit
-before enabling it, otherwise boot alerts are silent.
+an alert is posted to `DONNA_ALERT_WEBHOOK`. The unit reads that value from a
+root-only env file that is kept out of git — create `/etc/donna/deploy.env`
+(mode `0600`) containing `DONNA_ALERT_WEBHOOK=<discord-webhook-url>` before
+enabling the unit, otherwise boot alerts are silent.
 
 ## Secrets
 
