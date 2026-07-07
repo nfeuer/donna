@@ -81,11 +81,39 @@ up() {
   local args=(compose --project-name "$COMPOSE_PROJECT" --env-file "$DEPLOY_DIR/docker/.env")
   local f
   for f in "${COMPOSE_FILES[@]}"; do args+=(-f "$DEPLOY_DIR/docker/$f"); done
-  args+=(up -d)
+  # --remove-orphans clears containers for services no longer in the compose set
+  # (all live donna-* services are defined in COMPOSE_FILES, so nothing live is
+  # removed) — keeps big orphaned containers from accumulating across deploys.
+  args+=(up -d --remove-orphans)
   "$DOCKER_BIN" "${args[@]}"
 }
 
+# After an atomic snapshot swap, an already-running container still holds a bind
+# mount to the pre-swap directory inode, so its /donna/config is stale and it
+# keeps serving the old in-memory config. Restart (never recreate) the containers
+# whose mount source is under $DEPLOY_DIR so they re-resolve the mount and reload
+# config — no new containers or orphans, and services that don't mount the
+# snapshot (e.g. the heavy Ollama GPU model) are left running untouched.
+restart_snapshot_consumers() {
+  local names="" c
+  for c in $("$DOCKER_BIN" ps --format '{{.Names}}' 2>/dev/null); do
+    if "$DOCKER_BIN" inspect "$c" \
+        --format '{{range .Mounts}}{{println .Source}}{{end}}' 2>/dev/null \
+        | grep -q "^${DEPLOY_DIR}/"; then
+      names="$names $c"
+    fi
+  done
+  if [ -n "${names// /}" ]; then
+    log "restart_snapshot_consumers" "info" "restarting:${names}"
+    # shellcheck disable=SC2086
+    "$DOCKER_BIN" restart $names >/dev/null
+  else
+    log "restart_snapshot_consumers" "info" "no running snapshot-mounted containers"
+  fi
+}
+
 ensure() {
+  local rebuilt=0
   if is_valid; then
     log "ensure_ok" "info" "snapshot valid"
   else
@@ -93,8 +121,10 @@ ensure() {
     if [ -f "$DEPLOY_DIR/.deployed-sha" ]; then ref="$(cat "$DEPLOY_DIR/.deployed-sha")"; fi
     alert "ensure_rebuild: snapshot invalid/missing; rebuilding from $ref"
     snapshot "$ref"
+    rebuilt=1
   fi
   up
+  if [ "$rebuilt" = 1 ]; then restart_snapshot_consumers; fi
 }
 
 main() {
@@ -102,7 +132,7 @@ main() {
   case "$cmd" in
     snapshot) snapshot "$@" ;;
     up)       up ;;
-    deploy)   snapshot; up ;;
+    deploy)   snapshot; up; restart_snapshot_consumers ;;
     ensure)   ensure ;;
     *) echo "usage: donna-deploy.sh {snapshot|up|deploy|ensure}" >&2; exit 2 ;;
   esac
