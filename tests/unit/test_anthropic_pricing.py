@@ -30,7 +30,7 @@ def test_cost_sonnet_fallback_when_no_rates() -> None:
     """Direct construction (eval/tests) with no rates: Sonnet ids still price."""
     p = AnthropicProvider(api_key="test")
     # $3/Mtok input → 1M input tokens = $3.00
-    assert p._cost("claude-sonnet-4-20250514", 1_000_000, 0) == pytest.approx(3.0)
+    assert p._cost("claude-sonnet-4-6", 1_000_000, 0) == pytest.approx(3.0)
 
 
 def test_cost_non_sonnet_no_rates_raises() -> None:

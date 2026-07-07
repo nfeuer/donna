@@ -71,15 +71,15 @@ def _make_metadata() -> CompletionMetadata:
         tokens_in=100,
         tokens_out=60,
         cost_usd=0.0012,
-        model_actual="anthropic/claude-sonnet-4-20250514",
+        model_actual="anthropic/claude-sonnet-4-6",
     )
 
 
 def _make_router() -> ModelRouter:
     models_config = ModelsConfig(
         models={
-            "parser": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
-            "reasoner": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514"),
+            "parser": ModelConfig(provider="anthropic", model="claude-sonnet-4-6"),
+            "reasoner": ModelConfig(provider="anthropic", model="claude-sonnet-4-6"),
         },
         routing={
             "dedup_check": RoutingEntry(

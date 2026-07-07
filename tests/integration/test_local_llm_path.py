@@ -16,7 +16,7 @@ def _minimal_models_config(
     models: dict[str, ModelConfig] = {
         "cloud_main": ModelConfig(
             provider="anthropic",
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             input_cost_per_token_usd=3e-6,
             output_cost_per_token_usd=15e-6,
         ),

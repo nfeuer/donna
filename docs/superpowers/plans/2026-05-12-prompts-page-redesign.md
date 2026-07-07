@@ -68,7 +68,7 @@ def _config_dir(tmp_path: Path) -> Path:
         """models:
   parser:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
   local_parser:
     provider: ollama
     model: qwen2.5:32b-instruct-q4_K_M

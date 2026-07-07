@@ -547,13 +547,13 @@ Controls which model handles which task type and enforces cost limits:
 models:
   parser:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
   reasoner:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
   fallback:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
 
 cost:
   monthly_budget_usd: 100.00
@@ -844,16 +844,16 @@ Edit `config/donna_models.yaml`:
 models:
   parser:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
     shadow:
       provider: ollama
       model: qwen2.5:32b-instruct-q4_K_M
   reasoner:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
   fallback:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
 
 cost:
   monthly_budget_usd: 100.00
@@ -889,10 +889,10 @@ models:
     estimated_cost_per_1k_tokens: 0.0001
   reasoner:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
   fallback:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
 
 cost:
   monthly_budget_usd: 100.00
@@ -924,7 +924,7 @@ If quality degrades, reverting is a single config change. In `config/donna_model
 ```yaml
   parser:
     provider: anthropic
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet-4-6
 ```
 
 Restart the orchestrator to apply. The local model container keeps running — you're not tearing anything down, just changing the routing table.

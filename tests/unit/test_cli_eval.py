@@ -14,9 +14,9 @@ class TestParseModelArg:
         assert model == "qwen2.5:32b-instruct-q6_K"
 
     def test_anthropic_model(self) -> None:
-        provider, model = _parse_model_arg("anthropic/claude-sonnet-4-20250514")
+        provider, model = _parse_model_arg("anthropic/claude-sonnet-4-6")
         assert provider == "anthropic"
-        assert model == "claude-sonnet-4-20250514"
+        assert model == "claude-sonnet-4-6"
 
     def test_model_with_multiple_slashes(self) -> None:
         provider, model = _parse_model_arg("ollama/org/model:tag")

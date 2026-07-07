@@ -97,7 +97,7 @@ class AnthropicProvider:
 
         Args:
             prompt: The fully-rendered prompt text (ignored when messages is set).
-            model: Anthropic model ID (e.g. "claude-sonnet-4-20250514").
+            model: Anthropic model ID (e.g. "claude-sonnet-4-6").
             max_tokens: Maximum output tokens.
             num_ctx: Accepted for Protocol uniformity; ignored by Anthropic.
             tools: Anthropic-format tool definitions for tool_use.

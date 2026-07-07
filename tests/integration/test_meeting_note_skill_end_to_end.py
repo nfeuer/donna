@@ -112,7 +112,7 @@ class _FakeRouter:
                 tokens_in=200,
                 tokens_out=120,
                 cost_usd=0.003,
-                model_actual="anthropic/claude-sonnet-4-20250514",
+                model_actual="anthropic/claude-sonnet-4-6",
             ),
         )
 

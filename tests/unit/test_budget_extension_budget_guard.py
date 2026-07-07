@@ -34,7 +34,7 @@ from donna.cost.tracker import CostSummary
 
 def _make_models_config(daily_pause: float = 20.0) -> ModelsConfig:
     return ModelsConfig(
-        models={"parser": ModelConfig(provider="anthropic", model="claude-sonnet-4-20250514")},
+        models={"parser": ModelConfig(provider="anthropic", model="claude-sonnet-4-6")},
         routing={"skill_draft": RoutingEntry(model="parser")},
         cost=CostConfig(
             daily_pause_threshold_usd=daily_pause,

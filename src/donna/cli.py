@@ -400,7 +400,7 @@ def _parse_model_arg(model_str: str) -> tuple[str, str]:
 
     Examples:
         "ollama/qwen2.5:32b-instruct-q6_K" → ("ollama", "qwen2.5:32b-instruct-q6_K")
-        "anthropic/claude-sonnet-4-20250514" → ("anthropic", "claude-sonnet-4-20250514")
+        "anthropic/claude-sonnet-4-6" → ("anthropic", "claude-sonnet-4-6")
 
     Raises ValueError if the format is invalid.
     """
