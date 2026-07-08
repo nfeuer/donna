@@ -57,6 +57,60 @@ root-only env file that is kept out of git — create `/etc/donna/deploy.env`
 (mode `0600`) containing `DONNA_ALERT_WEBHOOK=<discord-webhook-url>` before
 enabling the unit, otherwise boot alerts are silent.
 
+## Installing & testing on the host
+
+Run each step as a **single `sudo bash -c '…'`**. This host prompts for a sudo
+password per invocation, so a chained `sudo A && sudo B` silently runs `A` and
+drops `B` (only the first prompt is answered) — one sudo per command avoids that.
+
+1. **Create the alert env file first** — before enabling the unit, or boot alerts
+   are silent (the unit's `EnvironmentFile=-` is optional, so a missing file just
+   means `DONNA_ALERT_WEBHOOK` is unset):
+
+   ```bash
+   sudo bash -c 'mkdir -p /etc/donna && \
+     printf "DONNA_ALERT_WEBHOOK=%s\n" "<discord-webhook-url>" > /etc/donna/deploy.env && \
+     chmod 600 /etc/donna/deploy.env'
+   ```
+
+2. **Install and enable the unit:**
+
+   ```bash
+   sudo bash -c 'cp /mnt/donna/donna/systemd/donna.service /etc/systemd/system/ && \
+     systemctl daemon-reload && systemctl enable donna.service'
+   ```
+
+3. **Self-heal test** — delete the snapshot and confirm `ensure` rebuilds it.
+   Use **`systemctl restart`, not `start`**: the unit is `RemainAfterExit=yes`, so
+   once it has run it is "active (exited)" and `start` becomes a no-op that never
+   re-runs `ensure`.
+
+   ```bash
+   sudo bash -c 'mv /mnt/donna/deploy-main /mnt/donna/deploy-main.bak && \
+     systemctl reset-failed donna.service 2>/dev/null; \
+     systemctl restart donna.service && sleep 12 && \
+     if [ -f /mnt/donna/deploy-main/.deployed-sha ]; then \
+       echo "OK rebuilt $(cut -c1-7 /mnt/donna/deploy-main/.deployed-sha) orch=$(docker ps --filter name=donna-orchestrator --format "{{.Status}}")"; \
+       rm -rf /mnt/donna/deploy-main.bak; \
+     else echo "FAIL — recover: sudo mv /mnt/donna/deploy-main.bak /mnt/donna/deploy-main && docker restart donna-orchestrator"; fi'
+   ```
+
+   Expect the orchestrator healthy, the snapshot rebuilt, and a "snapshot
+   invalid/missing; rebuilding" alert in the debug channel. If the unit shows a
+   failure, `systemctl status donna.service` carries the reason (the journal can
+   be empty when a bare `start` no-ops, which is itself the `restart` clue above).
+
+4. **Reboot drill** — the full power-cycle proof:
+
+   ```bash
+   sudo reboot
+   # after it returns:
+   docker ps --filter name=donna --format '{{.Names}}: {{.Status}}' && \
+     docker inspect donna-orchestrator --format 'restarts={{.RestartCount}} health={{.State.Health.Status}}'
+   ```
+
+   Expect all `donna-*` containers `Up … (healthy)` and `restarts=0` (no crash loop).
+
 ## Secrets
 
 Gitignored secrets (`docker/.env`, `config/google_credentials.json`,
