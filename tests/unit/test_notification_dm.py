@@ -45,7 +45,9 @@ class TestDispatchDm:
         )
 
         assert result is True
-        bot.send_dm.assert_called_once_with("123456789", "Price dropped below $50!")
+        bot.send_dm.assert_called_once_with(
+            "123456789", "Price dropped below $50!", embed=None
+        )
 
     async def test_queues_dm_during_blackout(self):
         bot = AsyncMock()

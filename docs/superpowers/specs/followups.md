@@ -320,3 +320,13 @@ Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
   snapshot, and `deploy` does not ship code changes. Decide whether to add those
   paths to `ARCHIVE_PATHS` and use `--build` on `deploy` (every deploy rebuilds —
   slower but fully reproducible) vs. keeping image builds a separate step.
+
+## 2026-07-10 — Output standard slice 1 (feat/output-standard)
+
+- **Slice 2:** migrate reminders and the four proactive prompts onto
+  `OutputRenderer` so every surface shares one voice (design
+  2026-07-10-output-standard-design.md; today they format independently).
+- **Slice 3:** consolidate the morning/EOD digest rendering onto the renderer
+  and retire its bespoke embed construction.
+- **SMS length:** renderer truncates at 1900 (Discord); SMS surfaces should get
+  a tighter budget (~320 chars) once slice 2 touches multi-channel formats.

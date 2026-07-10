@@ -174,6 +174,7 @@ class NotificationService:
         notification_type: str,
         content: str,
         priority: int = 2,
+        embed: discord.Embed | None = None,
     ) -> bool:
         """Dispatch a direct message to a Discord user.
 
@@ -185,6 +186,7 @@ class NotificationService:
             notification_type: One of NOTIF_* constants.
             content: Message text.
             priority: 1-5; only priority 5 passes through quiet hours.
+            embed: Optional Discord embed (output-standard alerts).
 
         Returns:
             True if sent immediately, False if queued/blocked.
@@ -202,16 +204,16 @@ class NotificationService:
 
         if self._is_blackout(now):
             log.info("dm_queued_blackout")
-            self._enqueue_dm(discord_id, notification_type, content, priority)
+            self._enqueue_dm(discord_id, notification_type, content, priority, embed)
             return False
 
         if self._is_quiet(now) and priority < 5:
             log.info("dm_queued_quiet_hours")
-            self._enqueue_dm(discord_id, notification_type, content, priority)
+            self._enqueue_dm(discord_id, notification_type, content, priority, embed)
             return False
 
         try:
-            await self._bot.send_dm(discord_id, content)
+            await self._bot.send_dm(discord_id, content, embed=embed)
             log.info("dm_sent")
         except Exception:
             log.exception("dm_send_failed", event_type="fallback_activated")
@@ -224,6 +226,7 @@ class NotificationService:
         notification_type: str,
         content: str,
         priority: int,
+        embed: discord.Embed | None = None,
     ) -> None:
         """Add a DM send coroutine to the deferred queue."""
         async def _send_later() -> None:
@@ -233,7 +236,7 @@ class NotificationService:
                 delivery="dm",
             )
             try:
-                await self._bot.send_dm(discord_id, content)
+                await self._bot.send_dm(discord_id, content, embed=embed)
                 log.info("dm_sent_from_queue")
             except Exception:
                 log.exception("dm_send_from_queue_failed")

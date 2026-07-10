@@ -269,6 +269,13 @@ task_types:
     output_schema: schemas/extract_commitments.json
     tools: []
 
+  format_user_output:
+    description: "Rewrite a user-facing alert description in Donna's voice (output standard voice pass)"
+    model: local_parser
+    prompt_template: prompts/format_user_output.md
+    output_schema: schemas/format_user_output.json
+    tools: []
+
 # Schema versioning: output schemas use semantic versioning
 # e.g., task_parse_output_v2.json
 # Orchestrator handles both old and new formats during transitions

@@ -1289,3 +1289,54 @@ def load_reply_actions_config(config_dir: Path) -> ReplyActionsConfig:
     """Load reply_actions.yaml."""
     data = load_yaml(config_dir / "reply_actions.yaml")
     return ReplyActionsConfig(**data)
+
+
+# === User-Facing Output Formats (output standard, design 2026-07-10) ===
+
+
+class EmbedSpec(BaseModel):
+    """Discord-embed shape for one output format.
+
+    ``title`` is a ``str.format``-style pattern over the merged payload
+    (missing keys render as ``?`` rather than raising). ``colour`` names a
+    key in :class:`OutputFormatsConfig.colours`.
+    """
+
+    title: str
+    colour: str = "info"
+    fields: list[str] = []
+    url_field: str | None = None
+
+
+class OutputFormatEntry(BaseModel):
+    """One user-facing output format: a Jinja2 template plus embed spec."""
+
+    template: str
+    embed: EmbedSpec | None = None
+    voice_pass: bool = False
+
+
+class VoicePassSettings(BaseModel):
+    """Global settings for the optional LLM voice pass."""
+
+    enabled: bool = True
+    task_type: str = "format_user_output"
+
+
+class OutputFormatsConfig(BaseModel):
+    """Registry of user-facing output formats (config/output_formats.yaml)."""
+
+    formats: dict[str, OutputFormatEntry]
+    colours: dict[str, int] = {
+        "good_news": 0x2ECC71,
+        "action_needed": 0xF39C12,
+        "failure": 0xE74C3C,
+        "info": 0x3498DB,
+    }
+    voice_pass: VoicePassSettings = VoicePassSettings()
+
+
+def load_output_formats_config(config_dir: Path) -> OutputFormatsConfig:
+    """Load the user-facing output format registry."""
+    data = load_yaml(config_dir / "output_formats.yaml")
+    return OutputFormatsConfig(**data)
