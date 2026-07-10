@@ -210,6 +210,7 @@ nav:
       - Budget & Cost: operations/budget-and-cost.md
       - Vault Sync: operations/vault-sync.md
       - Container Health Watcher: operations/health-watcher.md
+      - Calendar OAuth: operations/calendar-oauth.md
   - Troubleshooting: troubleshooting.md
   - Changelog: changelog.md
   - Glossary: glossary.md

@@ -1087,11 +1087,33 @@ def _start_person_profile_cron(
         logger.warning("person_profile_cron_unavailable", reason=str(exc))
 
 
-async def _try_build_calendar_client(config_dir: Path) -> Any | None:
+async def _try_build_calendar_client(
+    config_dir: Path,
+    on_unavailable: Callable[[str], Awaitable[None]] | None = None,
+) -> Any | None:
     """Attempt to construct and authenticate a GoogleCalendarClient.
 
-    Non-fatal: returns None if config, credentials, or auth fail.
+    Non-fatal: returns None if config, credentials, or auth fail. Every
+    degraded path logs ``event_type="fallback_activated"`` and, when
+    *on_unavailable* is provided, awaits it with the failure reason so the
+    caller can dispatch a user-visible fallback alert (CLAUDE.md: no silent
+    fallbacks). A missing ``calendar.yaml`` means calendar is intentionally
+    unconfigured and is not treated as a degradation.
     """
+
+    async def _degraded(reason: str, **log_ctx: Any) -> None:
+        logger.warning(
+            "calendar_client_unavailable",
+            event_type="fallback_activated",
+            reason=reason,
+            **log_ctx,
+        )
+        if on_unavailable is not None:
+            try:
+                await on_unavailable(reason)
+            except Exception:
+                logger.warning("calendar_unavailable_alert_failed", exc_info=True)
+
     calendar_yaml = config_dir / "calendar.yaml"
     if not calendar_yaml.exists():
         return None
@@ -1103,9 +1125,8 @@ async def _try_build_calendar_client(config_dir: Path) -> Any | None:
         token_path = Path(cal_cfg.credentials.token_path)
         secrets_path = Path(cal_cfg.credentials.client_secrets_path)
         if not token_path.exists() or not secrets_path.exists():
-            logger.warning(
-                "calendar_client_unavailable",
-                reason="credential_file_missing",
+            await _degraded(
+                "credential_file_missing",
                 token_exists=token_path.exists(),
                 secrets_exists=secrets_path.exists(),
             )
@@ -1115,7 +1136,7 @@ async def _try_build_calendar_client(config_dir: Path) -> Any | None:
         logger.info("calendar_client_authenticated")
         return client
     except Exception as exc:
-        logger.warning("calendar_client_unavailable", reason=str(exc))
+        await _degraded(str(exc))
         return None
 
 
@@ -1574,6 +1595,21 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
     logs_db_path = Path(
         os.environ.get("DONNA_LOGS_DB_PATH", str(Path(db_path).parent / "donna_logs.db"))
     )
+    # Calendar token probe is opt-in: only when calendar.yaml is configured.
+    calendar_token_path: Path | None = None
+    if (config_dir / "calendar.yaml").exists():
+        try:
+            from donna.config import load_calendar_config
+
+            calendar_token_path = Path(
+                load_calendar_config(config_dir).credentials.token_path
+            )
+        except Exception:
+            log.warning(
+                "calendar_token_path_unresolved",
+                event_type="fallback_activated",
+                exc_info=True,
+            )
     diagnostics = SelfDiagnostic(
         tasks_db_path=Path(db_path),
         logs_db_path=logs_db_path,
@@ -1583,6 +1619,7 @@ async def build_startup_context(args: argparse.Namespace) -> StartupContext:
             / ".supabase_last_sync"
         ),
         notify=_debug_notify,
+        calendar_token_path=calendar_token_path,
     )
     try:
         boot_warnings = await diagnostics.run()

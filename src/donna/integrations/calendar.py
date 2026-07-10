@@ -29,6 +29,25 @@ _PROP_MANAGED = "donnaManaged"
 _PROP_TASK_ID = "donnaTaskId"
 
 
+class CalendarAuthError(RuntimeError):
+    """Raised when Google Calendar OAuth credentials cannot be established.
+
+    Carries an actionable, operator-facing message plus a machine-readable
+    ``reason`` so callers (wiring, health checks) can alert with remediation
+    steps instead of a bare google-auth traceback.
+
+    Args:
+        message: Human-readable description including remediation steps.
+        reason: Failure category — ``refresh_rejected`` (dead refresh token,
+            e.g. ``invalid_grant``) or ``token_missing_headless`` (no usable
+            token and no browser available to run the consent flow).
+    """
+
+    def __init__(self, message: str, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
 @dataclasses.dataclass(frozen=True)
 class CalendarEvent:
     """Lightweight representation of a Google Calendar event."""
@@ -170,15 +189,31 @@ class GoogleCalendarClient:
 
             if not creds or not creds.valid:
                 if creds and creds.expired and creds.refresh_token:
-                    creds.refresh(Request())
+                    from google.auth.exceptions import RefreshError
+
+                    try:
+                        creds.refresh(Request())
+                    except RefreshError as exc:
+                        detail = exc.args[0] if exc.args else "refresh rejected"
+                        raise CalendarAuthError(
+                            f"Google Calendar refresh token was rejected ({detail}). "
+                            f"The stored token at {token_path} is dead — most often "
+                            "because the OAuth consent screen is in 'Testing' "
+                            "publishing status, which expires refresh tokens after "
+                            "7 days. Publish the OAuth app to Production, then "
+                            "re-link with 'python -m donna.integrations.calendar "
+                            "<config_dir>'. See docs/operations/calendar-oauth.md.",
+                            reason="refresh_rejected",
+                        ) from exc
                     token_path.write_text(creds.to_json())
                 elif os.environ.get("DONNA_HEADLESS", "").lower() in ("1", "true"):
-                    raise RuntimeError(
+                    raise CalendarAuthError(
                         "Google Calendar token is missing or expired and cannot "
                         "be refreshed in headless mode. Run "
                         "'python -m donna.integrations.calendar' on a machine "
                         "with a browser to generate token.json, then mount it "
-                        f"at {token_path}."
+                        f"at {token_path}. See docs/operations/calendar-oauth.md.",
+                        reason="token_missing_headless",
                     )
                 else:
                     from google_auth_oauthlib.flow import InstalledAppFlow
