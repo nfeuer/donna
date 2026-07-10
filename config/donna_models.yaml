@@ -35,6 +35,10 @@ ollama:
   keepalive: 5m
   default_num_ctx: 8192
   default_output_reserve: 1024
+  # Constrained decoding: send each task type's output schema as Ollama's
+  # `format` so the local model cannot emit schema-invalid JSON (removes the
+  # parse-retry latency tax). Requires Ollama >= 0.5.
+  structured_outputs: true
   # Self-calibrating prompt-token estimation (design A, spec_v3.md §4.2).
   # The router estimates tokens_in from len(prompt)/divisor before the budget
   # gate; a constant divisor of 4 under-estimates dense prompts and silently

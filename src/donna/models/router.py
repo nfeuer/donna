@@ -865,6 +865,27 @@ class ModelRouter:
         if messages is not None:
             call_kwargs["messages"] = messages
 
+        # Structured outputs (2026-07-10): constrain local decoding to the
+        # task type's JSON schema (Ollama ≥ 0.5 ``format=<schema>``) so
+        # schema-invalid output — and its parse-retry latency tax — is
+        # impossible. Config-gated; only Ollama targets receive the kwarg
+        # (model_config here is the post-escalation target, so cloud
+        # fallbacks are never affected).
+        if (
+            model_config.provider == "ollama"
+            and self._models_config.ollama.structured_outputs
+        ):
+            try:
+                call_kwargs["output_schema"] = self.get_output_schema(task_type)
+            except Exception as exc:
+                # Not a degradation: task types without a declared schema
+                # simply keep plain json mode.
+                logger.debug(
+                    "structured_outputs_schema_unavailable",
+                    task_type=task_type,
+                    reason=str(exc),
+                )
+
         # Per-provider circuit breaker (#5): hand resilient_call the breaker of
         # the provider that will ACTUALLY run this call — after any overflow
         # escalation, that is the fallback's provider. So an Ollama outage that

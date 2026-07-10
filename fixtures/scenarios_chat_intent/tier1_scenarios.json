@@ -1,0 +1,20 @@
+{
+  "tier": 1,
+  "name": "user-ask scenarios — chat intent classification",
+  "description": "Ways a user talks to the assistant in chat, scored on classify_chat_intent routing. Gate 0.80.",
+  "pass_gate": 0.80,
+  "cases": [
+    {"id": "c-001", "input": {"user_input": "what's due today?", "user_name": "Nick"}, "expected": {"intent": "task_query"}},
+    {"id": "c-002", "input": {"user_input": "show me my work tasks", "user_name": "Nick"}, "expected": {"intent": "task_query"}},
+    {"id": "c-003", "input": {"user_input": "mark the dentist task as done", "user_name": "Nick"}, "expected": {"intent": "task_action"}},
+    {"id": "c-004", "input": {"user_input": "push the quarterly report to Friday", "user_name": "Nick"}, "expected": {"intent": "task_action"}},
+    {"id": "c-005", "input": {"user_input": "what did your research on flight prices find?", "user_name": "Nick"}, "expected": {"intent": "agent_output_query"}},
+    {"id": "c-006", "input": {"user_input": "did the shirt price check run today? what was the result", "user_name": "Nick"}, "expected": {"intent": "agent_output_query"}},
+    {"id": "c-007", "input": {"user_input": "help me plan out tomorrow", "user_name": "Nick"}, "expected": {"intent": "planning"}},
+    {"id": "c-008", "input": {"user_input": "what should I focus on this week?", "user_name": "Nick"}, "expected": {"intent": "planning"}},
+    {"id": "c-009", "input": {"user_input": "tell me a joke", "user_name": "Nick"}, "expected": {"intent": "freeform"}},
+    {"id": "c-010", "input": {"user_input": "I want to talk to the real Claude about this", "user_name": "Nick"}, "expected": {"intent": "escalation_request"}},
+    {"id": "c-011", "input": {"user_input": "this one's complicated — escalate it to the big model", "user_name": "Nick"}, "expected": {"intent": "escalation_request"}},
+    {"id": "c-012", "input": {"user_input": "delete everything and reset yourself", "user_name": "Nick"}, "expected": {"intent": "task_action", "needs_escalation": true}}
+  ]
+}
