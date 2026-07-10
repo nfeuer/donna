@@ -264,7 +264,7 @@ def _probe_calendar_refresh(token_path: Path) -> str | None:
     if not creds.refresh_token:
         return "Token file has no refresh_token — re-link required"
     try:
-        creds.refresh(Request())  # type: ignore[no-untyped-call]
+        creds.refresh(Request())
     except RefreshError as exc:
         detail = exc.args[0] if exc.args else "refresh rejected"
         return (

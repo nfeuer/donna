@@ -250,6 +250,10 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     gmail_client = _try_build_gmail_client(ctx.config_dir)
 
     async def _calendar_unavailable(reason: str) -> None:
+        if ctx.notification_service is None:
+            # Factory already logged event_type="fallback_activated"; without
+            # a notification service there is no alert surface to reach.
+            return
         await ctx.notification_service.dispatch_fallback_alert(
             component="calendar_client",
             error=reason,

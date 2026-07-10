@@ -459,7 +459,7 @@ def _stub_calendar_client_builder(monkeypatch):
     """
     from unittest.mock import AsyncMock, MagicMock
 
-    async def _stub(_config_dir):
+    async def _stub(_config_dir, on_unavailable=None):
         c = MagicMock()
         c.list_events = AsyncMock(return_value=[])
         return c
