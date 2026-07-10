@@ -114,6 +114,11 @@ class OllamaConfig(BaseModel):
     keepalive: str = "5m"
     default_num_ctx: int = 8192
     default_output_reserve: int = 1024
+    # Structured outputs: send each task type's JSON schema as Ollama's
+    # ``format`` (constrained decoding, Ollama ≥ 0.5) so schema-invalid
+    # local output is impossible. Off by default for backwards
+    # compatibility; enabled in config/donna_models.yaml.
+    structured_outputs: bool = False
     token_estimation: TokenEstimationConfig = Field(
         default_factory=TokenEstimationConfig
     )

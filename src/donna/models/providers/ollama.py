@@ -51,6 +51,7 @@ class OllamaProvider:
         num_ctx: int | None = None,
         tools: list[dict[str, Any]] | None = None,
         messages: list[dict[str, Any]] | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], CompletionMetadata]:
         """Send a prompt and return parsed output with metadata.
 
@@ -63,6 +64,11 @@ class OllamaProvider:
                 wrapped in {"text": <response>}.
             num_ctx: Context window size to send to Ollama. Defaults to 8192
                 when not provided, overriding Ollama's 2048 built-in default.
+            output_schema: Optional JSON schema for structured outputs
+                (Ollama ≥ 0.5 constrained decoding). When set with
+                ``json_mode=True``, sent as ``format`` instead of the bare
+                ``"json"`` so schema-invalid output is impossible. Ignored
+                when ``json_mode=False``.
 
         Returns:
             Tuple of (parsed dict, CompletionMetadata).
@@ -90,7 +96,7 @@ class OllamaProvider:
             },
         }
         if json_mode:
-            payload["format"] = "json"
+            payload["format"] = output_schema if output_schema else "json"
 
         async with session.post(
             f"{self._base_url}/api/chat", json=payload

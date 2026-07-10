@@ -1,0 +1,78 @@
+{
+  "tier": 1,
+  "name": "user-ask scenarios — intent dispatch",
+  "description": "Representative ways a user asks a personal assistant for help, scored on the challenger intent-routing output (intent_kind + capability match). Gate 0.80: routing errors here mean the user's ask goes down the wrong pipeline entirely.",
+  "pass_gate": 0.80,
+  "cases": [
+    {
+      "id": "d-001",
+      "input": {"user_message": "Buy milk tomorrow", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "task"}
+    },
+    {
+      "id": "d-002",
+      "input": {"user_message": "Remind me to call mom on Sunday", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "task"}
+    },
+    {
+      "id": "d-003",
+      "input": {"user_message": "Watch this shirt and tell me when it drops below $30: https://example.com/shirt", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "automation", "capability_name": "product_watch"}
+    },
+    {
+      "id": "d-004",
+      "input": {"user_message": "Every morning at 8 send me my schedule and top tasks", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "automation", "capability_name": "generate_digest"}
+    },
+    {
+      "id": "d-005",
+      "input": {"user_message": "When I get an email from my boss, text me right away", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "automation", "capability_name": "email_triage"}
+    },
+    {
+      "id": "d-006",
+      "input": {"user_message": "What's on my plate this week?", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "question"}
+    },
+    {
+      "id": "d-007",
+      "input": {"user_message": "hey donna, how's it going today", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "chat"}
+    },
+    {
+      "id": "d-008",
+      "input": {"user_message": "Check the news for AI developments every day and flag anything big", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "automation", "capability_name": "news_check"}
+    },
+    {
+      "id": "d-009",
+      "input": {"user_message": "Break down 'plan Sarah's birthday party' into steps for me", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"capability_name": "task_decompose"}
+    },
+    {
+      "id": "d-010",
+      "input": {"user_message": "DM me and text me when the PS5 is back in stock at https://example.com/ps5", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "automation", "capability_name": "product_watch", "notification_channels": ["discord_dm", "sms"]}
+    },
+    {
+      "id": "d-011",
+      "input": {"user_message": "I need to book a dentist appointment sometime next week", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "task"}
+    },
+    {
+      "id": "d-012",
+      "input": {"user_message": "file my taxes", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "task"}
+    },
+    {
+      "id": "d-013",
+      "input": {"user_message": "what do you think about electric cars?", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "chat"}
+    },
+    {
+      "id": "d-014",
+      "input": {"user_message": "Watch https://example.com/jacket for size L under $80 and email me when it's available", "fname": "Nick", "local_tz_name": "America/New_York", "current_date_iso": "2026-07-10T14:00:00Z", "current_local_time": "2026-07-10 10:00 EDT"},
+      "expected": {"intent_kind": "automation", "capability_name": "product_watch", "notification_channels": ["email"]}
+    }
+  ]
+}

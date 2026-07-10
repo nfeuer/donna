@@ -320,3 +320,13 @@ Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
   snapshot, and `deploy` does not ship code changes. Decide whether to add those
   paths to `ARCHIVE_PATHS` and use `--build` on `deploy` (every deploy rebuilds —
   slower but fully reproducible) vs. keeping image builds a separate step.
+
+## 2026-07-10 — Local-LLM reliability (fix/local-llm-reliability)
+
+- **Spec/doc touch-up:** `spec_v3.md` §4 (model layer) and
+  `docs/domain/model-layer.md` describe Ollama's `format: json` mode; both
+  should absorb the new config-gated structured-outputs contract
+  (`ollama.structured_outputs` → per-task-type schema as `format`).
+- **Next tuning candidates (from the 2026-07-10 capability review):**
+  num_ctx 16384 + `OLLAMA_KV_CACHE_TYPE=q8_0`, and a qwen3:30b-a3b home-model
+  trial gated on the scenario suites (fixtures/scenarios_*).

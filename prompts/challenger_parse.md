@@ -18,8 +18,12 @@ classify its intent and extract structured data.
 Analyze the user's message and emit JSON matching this schema:
 - `intent_kind`: task | automation | question | chat
   - `automation` if the message implies recurring work (watch, monitor, daily, weekly, every, when X happens)
-  - `task` if the message is a single action with a deadline or no timing
-  - `question` or `chat` for conversational non-work messages
+  - `task` if the message asks Donna to do or track a NEW piece of work — a single action with a deadline or no timing
+  - `question` if the user is asking for information — INCLUDING questions about
+    their own existing tasks, schedule, or plans ("what's on my plate this week?",
+    "what's due tomorrow?", "do I have anything Friday?"). Asking ABOUT work is
+    not creating work: never emit `task` for these.
+  - `chat` for conversational small talk with no information request
 - `capability_name`: name of best-matching capability from the registry, or null if none matches
 - `match_score`: 0..1 — how confident you are in the capability match
 - `confidence`: 0..1 — your overall confidence in the parse
