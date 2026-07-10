@@ -47,7 +47,7 @@ class RenderedMessage:
     embed: Any | None = None
 
 
-class _Tolerant(dict):
+class _Tolerant(dict[str, Any]):
     """format_map helper: missing keys render as ``?`` instead of raising."""
 
     def __missing__(self, key: str) -> str:
