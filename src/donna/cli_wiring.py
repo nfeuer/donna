@@ -1140,6 +1140,60 @@ async def _try_build_calendar_client(
         return None
 
 
+def _try_build_output_renderer(ctx: StartupContext) -> Any | None:
+    """Construct the user-facing OutputRenderer (output standard slice 1).
+
+    Non-fatal: returns None when ``config/output_formats.yaml`` is missing or
+    invalid — the automation dispatcher then falls back to legacy plain-text
+    alerts and logs ``event_type="fallback_activated"``. The voice pass
+    routes through ``ctx.router`` as task type ``format_user_output``
+    (local-only per donna_models.yaml routing).
+    """
+    try:
+        from donna.config import load_output_formats_config
+        from donna.notifications.output_renderer import OutputRenderer
+
+        formats_cfg = load_output_formats_config(ctx.config_dir)
+    except Exception as exc:
+        logger.warning(
+            "output_renderer_unavailable",
+            event_type="fallback_activated",
+            reason=str(exc),
+        )
+        return None
+
+    router = ctx.router
+    user_id = ctx.user_id
+
+    async def _voice_fn(description: str, payload: dict[str, Any]) -> str | None:
+        from jinja2 import Template
+
+        template_text = router.get_prompt_template(formats_cfg.voice_pass.task_type)
+        prompt = Template(template_text).render(
+            facts=description,
+            automation_name=str(payload.get("automation_name", "")),
+        )
+        result, _meta = await router.complete(
+            prompt,
+            task_type=formats_cfg.voice_pass.task_type,
+            user_id=user_id,
+            priority=2,
+        )
+        value = result.get("description") if isinstance(result, dict) else None
+        return str(value) if value else None
+
+    logger.info(
+        "output_renderer_wired",
+        formats=sorted(formats_cfg.formats.keys()),
+        voice_pass=formats_cfg.voice_pass.enabled,
+    )
+    return OutputRenderer(
+        config=formats_cfg,
+        project_root=ctx.project_root,
+        voice_fn=_voice_fn if formats_cfg.voice_pass.enabled else None,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
@@ -2564,6 +2618,8 @@ async def wire_automation_subsystem(
             shadow_sampler=_shadow_sampler,
         )
 
+        output_renderer = _try_build_output_renderer(ctx)
+
         automation_dispatcher = AutomationDispatcher(
             connection=ctx.db.connection,
             repository=automation_repo,
@@ -2576,6 +2632,7 @@ async def wire_automation_subsystem(
             config=ctx.skill_config,
             runtime_tool_check=runtime_tool_check,
             tool_gap_surfacer=ctx.tool_gap_surfacer,
+            output_renderer=output_renderer,
         )
         gpu_home_model: str | None = None
         try:

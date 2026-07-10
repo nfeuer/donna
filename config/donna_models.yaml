@@ -145,6 +145,12 @@ routing:
   extract_commitments:
     model: reasoner
 
+  # Output standard voice pass: local-only by design — on any failure the
+  # template-rendered text ships as-is, so a cloud fallback would only add
+  # cost to garnish.
+  format_user_output:
+    model: local_parser
+
   # Wave 2: prefix-routing for dynamic skill + validation task_types.
   skill_step:
     model: parser

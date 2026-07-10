@@ -1,0 +1,2 @@
+{% for k, v in payload.items() if not k.startswith('_') and k not in ('ok', 'triggers_alert') and v is not none and v is not mapping %}{{ k | replace('_', ' ') }}: {{ v }}
+{% endfor %}

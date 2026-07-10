@@ -250,11 +250,26 @@ class DonnaBot(discord.Client):
             return
         await thread.send(text)
 
-    async def send_dm(self, discord_id: str, content: str) -> None:
-        """Send a direct message to a Discord user by their snowflake ID."""
+    async def send_dm(
+        self,
+        discord_id: str,
+        content: str,
+        embed: discord.Embed | None = None,
+    ) -> None:
+        """Send a direct message to a Discord user by their snowflake ID.
+
+        Args:
+            discord_id: Discord snowflake ID of the recipient.
+            content: Message text; ignored when *embed* is given (the embed
+                replaces it, matching NotificationService._send's contract).
+            embed: Optional rich embed (output-standard alerts).
+        """
         try:
             user = await self.fetch_user(int(discord_id))
-            await user.send(content)
+            if embed is not None:
+                await user.send(embed=embed)
+            else:
+                await user.send(content)
             logger.info("dm_sent", discord_id=discord_id, content_len=len(content))
         except Exception:
             logger.exception("dm_send_failed", discord_id=discord_id)

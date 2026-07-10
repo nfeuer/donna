@@ -55,6 +55,7 @@ class AutomationDispatcher:
         config: SkillSystemConfig,
         runtime_tool_check: Any | None = None,
         tool_gap_surfacer: Any | None = None,
+        output_renderer: Any | None = None,
     ) -> None:
         self._conn = connection
         self._repo = repository
@@ -71,6 +72,11 @@ class AutomationDispatcher:
         # and short-circuit the run with outcome='blocked_missing_tool'.
         self._runtime_tool_check = runtime_tool_check
         self._tool_gap_surfacer = tool_gap_surfacer
+        # Output standard (design 2026-07-10): renders alert payloads into
+        # user-facing text + Discord embeds. Optional so tests and legacy
+        # wiring keep the plain-text path; when absent or failing, alerts
+        # fall back to _render_alert_content (key/value text, never JSON).
+        self._output_renderer = output_renderer
 
     async def dispatch(self, automation: AutomationRow) -> DispatchReport:
         now = datetime.now(UTC)
@@ -258,13 +264,15 @@ class AutomationDispatcher:
                 )
                 fires = False
             if fires:
-                alert_content = self._render_alert_content(automation, output)
+                alert_content, alert_embed = await self._render_alert(
+                    automation, output
+                )
                 try:
                     if self._notifier is not None:
                         channels = automation.alert_channels or ["discord_dm"]
                         for ch in channels:
                             await self._dispatch_alert_to_channel(
-                                ch, automation, alert_content,
+                                ch, automation, alert_content, alert_embed,
                             )
                         alert_sent = True
                 except Exception:
@@ -477,6 +485,35 @@ class AutomationDispatcher:
             f"Inputs:\n{json.dumps(inputs, indent=2)}"
         )
 
+    async def _render_alert(
+        self, automation: AutomationRow, output: dict[str, Any]
+    ) -> tuple[str, Any | None]:
+        """Render the alert via the output standard, falling back to legacy text.
+
+        Returns:
+            ``(text, embed)`` — text is always populated (persisted on the run
+            row and used for SMS/email); embed is the Discord shape or None.
+        """
+        if self._output_renderer is not None:
+            try:
+                rendered = await self._output_renderer.render(
+                    f"automation_alert.{automation.capability_name}",
+                    output,
+                    context={
+                        **(automation.inputs or {}),
+                        "automation_name": automation.name,
+                    },
+                )
+                return rendered.text, rendered.embed
+            except Exception as exc:
+                logger.warning(
+                    "automation_alert_render_failed",
+                    event_type="fallback_activated",
+                    automation_id=automation.id,
+                    error=str(exc),
+                )
+        return self._render_alert_content(automation, output), None
+
     def _render_alert_content(self, automation: AutomationRow, output: dict[str, Any]) -> str:
         return (
             f"Automation '{automation.name}' alert:\n"
@@ -488,6 +525,7 @@ class AutomationDispatcher:
         channel: str,
         automation: AutomationRow,
         content: str,
+        embed: Any | None = None,
     ) -> None:
         if channel == "discord_dm":
             await self._notifier.dispatch_dm(
@@ -495,6 +533,7 @@ class AutomationDispatcher:
                 notification_type=NOTIF_AUTOMATION_ALERT,
                 content=content,
                 priority=3,
+                embed=embed,
             )
         elif channel == "sms":
             phone = os.environ.get("DONNA_USER_PHONE", "")
@@ -527,6 +566,7 @@ class AutomationDispatcher:
                 content=content,
                 channel=CHANNEL_TASKS,
                 priority=3,
+                embed=embed,
             )
         else:
             logger.warning(

@@ -378,3 +378,65 @@ async def test_alert_dispatches_to_multiple_channels(db, monkeypatch):
     assert report.alert_sent is True
     notifier.dispatch_dm.assert_awaited_once()
     notifier.dispatch_sms.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Output standard (slice 1): renderer-driven alert content
+# ---------------------------------------------------------------------------
+
+
+async def test_alert_uses_output_renderer_when_injected(db):
+    """With a renderer injected, alerts carry its text + embed — no raw JSON."""
+    from donna.notifications.output_renderer import RenderedMessage
+
+    sentinel_embed = object()
+    renderer = AsyncMock()
+    renderer.render = AsyncMock(
+        return_value=RenderedMessage(
+            text="Seraphina Gown is $89, in stock.", embed=sentinel_embed
+        )
+    )
+
+    _, auto = await _seed_automation(
+        db,
+        alert_conditions={"all_of": [{"field": "price_usd", "op": "<=", "value": 100}]},
+    )
+    dispatcher, repo, _router, _bg, notifier = _make_dispatcher(
+        db, output_renderer=renderer
+    )
+
+    report = await dispatcher.dispatch(auto)
+
+    assert report.outcome == "succeeded"
+    renderer.render.assert_awaited_once()
+    surface = renderer.render.await_args.args[0]
+    assert surface == f"automation_alert.{auto.capability_name}"
+    notifier.dispatch.assert_awaited_once()
+    call = notifier.dispatch.await_args
+    assert call.kwargs["content"] == "Seraphina Gown is $89, in stock."
+    assert call.kwargs["embed"] is sentinel_embed
+    runs = await repo.list_runs(auto.id)
+    assert runs[0].alert_content == "Seraphina Gown is $89, in stock."
+    assert "{" not in runs[0].alert_content
+
+
+async def test_alert_falls_back_to_legacy_text_when_renderer_raises(db):
+    """A broken renderer must not break alert delivery — legacy text ships."""
+    renderer = AsyncMock()
+    renderer.render = AsyncMock(side_effect=RuntimeError("template exploded"))
+
+    _, auto = await _seed_automation(
+        db,
+        alert_conditions={"all_of": [{"field": "price_usd", "op": "<=", "value": 100}]},
+    )
+    dispatcher, _repo, _router, _bg, notifier = _make_dispatcher(
+        db, output_renderer=renderer
+    )
+
+    report = await dispatcher.dispatch(auto)
+
+    assert report.outcome == "succeeded"
+    assert report.alert_sent is True
+    notifier.dispatch.assert_awaited_once()
+    content = notifier.dispatch.await_args.kwargs["content"]
+    assert f"Automation '{auto.name}' alert" in content
