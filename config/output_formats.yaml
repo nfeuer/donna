@@ -1,0 +1,50 @@
+# User-facing output format registry — the output standard.
+# Design: docs/superpowers/specs/2026-07-10-output-standard-design.md
+#
+# Resolution order for a surface key like "automation_alert.product_watch":
+#   1. exact key
+#   2. "<category>.default" (e.g. automation_alert.default)
+#   3. built-in generic key/value rendering (never raw JSON)
+#
+# Templates are Jinja2, resolved relative to the project root. They render
+# the *description* — the prose facts. Embed fields/title come from the
+# embed spec below; plain-text surfaces (SMS/email) get description + fields.
+
+formats:
+  automation_alert.product_watch:
+    template: prompts/output/product_watch_alert.md.j2
+    embed:
+      title: "🛍️ {title} — ${price_usd}"
+      colour: good_news
+      fields: [price_usd, in_stock, size_available]
+      url_field: url
+    voice_pass: true
+
+  automation_alert.news_check:
+    template: prompts/output/news_check_alert.md.j2
+    embed:
+      title: "📰 {automation_name}"
+      colour: info
+    voice_pass: true
+
+  automation_alert.default:
+    template: prompts/output/generic_alert.md.j2
+    embed:
+      title: "🔔 {automation_name}"
+      colour: info
+    voice_pass: false
+
+# Semantic colours (Discord embed sidebar). Keep the meanings stable:
+# good_news = the thing you wanted happened; action_needed = Donna wants a
+# decision; failure = something broke; info = neutral.
+colours:
+  good_news: 0x2ECC71
+  action_needed: 0xF39C12
+  failure: 0xE74C3C
+  info: 0x3498DB
+
+# Optional local-LLM rewrite of the description sentence only. Facts always
+# come from the template; on any voice-pass failure the template text ships.
+voice_pass:
+  enabled: true
+  task_type: format_user_output

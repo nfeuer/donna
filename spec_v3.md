@@ -3995,6 +3995,17 @@ skill). They live in `src/donna/automations/` and the
     automation-specific conditions (e.g. "product price dropped
     below threshold") and emits a notification via the standard
     escalation ladder (§11).
+-   **Alert rendering — the output standard** *(added 2026-07-10)*:
+    fired alerts are rendered by `notifications/output_renderer.py`
+    from `config/output_formats.yaml` (per-capability Jinja2 template
+    + Discord embed spec, resolution: exact key →
+    `automation_alert.default` → generic key/value — never raw JSON).
+    Facts are template-rendered deterministically; an optional
+    config-gated local-LLM voice pass (task type
+    `format_user_output`) rewrites only the description sentence and
+    falls back to template text on any failure
+    (`event_type="fallback_activated"`). Design:
+    `docs/superpowers/specs/2026-07-10-output-standard-design.md`.
 -   **State blob**: `automation.state_blob` persists per-automation
     memory between runs (last seen item, last alert timestamp, etc.).
 

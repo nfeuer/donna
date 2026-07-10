@@ -337,3 +337,13 @@ Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
   but not its failure/alerting contract; the new `CalendarAuthError` +
   fallback-alert behaviour is documented in `docs/operations/calendar-oauth.md`
   and should be folded into §3.2.2 on the next spec pass.
+
+## 2026-07-10 — Output standard slice 1 (feat/output-standard)
+
+- **Slice 2:** migrate reminders and the four proactive prompts onto
+  `OutputRenderer` so every surface shares one voice (design
+  2026-07-10-output-standard-design.md; today they format independently).
+- **Slice 3:** consolidate the morning/EOD digest rendering onto the renderer
+  and retire its bespoke embed construction.
+- **SMS length:** renderer truncates at 1900 (Discord); SMS surfaces should get
+  a tighter budget (~320 chars) once slice 2 touches multi-channel formats.
