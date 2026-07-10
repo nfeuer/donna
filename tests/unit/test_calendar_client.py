@@ -14,6 +14,7 @@ Verifies:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -309,3 +310,73 @@ class TestParseEvent:
         event = _parse_event(raw, "primary")
         assert event.donna_managed is False
         assert event.donna_task_id is None
+
+
+# ------------------------------------------------------------------
+# Tests: authenticate() failure modes
+# ------------------------------------------------------------------
+
+
+class TestAuthenticateRefreshRejected:
+    @pytest.mark.asyncio
+    async def test_dead_refresh_token_raises_calendar_auth_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A rejected refresh (invalid_grant) must surface as CalendarAuthError
+        with an actionable message, not a bare google RefreshError."""
+        import google.oauth2.credentials as goc
+        from google.auth.exceptions import RefreshError
+
+        from donna.integrations.calendar import CalendarAuthError
+
+        token_path = tmp_path / "token.json"
+        token_path.write_text("{}")
+
+        class _DeadCreds:
+            valid = False
+            expired = True
+            refresh_token = "rt"
+
+            def refresh(self, _request: Any) -> None:
+                raise RefreshError(
+                    "invalid_grant: Bad Request", {"error": "invalid_grant"}
+                )
+
+        monkeypatch.setattr(
+            goc.Credentials,
+            "from_authorized_user_file",
+            classmethod(lambda _cls, *_a, **_k: _DeadCreds()),
+        )
+
+        cfg = CalendarConfig(
+            calendars={
+                "personal": CalendarEntryConfig(
+                    calendar_id="primary", access="read_write"
+                )
+            },
+            sync=SyncConfig(),
+            scheduling=SchedulingConfig(),
+            time_windows=TimeWindowsConfig(
+                blackout=TimeWindowConfig(start_hour=0, end_hour=6, days=[0, 1, 2, 3, 4, 5, 6]),
+                quiet_hours=TimeWindowConfig(
+                    start_hour=20, end_hour=24, days=[0, 1, 2, 3, 4, 5, 6]
+                ),
+                work=TimeWindowConfig(start_hour=8, end_hour=17, days=[0, 1, 2, 3, 4]),
+                personal=TimeWindowConfig(start_hour=17, end_hour=20, days=[0, 1, 2, 3, 4, 5, 6]),
+                weekend=TimeWindowConfig(start_hour=6, end_hour=20, days=[5, 6]),
+            ),
+            credentials=CredentialsConfig(
+                client_secrets_path=str(tmp_path / "credentials.json"),
+                token_path=str(token_path),
+                scopes=["https://www.googleapis.com/auth/calendar"],
+            ),
+        )
+
+        client = GoogleCalendarClient(cfg)
+        with pytest.raises(CalendarAuthError) as excinfo:
+            await client.authenticate()
+
+        assert excinfo.value.reason == "refresh_rejected"
+        message = str(excinfo.value)
+        assert "invalid_grant" in message
+        assert "re-link" in message.lower()
