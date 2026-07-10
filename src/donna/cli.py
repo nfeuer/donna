@@ -248,7 +248,21 @@ async def _run_orchestrator(args: argparse.Namespace) -> None:
     )
 
     gmail_client = _try_build_gmail_client(ctx.config_dir)
-    calendar_client = await _try_build_calendar_client(ctx.config_dir)
+
+    async def _calendar_unavailable(reason: str) -> None:
+        await ctx.notification_service.dispatch_fallback_alert(
+            component="calendar_client",
+            error=reason,
+            fallback=(
+                "calendar features disabled — no auto-scheduling, weekly "
+                "planning, or calendar sync until re-linked"
+            ),
+            context={"remediation": "docs/operations/calendar-oauth.md"},
+        )
+
+    calendar_client = await _try_build_calendar_client(
+        ctx.config_dir, on_unavailable=_calendar_unavailable
+    )
 
     # Wire AutoScheduler + NotificationTasks before starting the server.
     from donna.config import load_calendar_config

@@ -320,3 +320,20 @@ Resolved entries go to the [closed archive](archive/followups-closed-slices.md).
   snapshot, and `deploy` does not ship code changes. Decide whether to add those
   paths to `ARCHIVE_PATHS` and use `--build` on `deploy` (every deploy rebuilds —
   slower but fully reproducible) vs. keeping image builds a separate step.
+
+## 2026-07-10 — Calendar OAuth permanence (fix/calendar-oauth-permanence)
+
+- **Consent screen must be published to Production** (operator action, Google
+  Cloud Console): the Testing-status 7-day refresh-token expiry is the root
+  cause of the recurring calendar `invalid_grant`. Code-side hardening (typed
+  `CalendarAuthError`, fallback alert on unavailable calendar, boot-time
+  refresh-token probe in `SelfDiagnostic`) is merged, but the token will keep
+  dying weekly until the app is published and re-linked once.
+- **Gmail deserves the same treatment:** `_try_build_gmail_client` still
+  degrades with a bare `logger.warning`, and `SelfDiagnostic` does not probe
+  the Gmail token. Same disease, same fix; the consent-screen publication
+  covers both, but the alerting/probe parity is open.
+- **Spec drift note:** `spec_v3.md` §3.2.2 describes the calendar integration
+  but not its failure/alerting contract; the new `CalendarAuthError` +
+  fallback-alert behaviour is documented in `docs/operations/calendar-oauth.md`
+  and should be folded into §3.2.2 on the next spec pass.

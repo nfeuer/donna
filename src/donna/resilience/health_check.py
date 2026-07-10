@@ -8,6 +8,7 @@ See docs/resilience.md — Layer 3: Daily Self-Diagnostic.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 from collections.abc import Awaitable, Callable
@@ -37,6 +38,9 @@ class SelfDiagnostic:
         last_supabase_sync_path: Path to a file whose mtime records last sync.
         notify: Optional async callback that receives a plain-text/markdown
             summary of detected issues.  Called only when warnings exist.
+        calendar_token_path: Path to the Google Calendar ``token.json``; when
+            set, the diagnostic live-probes the refresh token so a dead token
+            (``invalid_grant``) is reported with remediation steps.
     """
 
     def __init__(
@@ -47,6 +51,7 @@ class SelfDiagnostic:
         cost_tracker: CostTracker | None = None,
         last_supabase_sync_path: Path | None = None,
         notify: Callable[[str], Awaitable[None]] | None = None,
+        calendar_token_path: Path | None = None,
     ) -> None:
         self._tasks_db = tasks_db_path
         self._logs_db = logs_db_path
@@ -54,6 +59,7 @@ class SelfDiagnostic:
         self._cost_tracker = cost_tracker
         self._last_supabase_sync_path = last_supabase_sync_path
         self._notify = notify
+        self._calendar_token_path = calendar_token_path
 
     async def run(self) -> list[str]:
         """Run all checks and return a list of warning strings.
@@ -68,6 +74,7 @@ class SelfDiagnostic:
         warnings.extend(self._check_supabase_sync())
         warnings.extend(await self._check_budget())
         warnings.extend(await self._check_ollama())
+        warnings.extend(await self._check_calendar_token())
 
         if warnings:
             logger.warning(
@@ -179,6 +186,33 @@ class SelfDiagnostic:
 
         return []
 
+    async def _check_calendar_token(self) -> list[str]:
+        """Check that the Google Calendar refresh token is alive.
+
+        Skipped when no ``calendar_token_path`` was configured. Performs one
+        live token refresh against Google's token endpoint (no Calendar API
+        call, nothing persisted) so a dead refresh token — the classic
+        ``invalid_grant`` from a Testing-status OAuth app — is surfaced here
+        instead of silently disabling scheduling features.
+        """
+        token_path = self._calendar_token_path
+        if token_path is None:
+            return []
+        if not token_path.exists():
+            return [
+                f"[calendar] Token file not found: {token_path} — calendar "
+                "features are offline. Re-link with "
+                "'python -m donna.integrations.calendar <config_dir>' "
+                "(see docs/operations/calendar-oauth.md)."
+            ]
+        try:
+            error = await asyncio.to_thread(_probe_calendar_refresh, token_path)
+        except Exception as exc:
+            return [f"[calendar] Token probe error: {exc}"]
+        if error:
+            return [f"[calendar] {error}"]
+        return []
+
     async def _check_budget(self) -> list[str]:
         if self._cost_tracker is None:
             return []
@@ -201,3 +235,42 @@ class SelfDiagnostic:
             return warnings
         except Exception as exc:
             return [f"[budget] Could not check budget: {exc}"]
+
+
+def _probe_calendar_refresh(token_path: Path) -> str | None:
+    """Attempt one OAuth token refresh; return a warning string if it fails.
+
+    Runs synchronously (google-auth is sync) — call via ``asyncio.to_thread``.
+    Refreshes in memory only; the token file is never rewritten here, so the
+    probe cannot race ``GoogleCalendarClient.authenticate()``.
+
+    Args:
+        token_path: Path to the authorized-user ``token.json``.
+
+    Returns:
+        ``None`` when the refresh token is alive, otherwise an actionable
+        warning string (without the ``[calendar]`` prefix).
+    """
+    from google.auth.exceptions import RefreshError
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+
+    try:
+        creds = Credentials.from_authorized_user_file(  # type: ignore[no-untyped-call]
+            str(token_path)
+        )
+    except ValueError as exc:
+        return f"Token file unreadable ({exc}) — re-link required"
+    if not creds.refresh_token:
+        return "Token file has no refresh_token — re-link required"
+    try:
+        creds.refresh(Request())  # type: ignore[no-untyped-call]
+    except RefreshError as exc:
+        detail = exc.args[0] if exc.args else "refresh rejected"
+        return (
+            f"Refresh token rejected ({detail}) — most often the OAuth consent "
+            "screen is in 'Testing' status (refresh tokens expire after 7 days). "
+            "Publish the OAuth app to Production and re-link; see "
+            "docs/operations/calendar-oauth.md."
+        )
+    return None
